@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fafafa;
+  --surface-1: #ffffff;
+  --surface-2: #f4f4f5;
+  --surface-3: #e4e4e7;
+  --border: #e4e4e7;
+
+  --text-primary: #18181b;
+  --text-secondary: #71717a;
+  --text-tertiary: #a1a1aa;
+
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef2ff;
+  --accent-on: #ffffff;
+
+  --positive: #16a34a;
+  --positive-soft: #f0fdf4;
+  --negative: #dc2626;
+  --negative-soft: #fef2f2;
+
+  --radius: 0.5rem;
+}
+
+:root[data-theme="dark"] {
+  --background: #0a0a0c;
+  --surface-1: #18181b;
+  --surface-2: #232326;
+  --surface-3: #313134;
+  --border: #2c2c30;
+
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+
+  --accent: #818cf8;
+  --accent-hover: #6366f1;
+  --accent-soft: #26264a;
+  --accent-on: #0a0a0c;
+
+  --positive: #4ade80;
+  --positive-soft: #14291d;
+  --negative: #f87171;
+  --negative-soft: #2d1616;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-on: var(--accent-on);
+
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist);
+
+  --radius-DEFAULT: var(--radius);
+}
+
+html {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular,
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
