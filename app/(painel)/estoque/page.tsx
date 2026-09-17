@@ -1,188 +1,28 @@
-"use client";
+import { createClient } from "@/lib/supabase/server";
+import { EstoqueClient } from "./EstoqueClient";
 
-import { useState } from "react";
-import { toast } from "sonner";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
-import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
-import { StatusChip } from "@/components/ui/Badge";
-import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { produtos as produtosIniciais, movimentacoesEstoque as movimentacoesIniciais, armazens, formatBRL, type Produto } from "@/lib/mock-data";
+export default async function EstoquePage() {
+  const supabase = await createClient();
 
-export default function EstoquePage() {
-  const [produtos, setProdutos] = useState<Produto[]>(produtosIniciais);
-  const [movimentacoes, setMovimentacoes] = useState(movimentacoesIniciais);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [movSku, setMovSku] = useState(produtosIniciais[0]?.sku ?? "");
-  const [movTipo, setMovTipo] = useState<"entrada" | "saida">("entrada");
-  const [movQtd, setMovQtd] = useState(1);
-  const [movMotivo, setMovMotivo] = useState("");
+  const [produtosRes, armazensRes, movimentacoesRes] = await Promise.all([
+    supabase.from("produtos").select("id, sku, nome, custo, estoque, estoque_minimo, armazem_id").order("nome"),
+    supabase.from("armazens").select("id, nome, endereco, lojas_abastecidas").order("nome"),
+    supabase
+      .from("estoque_movimentacoes")
+      .select("produto_nome, tipo, quantidade, motivo, data_movimentacao")
+      .order("data_movimentacao", { ascending: false })
+      .limit(50),
+  ]);
 
-  const totalUnidades = produtos.reduce((acc, p) => acc + p.estoque, 0);
-  const criticos = produtos.filter((p) => p.estoque <= p.estoqueMinimo).length;
-  const valorTotal = produtos.reduce((acc, p) => acc + p.estoque * p.custo, 0);
-
-  function registrarMovimentacao() {
-    const item = produtos.find((p) => p.sku === movSku);
-    if (!item || movQtd <= 0) return;
-
-    const delta = movTipo === "entrada" ? movQtd : -movQtd;
-    setProdutos((prev) => prev.map((p) => (p.sku === movSku ? { ...p, estoque: Math.max(0, p.estoque + delta) } : p)));
-    setMovimentacoes((prev) => [
-      {
-        sku: item.sku,
-        data: "Agora",
-        produto: item.nome,
-        tipo: movTipo,
-        quantidade: movQtd,
-        motivo: movMotivo || (movTipo === "entrada" ? "Entrada manual" : "Saída manual"),
-      },
-      ...prev,
-    ]);
-    setModalAberto(false);
-    setMovQtd(1);
-    setMovMotivo("");
-    toast.success("Movimentação registrada");
-  }
+  if (produtosRes.error) throw new Error(produtosRes.error.message);
+  if (armazensRes.error) throw new Error(armazensRes.error.message);
+  if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Estoque"
-        title="Armazéns & Estoque"
-        actions={<Button variant="primary" onClick={() => setModalAberto(true)}>Registrar Movimentação</Button>}
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-5">
-        <Card>
-          <CardEyebrow>Estoque Físico Total</CardEyebrow>
-          <HeroMetric value={`${totalUnidades} un.`} accent />
-        </Card>
-        <Card>
-          <CardEyebrow>Valor Total em Estoque</CardEyebrow>
-          <HeroMetric value={formatBRL(valorTotal)} />
-        </Card>
-        <Card>
-          <CardEyebrow>Reposição Necessária</CardEyebrow>
-          <HeroMetric value={String(criticos)} caption="produtos no mínimo ou abaixo" />
-        </Card>
-        <Card>
-          <CardEyebrow>Armazéns Ativos</CardEyebrow>
-          <HeroMetric value={String(armazens.length)} />
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
-          {armazens.map((a) => {
-            const produtosDoArmazem = produtos.filter((p) => p.armazemId === a.id);
-            const unidades = produtosDoArmazem.reduce((acc, p) => acc + p.estoque, 0);
-            return (
-              <Card key={a.id} className="p-0 overflow-hidden">
-                <div className="px-5 pt-5 pb-4 flex items-start justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold text-text-primary">{a.nome}</h2>
-                    <p className="text-sm text-text-secondary">{a.endereco}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {a.lojasAbastecidas.map((loja) => (
-                        <span key={loja} className="text-xs bg-surface-2 text-text-secondary rounded-full px-2 py-0.5">
-                          {loja}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-mono text-lg text-text-primary">{unidades} un.</div>
-                    <div className="text-xs text-text-tertiary">{produtosDoArmazem.length} produtos</div>
-                  </div>
-                </div>
-                <div className="divide-y divide-border border-t border-border">
-                  {produtosDoArmazem.map((p) => {
-                    const ok = p.estoque > p.estoqueMinimo;
-                    return (
-                      <div key={p.sku} className="flex items-center justify-between px-5 py-2.5 text-sm">
-                        <div>
-                          <div className="text-text-primary">{p.nome}</div>
-                          <div className="text-xs text-text-tertiary font-mono">{p.sku}</div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-text-secondary">{p.estoque} un.</span>
-                          <StatusChip label={ok ? "OK" : "Repor"} tone={ok ? "positive" : "negative"} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {produtosDoArmazem.length === 0 && (
-                    <div className="px-5 py-4 text-sm text-text-tertiary">Nenhum produto neste armazém ainda.</div>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-
-        <Card>
-          <h2 className="text-base font-semibold text-text-primary mb-4">Histórico Recente</h2>
-          <div className="space-y-4">
-            {movimentacoes.slice(0, 8).map((m, i) => (
-              <div key={i} className="flex items-start justify-between text-sm border-b border-border pb-3 last:border-0 last:pb-0">
-                <div>
-                  <div className="text-text-primary">{m.produto}</div>
-                  <div className="text-xs text-text-tertiary">{m.motivo}</div>
-                </div>
-                <div className="text-right shrink-0 ml-2">
-                  <div className={`font-mono ${m.tipo === "entrada" ? "text-positive" : "text-negative"}`}>
-                    {m.tipo === "entrada" ? "+" : "-"}
-                    {m.quantidade} un
-                  </div>
-                  <div className="text-xs text-text-tertiary">{m.data}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Registrar Movimentação">
-        <FormField label="Produto">
-          <select className={inputClass} value={movSku} onChange={(e) => setMovSku(e.target.value)}>
-            {produtos.map((p) => (
-              <option key={p.sku} value={p.sku}>
-                {p.nome}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="Tipo">
-            <select className={inputClass} value={movTipo} onChange={(e) => setMovTipo(e.target.value as "entrada" | "saida")}>
-              <option value="entrada">Entrada</option>
-              <option value="saida">Saída</option>
-            </select>
-          </FormField>
-          <FormField label="Quantidade">
-            <input
-              type="number"
-              min={1}
-              className={inputClass}
-              value={movQtd}
-              onChange={(e) => setMovQtd(Number(e.target.value) || 0)}
-            />
-          </FormField>
-        </div>
-        <FormField label="Motivo">
-          <input className={inputClass} value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} placeholder="Ex: ajuste, venda, avaria" />
-        </FormField>
-
-        <div className="flex gap-2 mt-5">
-          <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)}>
-            Cancelar
-          </Button>
-          <Button variant="primary" className="flex-1" onClick={registrarMovimentacao}>
-            Registrar
-          </Button>
-        </div>
-      </Modal>
-    </>
+    <EstoqueClient
+      produtos={produtosRes.data ?? []}
+      armazens={armazensRes.data ?? []}
+      movimentacoes={movimentacoesRes.data ?? []}
+    />
   );
 }

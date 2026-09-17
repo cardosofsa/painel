@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Sun, Moon, User, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "./ThemeContext";
+import { createClient } from "@/lib/supabase/client";
 
 function todayLabel() {
   return new Date().toLocaleDateString("pt-BR");
@@ -11,7 +13,9 @@ function todayLabel() {
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
+  const router = useRouter();
   const [menuAberto, setMenuAberto] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,6 +25,20 @@ export function TopBar() {
     document.addEventListener("mousedown", onClickFora);
     return () => document.removeEventListener("mousedown", onClickFora);
   }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+  }, []);
+
+  async function sair() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
+
+  const inicial = email ? email[0].toUpperCase() : "U";
 
   return (
     <header className="h-14 shrink-0 border-b border-border bg-surface-1/80 backdrop-blur-sm flex items-center gap-4 px-6 sticky top-0 z-10">
@@ -47,13 +65,13 @@ export function TopBar() {
           onClick={() => setMenuAberto((v) => !v)}
           className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-on text-xs font-semibold"
         >
-          U
+          {inicial}
         </button>
         {menuAberto && (
-          <div className="absolute right-0 mt-2 w-48 bg-surface-1 border border-border rounded-md shadow-lg py-1 text-sm">
+          <div className="absolute right-0 mt-2 w-56 bg-surface-1 border border-border rounded-md shadow-lg py-1 text-sm">
             <div className="px-3 py-2 border-b border-border">
-              <div className="text-text-primary font-medium">Usuário</div>
-              <div className="text-text-tertiary text-xs">Conta local</div>
+              <div className="text-text-primary font-medium truncate">{email ?? "Usuário"}</div>
+              <div className="text-text-tertiary text-xs">Conta Supabase</div>
             </div>
             <Link href="/configuracoes" onClick={() => setMenuAberto(false)} className="flex items-center gap-2 px-3 py-2 text-text-secondary hover:bg-surface-2 hover:text-text-primary">
               <Settings size={14} /> Configurações
@@ -61,7 +79,7 @@ export function TopBar() {
             <button className="w-full flex items-center gap-2 px-3 py-2 text-text-secondary hover:bg-surface-2 hover:text-text-primary text-left">
               <User size={14} /> Perfil
             </button>
-            <button className="w-full flex items-center gap-2 px-3 py-2 text-negative hover:bg-negative-soft text-left">
+            <button onClick={sair} className="w-full flex items-center gap-2 px-3 py-2 text-negative hover:bg-negative-soft text-left">
               <LogOut size={14} /> Sair
             </button>
           </div>
