@@ -10,6 +10,9 @@ import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Truck } from "lucide-react";
+import { formatBRL } from "@/lib/mock-data";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
 
 export interface Fornecedor extends FornecedorInput {
@@ -26,8 +29,14 @@ const FORM_VAZIO: FornecedorInput = {
   status: "ativo",
 };
 
-export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[] }) {
-  const [, startTransition] = useTransition();
+export function FornecedoresClient({
+  fornecedores,
+  comprasNoTrimestre,
+}: {
+  fornecedores: Fornecedor[];
+  comprasNoTrimestre: number;
+}) {
+  const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Fornecedor | null>(null);
@@ -94,7 +103,6 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
   return (
     <>
       <PageHeader
-        eyebrow="Fornecedores"
         title="Fornecedores"
         actions={<Button variant="primary" onClick={abrirNovo}>+ Cadastrar Fornecedor</Button>}
       />
@@ -106,63 +114,60 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
         </Card>
         <Card>
           <CardEyebrow>Compras no Trimestre</CardEyebrow>
-          <HeroMetric value="R$ 56.400,00" accent />
+          <HeroMetric value={formatBRL(comprasNoTrimestre)} accent />
         </Card>
       </div>
 
       <Card className="p-0 overflow-hidden">
-        <Table>
-          <Thead>
-            <tr>
-              <Th>Razão Social</Th>
-              <Th>Contato</Th>
-              <Th>Cidade / UF</Th>
-              <Th>Prazo</Th>
-              <Th>Status</Th>
-              <Th align="right">Ações</Th>
-            </tr>
-          </Thead>
-          <tbody>
-            {fornecedores.map((f) => (
-              <Tr key={f.id}>
-                <Td>
-                  <div className={f.status === "inativo" ? "line-through text-text-tertiary" : "text-text-primary"}>
-                    {f.nome}
-                  </div>
-                  <div className="text-xs text-text-tertiary font-mono">{f.cnpj}</div>
-                </Td>
-                <Td>
-                  <div>{f.contato}</div>
-                  <div className="text-xs text-text-tertiary font-mono">{f.telefone}</div>
-                </Td>
-                <Td>{f.cidade}</Td>
-                <Td>{f.prazo}</Td>
-                <Td>
-                  <StatusChip
-                    label={f.status === "ativo" ? "Ativo" : "Inativo"}
-                    tone={f.status === "ativo" ? "positive" : "neutral"}
-                  />
-                </Td>
-                <Td align="right">
-                  <RowMenu
-                    actions={[
-                      { label: "Editar", onClick: () => abrirEdicao(f) },
-                      { label: f.status === "ativo" ? "Desativar" : "Ativar", onClick: () => alternarStatus(f) },
-                      { label: "Remover", onClick: () => remover(f), destructive: true },
-                    ]}
-                  />
-                </Td>
-              </Tr>
-            ))}
-            {fornecedores.length === 0 && (
-              <Tr>
-                <Td className="text-text-tertiary text-center py-8" align="center">
-                  Nenhum fornecedor cadastrado ainda.
-                </Td>
-              </Tr>
-            )}
-          </tbody>
-        </Table>
+        {fornecedores.length === 0 ? (
+          <EmptyState icon={Truck} title="Nenhum fornecedor cadastrado" description="Cadastre seu primeiro fornecedor para começar." />
+        ) : (
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Razão Social</Th>
+                <Th>Contato</Th>
+                <Th>Cidade / UF</Th>
+                <Th>Prazo</Th>
+                <Th>Status</Th>
+                <Th align="right">Ações</Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {fornecedores.map((f) => (
+                <Tr key={f.id}>
+                  <Td>
+                    <div className={f.status === "inativo" ? "line-through text-text-tertiary" : "text-text-primary"}>
+                      {f.nome}
+                    </div>
+                    <div className="text-xs text-text-tertiary font-mono">{f.cnpj}</div>
+                  </Td>
+                  <Td>
+                    <div>{f.contato}</div>
+                    <div className="text-xs text-text-tertiary font-mono">{f.telefone}</div>
+                  </Td>
+                  <Td>{f.cidade}</Td>
+                  <Td>{f.prazo}</Td>
+                  <Td>
+                    <StatusChip
+                      label={f.status === "ativo" ? "Ativo" : "Inativo"}
+                      tone={f.status === "ativo" ? "positive" : "neutral"}
+                    />
+                  </Td>
+                  <Td align="right">
+                    <RowMenu
+                      actions={[
+                        { label: "Editar", onClick: () => abrirEdicao(f) },
+                        { label: f.status === "ativo" ? "Desativar" : "Ativar", onClick: () => alternarStatus(f) },
+                        { label: "Remover", onClick: () => remover(f), destructive: true },
+                      ]}
+                    />
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
       </Card>
 
       <Modal
@@ -193,7 +198,7 @@ export function FornecedoresClient({ fornecedores }: { fornecedores: Fornecedor[
           <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)}>
             Cancelar
           </Button>
-          <Button variant="primary" className="flex-1" onClick={salvar}>
+          <Button variant="primary" className="flex-1" onClick={salvar} loading={pending}>
             Salvar
           </Button>
         </div>

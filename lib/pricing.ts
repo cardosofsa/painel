@@ -25,6 +25,7 @@ export interface ResultadoPrecificacao {
   taxaExtraCalculada: number;
   lucroLiquido: number;
   margemEfetivaPct: number;
+  markupSobreCustoPct: number;
   viavel: boolean;
 }
 
@@ -46,6 +47,7 @@ function resultadoInviavel(custoTotal: number): ResultadoPrecificacao {
     taxaExtraCalculada: 0,
     lucroLiquido: 0,
     margemEfetivaPct: 0,
+    markupSobreCustoPct: 0,
     viavel: false,
   };
 }
@@ -58,6 +60,8 @@ export function resultadoParaPreco(
   custoTotal: number,
   taxas: TaxasPlataforma,
 ): ResultadoPrecificacao {
+  if (custoTotal <= 0) return resultadoInviavel(custoTotal);
+
   const taxaVariavelValor = precoVenda * taxas.taxaVariavelPct;
   const taxaAdicionalValor = precoVenda * taxas.taxaAdicionalPct;
   const impostoValor = precoVenda * taxas.impostoPct;
@@ -65,6 +69,7 @@ export function resultadoParaPreco(
   const lucroLiquido =
     precoVenda - custoTotal - taxas.taxaFixa - taxaVariavelValor - taxaAdicionalValor - impostoValor - taxaExtraCalculada;
   const margemEfetivaPct = precoVenda > 0 ? lucroLiquido / precoVenda : 0;
+  const markupSobreCustoPct = custoTotal > 0 ? lucroLiquido / custoTotal : 0;
   return {
     custoTotal,
     precoVenda,
@@ -74,6 +79,7 @@ export function resultadoParaPreco(
     taxaExtraCalculada,
     lucroLiquido,
     margemEfetivaPct,
+    markupSobreCustoPct,
     viavel: true,
   };
 }
@@ -115,20 +121,18 @@ export interface FaixaComissao {
   max: number | null;
   comissaoPct: number;
   tarifaFixa: number;
-  label: string;
 }
 
-/** Tabela oficial de faixas de comissão da Shopee por preço do produto (vigente a partir de março/2026). */
-export const SHOPEE_FAIXAS: FaixaComissao[] = [
-  { min: 0, max: 7.99, comissaoPct: 50, tarifaFixa: 0, label: "R$ 0 – R$ 7,99" },
-  { min: 8, max: 79.99, comissaoPct: 20, tarifaFixa: 4, label: "R$ 8 – R$ 79,99" },
-  { min: 80, max: 99.99, comissaoPct: 14, tarifaFixa: 16, label: "R$ 80 – R$ 99,99" },
-  { min: 100, max: 199.99, comissaoPct: 14, tarifaFixa: 20, label: "R$ 100 – R$ 199,99" },
-  { min: 200, max: null, comissaoPct: 14, tarifaFixa: 26, label: "R$ 200 ou mais" },
-];
+/** Formata uma faixa de comissão para exibição, ex.: "R$ 80 – R$ 99,99" ou "R$ 200 ou mais". */
+export function formatarFaixaLabel(faixa: FaixaComissao): string {
+  const min = faixa.min.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  if (faixa.max === null) return `${min} ou mais`;
+  const max = faixa.max.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return `${min} – ${max}`;
+}
 
-function encontrarFaixaShopee(preco: number): FaixaComissao {
-  return SHOPEE_FAIXAS.find((f) => preco >= f.min && (f.max === null || preco <= f.max)) ?? SHOPEE_FAIXAS[SHOPEE_FAIXAS.length - 1];
+function encontrarFaixa(faixas: FaixaComissao[], preco: number): FaixaComissao {
+  return faixas.find((f) => preco >= f.min && (f.max === null || preco <= f.max)) ?? faixas[faixas.length - 1];
 }
 
 export interface ResultadoComFaixa {
@@ -137,16 +141,29 @@ export interface ResultadoComFaixa {
 }
 
 /**
- * Resolve o preço considerando a tabela de faixas da Shopee: a comissão/tarifa dependem do preço
- * final, que por sua vez depende da comissão — resolve por iteração até a faixa estabilizar.
+ * Resolve o preço considerando uma tabela de faixas de comissão por preço (ex.: Shopee): a
+ * comissão/tarifa dependem do preço final, que por sua vez depende da comissão — resolve por
+ * iteração até a faixa estabilizar. `faixas` vem cadastrado pelo usuário (editável), não é fixo.
  */
-export function resolverComFaixaShopee(
+export function resolverComFaixas(
   custoTotal: number,
   modo: ModoCalculo,
   parametro: number,
   taxasBase: Omit<TaxasPlataforma, "taxaVariavelPct" | "taxaFixa">,
+  faixas: FaixaComissao[],
 ): ResultadoComFaixa {
-  let faixa = modo === "preco" ? encontrarFaixaShopee(parametro) : SHOPEE_FAIXAS[1];
+  if (faixas.length === 0) {
+    const taxas: TaxasPlataforma = { ...taxasBase, taxaVariavelPct: 0, taxaFixa: 0 };
+    const resultado =
+      modo === "margem"
+        ? resolverPorMargem(custoTotal, parametro, taxas)
+        : modo === "lucro"
+          ? resolverPorLucro(custoTotal, parametro, taxas)
+          : resultadoParaPreco(parametro, custoTotal, taxas);
+    return { resultado, faixa: { min: 0, max: null, comissaoPct: 0, tarifaFixa: 0 } };
+  }
+
+  let faixa = modo === "preco" ? encontrarFaixa(faixas, parametro) : faixas[Math.min(1, faixas.length - 1)];
   let resultado: ResultadoPrecificacao = resultadoInviavel(custoTotal);
 
   for (let i = 0; i < 5; i++) {
@@ -156,7 +173,7 @@ export function resolverComFaixaShopee(
     else resultado = resultadoParaPreco(parametro, custoTotal, taxas);
 
     if (!resultado.viavel) break;
-    const novaFaixa = encontrarFaixaShopee(resultado.precoVenda);
+    const novaFaixa = encontrarFaixa(faixas, resultado.precoVenda);
     if (novaFaixa === faixa) break;
     faixa = novaFaixa;
   }

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { inputClass } from "@/components/ui/Modal";
+import { Brain } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,10 +34,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <form onSubmit={entrar} className="w-full max-w-sm bg-surface-1 border border-border rounded-lg shadow-sm p-6">
         <div className="flex items-center gap-2 mb-6">
-          <span className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-accent-on text-xs font-bold">
-            P
+          <span className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-accent-on">
+            <Brain size={16} strokeWidth={2.25} />
           </span>
-          <span className="font-semibold tracking-tight text-text-primary text-lg">Painel</span>
+          <span className="font-semibold tracking-tight text-text-primary text-lg">Segundo Cérebro</span>
         </div>
 
         <label className="block text-xs font-medium text-text-secondary mb-1.5">E-mail</label>
@@ -59,9 +61,16 @@ export default function LoginPage() {
 
         {erro && <p className="text-sm text-negative mb-4">{erro}</p>}
 
-        <Button type="submit" variant="primary" className="w-full" disabled={carregando}>
+        <Button type="submit" variant="primary" className="w-full mb-4" disabled={carregando}>
           {carregando ? "Entrando…" : "Entrar"}
         </Button>
+
+        <p className="text-center text-xs text-text-secondary">
+          Não tem conta?{" "}
+          <Link href="/signup" className="text-accent hover:underline">
+            Criar conta
+          </Link>
+        </p>
       </form>
     </div>
   );

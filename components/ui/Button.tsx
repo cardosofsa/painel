@@ -1,4 +1,5 @@
 import { ButtonHTMLAttributes } from "react";
+import { LoaderCircle } from "lucide-react";
 
 type Variant = "primary" | "secondary" | "destructive";
 
@@ -16,12 +17,19 @@ const variants: Record<Variant, string> = {
 export function Button({
   variant = "primary",
   className = "",
+  loading = false,
+  disabled,
+  children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean }) {
   return (
     <button
       className={`${base} ${variants[variant]} ${className}`}
+      disabled={disabled || loading}
       {...props}
-    />
+    >
+      {loading && <LoaderCircle size={14} className="animate-spin" />}
+      {children}
+    </button>
   );
 }

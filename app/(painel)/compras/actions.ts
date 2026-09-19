@@ -10,7 +10,7 @@ export interface ItemPedidoInput {
   custo_unitario: number;
 }
 
-export type FormaPagamento = "dinheiro" | "pix" | "cartao_parcelado";
+export type FormaPagamento = string;
 
 export interface PedidoCompraInput {
   fornecedor_id: string;
@@ -20,7 +20,10 @@ export interface PedidoCompraInput {
   data_pedido: string;
   data_entrega_prevista: string | null;
   forma_pagamento: FormaPagamento;
+  conta_id: string;
+  parcelado: boolean;
   parcelas: number | null;
+  data_primeiro_vencimento: string;
   itens: ItemPedidoInput[];
 }
 
@@ -53,7 +56,7 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
       data_pedido: dados.data_pedido,
       data_entrega_prevista: dados.data_entrega_prevista,
       forma_pagamento: dados.forma_pagamento,
-      parcelas: dados.forma_pagamento === "cartao_parcelado" ? dados.parcelas : null,
+      parcelas: dados.parcelado ? dados.parcelas : null,
       status: "pendente",
     })
     .select("id, numero")
@@ -65,7 +68,7 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
   const { error: erroItens } = await supabase.from("pedidos_compra_itens").insert(itensParaInserir);
   if (erroItens) throw new Error(erroItens.message);
 
-  const parcelas = dados.forma_pagamento === "cartao_parcelado" ? Math.max(1, dados.parcelas ?? 1) : 1;
+  const parcelas = dados.parcelado ? Math.max(1, dados.parcelas ?? 1) : 1;
   const valorParcela = Math.round((valorTotal / parcelas) * 100) / 100;
   const titulos = Array.from({ length: parcelas }, (_, i) => {
     const ultima = i === parcelas - 1;
@@ -74,9 +77,9 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
       tipo: "pagar" as const,
       descricao: parcelas > 1 ? `Pedido ${pedido.numero} — parcela ${i + 1}/${parcelas}` : `Pedido ${pedido.numero}`,
       valor,
-      data_vencimento: somarMeses(dados.data_pedido, i),
+      data_vencimento: somarMeses(dados.data_primeiro_vencimento, i),
       status: "pendente" as const,
-      forma_pagamento: dados.forma_pagamento,
+      conta_id: dados.conta_id,
       referencia_pedido_compra_id: pedido.id,
     };
   });

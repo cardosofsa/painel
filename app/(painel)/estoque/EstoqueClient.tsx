@@ -73,12 +73,11 @@ export function EstoqueClient({
   return (
     <>
       <PageHeader
-        eyebrow="Estoque"
         title="Armazéns & Estoque"
         actions={<Button variant="primary" onClick={() => setModalAberto(true)}>Registrar Movimentação</Button>}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>
           <CardEyebrow>Estoque Físico Total</CardEyebrow>
           <HeroMetric value={`${totalUnidades} un.`} accent />

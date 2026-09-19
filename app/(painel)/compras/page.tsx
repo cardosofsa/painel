@@ -4,26 +4,43 @@ import { ComprasClient, type Pedido } from "./ComprasClient";
 export default async function ComprasPage() {
   const supabase = await createClient();
 
-  const [pedidosRes, fornecedoresRes, produtosRes, armazensRes] = await Promise.all([
-    supabase
-      .from("pedidos_compra")
-      .select(
-        "id, numero, fornecedor_id, armazem_id, nf, nf_arquivo_path, valor_total, status, data_pedido, data_entrega_prevista, data_recebimento, forma_pagamento, parcelas, fornecedores(nome, cnpj), armazens(nome), pedidos_compra_itens(produto_id, produto_nome, quantidade, custo_unitario)",
-      )
-      .order("data_pedido", { ascending: false }),
-    supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
-    supabase.from("produtos").select("id, nome, custo").order("nome"),
-    supabase.from("armazens").select("id, nome").order("nome"),
-  ]);
+  const [pedidosRes, fornecedoresAtivosRes, fornecedoresTodosRes, produtosRes, armazensRes, contasRes, formasPagamentoRes, titulosRes] =
+    await Promise.all([
+      supabase
+        .from("pedidos_compra")
+        .select(
+          "id, numero, fornecedor_id, armazem_id, nf, nf_arquivo_path, valor_total, status, data_pedido, data_entrega_prevista, data_recebimento, forma_pagamento, parcelas, pedidos_compra_itens(produto_id, produto_nome, quantidade, custo_unitario)",
+        )
+        .order("data_pedido", { ascending: false }),
+      supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
+      supabase.from("fornecedores").select("id, nome, cnpj"),
+      supabase.from("produtos").select("id, nome, custo").order("nome"),
+      supabase.from("armazens").select("id, nome").order("nome"),
+      supabase.from("contas").select("id, nome").order("nome"),
+      supabase.from("formas_pagamento").select("id, nome").order("nome"),
+      supabase.from("contas_a_pagar_receber").select("referencia_pedido_compra_id, conta_id").not("referencia_pedido_compra_id", "is", null),
+    ]);
 
   if (pedidosRes.error) throw new Error(pedidosRes.error.message);
-  if (fornecedoresRes.error) throw new Error(fornecedoresRes.error.message);
+  if (fornecedoresAtivosRes.error) throw new Error(fornecedoresAtivosRes.error.message);
+  if (fornecedoresTodosRes.error) throw new Error(fornecedoresTodosRes.error.message);
   if (produtosRes.error) throw new Error(produtosRes.error.message);
   if (armazensRes.error) throw new Error(armazensRes.error.message);
+  if (contasRes.error) throw new Error(contasRes.error.message);
+  if (formasPagamentoRes.error) throw new Error(formasPagamentoRes.error.message);
+  if (titulosRes.error) throw new Error(titulosRes.error.message);
+
+  const fornecedoresPorId = new Map((fornecedoresTodosRes.data ?? []).map((f) => [f.id, f]));
+  const armazensPorId = new Map((armazensRes.data ?? []).map((a) => [a.id, a.nome]));
+  const contasPorId = new Map((contasRes.data ?? []).map((c) => [c.id, c.nome]));
+  const contaIdPorPedidoId = new Map(
+    (titulosRes.data ?? [])
+      .filter((t) => t.referencia_pedido_compra_id && t.conta_id)
+      .map((t) => [t.referencia_pedido_compra_id as string, t.conta_id as string]),
+  );
 
   const pedidos: Pedido[] = (pedidosRes.data ?? []).map((p) => {
-    const fornecedor = (p.fornecedores as unknown as { nome: string; cnpj: string | null }[] | null)?.[0];
-    const armazem = (p.armazens as unknown as { nome: string }[] | null)?.[0];
+    const fornecedor = p.fornecedor_id ? fornecedoresPorId.get(p.fornecedor_id) : undefined;
     return {
       id: p.id,
       numero: p.numero,
@@ -31,7 +48,7 @@ export default async function ComprasPage() {
       fornecedor_nome: fornecedor?.nome ?? "—",
       cnpj: fornecedor?.cnpj ?? null,
       armazem_id: p.armazem_id,
-      armazem_nome: armazem?.nome ?? null,
+      armazem_nome: (p.armazem_id && armazensPorId.get(p.armazem_id)) ?? null,
       nf: p.nf,
       nf_arquivo_path: p.nf_arquivo_path,
       valor_total: p.valor_total,
@@ -41,6 +58,7 @@ export default async function ComprasPage() {
       data_recebimento: p.data_recebimento,
       forma_pagamento: p.forma_pagamento,
       parcelas: p.parcelas,
+      conta_nome: (contaIdPorPedidoId.get(p.id) && contasPorId.get(contaIdPorPedidoId.get(p.id)!)) ?? null,
       itens: p.pedidos_compra_itens ?? [],
     };
   });
@@ -48,9 +66,11 @@ export default async function ComprasPage() {
   return (
     <ComprasClient
       pedidos={pedidos}
-      fornecedores={fornecedoresRes.data ?? []}
+      fornecedores={fornecedoresAtivosRes.data ?? []}
       produtos={produtosRes.data ?? []}
       armazens={armazensRes.data ?? []}
+      contas={contasRes.data ?? []}
+      formasPagamento={formasPagamentoRes.data ?? []}
     />
   );
 }

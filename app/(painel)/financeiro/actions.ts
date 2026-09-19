@@ -2,17 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 function revalidateTudo() {
   revalidatePath("/financeiro");
   revalidatePath("/dashboard");
   revalidatePath("/configuracoes");
-}
-
-async function ajustarSaldoConta(supabase: SupabaseClient, contaId: string, delta: number) {
-  const { error } = await supabase.rpc("ajustar_saldo_conta", { p_conta_id: contaId, p_delta: delta });
-  if (error) throw new Error(error.message);
 }
 
 // ---------- Lançamentos ----------
@@ -31,19 +25,17 @@ export async function criarMovimentacao(dados: MovimentacaoInput) {
   const supabase = await createClient();
   const valorComSinal = dados.tipo === "entrada" ? Math.abs(dados.valor) : -Math.abs(dados.valor);
 
-  const { error } = await supabase.from("movimentacoes_financeiras").insert({
-    tipo: dados.tipo,
-    valor: valorComSinal,
-    descricao: dados.descricao,
-    origem: dados.origem,
-    categoria: dados.categoria,
-    conta_id: dados.conta_id,
-    afeta_lucro: dados.afeta_lucro,
-    data_movimentacao: dados.data_movimentacao,
+  const { error } = await supabase.rpc("registrar_movimentacao_financeira", {
+    p_tipo: dados.tipo,
+    p_valor: valorComSinal,
+    p_descricao: dados.descricao,
+    p_origem: dados.origem,
+    p_categoria: dados.categoria,
+    p_conta_id: dados.conta_id,
+    p_afeta_lucro: dados.afeta_lucro,
+    p_data: dados.data_movimentacao,
   });
   if (error) throw new Error(error.message);
-
-  await ajustarSaldoConta(supabase, dados.conta_id, valorComSinal);
   revalidateTudo();
 }
 
@@ -73,68 +65,33 @@ export async function retirarDespesaDaConta(despesaId: string) {
   if (error || !despesa) throw new Error(error?.message ?? "Despesa não encontrada");
   if (!despesa.conta_id) throw new Error("Essa despesa não tem conta vinculada");
 
-  const { error: erroInsert } = await supabase.from("movimentacoes_financeiras").insert({
-    tipo: "saida",
-    valor: -despesa.valor,
-    descricao: despesa.nome,
-    origem: "Despesa fixa",
-    categoria: "Despesas fixas",
-    conta_id: despesa.conta_id,
-    afeta_lucro: true,
-    referencia_despesa_fixa_id: despesa.id,
-    data_movimentacao: new Date().toISOString().slice(0, 10),
+  const { error: erroRpc } = await supabase.rpc("registrar_movimentacao_financeira", {
+    p_tipo: "saida",
+    p_valor: -despesa.valor,
+    p_descricao: despesa.nome,
+    p_origem: "Despesa fixa",
+    p_categoria: "Despesas fixas",
+    p_conta_id: despesa.conta_id,
+    p_afeta_lucro: true,
+    p_data: new Date().toISOString().slice(0, 10),
+    p_referencia_despesa_fixa_id: despesa.id,
   });
-  if (erroInsert) throw new Error(erroInsert.message);
-
-  await ajustarSaldoConta(supabase, despesa.conta_id, -despesa.valor);
+  if (erroRpc) throw new Error(erroRpc.message);
   revalidateTudo();
 }
 
 export async function desfazerRetiradaDespesa(movimentacaoId: string) {
   const supabase = await createClient();
-  const { data: mov, error } = await supabase
-    .from("movimentacoes_financeiras")
-    .select("id, valor, conta_id")
-    .eq("id", movimentacaoId)
-    .single();
-  if (error || !mov) throw new Error(error?.message ?? "Movimentação não encontrada");
-
-  const { error: erroDelete } = await supabase.from("movimentacoes_financeiras").delete().eq("id", movimentacaoId);
-  if (erroDelete) throw new Error(erroDelete.message);
-
-  if (mov.conta_id) await ajustarSaldoConta(supabase, mov.conta_id, -mov.valor);
+  const { error } = await supabase.rpc("desfazer_movimentacao_financeira", { p_movimentacao_id: movimentacaoId });
+  if (error) throw new Error(error.message);
   revalidateTudo();
 }
 
 // ---------- Contas a pagar / receber ----------
 export async function quitarContaPagarReceber(id: string) {
   const supabase = await createClient();
-  const { data: cpr, error } = await supabase
-    .from("contas_a_pagar_receber")
-    .select("id, tipo, valor, conta_id, descricao")
-    .eq("id", id)
-    .single();
-  if (error || !cpr) throw new Error(error?.message ?? "Registro não encontrado");
-
-  const novoStatus = cpr.tipo === "pagar" ? "pago" : "recebido";
-  const { error: erroUpdate } = await supabase.from("contas_a_pagar_receber").update({ status: novoStatus }).eq("id", id);
-  if (erroUpdate) throw new Error(erroUpdate.message);
-
-  if (cpr.conta_id) {
-    const delta = cpr.tipo === "pagar" ? -cpr.valor : cpr.valor;
-    const { error: erroInsert } = await supabase.from("movimentacoes_financeiras").insert({
-      tipo: cpr.tipo === "pagar" ? "saida" : "entrada",
-      valor: delta,
-      descricao: cpr.descricao,
-      origem: cpr.tipo === "pagar" ? "Conta a pagar quitada" : "Conta a receber recebida",
-      categoria: null,
-      conta_id: cpr.conta_id,
-      afeta_lucro: true,
-      data_movimentacao: new Date().toISOString().slice(0, 10),
-    });
-    if (erroInsert) throw new Error(erroInsert.message);
-    await ajustarSaldoConta(supabase, cpr.conta_id, delta);
-  }
+  const { error } = await supabase.rpc("quitar_conta_pagar_receber", { p_id: id });
+  if (error) throw new Error(error.message);
   revalidateTudo();
 }
 
@@ -157,19 +114,17 @@ export async function criarContaPagarReceber(dados: ContaPagarReceberInput) {
 export interface EscopoLimpeza {
   lancamentos: boolean;
   contasPagarReceber: boolean;
-  despesasFixas: boolean;
 }
 
 export interface ImpactoLimpeza {
   lancamentos: number;
   contasPagarReceber: number;
   contasVinculadasCompra: number;
-  despesasFixas: number;
 }
 
 export async function avaliarLimpezaFinanceiro(dataInicio: string, dataFim: string, escopo: EscopoLimpeza): Promise<ImpactoLimpeza> {
   const supabase = await createClient();
-  const resultado: ImpactoLimpeza = { lancamentos: 0, contasPagarReceber: 0, contasVinculadasCompra: 0, despesasFixas: 0 };
+  const resultado: ImpactoLimpeza = { lancamentos: 0, contasPagarReceber: 0, contasVinculadasCompra: 0 };
 
   if (escopo.lancamentos) {
     const { count, error } = await supabase
@@ -200,16 +155,6 @@ export async function avaliarLimpezaFinanceiro(dataInicio: string, dataFim: stri
     resultado.contasVinculadasCompra = vinculadas ?? 0;
   }
 
-  if (escopo.despesasFixas) {
-    const { count, error } = await supabase
-      .from("despesas_fixas")
-      .select("id", { count: "exact", head: true })
-      .gte("criado_em", dataInicio)
-      .lte("criado_em", `${dataFim}T23:59:59`);
-    if (error) throw new Error(error.message);
-    resultado.despesasFixas = count ?? 0;
-  }
-
   return resultado;
 }
 
@@ -231,15 +176,6 @@ export async function limparDadosFinanceiros(dataInicio: string, dataFim: string
       .delete()
       .gte("data_vencimento", dataInicio)
       .lte("data_vencimento", dataFim);
-    if (error) throw new Error(error.message);
-  }
-
-  if (escopo.despesasFixas) {
-    const { error } = await supabase
-      .from("despesas_fixas")
-      .delete()
-      .gte("criado_em", dataInicio)
-      .lte("criado_em", `${dataFim}T23:59:59`);
     if (error) throw new Error(error.message);
   }
 

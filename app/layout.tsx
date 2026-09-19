@@ -10,7 +10,7 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Painel",
+  title: "Segundo Cérebro",
   description: "Sistema local de gestão — precificação, produtos, estoque, compras e financeiro.",
 };
 

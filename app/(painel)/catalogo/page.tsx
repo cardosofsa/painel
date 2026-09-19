@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 export default function CatalogoPage() {
   return (
     <>
-      <PageHeader eyebrow="Catálogo" title="Catálogo" />
+      <PageHeader title="Catálogo" />
       <Card>
         <EmptyState
           icon={BookOpen}

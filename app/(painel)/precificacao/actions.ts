@@ -21,6 +21,7 @@ export interface PrecificacaoInput {
   margem_pct: number | null;
   preco_calculado: number;
   lucro: number;
+  origem: "individual" | "em_massa";
 }
 
 export async function salvarPrecificacao(dados: PrecificacaoInput) {
@@ -97,6 +98,32 @@ export async function criarAnuncio(dados: AnuncioInput) {
 export async function removerAnuncio(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("anuncios").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/precificacao");
+}
+
+// ---------- Preços dos Concorrentes ----------
+export interface ConcorrenteInput {
+  nome: string;
+  preco: number;
+  link: string | null;
+}
+
+export async function criarConcorrente(produtoId: string, dados: ConcorrenteInput) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("concorrentes_preco")
+    .insert({ produto_id: produtoId, nome: dados.nome, preco: dados.preco, link: dados.link })
+    .select("id, nome, preco, link")
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Erro ao salvar concorrente");
+  revalidatePath("/precificacao");
+  return data;
+}
+
+export async function removerConcorrenteSalvo(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("concorrentes_preco").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/precificacao");
 }

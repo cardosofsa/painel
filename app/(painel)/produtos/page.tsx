@@ -4,32 +4,48 @@ import { ProdutosClient, type Produto } from "./ProdutosClient";
 export default async function ProdutosPage() {
   const supabase = await createClient();
 
-  const [produtosRes, categoriasRes, fornecedoresRes, armazensRes, movimentacoesRes, precificacoesRes] = await Promise.all([
-    supabase
-      .from("produtos")
-      .select(
-        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, preco_venda, preco_atacado, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo, categorias(nome), fornecedores(nome), armazens(nome)",
-      )
-      .order("nome"),
-    supabase.from("categorias").select("id, nome").order("nome"),
-    supabase.from("fornecedores").select("id, nome").order("nome"),
-    supabase.from("armazens").select("id, nome").order("nome"),
-    supabase
-      .from("estoque_movimentacoes")
-      .select("produto_id, motivo, tipo, quantidade, data_movimentacao")
-      .order("data_movimentacao", { ascending: false })
-      .limit(200),
-    supabase
-      .from("precificacoes")
-      .select("produto_id, canal, preco_calculado, criado_em")
-      .order("criado_em", { ascending: false })
-      .limit(200),
-  ]);
+  const [produtosRes, categoriasRes, fornecedoresRes, armazensRes, movimentacoesRes, precificacoesRes, lojasRes, produtoLojasRes] =
+    await Promise.all([
+      supabase
+        .from("produtos")
+        .select(
+          "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, preco_venda, preco_atacado, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo",
+        )
+        .order("nome"),
+      supabase.from("categorias").select("id, nome").order("nome"),
+      supabase.from("fornecedores").select("id, nome").order("nome"),
+      supabase.from("armazens").select("id, nome").order("nome"),
+      supabase
+        .from("estoque_movimentacoes")
+        .select("produto_id, motivo, tipo, quantidade, data_movimentacao")
+        .order("data_movimentacao", { ascending: false })
+        .limit(200),
+      supabase
+        .from("precificacoes")
+        .select("produto_id, canal, preco_calculado, criado_em")
+        .order("criado_em", { ascending: false })
+        .limit(200),
+      supabase.from("lojas_canal").select("id, nome").order("nome"),
+      supabase.from("produto_lojas").select("produto_id, loja_id"),
+    ]);
 
   if (produtosRes.error) throw new Error(produtosRes.error.message);
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
   if (fornecedoresRes.error) throw new Error(fornecedoresRes.error.message);
   if (armazensRes.error) throw new Error(armazensRes.error.message);
+  if (lojasRes.error) throw new Error(lojasRes.error.message);
+  if (produtoLojasRes.error) throw new Error(produtoLojasRes.error.message);
+
+  const categoriasPorId = new Map((categoriasRes.data ?? []).map((c) => [c.id, c.nome]));
+  const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
+  const armazensPorId = new Map((armazensRes.data ?? []).map((a) => [a.id, a.nome]));
+
+  const lojaIdsPorProduto = new Map<string, string[]>();
+  for (const pl of produtoLojasRes.data ?? []) {
+    const lista = lojaIdsPorProduto.get(pl.produto_id) ?? [];
+    lista.push(pl.loja_id);
+    lojaIdsPorProduto.set(pl.produto_id, lista);
+  }
 
   const produtos: Produto[] = (produtosRes.data ?? []).map((p) => ({
     id: p.id,
@@ -47,9 +63,10 @@ export default async function ProdutosPage() {
     estoque_minimo: p.estoque_minimo,
     saida_media_semanal: p.saida_media_semanal,
     ativo: p.ativo,
-    categoria_nome: (p.categorias as unknown as { nome: string }[] | null)?.[0]?.nome ?? null,
-    fornecedor_nome: (p.fornecedores as unknown as { nome: string }[] | null)?.[0]?.nome ?? null,
-    armazem_nome: (p.armazens as unknown as { nome: string }[] | null)?.[0]?.nome ?? null,
+    loja_ids: lojaIdsPorProduto.get(p.id) ?? [],
+    categoria_nome: (p.categoria_id && categoriasPorId.get(p.categoria_id)) ?? null,
+    fornecedor_nome: (p.fornecedor_id && fornecedoresPorId.get(p.fornecedor_id)) ?? null,
+    armazem_nome: (p.armazem_id && armazensPorId.get(p.armazem_id)) ?? null,
   }));
 
   return (
@@ -60,6 +77,7 @@ export default async function ProdutosPage() {
       armazens={armazensRes.data ?? []}
       movimentacoes={movimentacoesRes.data ?? []}
       precificacoes={precificacoesRes.data ?? []}
+      lojas={lojasRes.data ?? []}
     />
   );
 }

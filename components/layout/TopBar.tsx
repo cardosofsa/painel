@@ -2,17 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sun, Moon, User, LogOut, Settings } from "lucide-react";
+import { Sun, Moon, User, LogOut, Settings, Menu } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "./ThemeContext";
+import { useSidebarMobile } from "./SidebarMobileContext";
 import { createClient } from "@/lib/supabase/client";
 
 function todayLabel() {
   return new Date().toLocaleDateString("pt-BR");
 }
 
-export function TopBar() {
+export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
   const { theme, toggleTheme } = useTheme();
+  const { alternar: alternarSidebar } = useSidebarMobile();
   const router = useRouter();
   const [menuAberto, setMenuAberto] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
@@ -41,13 +43,20 @@ export function TopBar() {
   const inicial = email ? email[0].toUpperCase() : "U";
 
   return (
-    <header className="h-14 shrink-0 border-b border-border bg-surface-1/80 backdrop-blur-sm flex items-center gap-4 px-6 sticky top-0 z-10">
-      <div className="flex items-center gap-1.5 text-sm text-text-secondary">
-        <span className="w-1.5 h-1.5 rounded-full bg-positive" />
-        Sincronizado
+    <header className="h-14 shrink-0 border-b border-border bg-surface-1/80 backdrop-blur-sm flex items-center gap-4 px-4 sm:px-6 sticky top-0 z-10">
+      <button
+        onClick={alternarSidebar}
+        aria-label="Abrir menu"
+        className="w-8 h-8 -ml-1 rounded-md flex items-center justify-center text-text-secondary hover:bg-surface-2 hover:text-text-primary md:hidden shrink-0"
+      >
+        <Menu size={18} />
+      </button>
+
+      <div className="hidden sm:flex items-center gap-1.5 text-sm text-text-secondary truncate">
+        Olá, {nomeNegocio || "Segundo Cérebro"}
       </div>
 
-      <span className="text-sm text-text-tertiary">{todayLabel()}</span>
+      <span className="hidden sm:inline text-sm text-text-tertiary">{todayLabel()}</span>
 
       <div className="flex-1" />
 

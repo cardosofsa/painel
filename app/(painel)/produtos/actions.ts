@@ -20,6 +20,7 @@ export interface ProdutoInput {
   estoque_minimo: number;
   saida_media_semanal: number;
   ativo: boolean;
+  loja_ids: string[];
 }
 
 function revalidateTudo() {
@@ -30,17 +31,36 @@ function revalidateTudo() {
   revalidatePath("/compras");
 }
 
+async function sincronizarLojasProduto(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  produtoId: string,
+  lojaIds: string[],
+) {
+  const { error: erroDelete } = await supabase.from("produto_lojas").delete().eq("produto_id", produtoId);
+  if (erroDelete) throw new Error(erroDelete.message);
+
+  if (lojaIds.length > 0) {
+    const linhas = lojaIds.map((loja_id) => ({ produto_id: produtoId, loja_id }));
+    const { error: erroInsert } = await supabase.from("produto_lojas").insert(linhas);
+    if (erroInsert) throw new Error(erroInsert.message);
+  }
+}
+
 export async function criarProduto(dados: ProdutoInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("produtos").insert(dados);
-  if (error) throw new Error(error.message);
+  const { loja_ids, ...produto } = dados;
+  const { data, error } = await supabase.from("produtos").insert(produto).select("id").single();
+  if (error || !data) throw new Error(error?.message ?? "Erro ao criar produto");
+  await sincronizarLojasProduto(supabase, data.id, loja_ids);
   revalidateTudo();
 }
 
 export async function atualizarProduto(id: string, dados: ProdutoInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("produtos").update(dados).eq("id", id);
+  const { loja_ids, ...produto } = dados;
+  const { error } = await supabase.from("produtos").update(produto).eq("id", id);
   if (error) throw new Error(error.message);
+  await sincronizarLojasProduto(supabase, id, loja_ids);
   revalidateTudo();
 }
 

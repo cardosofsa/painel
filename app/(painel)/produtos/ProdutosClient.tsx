@@ -14,7 +14,8 @@ import { ProductThumb } from "@/components/ui/ProductThumb";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
 import { formatBRL } from "@/lib/mock-data";
-import { createClient } from "@/lib/supabase/client";
+import { PriceHistoryChart } from "@/components/charts/PriceHistoryChart";
+import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarProduto, atualizarProduto, removerProduto, alternarAtivoProduto, acaoEmMassaProdutos, type ProdutoInput } from "./actions";
 
 export interface Produto extends ProdutoInput {
@@ -62,6 +63,7 @@ function formVazio(armazemPadrao: string | null): ProdutoInput {
     estoque_minimo: 10,
     saida_media_semanal: 0,
     ativo: true,
+    loja_ids: [],
   };
 }
 
@@ -72,6 +74,7 @@ export function ProdutosClient({
   armazens,
   movimentacoes,
   precificacoes,
+  lojas,
 }: {
   produtos: Produto[];
   categorias: Opcao[];
@@ -79,8 +82,9 @@ export function ProdutosClient({
   armazens: Opcao[];
   movimentacoes: MovimentacaoEstoque[];
   precificacoes: PrecificacaoHist[];
+  lojas: Opcao[];
 }) {
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>("Todas");
   const [statusFiltro, setStatusFiltro] = useState<(typeof STATUS_FILTROS)[number]>("Todos");
@@ -90,7 +94,7 @@ export function ProdutosClient({
   const [form, setForm] = useState<ProdutoInput>(formVazio(armazens[0]?.id ?? null));
   const [detalheId, setDetalheId] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<string[]>([]);
-  const [enviandoImagem, setEnviandoImagem] = useState(false);
+  const { enviar: enviarImagemArquivo, enviando: enviandoImagem } = useSupabaseUpload("produtos");
 
   const filtrados = useMemo(() => {
     return produtos.filter((p) => {
@@ -148,37 +152,14 @@ export function ProdutosClient({
       estoque_minimo: p.estoque_minimo,
       saida_media_semanal: p.saida_media_semanal,
       ativo: p.ativo,
+      loja_ids: p.loja_ids,
     });
     setModalAberto(true);
   }
 
   async function enviarImagem(file: File) {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Selecione um arquivo de imagem");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Imagem muito grande (máx. 5MB)");
-      return;
-    }
-    setEnviandoImagem(true);
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão expirada, faça login novamente");
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const caminho = `${user.id}/${form.sku || "produto"}-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("produtos").upload(caminho, file, { upsert: true });
-      if (error) throw new Error(error.message);
-      const { data } = supabase.storage.from("produtos").getPublicUrl(caminho);
-      setForm((prev) => ({ ...prev, imagem_url: data.publicUrl }));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao enviar imagem");
-    } finally {
-      setEnviandoImagem(false);
-    }
+    const resultado = await enviarImagemArquivo(file, { maxSizeMb: 5, tiposAceitos: ["image/"], prefixo: form.sku || "produto" });
+    if (resultado) setForm((prev) => ({ ...prev, imagem_url: resultado.publicUrl }));
   }
 
   function salvar() {
@@ -253,14 +234,42 @@ export function ProdutosClient({
   const produtoDetalhe = produtos.find((p) => p.id === detalheId) ?? null;
   const categoriasNomes = ["Todas", ...categorias.map((c) => c.nome)];
 
+  function exportarCsv() {
+    const cabecalho = ["SKU", "Nome", "Categoria", "Fornecedor", "Armazém", "Custo", "Preço Venda", "Preço Atacado", "Estoque", "Estoque Mínimo", "Ativo"];
+    const paraCsv = (v: string | number) => {
+      const t = String(v);
+      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const linhas = filtrados.map((p) => [
+      p.sku,
+      p.nome,
+      p.categoria_nome ?? "",
+      p.fornecedor_nome ?? "",
+      p.armazem_nome ?? "",
+      p.custo.toFixed(2),
+      p.preco_venda.toFixed(2),
+      p.preco_atacado != null ? p.preco_atacado.toFixed(2) : "",
+      p.estoque,
+      p.estoque_minimo,
+      p.ativo ? "Sim" : "Não",
+    ]);
+    const csv = [cabecalho, ...linhas].map((linha) => linha.map(paraCsv).join(",")).join("\n");
+    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "produtos.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <>
       <PageHeader
-        eyebrow="Produtos"
-        title="Produtos & Inventário"
+        title="Produtos"
         actions={
           <>
-            <Button variant="secondary">Exportar CSV</Button>
+            <Button variant="secondary" onClick={exportarCsv}>Exportar CSV</Button>
             <Button variant="primary" onClick={abrirNovo}>+ Cadastrar Produto</Button>
           </>
         }
@@ -496,7 +505,31 @@ export function ProdutosClient({
             ))}
           </select>
         </FormField>
-        <div className="grid grid-cols-3 gap-4">
+        <FormField label="Lojas onde é vendido (opcional)">
+          {lojas.length === 0 ? (
+            <p className="text-xs text-text-tertiary">Nenhuma loja cadastrada ainda (Configurações → Canais de Venda).</p>
+          ) : (
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {lojas.map((l) => (
+                <label key={l.id} className="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-accent"
+                    checked={form.loja_ids.includes(l.id)}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        loja_ids: e.target.checked ? [...prev.loja_ids, l.id] : prev.loja_ids.filter((id) => id !== l.id),
+                      }))
+                    }
+                  />
+                  {l.nome}
+                </label>
+              ))}
+            </div>
+          )}
+        </FormField>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <FormField label="Custo (R$)">
             <input
               type="number"
@@ -567,7 +600,7 @@ export function ProdutosClient({
           <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)}>
             Cancelar
           </Button>
-          <Button variant="primary" className="flex-1" onClick={salvar}>
+          <Button variant="primary" className="flex-1" onClick={salvar} loading={pending}>
             Salvar
           </Button>
         </div>
@@ -665,6 +698,11 @@ function ProdutoResumo({
 
       <div>
         <h4 className="text-sm font-medium text-text-primary mb-2">Histórico de Precificação</h4>
+        {precs.length >= 2 && (
+          <div className="mb-3 border border-border rounded-md p-2">
+            <PriceHistoryChart data={precs.map((h) => ({ data: h.criado_em, preco: h.preco_calculado }))} />
+          </div>
+        )}
         {precs.length === 0 ? (
           <p className="text-sm text-text-tertiary">Nenhuma precificação salva para este produto ainda.</p>
         ) : (

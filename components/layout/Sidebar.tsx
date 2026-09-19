@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Brain, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { NAV_ITEMS } from "./navigation";
+import { useSidebarMobile } from "./SidebarMobileContext";
 
 export function Sidebar() {
   const pathname = usePathname();
   const [recolhida, setRecolhida] = useState(false);
+  const { aberta, fechar } = useSidebarMobile();
 
   // Lido do localStorage após montar (evita mismatch de hidratação SSR vs cliente).
   useEffect(() => {
@@ -36,16 +38,18 @@ export function Sidebar() {
   }
 
   return (
-    <aside
-      className={`shrink-0 bg-surface-1 border-r border-border flex flex-col h-screen sticky top-0 transition-[width] duration-150 ${
-        recolhida ? "w-16" : "w-[232px]"
-      }`}
-    >
-      <div className={`h-14 flex items-center gap-2 ${recolhida ? "justify-center px-2" : "px-5"}`}>
-        <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on text-xs font-bold shrink-0">
-          P
+    <>
+      {aberta && <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={fechar} />}
+      <aside
+        className={`shrink-0 bg-surface-1 border-r border-border flex flex-col h-screen fixed md:sticky top-0 left-0 z-40 md:z-auto transition-transform md:transition-[width] duration-200 w-[232px] ${
+          recolhida ? "md:w-16" : "md:w-[232px]"
+        } ${aberta ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+      >
+      <div className={`h-14 flex items-center gap-2 min-w-0 ${recolhida ? "justify-center px-2" : "px-5"}`}>
+        <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
+          <Brain size={14} strokeWidth={2.25} />
         </span>
-        {!recolhida && <span className="font-semibold tracking-tight text-text-primary">Painel</span>}
+        {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">Segundo Cérebro</span>}
       </div>
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">
@@ -56,6 +60,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={fechar}
               title={recolhida ? item.label : undefined}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
                 recolhida ? "justify-center px-0" : ""
@@ -81,6 +86,7 @@ export function Sidebar() {
         {recolhida ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
         {!recolhida && "Recolher"}
       </button>
-    </aside>
+      </aside>
+    </>
   );
 }

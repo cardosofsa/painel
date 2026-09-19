@@ -9,8 +9,10 @@ import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PackageSearch } from "lucide-react";
 import { formatBRL } from "@/lib/mock-data";
-import { createClient } from "@/lib/supabase/client";
+import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarPedidoCompra, marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 
 export interface ItemPedido {
@@ -37,6 +39,7 @@ export interface Pedido {
   data_recebimento: string | null;
   forma_pagamento: FormaPagamento | null;
   parcelas: number | null;
+  conta_nome: string | null;
   itens: ItemPedido[];
 }
 
@@ -44,12 +47,6 @@ interface Opcao {
   id: string;
   nome: string;
 }
-
-const LABEL_FORMA_PAGAMENTO: Record<FormaPagamento, string> = {
-  dinheiro: "Dinheiro",
-  pix: "Pix",
-  cartao_parcelado: "Cartão parcelado",
-};
 
 const PERIODOS = ["Todos", "Últimos 7 dias", "Este mês"] as const;
 const STATUS_OPCOES = ["Todos", "Pendente", "Recebido"] as const;
@@ -63,11 +60,15 @@ export function ComprasClient({
   fornecedores,
   produtos,
   armazens,
+  contas,
+  formasPagamento,
 }: {
   pedidos: Pedido[];
   fornecedores: Opcao[];
   produtos: (Opcao & { custo: number })[];
   armazens: Opcao[];
+  contas: Opcao[];
+  formasPagamento: Opcao[];
 }) {
   const [, startTransition] = useTransition();
   const [pedidoDetalhe, setPedidoDetalhe] = useState<Pedido | null>(null);
@@ -133,7 +134,6 @@ export function ComprasClient({
   return (
     <>
       <PageHeader
-        eyebrow="Compras"
         title="Compras & Reposição"
         actions={<Button variant="primary" onClick={() => setModalNovo(true)}>+ Novo Pedido de Compra</Button>}
       />
@@ -184,61 +184,58 @@ export function ComprasClient({
       </div>
 
       <Card className="p-0 overflow-hidden">
-        <Table>
-          <Thead>
-            <tr>
-              <Th>N° Pedido</Th>
-              <Th>Fornecedor</Th>
-              <Th>Destino</Th>
-              <Th>Data</Th>
-              <Th align="right">Valor Total</Th>
-              <Th>Status</Th>
-              <Th align="right"></Th>
-            </tr>
-          </Thead>
-          <tbody>
-            {filtrados.map((p) => (
-              <Tr key={p.id}>
-                <Td mono className="text-accent cursor-pointer" onClick={() => setPedidoDetalhe(p)}>
-                  {p.numero}
-                </Td>
-                <Td className="cursor-pointer" onClick={() => setPedidoDetalhe(p)}>
-                  <div>{p.fornecedor_nome}</div>
-                  <div className="text-xs text-text-tertiary font-mono">{p.cnpj}</div>
-                </Td>
-                <Td>{p.armazem_nome ?? "—"}</Td>
-                <Td mono>{formatarData(p.data_pedido)}</Td>
-                <Td align="right" mono>
-                  {formatBRL(p.valor_total)}
-                </Td>
-                <Td>
-                  <StatusChip
-                    label={p.status === "pendente" ? "Pendente" : "Recebido"}
-                    tone={p.status === "pendente" ? "negative" : "positive"}
-                  />
-                </Td>
-                <Td align="right">
-                  <RowMenu
-                    actions={[
-                      { label: "Ver pedido", onClick: () => setPedidoDetalhe(p) },
-                      ...(p.nf || p.nf_arquivo_path ? [{ label: "Ver nota", onClick: () => abrirNota(p) }] : []),
-                      ...(p.status === "pendente"
-                        ? [{ label: "Marcar recebido", onClick: () => marcarRecebido(p.id, p.numero) }]
-                        : []),
-                    ]}
-                  />
-                </Td>
-              </Tr>
-            ))}
-            {filtrados.length === 0 && (
-              <Tr>
-                <Td align="center" className="text-text-tertiary text-center py-8">
-                  Nenhum pedido encontrado para esses filtros.
-                </Td>
-              </Tr>
-            )}
-          </tbody>
-        </Table>
+        {filtrados.length === 0 ? (
+          <EmptyState icon={PackageSearch} title="Nenhum pedido encontrado" description="Ajuste os filtros ou crie um novo pedido de compra." />
+        ) : (
+          <Table>
+            <Thead>
+              <tr>
+                <Th>N° Pedido</Th>
+                <Th>Fornecedor</Th>
+                <Th>Destino</Th>
+                <Th>Data</Th>
+                <Th align="right">Valor Total</Th>
+                <Th>Status</Th>
+                <Th align="right"></Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {filtrados.map((p) => (
+                <Tr key={p.id}>
+                  <Td mono className="text-accent cursor-pointer" onClick={() => setPedidoDetalhe(p)}>
+                    {p.numero}
+                  </Td>
+                  <Td className="cursor-pointer" onClick={() => setPedidoDetalhe(p)}>
+                    <div>{p.fornecedor_nome}</div>
+                    <div className="text-xs text-text-tertiary font-mono">{p.cnpj}</div>
+                  </Td>
+                  <Td>{p.armazem_nome ?? "—"}</Td>
+                  <Td mono>{formatarData(p.data_pedido)}</Td>
+                  <Td align="right" mono>
+                    {formatBRL(p.valor_total)}
+                  </Td>
+                  <Td>
+                    <StatusChip
+                      label={p.status === "pendente" ? "Pendente" : "Recebido"}
+                      tone={p.status === "pendente" ? "negative" : "positive"}
+                    />
+                  </Td>
+                  <Td align="right">
+                    <RowMenu
+                      actions={[
+                        { label: "Ver pedido", onClick: () => setPedidoDetalhe(p) },
+                        ...(p.nf || p.nf_arquivo_path ? [{ label: "Ver nota", onClick: () => abrirNota(p) }] : []),
+                        ...(p.status === "pendente"
+                          ? [{ label: "Marcar recebido", onClick: () => marcarRecebido(p.id, p.numero) }]
+                          : []),
+                      ]}
+                    />
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
       </Card>
 
       <Modal open={!!pedidoDetalhe} onClose={() => setPedidoDetalhe(null)} title={`Pedido ${pedidoDetalhe?.numero ?? ""}`}>
@@ -279,11 +276,13 @@ export function ComprasClient({
               <div>
                 <div className="text-xs text-text-tertiary">Forma de Pagamento</div>
                 <div className="text-text-primary">
-                  {pedidoDetalhe.forma_pagamento ? LABEL_FORMA_PAGAMENTO[pedidoDetalhe.forma_pagamento] : "—"}
-                  {pedidoDetalhe.forma_pagamento === "cartao_parcelado" && pedidoDetalhe.parcelas
-                    ? ` em ${pedidoDetalhe.parcelas}x`
-                    : ""}
+                  {pedidoDetalhe.forma_pagamento ?? "—"}
+                  {pedidoDetalhe.parcelas && pedidoDetalhe.parcelas > 1 ? ` em ${pedidoDetalhe.parcelas}x` : ""}
                 </div>
+              </div>
+              <div>
+                <div className="text-xs text-text-tertiary">Conta</div>
+                <div className="text-text-primary">{pedidoDetalhe.conta_nome ?? "—"}</div>
               </div>
             </div>
 
@@ -329,7 +328,7 @@ export function ComprasClient({
               <span className="font-mono text-text-primary">{formatBRL(notaDetalhe.valor_total)}</span>
             </div>
             <p className="text-xs text-text-tertiary pt-2 border-t border-border">
-              Anexe o PDF/XML da nota fiscal assim que o upload de arquivos estiver disponível.
+              Nenhum arquivo de nota fiscal foi anexado a este pedido.
             </p>
           </div>
         )}
@@ -341,6 +340,8 @@ export function ComprasClient({
         fornecedores={fornecedores}
         produtos={produtos}
         armazens={armazens}
+        contas={contas}
+        formasPagamento={formasPagamento}
       />
     </>
   );
@@ -352,23 +353,30 @@ function NovoPedidoModal({
   fornecedores,
   produtos,
   armazens,
+  contas,
+  formasPagamento,
 }: {
   open: boolean;
   onClose: () => void;
   fornecedores: Opcao[];
   produtos: (Opcao & { custo: number })[];
   armazens: Opcao[];
+  contas: Opcao[];
+  formasPagamento: Opcao[];
 }) {
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
   const [fornecedorId, setFornecedorId] = useState(fornecedores[0]?.id ?? "");
   const [armazemId, setArmazemId] = useState(armazens[0]?.id ?? "");
   const [nf, setNf] = useState("");
   const [nfArquivo, setNfArquivo] = useState<File | null>(null);
-  const [enviandoNf, setEnviandoNf] = useState(false);
+  const { enviar: enviarNfArquivo, enviando: enviandoNf } = useSupabaseUpload("notas-fiscais");
   const [dataPedido, setDataPedido] = useState(() => new Date().toISOString().slice(0, 10));
   const [dataEntregaPrevista, setDataEntregaPrevista] = useState("");
-  const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>("pix");
+  const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>(formasPagamento[0]?.nome ?? "");
+  const [contaId, setContaId] = useState(contas[0]?.id ?? "");
+  const [parcelado, setParcelado] = useState(false);
   const [parcelas, setParcelas] = useState(2);
+  const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => new Date().toISOString().slice(0, 10));
   const [itens, setItens] = useState<ItemPedidoInput[]>([]);
 
   const valorTotal = itens.reduce((acc, it) => acc + it.quantidade * it.custo_unitario, 0);
@@ -404,8 +412,11 @@ function NovoPedidoModal({
     setNf("");
     setNfArquivo(null);
     setDataEntregaPrevista("");
-    setFormaPagamento("pix");
+    setFormaPagamento(formasPagamento[0]?.nome ?? "");
+    setContaId(contas[0]?.id ?? "");
+    setParcelado(false);
     setParcelas(2);
+    setDataPrimeiraParcela(new Date().toISOString().slice(0, 10));
     setItens([]);
     onClose();
   }
@@ -415,7 +426,15 @@ function NovoPedidoModal({
       toast.error("Selecione um fornecedor e adicione ao menos um item");
       return;
     }
-    if (formaPagamento === "cartao_parcelado" && parcelas < 1) {
+    if (!formaPagamento) {
+      toast.error("Cadastre uma forma de pagamento em Configurações antes de continuar");
+      return;
+    }
+    if (!contaId) {
+      toast.error("Selecione a conta que vai pagar essa compra");
+      return;
+    }
+    if (parcelado && parcelas < 1) {
       toast.error("Informe o número de parcelas");
       return;
     }
@@ -423,17 +442,9 @@ function NovoPedidoModal({
       try {
         let nfArquivoPath: string | null = null;
         if (nfArquivo) {
-          setEnviandoNf(true);
-          const supabase = createClient();
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-          if (!user) throw new Error("Sessão expirada, faça login novamente");
-          const ext = nfArquivo.name.split(".").pop() ?? "pdf";
-          const caminho = `${user.id}/nf-${Date.now()}.${ext}`;
-          const { error } = await supabase.storage.from("notas-fiscais").upload(caminho, nfArquivo);
-          if (error) throw new Error(error.message);
-          nfArquivoPath = caminho;
+          const resultado = await enviarNfArquivo(nfArquivo, { maxSizeMb: 10, tiposAceitos: ["application/pdf", "image/"], prefixo: "nf" });
+          if (!resultado) return;
+          nfArquivoPath = resultado.path;
         }
         await criarPedidoCompra({
           fornecedor_id: fornecedorId,
@@ -443,15 +454,16 @@ function NovoPedidoModal({
           data_pedido: dataPedido,
           data_entrega_prevista: dataEntregaPrevista || null,
           forma_pagamento: formaPagamento,
-          parcelas: formaPagamento === "cartao_parcelado" ? parcelas : null,
+          conta_id: contaId,
+          parcelado,
+          parcelas: parcelado ? parcelas : null,
+          data_primeiro_vencimento: parcelado ? dataPrimeiraParcela : dataPedido,
           itens,
         });
         toast.success("Pedido de compra criado");
         fechar();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao criar pedido");
-      } finally {
-        setEnviandoNf(false);
       }
     });
   }
@@ -506,17 +518,54 @@ function NovoPedidoModal({
       </FormField>
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Forma de Pagamento">
-          <select
-            className={inputClass}
-            value={formaPagamento}
-            onChange={(e) => setFormaPagamento(e.target.value as FormaPagamento)}
-          >
-            <option value="pix">Pix</option>
-            <option value="dinheiro">Dinheiro</option>
-            <option value="cartao_parcelado">Cartão parcelado</option>
+          {formasPagamento.length === 0 ? (
+            <div className="text-xs text-text-tertiary h-9 flex items-center">
+              Cadastre em Configurações → Formas de Pagamento
+            </div>
+          ) : (
+            <select
+              className={inputClass}
+              value={formaPagamento}
+              onChange={(e) => setFormaPagamento(e.target.value)}
+            >
+              {formasPagamento.map((f) => (
+                <option key={f.id} value={f.nome}>
+                  {f.nome}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+        <FormField label="Conta">
+          <select className={inputClass} value={contaId} onChange={(e) => setContaId(e.target.value)}>
+            {contas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
           </select>
         </FormField>
-        {formaPagamento === "cartao_parcelado" && (
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <FormField label="Pagamento">
+          <div className="flex h-9 rounded-md border border-border overflow-hidden text-sm">
+            <button
+              type="button"
+              onClick={() => setParcelado(false)}
+              className={`flex-1 ${!parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
+            >
+              À Vista
+            </button>
+            <button
+              type="button"
+              onClick={() => setParcelado(true)}
+              className={`flex-1 border-l border-border ${parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
+            >
+              Parcelado
+            </button>
+          </div>
+        </FormField>
+        {parcelado && (
           <FormField label="Número de Parcelas">
             <input
               type="number"
@@ -528,6 +577,16 @@ function NovoPedidoModal({
           </FormField>
         )}
       </div>
+      {parcelado && (
+        <FormField label="Data da 1ª Parcela">
+          <input
+            type="date"
+            className={inputClass}
+            value={dataPrimeiraParcela}
+            onChange={(e) => setDataPrimeiraParcela(e.target.value)}
+          />
+        </FormField>
+      )}
 
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-medium text-text-secondary">Itens</span>
@@ -537,9 +596,9 @@ function NovoPedidoModal({
       </div>
       <div className="space-y-2 mb-4">
         {itens.map((it, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="flex items-center gap-2 flex-wrap">
             <select
-              className={`${inputClass} flex-1`}
+              className={`${inputClass} flex-1 min-w-[140px]`}
               value={it.produto_id ?? ""}
               onChange={(e) => atualizarItemProduto(i, e.target.value)}
             >
@@ -581,7 +640,7 @@ function NovoPedidoModal({
         <Button variant="secondary" className="flex-1" onClick={fechar}>
           Cancelar
         </Button>
-        <Button variant="primary" className="flex-1" onClick={salvar}>
+        <Button variant="primary" className="flex-1" onClick={salvar} loading={pending}>
           Criar Pedido
         </Button>
       </div>

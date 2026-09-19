@@ -1,14 +1,17 @@
-import { ReactNode } from "react";
+import { ReactNode, Ref } from "react";
 
 export function Card({
   children,
   className = "",
+  ref,
 }: {
   children: ReactNode;
   className?: string;
+  ref?: Ref<HTMLDivElement>;
 }) {
   return (
     <div
+      ref={ref}
       className={`rounded-lg bg-surface-1 border border-border shadow-sm p-5 ${className}`}
     >
       {children}
@@ -36,7 +39,7 @@ export function HeroMetric({
   return (
     <div>
       <div
-        className={`font-mono text-3xl font-semibold tracking-tight ${
+        className={`font-mono text-xl sm:text-2xl lg:text-3xl font-semibold tracking-tight ${
           accent ? "text-accent" : "text-text-primary"
         }`}
       >

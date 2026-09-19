@@ -56,6 +56,76 @@ export async function removerLoja(id: string) {
   revalidatePath("/precificacao");
 }
 
+// ---------- Canais (categorias fixas de venda: Shopee, Mercado Livre, etc.) ----------
+export interface CanalInput {
+  nome: string;
+  tipo_taxa: "faixas" | "fixo";
+  icone: string;
+  cor: string;
+}
+
+export async function criarCanal(dados: CanalInput) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("canais").insert(dados);
+  if (error) throw new Error(error.message);
+  revalidatePath(PATH);
+  revalidatePath("/precificacao");
+}
+
+export async function removerCanal(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("canais").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath(PATH);
+  revalidatePath("/precificacao");
+  revalidatePath("/produtos");
+}
+
+const CANAIS_PADRAO: CanalInput[] = [
+  { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D" },
+  { nome: "Mercado Livre", tipo_taxa: "fixo", icone: "ShoppingCart", cor: "#FFE600" },
+  { nome: "Loja Física", tipo_taxa: "fixo", icone: "Store", cor: "#64748b" },
+  { nome: "Facebook", tipo_taxa: "fixo", icone: "Facebook", cor: "#1877F2" },
+];
+
+export async function restaurarCanaisPadrao() {
+  const supabase = await createClient();
+  const { data: existentes, error: erroSelect } = await supabase.from("canais").select("nome");
+  if (erroSelect) throw new Error(erroSelect.message);
+
+  const nomesExistentes = new Set((existentes ?? []).map((c) => c.nome));
+  const faltando = CANAIS_PADRAO.filter((c) => !nomesExistentes.has(c.nome));
+  if (faltando.length === 0) return;
+
+  const { error } = await supabase.from("canais").insert(faltando);
+  if (error) throw new Error(error.message);
+  revalidatePath(PATH);
+  revalidatePath("/precificacao");
+}
+
+// ---------- Faixas de comissão por canal (ex.: tabela oficial da Shopee) ----------
+export interface FaixaComissaoInput {
+  preco_min: number;
+  preco_max: number | null;
+  comissao_pct: number;
+  tarifa_fixa: number;
+}
+
+export async function atualizarFaixasCanal(canalId: string, faixas: FaixaComissaoInput[]) {
+  const supabase = await createClient();
+  const { error: erroDelete } = await supabase.from("faixas_comissao_canal").delete().eq("canal_id", canalId);
+  if (erroDelete) throw new Error(erroDelete.message);
+
+  if (faixas.length > 0) {
+    const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...f }));
+    const { error: erroInsert } = await supabase.from("faixas_comissao_canal").insert(linhas);
+    if (erroInsert) throw new Error(erroInsert.message);
+  }
+
+  revalidatePath(PATH);
+  revalidatePath("/precificacao");
+}
+
 // ---------- Contas ----------
 export interface ContaInput {
   nome: string;
@@ -88,6 +158,35 @@ export async function removerConta(id: string) {
   revalidatePath(PATH);
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
+}
+
+// ---------- Formas de Pagamento ----------
+export interface FormaPagamentoInput {
+  nome: string;
+}
+
+export async function criarFormaPagamento(dados: FormaPagamentoInput) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("formas_pagamento").insert(dados);
+  if (error) throw new Error(error.message);
+  revalidatePath(PATH);
+  revalidatePath("/compras");
+}
+
+export async function atualizarFormaPagamento(id: string, dados: FormaPagamentoInput) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("formas_pagamento").update(dados).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath(PATH);
+  revalidatePath("/compras");
+}
+
+export async function removerFormaPagamento(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("formas_pagamento").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath(PATH);
+  revalidatePath("/compras");
 }
 
 // ---------- Armazéns ----------

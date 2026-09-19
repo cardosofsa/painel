@@ -2,30 +2,44 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ShoppingBag, ShoppingCart, Store, Users, type LucideIcon } from "lucide-react";
+import { ShoppingBag, ShoppingCart, Store, Users, Warehouse, CreditCard, Tag, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
+import { RowMenu } from "@/components/ui/RowMenu";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { createClient } from "@/lib/supabase/client";
 import { formatBRL } from "@/lib/mock-data";
+import { formatarFaixaLabel } from "@/lib/pricing";
 import {
   criarCategoria,
   removerCategoria,
   criarLoja,
   atualizarLoja,
   removerLoja,
+  atualizarFaixasCanal,
+  criarCanal,
+  removerCanal,
+  restaurarCanaisPadrao,
   criarConta,
   atualizarConta,
   removerConta,
   criarArmazem,
   atualizarArmazem,
   removerArmazem,
+  criarFormaPagamento,
+  atualizarFormaPagamento,
+  removerFormaPagamento,
   salvarPerfilNegocio,
   type LojaInput,
+  type FaixaComissaoInput,
+  type CanalInput,
   type ContaInput,
   type ArmazemInput,
+  type FormaPagamentoInput,
   type PerfilNegocioInput,
 } from "./actions";
 
@@ -44,6 +58,7 @@ export interface Canal {
   taxa_fixa_padrao: number;
   taxa_extra_valor_padrao: number | null;
   taxa_extra_tipo_padrao: "percentual" | "fixo" | null;
+  faixas: { id: string; preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[];
 }
 export interface Loja extends LojaInput {
   id: string;
@@ -53,6 +68,9 @@ export interface Conta extends ContaInput {
   id: string;
 }
 export interface Armazem extends ArmazemInput {
+  id: string;
+}
+export interface FormaPagamento extends FormaPagamentoInput {
   id: string;
 }
 export interface PerfilNegocio {
@@ -69,7 +87,7 @@ const ICONES_CANAL: Record<string, LucideIcon> = {
   Facebook: Users,
 };
 
-const ABAS = ["Geral", "Canais de Venda", "Categorias", "Armazéns", "Contas", "Notificações", "Dados"] as const;
+const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Conta"] as const;
 
 export function ConfiguracoesClient({
   categorias,
@@ -77,22 +95,29 @@ export function ConfiguracoesClient({
   lojas,
   contas,
   armazens,
+  formasPagamento,
   perfil,
+  email,
 }: {
   categorias: Categoria[];
   canais: Canal[];
   lojas: Loja[];
   contas: Conta[];
   armazens: Armazem[];
+  formasPagamento: FormaPagamento[];
   perfil: PerfilNegocio;
+  email: string;
 }) {
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [aba, setAba] = useState<(typeof ABAS)[number]>("Geral");
+  const [aba, setAba] = useState<(typeof ABAS)[number]>("Canais de Venda");
 
   const [modalLoja, setModalLoja] = useState<{ loja: Loja | null; canal: Canal } | null>(null);
+  const [modalFaixas, setModalFaixas] = useState<Canal | null>(null);
+  const [modalCanal, setModalCanal] = useState(false);
   const [modalConta, setModalConta] = useState<Conta | "novo" | null>(null);
   const [modalArmazem, setModalArmazem] = useState<Armazem | "novo" | null>(null);
+  const [modalFormaPagamento, setModalFormaPagamento] = useState<FormaPagamento | "novo" | null>(null);
   const [novaCategoria, setNovaCategoria] = useState("");
 
   const [nomeNegocio, setNomeNegocio] = useState(perfil.nome_negocio);
@@ -133,6 +158,72 @@ export function ConfiguracoesClient({
         toast("Loja removida");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover loja");
+      }
+    });
+  }
+
+  function salvarFaixasHandler(canalId: string, faixas: FaixaComissaoInput[]) {
+    startTransition(async () => {
+      try {
+        await atualizarFaixasCanal(canalId, faixas);
+        toast.success("Faixas de comissão atualizadas");
+        setModalFaixas(null);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar faixas");
+      }
+    });
+  }
+
+  function salvarCanalHandler(dados: CanalInput) {
+    startTransition(async () => {
+      try {
+        await criarCanal(dados);
+        toast.success("Canal adicionado");
+        setModalCanal(false);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao adicionar canal");
+      }
+    });
+  }
+
+  async function removerCanalHandler(c: Canal) {
+    const lojasDoCanal = lojas.filter((l) => l.canal_id === c.id);
+    const trechoLojas =
+      lojasDoCanal.length > 0
+        ? ` junto com ${lojasDoCanal.length === 1 ? "a loja" : `as ${lojasDoCanal.length} lojas`} dele e as faixas de comissão cadastradas`
+        : " junto com as faixas de comissão cadastradas";
+    const ok = await confirm({
+      title: "Remover canal?",
+      message:
+        `"${c.nome}" será removido${trechoLojas}. ` +
+        "Precificações e anúncios já salvos são preservados, mas ficam sem loja vinculada.",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      try {
+        await removerCanal(c.id);
+        toast("Canal removido");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao remover canal");
+      }
+    });
+  }
+
+  async function restaurarCanaisPadraoHandler() {
+    const ok = await confirm({
+      title: "Restaurar canais padrão?",
+      message:
+        "Shopee, Mercado Livre, Loja Física e Facebook serão recriados apenas se estiverem faltando — nada existente é alterado. " +
+        "As faixas de comissão da Shopee não são restauradas: você precisa cadastrá-las de novo em Editar Faixas de Comissão.",
+      confirmLabel: "Restaurar",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      try {
+        await restaurarCanaisPadrao();
+        toast.success("Canais padrão restaurados");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao restaurar canais");
       }
     });
   }
@@ -194,6 +285,36 @@ export function ConfiguracoesClient({
     });
   }
 
+  function salvarFormaPagamentoHandler(dados: FormaPagamentoInput) {
+    startTransition(async () => {
+      try {
+        if (modalFormaPagamento === "novo") {
+          await criarFormaPagamento(dados);
+          toast.success("Forma de pagamento adicionada");
+        } else if (modalFormaPagamento) {
+          await atualizarFormaPagamento(modalFormaPagamento.id, dados);
+          toast.success("Forma de pagamento atualizada");
+        }
+        setModalFormaPagamento(null);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar forma de pagamento");
+      }
+    });
+  }
+
+  async function removerFormaPagamentoHandler(f: FormaPagamento) {
+    const ok = await confirm({ title: "Remover forma de pagamento?", message: `"${f.nome}" será removida definitivamente.` });
+    if (!ok) return;
+    startTransition(async () => {
+      try {
+        await removerFormaPagamento(f.id);
+        toast("Forma de pagamento removida");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao remover forma de pagamento");
+      }
+    });
+  }
+
   function salvarArmazemHandler(dados: ArmazemInput) {
     startTransition(async () => {
       try {
@@ -250,9 +371,9 @@ export function ConfiguracoesClient({
 
   return (
     <>
-      <PageHeader eyebrow="Configurações" title="Configurações do Negócio" />
+      <PageHeader title="Configurações do Negócio" />
 
-      <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto">
+      <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto overflow-y-hidden">
         {ABAS.map((a) => (
           <button
             key={a}
@@ -265,45 +386,6 @@ export function ConfiguracoesClient({
           </button>
         ))}
       </div>
-
-      {aba === "Geral" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">Perfil do Negócio</h3>
-            <FormField label="Nome do Negócio">
-              <input className={inputClass} value={nomeNegocio} onChange={(e) => setNomeNegocio(e.target.value)} />
-            </FormField>
-            <FormField label="CNPJ">
-              <input className={inputClass} value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
-            </FormField>
-            <Button variant="primary" onClick={salvarPerfil}>
-              Salvar Perfil
-            </Button>
-          </Card>
-
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">Regime Tributário</h3>
-            <FormField label="Regime">
-              <input className={inputClass} value={regimeTributario} onChange={(e) => setRegimeTributario(e.target.value)} />
-            </FormField>
-            <FormField label="Alíquota Efetiva do DAS (%)">
-              <input
-                type="number"
-                step="0.1"
-                className={inputClass}
-                value={aliquotaDas}
-                onChange={(e) => setAliquotaDas(Number(e.target.value) || 0)}
-              />
-            </FormField>
-            <p className="text-xs text-text-tertiary mb-4">
-              Usada como valor padrão do campo Imposto/DAS na calculadora de Precificação.
-            </p>
-            <Button variant="primary" onClick={salvarPerfil}>
-              Salvar Regime
-            </Button>
-          </Card>
-        </div>
-      )}
 
       {aba === "Canais de Venda" && (
         <div className="space-y-4">
@@ -323,16 +405,21 @@ export function ConfiguracoesClient({
                     <div>
                       <div className="font-medium text-text-primary text-sm">{c.nome}</div>
                       {c.tipo_taxa === "faixas" && (
-                        <div className="text-xs text-text-tertiary">Comissão por faixa de preço (tabela oficial)</div>
+                        <div className="text-xs text-text-tertiary">Comissão por faixa de preço (tabela editável)</div>
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => setModalLoja({ loja: null, canal: c })}
-                    className="text-sm text-accent hover:underline shrink-0"
-                  >
-                    + Adicionar Loja
-                  </button>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {c.tipo_taxa === "faixas" && (
+                      <button onClick={() => setModalFaixas(c)} className="text-sm text-accent hover:underline">
+                        Editar Faixas de Comissão
+                      </button>
+                    )}
+                    <button onClick={() => setModalLoja({ loja: null, canal: c })} className="text-sm text-accent hover:underline">
+                      + Adicionar Loja
+                    </button>
+                    <RowMenu actions={[{ label: "Remover canal", onClick: () => removerCanalHandler(c), destructive: true }]} />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   {lojasDoCanal.map((l) => {
@@ -368,7 +455,7 @@ export function ConfiguracoesClient({
                             </div>
                             <div className="text-xs text-text-tertiary">
                               {c.tipo_taxa === "faixas"
-                                ? "Faixas automáticas"
+                                ? `Faixas automáticas (${c.faixas.length} cadastradas)`
                                 : `Comissão: ${comissaoEfetiva}% · Taxa fixa: ${formatBRL(taxaFixaEfetiva)}`}
                               {l.taxa_extra_valor != null && l.taxa_extra_tipo && (
                                 <>
@@ -379,17 +466,12 @@ export function ConfiguracoesClient({
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <button
-                            onClick={() => setModalLoja({ loja: l, canal: c })}
-                            className="text-xs text-text-secondary hover:text-text-primary"
-                          >
-                            Editar
-                          </button>
-                          <button onClick={() => removerLojaHandler(l)} className="text-xs text-negative hover:underline">
-                            Remover
-                          </button>
-                        </div>
+                        <RowMenu
+                          actions={[
+                            { label: "Editar", onClick: () => setModalLoja({ loja: l, canal: c }) },
+                            { label: "Remover", onClick: () => removerLojaHandler(l), destructive: true },
+                          ]}
+                        />
                       </div>
                     );
                   })}
@@ -401,7 +483,15 @@ export function ConfiguracoesClient({
             );
           })}
           <Card className="border-dashed">
-            <p className="text-sm text-text-tertiary text-center">Breve mais canais disponíveis.</p>
+            <div className="flex items-center justify-center gap-4">
+              <button onClick={() => setModalCanal(true)} className="text-sm text-accent hover:underline">
+                + Adicionar Canal
+              </button>
+              <span className="text-border">|</span>
+              <button onClick={restaurarCanaisPadraoHandler} className="text-sm text-accent hover:underline" disabled={pending}>
+                Restaurar Canais Padrão
+              </button>
+            </div>
           </Card>
         </div>
       )}
@@ -433,7 +523,9 @@ export function ConfiguracoesClient({
                 </div>
               </div>
             ))}
-            {categorias.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma categoria cadastrada ainda.</p>}
+            {categorias.length === 0 && (
+              <EmptyState icon={Tag} title="Nenhuma categoria cadastrada" description="Organize seus produtos criando categorias." />
+            )}
           </div>
         </Card>
       )}
@@ -457,14 +549,12 @@ export function ConfiguracoesClient({
                     <div className="font-medium text-text-primary text-sm">{a.nome}</div>
                     <div className="text-xs text-text-tertiary">{a.endereco}</div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setModalArmazem(a)} className="text-xs text-text-secondary hover:text-text-primary">
-                      Editar
-                    </button>
-                    <button onClick={() => removerArmazemHandler(a)} className="text-xs text-negative hover:underline">
-                      Remover
-                    </button>
-                  </div>
+                  <RowMenu
+                    actions={[
+                      { label: "Editar", onClick: () => setModalArmazem(a) },
+                      { label: "Remover", onClick: () => removerArmazemHandler(a), destructive: true },
+                    ]}
+                  />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {a.lojas_abastecidas.map((loja) => (
@@ -475,83 +565,434 @@ export function ConfiguracoesClient({
                 </div>
               </div>
             ))}
-            {armazens.length === 0 && <p className="text-sm text-text-tertiary">Nenhum armazém cadastrado ainda.</p>}
+            {armazens.length === 0 && (
+              <EmptyState icon={Warehouse} title="Nenhum armazém cadastrado" description="Cadastre onde seu estoque físico fica." />
+            )}
           </div>
         </Card>
       )}
 
-      {aba === "Contas" && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-text-primary">Contas & Formas de Recebimento</h3>
-            <button onClick={() => setModalConta("novo")} className="text-sm text-accent hover:underline">
-              + Adicionar Conta
-            </button>
-          </div>
-          <div className="space-y-3">
-            {contas.map((c) => (
-              <div key={c.id} className="flex items-center justify-between border border-border rounded-md p-3">
-                <div>
-                  <div className="text-sm font-medium text-text-primary">{c.nome}</div>
-                  <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+      {aba === "Transações" && (
+        <div className="space-y-5">
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-text-primary">Formas de Recebimento</h3>
+              <button onClick={() => setModalConta("novo")} className="text-sm text-accent hover:underline">
+                + Adicionar Conta
+              </button>
+            </div>
+            <div className="space-y-3">
+              {contas.map((c) => (
+                <div key={c.id} className="flex items-center justify-between border border-border rounded-md p-3">
+                  <div>
+                    <div className="text-sm font-medium text-text-primary">{c.nome}</div>
+                    <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-sm text-text-primary">{formatBRL(c.saldo)}</span>
+                    <RowMenu
+                      actions={[
+                        { label: "Editar", onClick: () => setModalConta(c) },
+                        { label: "Remover", onClick: () => removerContaHandler(c), destructive: true },
+                      ]}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-sm text-text-primary">{formatBRL(c.saldo)}</span>
-                  <button onClick={() => setModalConta(c)} className="text-xs text-text-secondary hover:text-text-primary">
-                    Editar
-                  </button>
-                  <button onClick={() => removerContaHandler(c)} className="text-xs text-negative hover:underline">
-                    Remover
-                  </button>
-                </div>
-              </div>
-            ))}
-            {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
-          </div>
-        </Card>
-      )}
+              ))}
+              {contas.length === 0 && (
+                <EmptyState icon={CreditCard} title="Nenhuma conta cadastrada" description="Cadastre suas contas e formas de recebimento." />
+              )}
+            </div>
+          </Card>
 
-      {aba === "Notificações" && (
-        <Card className="max-w-xl">
-          <h3 className="font-semibold text-text-primary mb-4">Alertas</h3>
-          <div className="space-y-1">
-            {[
-              { key: "estoqueBaixo" as const, label: "Estoque no mínimo ou abaixo" },
-              { key: "vencimentos" as const, label: "Contas a pagar/receber vencendo" },
-              { key: "pedidosRecebidos" as const, label: "Pedidos de compra recebidos" },
-              { key: "resumoSemanal" as const, label: "Resumo semanal do negócio" },
-            ].map((item) => (
-              <label key={item.key} className="flex items-center justify-between py-2.5 border-b border-border last:border-0 cursor-pointer">
-                <span className="text-sm text-text-primary">{item.label}</span>
-                <input
-                  type="checkbox"
-                  checked={notificacoes[item.key]}
-                  onChange={(e) => setNotificacoes((prev) => ({ ...prev, [item.key]: e.target.checked }))}
-                  className="w-4 h-4 accent-accent"
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-text-primary">Formas de Pagamento</h3>
+              <button onClick={() => setModalFormaPagamento("novo")} className="text-sm text-accent hover:underline">
+                + Adicionar Forma de Pagamento
+              </button>
+            </div>
+            <div className="space-y-3">
+              {formasPagamento.map((f) => (
+                <div key={f.id} className="flex items-center justify-between border border-border rounded-md p-3">
+                  <div className="text-sm font-medium text-text-primary">{f.nome}</div>
+                  <RowMenu
+                    actions={[
+                      { label: "Editar", onClick: () => setModalFormaPagamento(f) },
+                      { label: "Remover", onClick: () => removerFormaPagamentoHandler(f), destructive: true },
+                    ]}
+                  />
+                </div>
+              ))}
+              {formasPagamento.length === 0 && (
+                <EmptyState
+                  icon={CreditCard}
+                  title="Nenhuma forma de pagamento cadastrada"
+                  description="Cadastre as formas de pagamento que você usa nas compras (Pix, dinheiro, cartão, etc.)."
                 />
-              </label>
-            ))}
-          </div>
-        </Card>
+              )}
+            </div>
+          </Card>
+        </div>
       )}
 
-      {aba === "Dados" && (
-        <Card className="max-w-xl">
-          <h3 className="font-semibold text-text-primary mb-2">Backup & Exportação</h3>
-          <p className="text-sm text-text-secondary mb-4">
-            Baixe uma cópia dos seus dados (lojas, categorias, armazéns e contas) em JSON.
-          </p>
-          <Button variant="secondary" onClick={exportarDados}>
-            Exportar Backup
-          </Button>
-        </Card>
+      {aba === "Conta" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+          <ContaCard email={email} />
+
+          <Card className="h-full flex flex-col">
+            <h3 className="font-semibold text-text-primary mb-4">Alertas</h3>
+            <div className="space-y-1">
+              {[
+                { key: "estoqueBaixo" as const, label: "Estoque no mínimo ou abaixo" },
+                { key: "vencimentos" as const, label: "Contas a pagar/receber vencendo" },
+                { key: "pedidosRecebidos" as const, label: "Pedidos de compra recebidos" },
+                { key: "resumoSemanal" as const, label: "Resumo semanal do negócio" },
+              ].map((item) => (
+                <label key={item.key} className="flex items-center justify-between py-2.5 border-b border-border last:border-0 cursor-pointer">
+                  <span className="text-sm text-text-primary">{item.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={notificacoes[item.key]}
+                    onChange={(e) => setNotificacoes((prev) => ({ ...prev, [item.key]: e.target.checked }))}
+                    className="w-4 h-4 accent-accent"
+                  />
+                </label>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="h-full flex flex-col">
+            <h3 className="font-semibold text-text-primary mb-4">Perfil do Negócio</h3>
+            <FormField label="Nome do Negócio">
+              <input className={inputClass} value={nomeNegocio} onChange={(e) => setNomeNegocio(e.target.value)} />
+            </FormField>
+            <FormField label="CNPJ">
+              <input className={inputClass} value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+            </FormField>
+            <div className="mt-auto pt-2">
+              <Button variant="primary" onClick={salvarPerfil} loading={pending}>
+                Salvar Perfil
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="h-full flex flex-col">
+            <h3 className="font-semibold text-text-primary mb-4">Regime Tributário</h3>
+            <FormField label="Regime">
+              <input className={inputClass} value={regimeTributario} onChange={(e) => setRegimeTributario(e.target.value)} />
+            </FormField>
+            <FormField label="Alíquota Efetiva do DAS (%)">
+              <input
+                type="number"
+                step="0.1"
+                className={inputClass}
+                value={aliquotaDas}
+                onChange={(e) => setAliquotaDas(Number(e.target.value) || 0)}
+              />
+            </FormField>
+            <p className="text-xs text-text-tertiary mb-4">
+              Usada como valor padrão do campo Imposto/DAS na calculadora de Precificação.
+            </p>
+            <div className="mt-auto pt-2">
+              <Button variant="primary" onClick={salvarPerfil} loading={pending}>
+                Salvar Regime
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <h3 className="font-semibold text-text-primary mb-2">Backup & Exportação</h3>
+            <p className="text-sm text-text-secondary mb-4">
+              Baixe uma cópia dos seus dados (lojas, categorias, armazéns e contas) em JSON.
+            </p>
+            <Button variant="secondary" onClick={exportarDados}>
+              Exportar Backup
+            </Button>
+          </Card>
+        </div>
       )}
 
-      <LojaModal modalLoja={modalLoja} onClose={() => setModalLoja(null)} onSave={salvarLojaHandler} />
-      <ContaModal conta={modalConta} onClose={() => setModalConta(null)} onSave={salvarContaHandler} />
-      <ArmazemModal armazem={modalArmazem} onClose={() => setModalArmazem(null)} onSave={salvarArmazemHandler} />
+      <LojaModal key={`loja-${modalLoja?.loja?.id ?? modalLoja?.canal.id ?? "fechado"}`} modalLoja={modalLoja} onClose={() => setModalLoja(null)} onSave={salvarLojaHandler} salvando={pending} />
+      <FaixasModal key={`faixas-${modalFaixas?.id ?? "fechado"}`} canal={modalFaixas} onClose={() => setModalFaixas(null)} onSave={salvarFaixasHandler} salvando={pending} />
+      <ContaModal key={`conta-${modalConta === "novo" ? "novo" : modalConta?.id ?? "fechado"}`} conta={modalConta} onClose={() => setModalConta(null)} onSave={salvarContaHandler} salvando={pending} />
+      <ArmazemModal key={`armazem-${modalArmazem === "novo" ? "novo" : modalArmazem?.id ?? "fechado"}`} armazem={modalArmazem} onClose={() => setModalArmazem(null)} onSave={salvarArmazemHandler} salvando={pending} />
+      <FormaPagamentoModal
+        key={`forma-pagamento-${modalFormaPagamento === "novo" ? "novo" : modalFormaPagamento?.id ?? "fechado"}`}
+        formaPagamento={modalFormaPagamento}
+        onClose={() => setModalFormaPagamento(null)}
+        onSave={salvarFormaPagamentoHandler}
+        salvando={pending}
+      />
+      <CanalModal open={modalCanal} onClose={() => setModalCanal(false)} onSave={salvarCanalHandler} salvando={pending} />
       {ConfirmDialog}
     </>
+  );
+}
+
+function ContaCard({ email }: { email: string }) {
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmarSenha, setConfirmarSenha] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function alterarSenha() {
+    if (!senhaAtual) {
+      toast.error("Informe a senha atual.");
+      return;
+    }
+    if (novaSenha.length < 6) {
+      toast.error("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (novaSenha !== confirmarSenha) {
+      toast.error("As senhas não coincidem.");
+      return;
+    }
+    setSalvando(true);
+    const supabase = createClient();
+
+    const { error: erroReautenticacao } = await supabase.auth.signInWithPassword({ email, password: senhaAtual });
+    if (erroReautenticacao) {
+      setSalvando(false);
+      toast.error("Senha atual incorreta.");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: novaSenha });
+    setSalvando(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setSenhaAtual("");
+    setNovaSenha("");
+    setConfirmarSenha("");
+    toast.success("Senha alterada com sucesso");
+  }
+
+  return (
+    <Card className="h-full flex flex-col">
+      <h3 className="font-semibold text-text-primary mb-4">Conta</h3>
+      <FormField label="E-mail">
+        <input className={inputClass} value={email} disabled />
+      </FormField>
+      <div className="border-t border-border pt-4 mb-4">
+        <span className="text-sm font-medium text-text-primary">Alterar senha</span>
+      </div>
+      <FormField label="Senha atual">
+        <input
+          type="password"
+          className={inputClass}
+          value={senhaAtual}
+          onChange={(e) => setSenhaAtual(e.target.value)}
+        />
+      </FormField>
+      <FormField label="Nova senha">
+        <input
+          type="password"
+          minLength={6}
+          className={inputClass}
+          value={novaSenha}
+          onChange={(e) => setNovaSenha(e.target.value)}
+        />
+      </FormField>
+      <FormField label="Confirmar nova senha">
+        <input
+          type="password"
+          minLength={6}
+          className={inputClass}
+          value={confirmarSenha}
+          onChange={(e) => setConfirmarSenha(e.target.value)}
+        />
+      </FormField>
+      <div className="mt-auto pt-2">
+        <Button variant="primary" onClick={alterarSenha} loading={salvando}>
+          Alterar Senha
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function FaixasModal({
+  canal,
+  onClose,
+  onSave,
+  salvando,
+}: {
+  canal: Canal | null;
+  onClose: () => void;
+  onSave: (canalId: string, faixas: FaixaComissaoInput[]) => void;
+  salvando: boolean;
+}) {
+  const [faixas, setFaixas] = useState<FaixaComissaoInput[]>(
+    () => canal?.faixas.map((f) => ({ preco_min: f.preco_min, preco_max: f.preco_max, comissao_pct: f.comissao_pct, tarifa_fixa: f.tarifa_fixa })) ?? [],
+  );
+
+  function atualizar(i: number, campo: keyof FaixaComissaoInput, valor: string) {
+    setFaixas((prev) =>
+      prev.map((f, idx) =>
+        idx === i ? { ...f, [campo]: campo === "preco_max" && valor.trim() === "" ? null : Number(valor) || 0 } : f,
+      ),
+    );
+  }
+
+  function adicionar() {
+    setFaixas((prev) => [...prev, { preco_min: 0, preco_max: null, comissao_pct: 0, tarifa_fixa: 0 }]);
+  }
+
+  function remover(i: number) {
+    setFaixas((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <Modal open={!!canal} onClose={onClose} title={canal ? `Faixas de Comissão (${canal.nome})` : ""} width="max-w-xl">
+      <p className="text-sm text-text-secondary mb-4">
+        Vale para todas as lojas deste canal. Ajuste se a plataforma mudar a tabela oficial.
+      </p>
+      <div className="space-y-3 mb-4">
+        {faixas.map((f, i) => {
+          const ultima = i === faixas.length - 1;
+          return (
+            <div key={i} className="border border-border rounded-md p-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                {ultima ? (
+                  <div className="col-span-2">
+                    <label className="text-[10px] text-text-tertiary block mb-1">Faixa de Preço</label>
+                    <div className="text-sm text-text-secondary bg-surface-2 rounded-md h-9 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">
+                      Acima de {formatBRL(f.preco_min)}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-[10px] text-text-tertiary block mb-1">De (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={f.preco_min}
+                        onChange={(e) => atualizar(i, "preco_min", e.target.value)}
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-text-tertiary block mb-1">Até (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={f.preco_max ?? ""}
+                        onChange={(e) => atualizar(i, "preco_max", e.target.value)}
+                        className={inputClass}
+                      />
+                    </div>
+                  </>
+                )}
+                <div>
+                  <label className="text-[10px] text-text-tertiary block mb-1">Comissão (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={f.comissao_pct}
+                    onChange={(e) => atualizar(i, "comissao_pct", e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-text-tertiary block mb-1">Tarifa Fixa (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={f.tarifa_fixa}
+                    onChange={(e) => atualizar(i, "tarifa_fixa", e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <button onClick={() => remover(i)} className="text-xs text-negative hover:underline">
+                Remover faixa
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={adicionar} className="text-sm text-accent hover:underline mb-5">
+        + Adicionar Faixa
+      </button>
+      <div className="flex gap-2">
+        <Button variant="secondary" className="flex-1" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button variant="primary" className="flex-1" onClick={() => canal && onSave(canal.id, faixas)} loading={salvando}>
+          Salvar
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function CanalModal({
+  open,
+  onClose,
+  onSave,
+  salvando,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (dados: CanalInput) => void;
+  salvando: boolean;
+}) {
+  const [nome, setNome] = useState("");
+  const [tipoTaxa, setTipoTaxa] = useState<"fixo" | "faixas">("fixo");
+  const [icone, setIcone] = useState("Store");
+  const [cor, setCor] = useState("#64748b");
+
+  function salvar() {
+    if (!nome.trim()) return;
+    onSave({ nome: nome.trim(), tipo_taxa: tipoTaxa, icone, cor });
+    setNome("");
+    setTipoTaxa("fixo");
+    setIcone("Store");
+    setCor("#64748b");
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Adicionar Canal" width="max-w-md">
+      <FormField label="Nome do Canal">
+        <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: TikTok Shop" />
+      </FormField>
+      <FormField label="Tipo de Taxa">
+        <select className={inputClass} value={tipoTaxa} onChange={(e) => setTipoTaxa(e.target.value as "fixo" | "faixas")}>
+          <option value="fixo">Fixo (comissão % + taxa fixa)</option>
+          <option value="faixas">Faixas por preço (ex: Shopee)</option>
+        </select>
+      </FormField>
+      <FormField label="Ícone">
+        <select className={inputClass} value={icone} onChange={(e) => setIcone(e.target.value)}>
+          {Object.keys(ICONES_CANAL).map((key) => (
+            <option key={key} value={key}>
+              {key}
+            </option>
+          ))}
+        </select>
+      </FormField>
+      <FormField label="Cor">
+        <input
+          type="color"
+          value={cor}
+          onChange={(e) => setCor(e.target.value)}
+          className="h-9 w-16 rounded-md border border-border bg-surface-1 cursor-pointer"
+        />
+      </FormField>
+      <div className="flex gap-2 mt-4">
+        <Button variant="secondary" className="flex-1" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button variant="primary" className="flex-1" onClick={salvar} loading={salvando}>
+          Salvar
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -559,10 +1000,12 @@ function LojaModal({
   modalLoja,
   onClose,
   onSave,
+  salvando,
 }: {
   modalLoja: { loja: Loja | null; canal: Canal } | null;
   onClose: () => void;
   onSave: (dados: LojaInput) => void;
+  salvando: boolean;
 }) {
   const loja = modalLoja?.loja ?? null;
   const canal = modalLoja?.canal;
@@ -570,39 +1013,17 @@ function LojaModal({
   const [link, setLink] = useState(loja?.link ?? "");
   const [logoPath, setLogoPath] = useState<string | null>(loja?.logo_path ?? null);
   const [logoUrl, setLogoUrl] = useState<string | null>(loja?.logo_url ?? null);
-  const [enviandoLogo, setEnviandoLogo] = useState(false);
   const [comissaoPctStr, setComissaoPctStr] = useState(loja?.comissao_pct != null ? String(loja.comissao_pct) : "");
   const [taxaFixaStr, setTaxaFixaStr] = useState(loja?.taxa_fixa != null ? String(loja.taxa_fixa) : "");
   const [taxaExtraValorStr, setTaxaExtraValorStr] = useState(loja?.taxa_extra_valor != null ? String(loja.taxa_extra_valor) : "");
   const [taxaExtraTipo, setTaxaExtraTipo] = useState<"percentual" | "fixo">(loja?.taxa_extra_tipo ?? "percentual");
+  const { enviar: enviarLogoArquivo, enviando: enviandoLogo } = useSupabaseUpload("canais-logos");
 
   async function enviarLogo(file: File) {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Selecione um arquivo de imagem");
-      return;
-    }
-    if (file.size > 3 * 1024 * 1024) {
-      toast.error("Logo muito grande (máx. 3MB)");
-      return;
-    }
-    setEnviandoLogo(true);
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão expirada, faça login novamente");
-      const ext = file.name.split(".").pop() ?? "png";
-      const caminho = `${user.id}/loja-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("canais-logos").upload(caminho, file, { upsert: true });
-      if (error) throw new Error(error.message);
-      const { data } = supabase.storage.from("canais-logos").getPublicUrl(caminho);
-      setLogoPath(caminho);
-      setLogoUrl(data.publicUrl);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao enviar logo");
-    } finally {
-      setEnviandoLogo(false);
+    const resultado = await enviarLogoArquivo(file, { maxSizeMb: 3, tiposAceitos: ["image/"], prefixo: "loja" });
+    if (resultado) {
+      setLogoPath(resultado.path);
+      setLogoUrl(resultado.publicUrl);
     }
   }
 
@@ -639,10 +1060,26 @@ function LojaModal({
       </FormField>
 
       {canal.tipo_taxa === "faixas" ? (
-        <p className="text-xs text-text-tertiary mb-4 bg-surface-2 rounded-md p-3">
-          Comissão calculada automaticamente pela tabela oficial de faixas da Shopee, conforme o preço final do
-          produto.
-        </p>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-text-secondary mb-1.5">
+            Comissão por faixa de preço (compartilhada pelo canal)
+          </label>
+          <div className="border border-border rounded-md divide-y divide-border text-xs">
+            {canal.faixas.map((f) => (
+              <div key={f.id} className="flex items-center justify-between px-3 py-1.5">
+                <span className="text-text-secondary">{formatarFaixaLabel({ min: f.preco_min, max: f.preco_max, comissaoPct: f.comissao_pct, tarifaFixa: f.tarifa_fixa })}</span>
+                <span className="text-text-primary">
+                  {f.comissao_pct}% + {formatBRL(f.tarifa_fixa)}
+                </span>
+              </div>
+            ))}
+            {canal.faixas.length === 0 && <div className="px-3 py-2 text-text-tertiary">Nenhuma faixa cadastrada.</div>}
+          </div>
+          <p className="text-xs text-text-tertiary mt-1.5">
+            Todas as lojas deste canal usam a mesma tabela — edite em &quot;Editar Faixas de Comissão&quot; no
+            cabeçalho do canal.
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
           <FormField label={`Comissão (%) — padrão ${canal.comissao_pct_padrao}%`}>
@@ -708,6 +1145,7 @@ function LojaModal({
               taxa_extra_tipo: taxaExtraValorStr.trim() !== "" ? taxaExtraTipo : null,
             })
           }
+          loading={salvando}
         >
           Salvar
         </Button>
@@ -720,10 +1158,12 @@ function ContaModal({
   conta,
   onClose,
   onSave,
+  salvando,
 }: {
   conta: Conta | "novo" | null;
   onClose: () => void;
   onSave: (dados: ContaInput) => void;
+  salvando: boolean;
 }) {
   const base = conta && conta !== "novo" ? conta : { nome: "", saldo: 0, detalhe: "" };
   const [nome, setNome] = useState(base.nome);
@@ -745,7 +1185,42 @@ function ContaModal({
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
         </Button>
-        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome, saldo, detalhe })}>
+        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome, saldo, detalhe })} loading={salvando}>
+          Salvar
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function FormaPagamentoModal({
+  formaPagamento,
+  onClose,
+  onSave,
+  salvando,
+}: {
+  formaPagamento: FormaPagamento | "novo" | null;
+  onClose: () => void;
+  onSave: (dados: FormaPagamentoInput) => void;
+  salvando: boolean;
+}) {
+  const base = formaPagamento && formaPagamento !== "novo" ? formaPagamento : { nome: "" };
+  const [nome, setNome] = useState(base.nome);
+
+  return (
+    <Modal
+      open={!!formaPagamento}
+      onClose={onClose}
+      title={formaPagamento === "novo" ? "Adicionar Forma de Pagamento" : "Editar Forma de Pagamento"}
+    >
+      <FormField label="Nome">
+        <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Pix, Cartão Nubank" />
+      </FormField>
+      <div className="flex gap-2 mt-5">
+        <Button variant="secondary" className="flex-1" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome })} loading={salvando}>
           Salvar
         </Button>
       </div>
@@ -757,10 +1232,12 @@ function ArmazemModal({
   armazem,
   onClose,
   onSave,
+  salvando,
 }: {
   armazem: Armazem | "novo" | null;
   onClose: () => void;
   onSave: (dados: ArmazemInput) => void;
+  salvando: boolean;
 }) {
   const base = armazem && armazem !== "novo" ? armazem : { nome: "", endereco: "", lojas_abastecidas: [] as string[] };
   const [nome, setNome] = useState(base.nome);
@@ -800,6 +1277,7 @@ function ArmazemModal({
                 .filter(Boolean),
             })
           }
+          loading={salvando}
         >
           Salvar
         </Button>

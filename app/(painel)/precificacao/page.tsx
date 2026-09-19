@@ -1,23 +1,25 @@
 import { createClient } from "@/lib/supabase/server";
 import { PrecificacaoClient, type LojaOpcao, type AnuncioSalvo } from "./PrecificacaoClient";
+import type { Concorrente } from "@/lib/pricing";
 
 export default async function PrecificacaoPage() {
   const supabase = await createClient();
-  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, anunciosRes] = await Promise.all([
+  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes] = await Promise.all([
     supabase
       .from("precificacoes")
       .select(
-        "id, produto_nome, canal, titulo_anuncio, loja_id, componentes, taxa_extra_valor, taxa_extra_tipo, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, margem_pct, preco_calculado, lucro, criado_em",
+        "id, produto_nome, canal, titulo_anuncio, loja_id, componentes, taxa_extra_valor, taxa_extra_tipo, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, margem_pct, preco_calculado, lucro, criado_em, origem",
       )
       .order("criado_em", { ascending: false })
       .limit(50),
-    supabase.from("produtos").select("id, sku, nome, preco_venda").order("nome"),
+    supabase.from("produtos").select("id, sku, nome, custo, preco_venda").order("nome"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     supabase
       .from("canais")
       .select("id, nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao")
       .order("criado_em"),
     supabase.from("lojas_canal").select("id, canal_id, nome, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo").order("nome"),
+    supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
     supabase
       .from("anuncios")
       .select(
@@ -25,6 +27,7 @@ export default async function PrecificacaoPage() {
       )
       .order("criado_em", { ascending: false })
       .limit(30),
+    supabase.from("concorrentes_preco").select("id, produto_id, nome, preco, link").order("criado_em"),
   ]);
 
   if (historicoRes.error) throw new Error(historicoRes.error.message);
@@ -32,9 +35,18 @@ export default async function PrecificacaoPage() {
   if (perfilRes.error) throw new Error(perfilRes.error.message);
   if (canaisRes.error) throw new Error(canaisRes.error.message);
   if (lojasRes.error) throw new Error(lojasRes.error.message);
+  if (faixasRes.error) throw new Error(faixasRes.error.message);
   if (anunciosRes.error) throw new Error(anunciosRes.error.message);
+  if (concorrentesRes.error) throw new Error(concorrentesRes.error.message);
 
   const canaisPorId = new Map((canaisRes.data ?? []).map((c) => [c.id, c]));
+
+  const faixasPorCanal = new Map<string, { min: number; max: number | null; comissaoPct: number; tarifaFixa: number }[]>();
+  for (const f of faixasRes.data ?? []) {
+    const lista = faixasPorCanal.get(f.canal_id) ?? [];
+    lista.push({ min: f.preco_min, max: f.preco_max, comissaoPct: f.comissao_pct, tarifaFixa: f.tarifa_fixa });
+    faixasPorCanal.set(f.canal_id, lista);
+  }
 
   const lojas: LojaOpcao[] = (lojasRes.data ?? []).map((l) => {
     const canal = canaisPorId.get(l.canal_id);
@@ -47,6 +59,7 @@ export default async function PrecificacaoPage() {
       taxaFixa: l.taxa_fixa ?? canal?.taxa_fixa_padrao ?? 0,
       taxaExtraValor: l.taxa_extra_valor ?? canal?.taxa_extra_valor_padrao ?? null,
       taxaExtraTipo: l.taxa_extra_tipo ?? canal?.taxa_extra_tipo_padrao ?? null,
+      faixas: faixasPorCanal.get(l.canal_id) ?? [],
     };
   });
 
@@ -58,6 +71,13 @@ export default async function PrecificacaoPage() {
     variacoes: a.anuncio_variacoes ?? [],
   }));
 
+  const concorrentesPorProduto: Record<string, Concorrente[]> = {};
+  for (const c of concorrentesRes.data ?? []) {
+    const lista = concorrentesPorProduto[c.produto_id] ?? [];
+    lista.push({ id: c.id, nome: c.nome, preco: c.preco, link: c.link });
+    concorrentesPorProduto[c.produto_id] = lista;
+  }
+
   return (
     <PrecificacaoClient
       historico={historicoRes.data ?? []}
@@ -65,6 +85,7 @@ export default async function PrecificacaoPage() {
       aliquotaDasPadrao={perfilRes.data?.aliquota_das ?? 6}
       lojas={lojas}
       anuncios={anuncios}
+      concorrentesPorProduto={concorrentesPorProduto}
     />
   );
 }
