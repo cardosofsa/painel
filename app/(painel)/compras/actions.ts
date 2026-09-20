@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { lancarErroSupabase } from "@/lib/erros";
 
 export interface ItemPedidoInput {
   produto_id: string | null;
@@ -66,7 +67,7 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
 
   const itensParaInserir = dados.itens.map((it) => ({ ...it, pedido_compra_id: pedido.id }));
   const { error: erroItens } = await supabase.from("pedidos_compra_itens").insert(itensParaInserir);
-  if (erroItens) throw new Error(erroItens.message);
+  if (erroItens) lancarErroSupabase(erroItens);
 
   const parcelas = dados.parcelado ? Math.max(1, dados.parcelas ?? 1) : 1;
   const valorParcela = Math.round((valorTotal / parcelas) * 100) / 100;
@@ -85,7 +86,7 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
   });
 
   const { error: erroTitulos } = await supabase.from("contas_a_pagar_receber").insert(titulos);
-  if (erroTitulos) throw new Error(erroTitulos.message);
+  if (erroTitulos) lancarErroSupabase(erroTitulos);
 
   revalidateTudo();
 }
@@ -100,6 +101,6 @@ export async function obterUrlNotaFiscal(caminho: string) {
 export async function marcarPedidoRecebido(pedidoId: string) {
   const supabase = await createClient();
   const { error } = await supabase.rpc("marcar_pedido_recebido", { p_pedido_id: pedidoId });
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidateTudo();
 }

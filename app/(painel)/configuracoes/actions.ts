@@ -2,6 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { lancarErroSupabase } from "@/lib/erros";
+import {
+  validar,
+  lojaSchema,
+  canalSchema,
+  faixaComissaoSchema,
+  contaSchema,
+  armazemSchema,
+  formaPagamentoSchema,
+  perfilNegocioSchema,
+} from "@/lib/validacao";
 
 const PATH = "/configuracoes";
 
@@ -9,14 +20,14 @@ const PATH = "/configuracoes";
 export async function criarCategoria(nome: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("categorias").insert({ nome });
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
 }
 
 export async function removerCategoria(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("categorias").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
 }
 
@@ -34,16 +45,16 @@ export interface LojaInput {
 
 export async function criarLoja(dados: LojaInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("lojas_canal").insert(dados);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("lojas_canal").insert(validar(lojaSchema, dados));
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
 }
 
 export async function atualizarLoja(id: string, dados: LojaInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("lojas_canal").update(dados).eq("id", id);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("lojas_canal").update(validar(lojaSchema, dados)).eq("id", id);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
 }
@@ -51,7 +62,7 @@ export async function atualizarLoja(id: string, dados: LojaInput) {
 export async function removerLoja(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("lojas_canal").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
 }
@@ -66,8 +77,8 @@ export interface CanalInput {
 
 export async function criarCanal(dados: CanalInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("canais").insert(dados);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("canais").insert(validar(canalSchema, dados));
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
 }
@@ -75,7 +86,7 @@ export async function criarCanal(dados: CanalInput) {
 export async function removerCanal(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("canais").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
   revalidatePath("/produtos");
@@ -91,14 +102,14 @@ const CANAIS_PADRAO: CanalInput[] = [
 export async function restaurarCanaisPadrao() {
   const supabase = await createClient();
   const { data: existentes, error: erroSelect } = await supabase.from("canais").select("nome");
-  if (erroSelect) throw new Error(erroSelect.message);
+  if (erroSelect) lancarErroSupabase(erroSelect);
 
   const nomesExistentes = new Set((existentes ?? []).map((c) => c.nome));
   const faltando = CANAIS_PADRAO.filter((c) => !nomesExistentes.has(c.nome));
   if (faltando.length === 0) return;
 
   const { error } = await supabase.from("canais").insert(faltando);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
 }
@@ -114,12 +125,12 @@ export interface FaixaComissaoInput {
 export async function atualizarFaixasCanal(canalId: string, faixas: FaixaComissaoInput[]) {
   const supabase = await createClient();
   const { error: erroDelete } = await supabase.from("faixas_comissao_canal").delete().eq("canal_id", canalId);
-  if (erroDelete) throw new Error(erroDelete.message);
+  if (erroDelete) lancarErroSupabase(erroDelete);
 
   if (faixas.length > 0) {
-    const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...f }));
+    const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...validar(faixaComissaoSchema, f) }));
     const { error: erroInsert } = await supabase.from("faixas_comissao_canal").insert(linhas);
-    if (erroInsert) throw new Error(erroInsert.message);
+    if (erroInsert) lancarErroSupabase(erroInsert);
   }
 
   revalidatePath(PATH);
@@ -135,8 +146,8 @@ export interface ContaInput {
 
 export async function criarConta(dados: ContaInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("contas").insert(dados);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("contas").insert(validar(contaSchema, dados));
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
@@ -144,8 +155,8 @@ export async function criarConta(dados: ContaInput) {
 
 export async function atualizarConta(id: string, dados: ContaInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("contas").update(dados).eq("id", id);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("contas").update(validar(contaSchema, dados)).eq("id", id);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
@@ -154,7 +165,7 @@ export async function atualizarConta(id: string, dados: ContaInput) {
 export async function removerConta(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("contas").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
@@ -167,16 +178,16 @@ export interface FormaPagamentoInput {
 
 export async function criarFormaPagamento(dados: FormaPagamentoInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("formas_pagamento").insert(dados);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("formas_pagamento").insert(validar(formaPagamentoSchema, dados));
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/compras");
 }
 
 export async function atualizarFormaPagamento(id: string, dados: FormaPagamentoInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("formas_pagamento").update(dados).eq("id", id);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("formas_pagamento").update(validar(formaPagamentoSchema, dados)).eq("id", id);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/compras");
 }
@@ -184,7 +195,7 @@ export async function atualizarFormaPagamento(id: string, dados: FormaPagamentoI
 export async function removerFormaPagamento(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("formas_pagamento").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/compras");
 }
@@ -198,8 +209,8 @@ export interface ArmazemInput {
 
 export async function criarArmazem(dados: ArmazemInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("armazens").insert(dados);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("armazens").insert(validar(armazemSchema, dados));
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/estoque");
   revalidatePath("/produtos");
@@ -207,8 +218,8 @@ export async function criarArmazem(dados: ArmazemInput) {
 
 export async function atualizarArmazem(id: string, dados: ArmazemInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("armazens").update(dados).eq("id", id);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("armazens").update(validar(armazemSchema, dados)).eq("id", id);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/estoque");
   revalidatePath("/produtos");
@@ -217,7 +228,7 @@ export async function atualizarArmazem(id: string, dados: ArmazemInput) {
 export async function removerArmazem(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("armazens").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/estoque");
   revalidatePath("/produtos");
@@ -240,8 +251,8 @@ export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {
 
   const { error } = await supabase
     .from("perfil_negocio")
-    .upsert({ user_id: user.id, ...dados, atualizado_em: new Date().toISOString() });
-  if (error) throw new Error(error.message);
+    .upsert({ user_id: user.id, ...validar(perfilNegocioSchema, dados), atualizado_em: new Date().toISOString() });
+  if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
 }

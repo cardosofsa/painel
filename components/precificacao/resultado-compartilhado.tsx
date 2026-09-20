@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { toPng } from "html-to-image";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { resultadoParaPreco, type ComponenteKit, type TaxasPlataforma } from "@/lib/pricing";
 
 export interface ResumoExport {

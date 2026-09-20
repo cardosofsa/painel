@@ -11,7 +11,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarPedidoCompra, marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 

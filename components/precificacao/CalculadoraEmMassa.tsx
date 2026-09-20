@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { resolverPorMargem, resolverComFaixas, type FaixaComissao } from "@/lib/pricing";
 import { paraCsv, baixarArquivo } from "@/lib/csv";
 import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";

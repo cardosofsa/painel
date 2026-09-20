@@ -16,6 +16,13 @@ export interface TaxasPlataforma {
 
 export type ModoCalculo = "margem" | "lucro" | "preco";
 
+/** As três formas de chegar ao preço, com os rótulos usados nas telas de precificação. */
+export const MODOS: { id: ModoCalculo; label: string }[] = [
+  { id: "margem", label: "Margem Alvo" },
+  { id: "lucro", label: "Lucro Desejado (R$)" },
+  { id: "preco", label: "Preço Fixo" },
+];
+
 export interface ResultadoPrecificacao {
   custoTotal: number;
   precoVenda: number;
@@ -132,7 +139,14 @@ export function formatarFaixaLabel(faixa: FaixaComissao): string {
 }
 
 function encontrarFaixa(faixas: FaixaComissao[], preco: number): FaixaComissao {
-  return faixas.find((f) => preco >= f.min && (f.max === null || preco <= f.max)) ?? faixas[faixas.length - 1];
+  const exata = faixas.find((f) => preco >= f.min && (f.max === null || preco <= f.max));
+  if (exata) return exata;
+
+  // Preço fora da tabela (acontece quando as faixas cadastradas não começam em zero ou têm
+  // buracos): abaixo de tudo cai na faixa mais barata — nunca na mais cara, que cobraria
+  // uma comissão que a plataforma não cobraria.
+  const maisBarata = faixas.reduce((menor, f) => (f.min < menor.min ? f : menor), faixas[0]);
+  return preco < maisBarata.min ? maisBarata : faixas[faixas.length - 1];
 }
 
 export interface ResultadoComFaixa {

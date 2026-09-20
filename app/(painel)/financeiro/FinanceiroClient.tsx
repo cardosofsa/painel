@@ -16,7 +16,7 @@ import { Wallet, Receipt, AlertTriangle, TrendingDown, PackageX, ShieldCheck, Do
 import Link from "next/link";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import type { AlertaErosaoMargem, AlertaRupturaEstoque } from "@/lib/alertas";
 import {
   criarMovimentacao,

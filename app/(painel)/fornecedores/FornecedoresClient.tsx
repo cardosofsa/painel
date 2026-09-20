@@ -12,7 +12,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Truck } from "lucide-react";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
 
 export interface Fornecedor extends FornecedorInput {

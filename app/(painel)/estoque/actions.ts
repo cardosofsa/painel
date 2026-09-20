@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { lancarErroSupabase } from "@/lib/erros";
 
 export async function registrarMovimentacaoEstoque(dados: {
   produtoId: string;
@@ -17,7 +18,7 @@ export async function registrarMovimentacaoEstoque(dados: {
     p_quantidade: dados.quantidade,
     p_motivo: dados.motivo,
   });
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
 
   revalidatePath("/estoque");
   revalidatePath("/produtos");

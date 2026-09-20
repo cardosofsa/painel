@@ -12,7 +12,7 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { createClient } from "@/lib/supabase/client";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { formatarFaixaLabel } from "@/lib/pricing";
 import {
   criarCategoria,
@@ -124,13 +124,6 @@ export function ConfiguracoesClient({
   const [cnpj, setCnpj] = useState(perfil.cnpj);
   const [regimeTributario, setRegimeTributario] = useState(perfil.regime_tributario);
   const [aliquotaDas, setAliquotaDas] = useState(perfil.aliquota_das);
-
-  const [notificacoes, setNotificacoes] = useState({
-    estoqueBaixo: true,
-    vencimentos: true,
-    pedidosRecebidos: true,
-    resumoSemanal: false,
-  });
 
   function salvarLojaHandler(dados: LojaInput) {
     startTransition(async () => {
@@ -639,28 +632,6 @@ export function ConfiguracoesClient({
       {aba === "Conta" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
           <ContaCard email={email} />
-
-          <Card className="h-full flex flex-col">
-            <h3 className="font-semibold text-text-primary mb-4">Alertas</h3>
-            <div className="space-y-1">
-              {[
-                { key: "estoqueBaixo" as const, label: "Estoque no mínimo ou abaixo" },
-                { key: "vencimentos" as const, label: "Contas a pagar/receber vencendo" },
-                { key: "pedidosRecebidos" as const, label: "Pedidos de compra recebidos" },
-                { key: "resumoSemanal" as const, label: "Resumo semanal do negócio" },
-              ].map((item) => (
-                <label key={item.key} className="flex items-center justify-between py-2.5 border-b border-border last:border-0 cursor-pointer">
-                  <span className="text-sm text-text-primary">{item.label}</span>
-                  <input
-                    type="checkbox"
-                    checked={notificacoes[item.key]}
-                    onChange={(e) => setNotificacoes((prev) => ({ ...prev, [item.key]: e.target.checked }))}
-                    className="w-4 h-4 accent-accent"
-                  />
-                </label>
-              ))}
-            </div>
-          </Card>
 
           <Card className="h-full flex flex-col">
             <h3 className="font-semibold text-text-primary mb-4">Perfil do Negócio</h3>

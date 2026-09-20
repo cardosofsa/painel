@@ -35,6 +35,8 @@ export default async function ProdutosPage() {
   if (armazensRes.error) throw new Error(armazensRes.error.message);
   if (lojasRes.error) throw new Error(lojasRes.error.message);
   if (produtoLojasRes.error) throw new Error(produtoLojasRes.error.message);
+  if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
+  if (precificacoesRes.error) throw new Error(precificacoesRes.error.message);
 
   const categoriasPorId = new Map((categoriasRes.data ?? []).map((c) => [c.id, c.nome]));
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));

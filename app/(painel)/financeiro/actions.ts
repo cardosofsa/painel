@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { lancarErroSupabase } from "@/lib/erros";
 
 function revalidateTudo() {
   revalidatePath("/financeiro");
@@ -35,7 +36,7 @@ export async function criarMovimentacao(dados: MovimentacaoInput) {
     p_afeta_lucro: dados.afeta_lucro,
     p_data: dados.data_movimentacao,
   });
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidateTudo();
 }
 
@@ -51,7 +52,7 @@ export interface DespesaFixaInput {
 export async function criarDespesaFixa(dados: DespesaFixaInput) {
   const supabase = await createClient();
   const { error } = await supabase.from("despesas_fixas").insert(dados);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidateTudo();
 }
 
@@ -76,14 +77,14 @@ export async function retirarDespesaDaConta(despesaId: string) {
     p_data: new Date().toISOString().slice(0, 10),
     p_referencia_despesa_fixa_id: despesa.id,
   });
-  if (erroRpc) throw new Error(erroRpc.message);
+  if (erroRpc) lancarErroSupabase(erroRpc);
   revalidateTudo();
 }
 
 export async function desfazerRetiradaDespesa(movimentacaoId: string) {
   const supabase = await createClient();
   const { error } = await supabase.rpc("desfazer_movimentacao_financeira", { p_movimentacao_id: movimentacaoId });
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidateTudo();
 }
 
@@ -91,7 +92,7 @@ export async function desfazerRetiradaDespesa(movimentacaoId: string) {
 export async function quitarContaPagarReceber(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.rpc("quitar_conta_pagar_receber", { p_id: id });
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidateTudo();
 }
 
@@ -106,7 +107,7 @@ export interface ContaPagarReceberInput {
 export async function criarContaPagarReceber(dados: ContaPagarReceberInput) {
   const supabase = await createClient();
   const { error } = await supabase.from("contas_a_pagar_receber").insert(dados);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidateTudo();
 }
 
@@ -132,7 +133,7 @@ export async function avaliarLimpezaFinanceiro(dataInicio: string, dataFim: stri
       .select("id", { count: "exact", head: true })
       .gte("data_movimentacao", dataInicio)
       .lte("data_movimentacao", dataFim);
-    if (error) throw new Error(error.message);
+    if (error) lancarErroSupabase(error);
     resultado.lancamentos = count ?? 0;
   }
 
@@ -142,7 +143,7 @@ export async function avaliarLimpezaFinanceiro(dataInicio: string, dataFim: stri
       .select("id", { count: "exact", head: true })
       .gte("data_vencimento", dataInicio)
       .lte("data_vencimento", dataFim);
-    if (error) throw new Error(error.message);
+    if (error) lancarErroSupabase(error);
     resultado.contasPagarReceber = count ?? 0;
 
     const { count: vinculadas, error: erroVinculadas } = await supabase
@@ -151,7 +152,7 @@ export async function avaliarLimpezaFinanceiro(dataInicio: string, dataFim: stri
       .gte("data_vencimento", dataInicio)
       .lte("data_vencimento", dataFim)
       .not("referencia_pedido_compra_id", "is", null);
-    if (erroVinculadas) throw new Error(erroVinculadas.message);
+    if (erroVinculadas) lancarErroSupabase(erroVinculadas);
     resultado.contasVinculadasCompra = vinculadas ?? 0;
   }
 
@@ -167,7 +168,7 @@ export async function limparDadosFinanceiros(dataInicio: string, dataFim: string
       .delete()
       .gte("data_movimentacao", dataInicio)
       .lte("data_movimentacao", dataFim);
-    if (error) throw new Error(error.message);
+    if (error) lancarErroSupabase(error);
   }
 
   if (escopo.contasPagarReceber) {
@@ -176,7 +177,7 @@ export async function limparDadosFinanceiros(dataInicio: string, dataFim: string
       .delete()
       .gte("data_vencimento", dataInicio)
       .lte("data_vencimento", dataFim);
-    if (error) throw new Error(error.message);
+    if (error) lancarErroSupabase(error);
   }
 
   revalidateTudo();

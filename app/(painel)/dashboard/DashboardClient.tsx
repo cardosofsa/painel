@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
@@ -9,9 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { CardSkeleton, TableSkeleton } from "@/components/ui/Skeleton";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { criarCompromisso, removerCompromisso, type CompromissoInput } from "./actions";
 
 export interface Conta {
@@ -67,14 +66,8 @@ export function DashboardClient({
   resumoMes: { comprasMes: number; precificacoesMes: number };
   compromissos: Compromisso[];
 }) {
-  const [carregando, setCarregando] = useState(true);
   const saldoTotal = contas.reduce((acc, c) => acc + c.saldo, 0);
   const capitalComprometido = pedidosPendentes.reduce((acc, p) => acc + p.valor_total, 0);
-
-  useEffect(() => {
-    const t = setTimeout(() => setCarregando(false), 300);
-    return () => clearTimeout(t);
-  }, []);
 
   return (
     <>
@@ -95,22 +88,6 @@ export function DashboardClient({
         }
       />
 
-      {carregando ? (
-        <>
-          <div className="mb-5">
-            <CardSkeleton />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <CardSkeleton />
-            <CardSkeleton />
-            <CardSkeleton />
-          </div>
-          <Card className="p-0 overflow-hidden">
-            <TableSkeleton rows={4} />
-          </Card>
-        </>
-      ) : (
-        <>
           <Card className="mb-5">
             <CardEyebrow>Saldo Total Disponível</CardEyebrow>
             <HeroMetric value={formatBRL(saldoTotal)} accent />
@@ -241,8 +218,6 @@ export function DashboardClient({
           <div className="grid grid-cols-1 mt-5">
             <AgendaCard compromissos={compromissos} />
           </div>
-        </>
-      )}
     </>
   );
 }

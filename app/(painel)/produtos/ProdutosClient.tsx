@@ -13,7 +13,7 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { ProductThumb } from "@/components/ui/ProductThumb";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { PriceHistoryChart } from "@/components/charts/PriceHistoryChart";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarProduto, atualizarProduto, removerProduto, alternarAtivoProduto, acaoEmMassaProdutos, type ProdutoInput } from "./actions";

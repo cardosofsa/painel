@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { formatBRL } from "@/lib/mock-data";
+import { formatBRL } from "@/lib/format";
 import { registrarMovimentacaoEstoque } from "./actions";
 
 export interface ProdutoEstoque {

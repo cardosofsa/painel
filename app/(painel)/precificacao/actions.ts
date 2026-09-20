@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { lancarErroSupabase } from "@/lib/erros";
+import { validar, precificacaoSchema } from "@/lib/validacao";
 import type { ComponenteKit } from "@/lib/pricing";
 
 export interface PrecificacaoInput {
@@ -26,8 +28,8 @@ export interface PrecificacaoInput {
 
 export async function salvarPrecificacao(dados: PrecificacaoInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("precificacoes").insert(dados);
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("precificacoes").insert(validar(precificacaoSchema, dados));
+  if (error) lancarErroSupabase(error);
   revalidatePath("/precificacao");
   revalidatePath("/produtos");
 }
@@ -35,14 +37,14 @@ export async function salvarPrecificacao(dados: PrecificacaoInput) {
 export async function removerPrecificacao(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("precificacoes").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath("/precificacao");
 }
 
 export async function atualizarPrecoProduto(produtoId: string, precoVenda: number) {
   const supabase = await createClient();
   const { error } = await supabase.from("produtos").update({ preco_venda: precoVenda }).eq("id", produtoId);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath("/produtos");
   revalidatePath("/precificacao");
   revalidatePath("/dashboard");
@@ -90,7 +92,7 @@ export async function criarAnuncio(dados: AnuncioInput) {
 
   const variacoes = dados.variacoes.map((v) => ({ ...v, anuncio_id: anuncio.id }));
   const { error: erroVariacoes } = await supabase.from("anuncio_variacoes").insert(variacoes);
-  if (erroVariacoes) throw new Error(erroVariacoes.message);
+  if (erroVariacoes) lancarErroSupabase(erroVariacoes);
 
   revalidatePath("/precificacao");
 }
@@ -98,7 +100,7 @@ export async function criarAnuncio(dados: AnuncioInput) {
 export async function removerAnuncio(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("anuncios").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath("/precificacao");
 }
 
@@ -124,6 +126,6 @@ export async function criarConcorrente(produtoId: string, dados: ConcorrenteInpu
 export async function removerConcorrenteSalvo(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("concorrentes_preco").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   revalidatePath("/precificacao");
 }
