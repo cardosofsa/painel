@@ -103,6 +103,11 @@ export const armazemSchema = z.object({
 
 export const formaPagamentoSchema = z.object({ nome: textoCurto });
 
+export const catalogoSchema = z.object({
+  nome: textoCurto,
+  tipo_preco: z.enum(["venda", "atacado"]),
+});
+
 export const perfilNegocioSchema = z.object({
   nome_negocio: z.string().trim().max(200),
   cnpj: z.string().trim().max(32),
