@@ -15,7 +15,7 @@ export interface ProdutoInput {
   armazem_id: string | null;
   custo: number;
   preco_venda: number;
-  preco_atacado: number | null;
+  descricao: string | null;
   codigo_barras: string | null;
   imagem_url: string | null;
   estoque: number;
@@ -89,5 +89,19 @@ export async function acaoEmMassaProdutos(ids: string[], acao: "ativar" | "desat
     const { error } = await supabase.from("produtos").update({ ativo: acao === "ativar" }).in("id", ids);
     if (error) lancarErroSupabase(error);
   }
+  revalidateTudo();
+}
+
+export async function adicionarImagemProduto(produtoId: string, url: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("produto_imagens").insert({ produto_id: produtoId, url });
+  if (error) lancarErroSupabase(error);
+  revalidateTudo();
+}
+
+export async function removerImagemProduto(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("produto_imagens").delete().eq("id", id);
+  if (error) lancarErroSupabase(error);
   revalidateTudo();
 }

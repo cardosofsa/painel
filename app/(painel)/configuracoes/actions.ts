@@ -240,6 +240,7 @@ export interface PerfilNegocioInput {
   cnpj: string;
   regime_tributario: string;
   aliquota_das: number;
+  whatsapp: string | null;
 }
 
 export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {

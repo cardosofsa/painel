@@ -78,6 +78,7 @@ export interface PerfilNegocio {
   cnpj: string;
   regime_tributario: string;
   aliquota_das: number;
+  whatsapp: string;
 }
 
 const ICONES_CANAL: Record<string, LucideIcon> = {
@@ -124,6 +125,7 @@ export function ConfiguracoesClient({
   const [cnpj, setCnpj] = useState(perfil.cnpj);
   const [regimeTributario, setRegimeTributario] = useState(perfil.regime_tributario);
   const [aliquotaDas, setAliquotaDas] = useState(perfil.aliquota_das);
+  const [whatsapp, setWhatsapp] = useState(perfil.whatsapp);
 
   function salvarLojaHandler(dados: LojaInput) {
     startTransition(async () => {
@@ -339,7 +341,13 @@ export function ConfiguracoesClient({
   }
 
   function salvarPerfil() {
-    const dados: PerfilNegocioInput = { nome_negocio: nomeNegocio, cnpj, regime_tributario: regimeTributario, aliquota_das: aliquotaDas };
+    const dados: PerfilNegocioInput = {
+      nome_negocio: nomeNegocio,
+      cnpj,
+      regime_tributario: regimeTributario,
+      aliquota_das: aliquotaDas,
+      whatsapp: whatsapp.trim() || null,
+    };
     startTransition(async () => {
       try {
         await salvarPerfilNegocio(dados);
@@ -640,6 +648,14 @@ export function ConfiguracoesClient({
             </FormField>
             <FormField label="CNPJ">
               <input className={inputClass} value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+            </FormField>
+            <FormField label="WhatsApp (para o botão Comprar Agora do Catálogo)">
+              <input
+                className={inputClass}
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                placeholder="Ex: 11987654321"
+              />
             </FormField>
             <div className="mt-auto pt-2">
               <Button variant="primary" onClick={salvarPerfil} loading={pending}>

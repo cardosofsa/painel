@@ -5,7 +5,7 @@ export default async function CatalogoPage() {
   const supabase = await createClient();
 
   const [catalogosRes, produtosRes] = await Promise.all([
-    supabase.from("catalogos").select("id, nome, slug, tipo_preco, ativo, criado_em").order("criado_em"),
+    supabase.from("catalogos").select("id, nome, slug, ativo, criado_em").order("criado_em"),
     supabase.from("produtos").select("id", { count: "exact", head: true }).eq("ativo", true).gt("estoque", 0),
   ]);
 

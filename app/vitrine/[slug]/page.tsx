@@ -1,7 +1,7 @@
 import { BookOpen } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { VitrineExportBar } from "@/components/catalogo/VitrineExportBar";
+import { VitrineInterativa } from "@/components/catalogo/VitrineInterativa";
 import type { LinhaCatalogoPublico, ItemVitrine } from "@/components/catalogo/VitrineView";
 
 export default async function VitrinePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -13,11 +13,20 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
 
   const linhas = (data ?? []) as LinhaCatalogoPublico[];
   const nome = linhas[0]?.catalogo_nome;
+  const negocioWhatsapp = linhas[0]?.negocio_whatsapp ?? null;
   // Quando o catálogo existe mas não tem produto elegível, a função ainda devolve uma
-  // linha (pra distinguir de "slug inválido"), só que com produto_nome/preco nulos.
-  const itens: ItemVitrine[] = linhas.filter(
-    (i): i is LinhaCatalogoPublico & { produto_nome: string; preco: number } => i.produto_nome !== null && i.preco !== null,
-  );
+  // linha (pra distinguir de "slug inválido"), só que com produto_id/preco nulos.
+  const itens: ItemVitrine[] = linhas
+    .filter((i) => i.produto_id !== null && i.produto_nome !== null && i.preco !== null)
+    .map((i) => ({
+      produto_id: i.produto_id!,
+      produto_nome: i.produto_nome!,
+      descricao: i.descricao,
+      imagem_url: i.imagem_url,
+      categoria_nome: i.categoria_nome,
+      preco: i.preco!,
+      imagens_extra: i.imagens_extra ?? [],
+    }));
 
   return (
     <div className="min-h-screen bg-background">
@@ -38,7 +47,7 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
                 <EmptyState icon={BookOpen} title="Nenhum produto disponível no momento" />
               </div>
             ) : (
-              <VitrineExportBar nome={nome} itens={itens} />
+              <VitrineInterativa nome={nome} itens={itens} negocioWhatsapp={negocioWhatsapp} />
             )}
           </>
         )}

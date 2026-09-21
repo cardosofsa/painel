@@ -4,30 +4,40 @@ import { ProdutosClient, type Produto } from "./ProdutosClient";
 export default async function ProdutosPage() {
   const supabase = await createClient();
 
-  const [produtosRes, categoriasRes, fornecedoresRes, armazensRes, movimentacoesRes, precificacoesRes, lojasRes, produtoLojasRes] =
-    await Promise.all([
-      supabase
-        .from("produtos")
-        .select(
-          "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, preco_venda, preco_atacado, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo",
-        )
-        .order("nome"),
-      supabase.from("categorias").select("id, nome").order("nome"),
-      supabase.from("fornecedores").select("id, nome").order("nome"),
-      supabase.from("armazens").select("id, nome").order("nome"),
-      supabase
-        .from("estoque_movimentacoes")
-        .select("produto_id, motivo, tipo, quantidade, data_movimentacao")
-        .order("data_movimentacao", { ascending: false })
-        .limit(200),
-      supabase
-        .from("precificacoes")
-        .select("produto_id, canal, preco_calculado, criado_em")
-        .order("criado_em", { ascending: false })
-        .limit(200),
-      supabase.from("lojas_canal").select("id, nome").order("nome"),
-      supabase.from("produto_lojas").select("produto_id, loja_id"),
-    ]);
+  const [
+    produtosRes,
+    categoriasRes,
+    fornecedoresRes,
+    armazensRes,
+    movimentacoesRes,
+    precificacoesRes,
+    lojasRes,
+    produtoLojasRes,
+    produtoImagensRes,
+  ] = await Promise.all([
+    supabase
+      .from("produtos")
+      .select(
+        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, preco_venda, descricao, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo",
+      )
+      .order("nome"),
+    supabase.from("categorias").select("id, nome").order("nome"),
+    supabase.from("fornecedores").select("id, nome").order("nome"),
+    supabase.from("armazens").select("id, nome").order("nome"),
+    supabase
+      .from("estoque_movimentacoes")
+      .select("produto_id, motivo, tipo, quantidade, data_movimentacao")
+      .order("data_movimentacao", { ascending: false })
+      .limit(200),
+    supabase
+      .from("precificacoes")
+      .select("produto_id, canal, preco_calculado, criado_em")
+      .order("criado_em", { ascending: false })
+      .limit(200),
+    supabase.from("lojas_canal").select("id, nome").order("nome"),
+    supabase.from("produto_lojas").select("produto_id, loja_id"),
+    supabase.from("produto_imagens").select("id, produto_id, url").order("ordem"),
+  ]);
 
   if (produtosRes.error) throw new Error(produtosRes.error.message);
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
@@ -37,6 +47,7 @@ export default async function ProdutosPage() {
   if (produtoLojasRes.error) throw new Error(produtoLojasRes.error.message);
   if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
   if (precificacoesRes.error) throw new Error(precificacoesRes.error.message);
+  if (produtoImagensRes.error) throw new Error(produtoImagensRes.error.message);
 
   const categoriasPorId = new Map((categoriasRes.data ?? []).map((c) => [c.id, c.nome]));
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
@@ -49,6 +60,13 @@ export default async function ProdutosPage() {
     lojaIdsPorProduto.set(pl.produto_id, lista);
   }
 
+  const imagensPorProduto = new Map<string, { id: string; url: string }[]>();
+  for (const img of produtoImagensRes.data ?? []) {
+    const lista = imagensPorProduto.get(img.produto_id) ?? [];
+    lista.push({ id: img.id, url: img.url });
+    imagensPorProduto.set(img.produto_id, lista);
+  }
+
   const produtos: Produto[] = (produtosRes.data ?? []).map((p) => ({
     id: p.id,
     sku: p.sku,
@@ -58,7 +76,7 @@ export default async function ProdutosPage() {
     armazem_id: p.armazem_id,
     custo: p.custo,
     preco_venda: p.preco_venda,
-    preco_atacado: p.preco_atacado,
+    descricao: p.descricao,
     codigo_barras: p.codigo_barras,
     imagem_url: p.imagem_url,
     estoque: p.estoque,
@@ -66,6 +84,7 @@ export default async function ProdutosPage() {
     saida_media_semanal: p.saida_media_semanal,
     ativo: p.ativo,
     loja_ids: lojaIdsPorProduto.get(p.id) ?? [],
+    imagens: imagensPorProduto.get(p.id) ?? [],
     categoria_nome: (p.categoria_id && categoriasPorId.get(p.categoria_id)) ?? null,
     fornecedor_nome: (p.fornecedor_id && fornecedoresPorId.get(p.fornecedor_id)) ?? null,
     armazem_nome: (p.armazem_id && armazensPorId.get(p.armazem_id)) ?? null,

@@ -35,7 +35,7 @@ export default async function ConfiguracoesPage() {
       supabase.from("armazens").select("id, nome, endereco, lojas_abastecidas").order("nome"),
       supabase.from("formas_pagamento").select("id, nome").order("nome"),
       supabase.from("produtos").select("categoria_id"),
-      supabase.from("perfil_negocio").select("nome_negocio, cnpj, regime_tributario, aliquota_das").maybeSingle(),
+      supabase.from("perfil_negocio").select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp").maybeSingle(),
     ]);
 
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
@@ -68,6 +68,7 @@ export default async function ConfiguracoesPage() {
     cnpj: perfilRes.data?.cnpj ?? "",
     regime_tributario: perfilRes.data?.regime_tributario ?? "",
     aliquota_das: perfilRes.data?.aliquota_das ?? 6,
+    whatsapp: perfilRes.data?.whatsapp ?? "",
   };
 
   const contagemPorCategoria = new Map<string, number>();

@@ -16,13 +16,28 @@ import { PackageSearch } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { PriceHistoryChart } from "@/components/charts/PriceHistoryChart";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
-import { criarProduto, atualizarProduto, removerProduto, alternarAtivoProduto, acaoEmMassaProdutos, type ProdutoInput } from "./actions";
+import {
+  criarProduto,
+  atualizarProduto,
+  removerProduto,
+  alternarAtivoProduto,
+  acaoEmMassaProdutos,
+  adicionarImagemProduto,
+  removerImagemProduto,
+  type ProdutoInput,
+} from "./actions";
+
+export interface ImagemProduto {
+  id: string;
+  url: string;
+}
 
 export interface Produto extends ProdutoInput {
   id: string;
   categoria_nome: string | null;
   fornecedor_nome: string | null;
   armazem_nome: string | null;
+  imagens: ImagemProduto[];
 }
 
 export interface MovimentacaoEstoque {
@@ -56,7 +71,7 @@ function formVazio(armazemPadrao: string | null): ProdutoInput {
     armazem_id: armazemPadrao,
     custo: 0,
     preco_venda: 0,
-    preco_atacado: null,
+    descricao: null,
     codigo_barras: null,
     imagem_url: null,
     estoque: 0,
@@ -145,7 +160,7 @@ export function ProdutosClient({
       armazem_id: p.armazem_id,
       custo: p.custo,
       preco_venda: p.preco_venda,
-      preco_atacado: p.preco_atacado,
+      descricao: p.descricao,
       codigo_barras: p.codigo_barras,
       imagem_url: p.imagem_url,
       estoque: p.estoque,
@@ -160,6 +175,30 @@ export function ProdutosClient({
   async function enviarImagem(file: File) {
     const resultado = await enviarImagemArquivo(file, { maxSizeMb: 5, tiposAceitos: ["image/"], prefixo: form.sku || "produto" });
     if (resultado) setForm((prev) => ({ ...prev, imagem_url: resultado.publicUrl }));
+  }
+
+  async function adicionarFotoExtra(file: File) {
+    if (!editando) return;
+    const resultado = await enviarImagemArquivo(file, {
+      maxSizeMb: 5,
+      tiposAceitos: ["image/"],
+      prefixo: `${editando.id}-extra`,
+    });
+    if (!resultado) return;
+    try {
+      await adicionarImagemProduto(editando.id, resultado.publicUrl);
+      toast.success("Foto adicionada");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao adicionar foto");
+    }
+  }
+
+  async function removerFotoExtra(imagemId: string) {
+    try {
+      await removerImagemProduto(imagemId);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao remover foto");
+    }
   }
 
   function salvar() {
@@ -232,10 +271,13 @@ export function ProdutosClient({
   }
 
   const produtoDetalhe = produtos.find((p) => p.id === detalheId) ?? null;
+  // Deriva do prop (não do snapshot em `editando`) pra a lista de fotos atualizar sozinha
+  // depois de adicionar/remover, sem precisar fechar e reabrir o modal.
+  const editandoAtual = editando ? (produtos.find((p) => p.id === editando.id) ?? editando) : null;
   const categoriasNomes = ["Todas", ...categorias.map((c) => c.nome)];
 
   function exportarCsv() {
-    const cabecalho = ["SKU", "Nome", "Categoria", "Fornecedor", "Armazém", "Custo", "Preço Venda", "Preço Atacado", "Estoque", "Estoque Mínimo", "Ativo"];
+    const cabecalho = ["SKU", "Nome", "Categoria", "Fornecedor", "Armazém", "Custo", "Preço Venda", "Estoque", "Estoque Mínimo", "Ativo"];
     const paraCsv = (v: string | number) => {
       const t = String(v);
       return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
@@ -248,7 +290,6 @@ export function ProdutosClient({
       p.armazem_nome ?? "",
       p.custo.toFixed(2),
       p.preco_venda.toFixed(2),
-      p.preco_atacado != null ? p.preco_atacado.toFixed(2) : "",
       p.estoque,
       p.estoque_minimo,
       p.ativo ? "Sim" : "Não",
@@ -362,7 +403,6 @@ export function ProdutosClient({
                 <Th>Armazém</Th>
                 <Th align="right">Custo</Th>
                 <Th align="right">Venda</Th>
-                <Th align="right">Atacado</Th>
                 <Th align="right">Estoque</Th>
                 <Th>Status</Th>
                 <Th align="right"></Th>
@@ -396,9 +436,6 @@ export function ProdutosClient({
                   </Td>
                   <Td align="right" mono className="text-accent">
                     {formatBRL(p.preco_venda)}
-                  </Td>
-                  <Td align="right" mono className="text-text-secondary">
-                    {p.preco_atacado ? formatBRL(p.preco_atacado) : "—"}
                   </Td>
                   <Td align="right" mono>
                     {p.estoque}
@@ -461,6 +498,39 @@ export function ProdutosClient({
             )}
           </div>
         </FormField>
+        {editandoAtual ? (
+          <FormField label="Fotos Adicionais (opcional)">
+            <div className="flex flex-wrap gap-2 mb-2">
+              {editandoAtual.imagens.map((img) => (
+                <div key={img.id} className="relative w-14 h-14 rounded-md overflow-hidden border border-border group">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- URL do Storage */}
+                  <img src={img.url} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removerFotoExtra(img.id)}
+                    className="absolute inset-0 bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ))}
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              disabled={enviandoImagem}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) adicionarFotoExtra(file);
+                e.target.value = "";
+              }}
+              className="text-sm text-text-secondary file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:bg-surface-2 file:text-text-primary file:text-sm hover:file:bg-surface-3 disabled:opacity-50"
+            />
+            <p className="text-xs text-text-tertiary mt-1">Aparecem na galeria do pop-up de produto no catálogo público.</p>
+          </FormField>
+        ) : (
+          <p className="text-xs text-text-tertiary -mt-1">Salve o produto pra poder adicionar fotos extras.</p>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Categoria">
             <select
@@ -529,7 +599,7 @@ export function ProdutosClient({
             </div>
           )}
         </FormField>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <FormField label="Custo (R$)">
             <input
               type="number"
@@ -548,17 +618,15 @@ export function ProdutosClient({
               onChange={(e) => setForm({ ...form, preco_venda: Number(e.target.value) || 0 })}
             />
           </FormField>
-          <FormField label="Preço Atacado (R$)">
-            <input
-              type="number"
-              step="0.01"
-              className={inputClass}
-              value={form.preco_atacado ?? ""}
-              placeholder="Opcional"
-              onChange={(e) => setForm({ ...form, preco_atacado: e.target.value ? Number(e.target.value) : null })}
-            />
-          </FormField>
         </div>
+        <FormField label="Descrição (opcional)">
+          <textarea
+            className={`${inputClass} h-20 py-2 resize-none`}
+            value={form.descricao ?? ""}
+            placeholder="Aparece no pop-up do produto no catálogo público"
+            onChange={(e) => setForm({ ...form, descricao: e.target.value || null })}
+          />
+        </FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Estoque Atual">
             <input

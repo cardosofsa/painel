@@ -24,7 +24,7 @@ export const produtoSchema = z.object({
   armazem_id: uuidOpcional,
   custo: dinheiro,
   preco_venda: dinheiro,
-  preco_atacado: dinheiroOpcional,
+  descricao: z.string().trim().max(2000).nullable(),
   codigo_barras: textoOpcional,
   imagem_url: z.string().url("URL inválida").nullable(),
   estoque: inteiroNaoNegativo,
@@ -105,7 +105,11 @@ export const formaPagamentoSchema = z.object({ nome: textoCurto });
 
 export const catalogoSchema = z.object({
   nome: textoCurto,
-  tipo_preco: z.enum(["venda", "atacado"]),
+});
+
+export const precoOverrideSchema = z.object({
+  produto_id: uuid,
+  preco: dinheiro.nullable(),
 });
 
 export const perfilNegocioSchema = z.object({
@@ -113,6 +117,7 @@ export const perfilNegocioSchema = z.object({
   cnpj: z.string().trim().max(32),
   regime_tributario: z.string().trim().max(100),
   aliquota_das: percentual,
+  whatsapp: z.string().trim().max(20).nullable(),
 });
 
 /**
