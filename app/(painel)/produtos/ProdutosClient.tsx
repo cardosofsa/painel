@@ -24,6 +24,7 @@ import {
   acaoEmMassaProdutos,
   adicionarImagemProduto,
   removerImagemProduto,
+  criarGrupoProduto,
   type ProdutoInput,
 } from "./actions";
 
@@ -37,7 +38,14 @@ export interface Produto extends ProdutoInput {
   categoria_nome: string | null;
   fornecedor_nome: string | null;
   armazem_nome: string | null;
+  grupo_nome: string | null;
   imagens: ImagemProduto[];
+}
+
+/** Rótulo que distingue variantes do mesmo grupo — "Camiseta — Azul P". */
+export function rotuloProduto(p: { nome: string; grupo_nome: string | null; variante_nome: string | null }): string {
+  const base = p.grupo_nome ?? p.nome;
+  return p.variante_nome ? `${base} — ${p.variante_nome}` : base;
 }
 
 export interface MovimentacaoEstoque {
@@ -78,6 +86,8 @@ function formVazio(armazemPadrao: string | null): ProdutoInput {
     estoque_minimo: 10,
     saida_media_semanal: 0,
     ativo: true,
+    grupo_id: null,
+    variante_nome: null,
     loja_ids: [],
   };
 }
@@ -90,6 +100,7 @@ export function ProdutosClient({
   movimentacoes,
   precificacoes,
   lojas,
+  grupos,
 }: {
   produtos: Produto[];
   categorias: Opcao[];
@@ -98,6 +109,7 @@ export function ProdutosClient({
   movimentacoes: MovimentacaoEstoque[];
   precificacoes: PrecificacaoHist[];
   lojas: Opcao[];
+  grupos: Opcao[];
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -109,22 +121,33 @@ export function ProdutosClient({
   const [form, setForm] = useState<ProdutoInput>(formVazio(armazens[0]?.id ?? null));
   const [detalheId, setDetalheId] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [novoGrupoAberto, setNovoGrupoAberto] = useState(false);
+  const [novoGrupoNome, setNovoGrupoNome] = useState("");
   const { enviar: enviarImagemArquivo, enviando: enviandoImagem } = useSupabaseUpload("produtos");
 
   const filtrados = useMemo(() => {
-    return produtos.filter((p) => {
-      const passaCategoria = categoriaFiltro === "Todas" || p.categoria_nome === categoriaFiltro;
-      const passaBusca =
-        busca.trim() === "" ||
-        p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-        p.sku.toLowerCase().includes(busca.toLowerCase());
-      const passaStatus =
-        statusFiltro === "Todos" ||
-        (statusFiltro === "Sem estoque" && p.estoque === 0) ||
-        (statusFiltro === "Estoque baixo" && p.estoque > 0 && p.estoque <= p.estoque_minimo) ||
-        (statusFiltro === "Em estoque" && p.estoque > p.estoque_minimo);
-      return passaCategoria && passaBusca && passaStatus;
-    });
+    return produtos
+      .filter((p) => {
+        const passaCategoria = categoriaFiltro === "Todas" || p.categoria_nome === categoriaFiltro;
+        const passaBusca =
+          busca.trim() === "" ||
+          rotuloProduto(p).toLowerCase().includes(busca.toLowerCase()) ||
+          p.sku.toLowerCase().includes(busca.toLowerCase());
+        const passaStatus =
+          statusFiltro === "Todos" ||
+          (statusFiltro === "Sem estoque" && p.estoque === 0) ||
+          (statusFiltro === "Estoque baixo" && p.estoque > 0 && p.estoque <= p.estoque_minimo) ||
+          (statusFiltro === "Em estoque" && p.estoque > p.estoque_minimo);
+        return passaCategoria && passaBusca && passaStatus;
+      })
+      // Variantes do mesmo grupo ficam adjacentes e em ordem, senão a lista vira
+      // três linhas com o mesmo nome espalhadas pela tabela.
+      .sort((a, b) => {
+        const grupoA = a.grupo_nome ?? a.nome;
+        const grupoB = b.grupo_nome ?? b.nome;
+        if (grupoA !== grupoB) return grupoA.localeCompare(grupoB, "pt-BR");
+        return (a.variante_nome ?? "").localeCompare(b.variante_nome ?? "", "pt-BR");
+      });
   }, [produtos, categoriaFiltro, busca, statusFiltro]);
 
   const valorEmEstoque = produtos.reduce((acc, p) => acc + p.custo * p.estoque, 0);
@@ -167,9 +190,31 @@ export function ProdutosClient({
       estoque_minimo: p.estoque_minimo,
       saida_media_semanal: p.saida_media_semanal,
       ativo: p.ativo,
+      grupo_id: p.grupo_id,
+      variante_nome: p.variante_nome,
       loja_ids: p.loja_ids,
     });
     setModalAberto(true);
+  }
+
+  function criarGrupo() {
+    setNovoGrupoNome("");
+    setNovoGrupoAberto(true);
+  }
+
+  function salvarNovoGrupo() {
+    const nome = novoGrupoNome.trim();
+    if (!nome) return;
+    startTransition(async () => {
+      try {
+        const grupo = await criarGrupoProduto(nome);
+        setForm((prev) => ({ ...prev, grupo_id: grupo.id }));
+        setNovoGrupoAberto(false);
+        toast.success("Grupo criado");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao criar grupo");
+      }
+    });
   }
 
   async function enviarImagem(file: File) {
@@ -424,7 +469,12 @@ export function ProdutosClient({
                   </Td>
                   <Td className="cursor-pointer" onClick={() => setDetalheId(p.id)}>
                     <div className={p.ativo ? "text-text-primary font-medium" : "text-text-tertiary line-through"}>
-                      {p.nome}
+                      {p.grupo_nome ?? p.nome}
+                      {p.variante_nome ? (
+                        <span className="ml-1.5 text-xs font-normal px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary">
+                          {p.variante_nome}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="text-xs text-text-tertiary">
                       {p.categoria_nome ?? "Sem categoria"} · {p.fornecedor_nome ?? "Sem fornecedor"}
@@ -531,6 +581,42 @@ export function ProdutosClient({
         ) : (
           <p className="text-xs text-text-tertiary -mt-1">Salve o produto pra poder adicionar fotos extras.</p>
         )}
+        <FormField label="Variante de (opcional)">
+          <div className="grid grid-cols-2 gap-4">
+            <select
+              className={inputClass}
+              value={form.grupo_id ?? ""}
+              onChange={(e) => {
+                const grupoId = e.target.value || null;
+                if (grupoId === "__novo__") {
+                  criarGrupo();
+                  return;
+                }
+                setForm({ ...form, grupo_id: grupoId, variante_nome: grupoId ? form.variante_nome : null });
+              }}
+            >
+              <option value="">Produto avulso</option>
+              {grupos.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nome}
+                </option>
+              ))}
+              <option value="__novo__">+ Novo grupo…</option>
+            </select>
+            <input
+              className={inputClass}
+              placeholder="Nome da variante (ex: Azul P)"
+              disabled={!form.grupo_id}
+              value={form.variante_nome ?? ""}
+              onChange={(e) => setForm({ ...form, variante_nome: e.target.value || null })}
+            />
+          </div>
+          <p className="text-xs text-text-tertiary mt-1">
+            Variantes do mesmo grupo aparecem como um card só no PDV e no catálogo, com seletor. Cada variante tem SKU,
+            preço e estoque próprios.
+          </p>
+        </FormField>
+
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Categoria">
             <select
@@ -679,6 +765,30 @@ export function ProdutosClient({
           <ProdutoResumo produto={produtoDetalhe} movimentacoes={movimentacoes} precificacoes={precificacoes} />
         )}
       </Modal>
+      <Modal open={novoGrupoAberto} onClose={() => setNovoGrupoAberto(false)} title="Novo grupo de variantes">
+        <FormField label="Nome do grupo">
+          <input
+            className={inputClass}
+            autoFocus
+            placeholder="Ex: Camiseta Básica"
+            value={novoGrupoNome}
+            onChange={(e) => setNovoGrupoNome(e.target.value)}
+          />
+        </FormField>
+        <p className="text-xs text-text-tertiary -mt-2 mb-4">
+          É o nome comercial que o cliente vê. Cada variante (tamanho, cor) continua sendo um produto com SKU e estoque
+          próprios.
+        </p>
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={() => setNovoGrupoAberto(false)}>
+            Cancelar
+          </Button>
+          <Button variant="primary" className="flex-1" onClick={salvarNovoGrupo} loading={pending}>
+            Criar grupo
+          </Button>
+        </div>
+      </Modal>
+
       {ConfirmDialog}
     </>
   );

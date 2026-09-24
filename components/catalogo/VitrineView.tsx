@@ -7,6 +7,9 @@ export interface LinhaCatalogoPublico {
   catalogo_nome: string;
   produto_id: string | null;
   produto_nome: string | null;
+  grupo_id: string | null;
+  grupo_nome: string | null;
+  variante_nome: string | null;
   descricao: string | null;
   imagem_url: string | null;
   categoria_nome: string | null;
@@ -15,7 +18,20 @@ export interface LinhaCatalogoPublico {
   negocio_whatsapp: string | null;
 }
 
-/** Um item de verdade, já filtrado — o que a VitrineView de fato renderiza. */
+/** Uma variante vendável dentro de um item da vitrine. */
+export interface VarianteVitrine {
+  produto_id: string;
+  variante_nome: string | null;
+  preco: number;
+  imagem_url: string | null;
+  imagens_extra: string[];
+}
+
+/**
+ * Um item de verdade, já filtrado — o que a VitrineView de fato renderiza.
+ * A RPC devolve uma linha por SKU; produtos do mesmo grupo viram UM item com
+ * várias `variantes`, e o card mostra o menor preço.
+ */
 export interface ItemVitrine {
   produto_id: string;
   produto_nome: string;
@@ -24,6 +40,7 @@ export interface ItemVitrine {
   categoria_nome: string | null;
   preco: number;
   imagens_extra: string[];
+  variantes: VarianteVitrine[];
 }
 
 /**
@@ -62,7 +79,12 @@ export function VitrineView({ itens, onClickItem }: { itens: ItemVitrine[]; onCl
                 </div>
                 <div className="p-3">
                   <div className="text-sm text-text-primary font-medium leading-snug mb-1">{item.produto_nome}</div>
-                  <div className="font-mono text-accent font-semibold">{formatBRL(item.preco)}</div>
+                  <div className="font-mono text-accent font-semibold">
+                    {item.variantes.length > 1 ? `a partir de ${formatBRL(item.preco)}` : formatBRL(item.preco)}
+                  </div>
+                  {item.variantes.length > 1 && (
+                    <div className="text-xs text-text-tertiary mt-0.5">{item.variantes.length} opções</div>
+                  )}
                 </div>
               </button>
             ))}

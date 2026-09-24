@@ -241,6 +241,7 @@ export interface PerfilNegocioInput {
   regime_tributario: string;
   aliquota_das: number;
   whatsapp: string | null;
+  pin_admin: string | null;
 }
 
 export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {

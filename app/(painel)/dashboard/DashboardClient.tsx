@@ -57,6 +57,7 @@ export function DashboardClient({
   pedidosPendentes,
   vencimentos,
   resumoMes,
+  vendas,
   compromissos,
 }: {
   contas: Conta[];
@@ -64,6 +65,7 @@ export function DashboardClient({
   pedidosPendentes: PedidoPendente[];
   vencimentos: Vencimento[];
   resumoMes: { comprasMes: number; precificacoesMes: number };
+  vendas: { hoje: number; semana: number; mes: number; lucroMes: number };
   compromissos: Compromisso[];
 }) {
   const saldoTotal = contas.reduce((acc, c) => acc + c.saldo, 0);
@@ -78,11 +80,11 @@ export function DashboardClient({
             <Link href="/precificacao">
               <Button variant="secondary">Nova Precificação</Button>
             </Link>
-            <Link href="/estoque">
-              <Button variant="secondary">Registrar Estoque</Button>
-            </Link>
             <Link href="/financeiro">
-              <Button variant="primary">+ Nova Movimentação</Button>
+              <Button variant="secondary">+ Nova Movimentação</Button>
+            </Link>
+            <Link href="/pdv">
+              <Button variant="primary">Abrir PDV</Button>
             </Link>
           </>
         }
@@ -106,23 +108,33 @@ export function DashboardClient({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
             <Card>
               <CardEyebrow>Vendas Hoje</CardEyebrow>
-              <HeroMetric value="—" caption="Registro de vendas em breve" />
+              <HeroMetric value={formatBRL(vendas.hoje)} />
             </Card>
             <Card>
               <CardEyebrow>Vendas Semana</CardEyebrow>
-              <HeroMetric value="—" caption="Registro de vendas em breve" />
+              <HeroMetric value={formatBRL(vendas.semana)} caption="Últimos 7 dias" />
             </Card>
             <Card>
               <CardEyebrow>Vendas Mês</CardEyebrow>
-              <HeroMetric value="—" caption="Registro de vendas em breve" />
+              <HeroMetric value={formatBRL(vendas.mes)} />
             </Card>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
             <Card className="lg:col-span-2">
               <h2 className="text-base font-semibold text-text-primary mb-1">Resumo do Mês</h2>
-              <p className="text-xs text-text-tertiary mb-4">Sem módulo de vendas ainda — acompanhando compras e precificações</p>
+              <p className="text-xs text-text-tertiary mb-4">
+                Lucro é a margem real das vendas (preço − custo da mercadoria), não o saldo de caixa
+              </p>
               <div className="grid grid-cols-2 gap-4">
+                <div className="border border-border rounded-md p-4">
+                  <div className="text-xs text-text-tertiary mb-1">Faturamento</div>
+                  <div className="font-mono text-2xl text-accent">{formatBRL(vendas.mes)}</div>
+                </div>
+                <div className="border border-border rounded-md p-4">
+                  <div className="text-xs text-text-tertiary mb-1">Lucro das Vendas</div>
+                  <div className="font-mono text-2xl text-text-primary">{formatBRL(vendas.lucroMes)}</div>
+                </div>
                 <div className="border border-border rounded-md p-4">
                   <div className="text-xs text-text-tertiary mb-1">Gasto em Compras</div>
                   <div className="font-mono text-2xl text-text-primary">{formatBRL(resumoMes.comprasMes)}</div>

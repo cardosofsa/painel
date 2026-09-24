@@ -1,11 +1,21 @@
 import { createClient } from "@/lib/supabase/server";
+import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { ComprasClient, type Pedido } from "./ComprasClient";
 
 export default async function ComprasPage() {
   const supabase = await createClient();
 
-  const [pedidosRes, fornecedoresAtivosRes, fornecedoresTodosRes, produtosRes, armazensRes, contasRes, formasPagamentoRes, titulosRes] =
-    await Promise.all([
+  const [
+    pedidosRes,
+    fornecedoresAtivosRes,
+    fornecedoresTodosRes,
+    produtosRes,
+    armazensRes,
+    contasRes,
+    formasPagamentoRes,
+    titulosRes,
+    gruposRes,
+  ] = await Promise.all([
       supabase
         .from("pedidos_compra")
         .select(
@@ -14,11 +24,12 @@ export default async function ComprasPage() {
         .order("data_pedido", { ascending: false }),
       supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
       supabase.from("fornecedores").select("id, nome, cnpj"),
-      supabase.from("produtos").select("id, nome, custo").order("nome"),
+      supabase.from("produtos").select("id, nome, custo, grupo_id, variante_nome").order("nome"),
       supabase.from("armazens").select("id, nome").order("nome"),
       supabase.from("contas").select("id, nome").order("nome"),
       supabase.from("formas_pagamento").select("id, nome").order("nome"),
       supabase.from("contas_a_pagar_receber").select("referencia_pedido_compra_id, conta_id").not("referencia_pedido_compra_id", "is", null),
+      supabase.from("produto_grupos").select("id, nome"),
     ]);
 
   if (pedidosRes.error) throw new Error(pedidosRes.error.message);
@@ -29,6 +40,12 @@ export default async function ComprasPage() {
   if (contasRes.error) throw new Error(contasRes.error.message);
   if (formasPagamentoRes.error) throw new Error(formasPagamentoRes.error.message);
   if (titulosRes.error) throw new Error(titulosRes.error.message);
+  if (gruposRes.error) throw new Error(gruposRes.error.message);
+
+  // O seletor de item renderiza só `nome`: sem o rótulo composto, três variantes
+  // viram três opções com texto idêntico e a entrada de estoque vai pro SKU errado.
+  const grupos = mapaGrupos(gruposRes.data ?? []);
+  const produtos = (produtosRes.data ?? []).map((p) => comRotulo(p, grupos));
 
   const fornecedoresPorId = new Map((fornecedoresTodosRes.data ?? []).map((f) => [f.id, f]));
   const armazensPorId = new Map((armazensRes.data ?? []).map((a) => [a.id, a.nome]));
@@ -67,7 +84,7 @@ export default async function ComprasPage() {
     <ComprasClient
       pedidos={pedidos}
       fornecedores={fornecedoresAtivosRes.data ?? []}
-      produtos={produtosRes.data ?? []}
+      produtos={produtos}
       armazens={armazensRes.data ?? []}
       contas={contasRes.data ?? []}
       formasPagamento={formasPagamentoRes.data ?? []}

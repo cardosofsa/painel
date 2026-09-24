@@ -14,19 +14,45 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
   const linhas = (data ?? []) as LinhaCatalogoPublico[];
   const nome = linhas[0]?.catalogo_nome;
   const negocioWhatsapp = linhas[0]?.negocio_whatsapp ?? null;
+
   // Quando o catálogo existe mas não tem produto elegível, a função ainda devolve uma
   // linha (pra distinguir de "slug inválido"), só que com produto_id/preco nulos.
-  const itens: ItemVitrine[] = linhas
-    .filter((i) => i.produto_id !== null && i.produto_nome !== null && i.preco !== null)
-    .map((i) => ({
-      produto_id: i.produto_id!,
-      produto_nome: i.produto_nome!,
-      descricao: i.descricao,
-      imagem_url: i.imagem_url,
-      categoria_nome: i.categoria_nome,
-      preco: i.preco!,
-      imagens_extra: i.imagens_extra ?? [],
-    }));
+  const validas = linhas.filter((i) => i.produto_id !== null && i.produto_nome !== null && i.preco !== null);
+
+  // A RPC devolve uma linha por SKU (pra variante esgotada sumir sozinha pelo filtro
+  // de estoque). Aqui as variantes do mesmo grupo viram UM item, com o menor preço.
+  const porChave = new Map<string, ItemVitrine>();
+  for (const linha of validas) {
+    const chave = linha.grupo_id ?? linha.produto_id!;
+    const variante = {
+      produto_id: linha.produto_id!,
+      variante_nome: linha.variante_nome,
+      preco: linha.preco!,
+      imagem_url: linha.imagem_url,
+      imagens_extra: linha.imagens_extra ?? [],
+    };
+
+    const existente = porChave.get(chave);
+    if (existente) {
+      existente.variantes.push(variante);
+      if (variante.preco < existente.preco) existente.preco = variante.preco;
+      existente.imagem_url = existente.imagem_url ?? variante.imagem_url;
+      continue;
+    }
+
+    porChave.set(chave, {
+      produto_id: chave,
+      produto_nome: linha.produto_nome!,
+      descricao: linha.descricao,
+      imagem_url: linha.imagem_url,
+      categoria_nome: linha.categoria_nome,
+      preco: linha.preco!,
+      imagens_extra: linha.imagens_extra ?? [],
+      variantes: [variante],
+    });
+  }
+
+  const itens: ItemVitrine[] = Array.from(porChave.values());
 
   return (
     <div className="min-h-screen bg-background">

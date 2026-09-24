@@ -21,8 +21,26 @@ export default async function DashboardPage() {
   inicioMes.setDate(1);
   const inicioMesIso = inicioMes.toISOString().slice(0, 10);
 
-  const [contasRes, produtosRes, pedidosRes, fornecedoresRes, cprRes, comprasMesRes, precificacoesMesRes, compromissosRes] =
-    await Promise.all([
+  // A janela de vendas começa no menor dos dois marcos (início do mês ou 7 dias
+  // atrás) para que hoje/semana/mês saiam todos de uma consulta só.
+  const inicioSemana = new Date();
+  inicioSemana.setDate(inicioSemana.getDate() - 6);
+  inicioSemana.setHours(0, 0, 0, 0);
+  const inicioMesData = new Date(inicioMes);
+  inicioMesData.setHours(0, 0, 0, 0);
+  const inicioVendas = inicioSemana < inicioMesData ? inicioSemana : inicioMesData;
+
+  const [
+    contasRes,
+    produtosRes,
+    pedidosRes,
+    fornecedoresRes,
+    cprRes,
+    comprasMesRes,
+    precificacoesMesRes,
+    compromissosRes,
+    vendasRes,
+  ] = await Promise.all([
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       supabase
         .from("produtos")
@@ -42,6 +60,11 @@ export default async function DashboardPage() {
       supabase.from("pedidos_compra").select("valor_total").gte("data_pedido", inicioMesIso),
       supabase.from("precificacoes").select("id", { count: "exact", head: true }).gte("criado_em", inicioMesIso),
       supabase.from("compromissos").select("id, titulo, data, hora, descricao").order("data").order("hora"),
+      supabase
+        .from("vendas")
+        .select("total, lucro, data_venda")
+        .neq("status", "cancelada")
+        .gte("data_venda", inicioVendas.toISOString()),
     ]);
 
   if (contasRes.error) throw new Error(contasRes.error.message);
@@ -52,6 +75,23 @@ export default async function DashboardPage() {
   if (comprasMesRes.error) throw new Error(comprasMesRes.error.message);
   if (precificacoesMesRes.error) throw new Error(precificacoesMesRes.error.message);
   if (compromissosRes.error) throw new Error(compromissosRes.error.message);
+  if (vendasRes.error) throw new Error(vendasRes.error.message);
+
+  const inicioHoje = new Date();
+  inicioHoje.setHours(0, 0, 0, 0);
+
+  const vendasNaJanela = (vendasRes.data ?? []).map((v) => ({ ...v, data: new Date(v.data_venda) }));
+  const somar = (desde: Date) =>
+    vendasNaJanela.filter((v) => v.data >= desde).reduce((acc, v) => acc + v.total, 0);
+
+  const vendas = {
+    hoje: somar(inicioHoje),
+    semana: somar(inicioSemana),
+    mes: somar(inicioMesData),
+    lucroMes: vendasNaJanela
+      .filter((v) => v.data >= inicioMesData)
+      .reduce((acc, v) => acc + v.lucro, 0),
+  };
 
   const resumoMes = {
     comprasMes: (comprasMesRes.data ?? []).reduce((acc, p) => acc + p.valor_total, 0),
@@ -88,6 +128,7 @@ export default async function DashboardPage() {
       pedidosPendentes={pedidosPendentes}
       vencimentos={vencimentos}
       resumoMes={resumoMes}
+      vendas={vendas}
       compromissos={compromissos}
     />
   );

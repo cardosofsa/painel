@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { PrecificacaoClient, type LojaOpcao, type AnuncioSalvo } from "./PrecificacaoClient";
 import type { Concorrente } from "@/lib/pricing";
 
 export default async function PrecificacaoPage() {
   const supabase = await createClient();
-  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes] = await Promise.all([
+  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes] =
+    await Promise.all([
     supabase
       .from("precificacoes")
       .select(
@@ -12,7 +14,7 @@ export default async function PrecificacaoPage() {
       )
       .order("criado_em", { ascending: false })
       .limit(50),
-    supabase.from("produtos").select("id, sku, nome, custo, preco_venda").order("nome"),
+    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome").order("nome"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     supabase
       .from("canais")
@@ -28,6 +30,7 @@ export default async function PrecificacaoPage() {
       .order("criado_em", { ascending: false })
       .limit(30),
     supabase.from("concorrentes_preco").select("id, produto_id, nome, preco, link").order("criado_em"),
+    supabase.from("produto_grupos").select("id, nome"),
   ]);
 
   if (historicoRes.error) throw new Error(historicoRes.error.message);
@@ -38,6 +41,12 @@ export default async function PrecificacaoPage() {
   if (faixasRes.error) throw new Error(faixasRes.error.message);
   if (anunciosRes.error) throw new Error(anunciosRes.error.message);
   if (concorrentesRes.error) throw new Error(concorrentesRes.error.message);
+  if (gruposRes.error) throw new Error(gruposRes.error.message);
+
+  // O autocomplete corta em 6 sugestões: sem o rótulo, três variantes do mesmo
+  // grupo ocupam metade da lista sem dar pra distinguir uma da outra.
+  const grupos = mapaGrupos(gruposRes.data ?? []);
+  const produtos = (produtosRes.data ?? []).map((p) => comRotulo(p, grupos));
 
   const canaisPorId = new Map((canaisRes.data ?? []).map((c) => [c.id, c]));
 
@@ -81,7 +90,7 @@ export default async function PrecificacaoPage() {
   return (
     <PrecificacaoClient
       historico={historicoRes.data ?? []}
-      produtos={produtosRes.data ?? []}
+      produtos={produtos}
       aliquotaDasPadrao={perfilRes.data?.aliquota_das ?? 6}
       lojas={lojas}
       anuncios={anuncios}

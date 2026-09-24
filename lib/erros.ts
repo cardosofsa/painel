@@ -16,6 +16,10 @@ const POR_CONSTRAINT: Record<string, string> = {
   produtos_user_id_sku_key: "Já existe um produto cadastrado com esse SKU.",
   pedidos_compra_user_id_numero_key: "Já existe um pedido de compra com esse número.",
   produto_lojas_produto_id_loja_id_key: "Esse produto já está vinculado a essa loja.",
+  produtos_user_codigo_barras_idx: "Já existe outro produto com esse código de barras.",
+  produtos_grupo_variante_idx: "Esse grupo já tem uma variante com esse nome.",
+  produtos_estoque_nao_negativo: "A operação deixaria o estoque negativo. Confira a quantidade disponível.",
+  vendas_user_id_numero_key: "Já existe uma venda com esse número.",
 };
 
 function nomeDaConstraint(mensagem: string): string | null {

@@ -14,11 +14,12 @@ export default async function ProdutosPage() {
     lojasRes,
     produtoLojasRes,
     produtoImagensRes,
+    gruposRes,
   ] = await Promise.all([
     supabase
       .from("produtos")
       .select(
-        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, preco_venda, descricao, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo",
+        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, preco_venda, descricao, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo, grupo_id, variante_nome",
       )
       .order("nome"),
     supabase.from("categorias").select("id, nome").order("nome"),
@@ -37,6 +38,7 @@ export default async function ProdutosPage() {
     supabase.from("lojas_canal").select("id, nome").order("nome"),
     supabase.from("produto_lojas").select("produto_id, loja_id"),
     supabase.from("produto_imagens").select("id, produto_id, url").order("ordem"),
+    supabase.from("produto_grupos").select("id, nome").order("nome"),
   ]);
 
   if (produtosRes.error) throw new Error(produtosRes.error.message);
@@ -48,10 +50,12 @@ export default async function ProdutosPage() {
   if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
   if (precificacoesRes.error) throw new Error(precificacoesRes.error.message);
   if (produtoImagensRes.error) throw new Error(produtoImagensRes.error.message);
+  if (gruposRes.error) throw new Error(gruposRes.error.message);
 
   const categoriasPorId = new Map((categoriasRes.data ?? []).map((c) => [c.id, c.nome]));
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
   const armazensPorId = new Map((armazensRes.data ?? []).map((a) => [a.id, a.nome]));
+  const gruposPorId = new Map((gruposRes.data ?? []).map((g) => [g.id, g.nome]));
 
   const lojaIdsPorProduto = new Map<string, string[]>();
   for (const pl of produtoLojasRes.data ?? []) {
@@ -83,6 +87,9 @@ export default async function ProdutosPage() {
     estoque_minimo: p.estoque_minimo,
     saida_media_semanal: p.saida_media_semanal,
     ativo: p.ativo,
+    grupo_id: p.grupo_id,
+    variante_nome: p.variante_nome,
+    grupo_nome: (p.grupo_id && gruposPorId.get(p.grupo_id)) ?? null,
     loja_ids: lojaIdsPorProduto.get(p.id) ?? [],
     imagens: imagensPorProduto.get(p.id) ?? [],
     categoria_nome: (p.categoria_id && categoriasPorId.get(p.categoria_id)) ?? null,
@@ -99,6 +106,7 @@ export default async function ProdutosPage() {
       movimentacoes={movimentacoesRes.data ?? []}
       precificacoes={precificacoesRes.data ?? []}
       lojas={lojasRes.data ?? []}
+      grupos={gruposRes.data ?? []}
     />
   );
 }

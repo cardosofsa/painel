@@ -31,6 +31,8 @@ export const produtoSchema = z.object({
   estoque_minimo: inteiroNaoNegativo,
   saida_media_semanal: z.number().finite().min(0).max(1_000_000),
   ativo: z.boolean(),
+  grupo_id: uuidOpcional,
+  variante_nome: z.string().trim().max(100).nullable(),
   loja_ids: z.array(uuid).max(50),
 });
 
@@ -112,12 +114,69 @@ export const precoOverrideSchema = z.object({
   preco: dinheiro.nullable(),
 });
 
+export const clienteSchema = z.object({
+  nome: textoCurto,
+  whatsapp: z.string().trim().max(20).nullable(),
+  email: z.string().trim().max(200).nullable(),
+  documento: z.string().trim().max(32).nullable(),
+  data_nascimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+  cep: z.string().trim().max(16).nullable(),
+  endereco: textoOpcional,
+  cidade: z.string().trim().max(200).nullable(),
+  uf: z.string().trim().max(2).nullable(),
+  observacao: textoOpcional,
+  permite_fiado: z.boolean(),
+  status: z.enum(["ativo", "inativo"]),
+});
+
+export const grupoProdutoSchema = z.object({
+  nome: textoCurto,
+  descricao: z.string().trim().max(2000).nullable(),
+  imagem_url: z.string().url("URL inválida").nullable(),
+  categoria_id: uuidOpcional,
+});
+
+export const vendaSchema = z.object({
+  itens: z
+    .array(
+      z.object({
+        produto_id: uuid,
+        quantidade: z.number().int("Quantidade precisa ser inteira").min(1, "Quantidade mínima é 1").max(100_000),
+        preco_unitario: dinheiro,
+      }),
+    )
+    .min(1, "A venda precisa ter pelo menos um item")
+    .max(200, "Venda com itens demais"),
+  status: z.enum(["paga", "fiado"]),
+  cliente_id: uuidOpcional,
+  conta_id: uuidOpcional,
+  forma_pagamento: z.string().trim().max(100).nullable(),
+  desconto: dinheiro,
+  valor_entrega: dinheiro,
+  observacao: textoOpcional,
+  data_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+});
+
 export const perfilNegocioSchema = z.object({
   nome_negocio: z.string().trim().max(200),
   cnpj: z.string().trim().max(32),
   regime_tributario: z.string().trim().max(100),
   aliquota_das: percentual,
   whatsapp: z.string().trim().max(20).nullable(),
+  pin_admin: z
+    .string()
+    .trim()
+    .regex(/^\d{4,8}$/, "O PIN deve ter de 4 a 8 números")
+    .nullable(),
+});
+
+export const vendaEdicaoSchema = z.object({
+  cliente_id: uuidOpcional,
+  forma_pagamento: z.string().trim().max(100).nullable(),
+  observacao: textoOpcional,
+  desconto: dinheiro,
+  valor_entrega: dinheiro,
+  pin: z.string().trim().min(1, "Informe o PIN"),
 });
 
 /**

@@ -1,7 +1,10 @@
 import {
   LayoutDashboard,
+  ScanBarcode,
+  Receipt,
   Tag,
   Package,
+  Users,
   Truck,
   ShoppingCart,
   Boxes,
@@ -13,8 +16,11 @@ import {
 
 export const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/pdv", label: "PDV", icon: ScanBarcode },
+  { href: "/vendas", label: "Vendas", icon: Receipt },
   { href: "/precificacao", label: "Precificação", icon: Tag },
   { href: "/produtos", label: "Produtos", icon: Package },
+  { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/fornecedores", label: "Fornecedores", icon: Truck },
   { href: "/compras", label: "Compras", icon: ShoppingCart },
   { href: "/estoque", label: "Estoque", icon: Boxes },

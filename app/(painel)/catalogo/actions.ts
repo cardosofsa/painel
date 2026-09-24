@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, catalogoSchema, precoOverrideSchema } from "@/lib/validacao";
+import { mapaGrupos, rotuloProduto } from "@/lib/produtos";
 
 const PATH = "/catalogo";
 
@@ -62,18 +63,28 @@ export async function removerCatalogo(id: string) {
 export async function listarPrecosCatalogo(catalogoId: string): Promise<ProdutoPrecoCatalogo[]> {
   const supabase = await createClient();
 
-  const [produtosRes, overridesRes] = await Promise.all([
-    supabase.from("produtos").select("id, nome, preco_venda").eq("ativo", true).gt("estoque", 0).order("nome"),
+  const [produtosRes, overridesRes, gruposRes] = await Promise.all([
+    supabase
+      .from("produtos")
+      .select("id, nome, preco_venda, grupo_id, variante_nome")
+      .eq("ativo", true)
+      .gt("estoque", 0)
+      .order("nome"),
     supabase.from("catalogo_precos").select("produto_id, preco").eq("catalogo_id", catalogoId),
+    supabase.from("produto_grupos").select("id, nome"),
   ]);
   if (produtosRes.error) lancarErroSupabase(produtosRes.error);
   if (overridesRes.error) lancarErroSupabase(overridesRes.error);
+  if (gruposRes.error) lancarErroSupabase(gruposRes.error);
 
   const overridePorProduto = new Map((overridesRes.data ?? []).map((o) => [o.produto_id, o.preco]));
+  // O override é por SKU (unique catalogo_id + produto_id), então cada variante
+  // precisa da própria linha — mas com rótulo, senão não dá pra saber qual é qual.
+  const grupos = mapaGrupos(gruposRes.data ?? []);
 
   return (produtosRes.data ?? []).map((p) => ({
     produto_id: p.id,
-    produto_nome: p.nome,
+    produto_nome: rotuloProduto({ ...p, grupo_nome: p.grupo_id ? (grupos.get(p.grupo_id) ?? null) : null }),
     preco_venda: p.preco_venda,
     preco_override: overridePorProduto.get(p.id) ?? null,
   }));

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, produtoSchema } from "@/lib/validacao";
+import { validar, produtoSchema, grupoProdutoSchema } from "@/lib/validacao";
 
 const PATH = "/produtos";
 
@@ -22,6 +22,8 @@ export interface ProdutoInput {
   estoque_minimo: number;
   saida_media_semanal: number;
   ativo: boolean;
+  grupo_id: string | null;
+  variante_nome: string | null;
   loja_ids: string[];
 }
 
@@ -31,6 +33,21 @@ function revalidateTudo() {
   revalidatePath("/dashboard");
   revalidatePath("/precificacao");
   revalidatePath("/compras");
+  revalidatePath("/pdv");
+  revalidatePath("/catalogo");
+}
+
+/** Grupo de variantes: só o nome comercial compartilhado. Estoque/preço/SKU seguem no produto. */
+export async function criarGrupoProduto(nome: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("produto_grupos")
+    .insert(validar(grupoProdutoSchema, { nome, descricao: null, imagem_url: null, categoria_id: null }))
+    .select("id, nome")
+    .single();
+  if (error || !data) lancarErroSupabase(error ?? { message: "Erro ao criar grupo" });
+  revalidateTudo();
+  return data;
 }
 
 async function sincronizarLojasProduto(

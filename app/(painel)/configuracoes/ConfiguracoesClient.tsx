@@ -79,6 +79,7 @@ export interface PerfilNegocio {
   regime_tributario: string;
   aliquota_das: number;
   whatsapp: string;
+  pin_admin: string;
 }
 
 const ICONES_CANAL: Record<string, LucideIcon> = {
@@ -126,6 +127,7 @@ export function ConfiguracoesClient({
   const [regimeTributario, setRegimeTributario] = useState(perfil.regime_tributario);
   const [aliquotaDas, setAliquotaDas] = useState(perfil.aliquota_das);
   const [whatsapp, setWhatsapp] = useState(perfil.whatsapp);
+  const [pinAdmin, setPinAdmin] = useState(perfil.pin_admin);
 
   function salvarLojaHandler(dados: LojaInput) {
     startTransition(async () => {
@@ -347,6 +349,7 @@ export function ConfiguracoesClient({
       regime_tributario: regimeTributario,
       aliquota_das: aliquotaDas,
       whatsapp: whatsapp.trim() || null,
+      pin_admin: pinAdmin.trim() || null,
     };
     startTransition(async () => {
       try {
@@ -684,6 +687,28 @@ export function ConfiguracoesClient({
             <div className="mt-auto pt-2">
               <Button variant="primary" onClick={salvarPerfil} loading={pending}>
                 Salvar Regime
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="h-full flex flex-col">
+            <h3 className="font-semibold text-text-primary mb-4">PIN de Administração</h3>
+            <FormField label="PIN (4 a 8 números)">
+              <input
+                type="password"
+                inputMode="numeric"
+                className={inputClass}
+                value={pinAdmin}
+                onChange={(e) => setPinAdmin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                placeholder="Ex: 1234"
+              />
+            </FormField>
+            <p className="text-xs text-text-tertiary mb-4">
+              Pedido em Vendas antes de editar uma venda já finalizada. Deixe em branco para desativar a edição.
+            </p>
+            <div className="mt-auto pt-2">
+              <Button variant="primary" onClick={salvarPerfil} loading={pending}>
+                Salvar PIN
               </Button>
             </div>
           </Card>
