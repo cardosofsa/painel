@@ -31,8 +31,8 @@ Não existe service role key no projeto, e não deve existir: tudo passa pelo RL
 ## Banco de dados
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql` → `0013_produto_lojas.sql`). **Elas são aplicadas manualmente**: abra o
-SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem numérica.
+(`0001_init.sql` → `0020_perfis_acesso_admin.sql`). **Elas são aplicadas manualmente**: abra
+o SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem numérica.
 
 Convenções ao criar uma migração nova:
 
@@ -43,6 +43,47 @@ Convenções ao criar uma migração nova:
   `using (auth.uid() = user_id)`. Tabela filha (sem `user_id` próprio) usa `exists` no pai.
 - **Termine sempre com `NOTIFY pgrst, 'reload schema';`** — sem isso o PostgREST continua
   servindo o schema antigo e a aplicação quebra com "column not found".
+
+## Contas e controle de acesso
+
+Cada conta é um negócio isolado: todas as tabelas são separadas por `user_id` com RLS, então
+duas contas nunca enxergam os dados uma da outra. Acima disso existe a **conta master**, que
+vê todos os cadastros em `/admin`, aprova quem entra e decide quais abas cada conta usa.
+
+- Quem se cadastra entra como `pendente` e cai em `/aguardando` até o master liberar.
+- A liberação por aba é aplicada no middleware (`lib/supabase/middleware.ts`), não no menu —
+  esconder o link não impediria ninguém de digitar a URL.
+- O catálogo de abas fica em `lib/acesso.ts`, e `perfis_acesso` não tem policy de escrita:
+  toda alteração passa por RPC `security definer` que confere `e_master()`.
+
+Para promover a primeira conta a master, rode o `update` documentado no cabeçalho de
+`supabase/migrations/0020_perfis_acesso_admin.sql` — sem isso `/admin` fica inacessível.
+
+## Deploy
+
+O app é um Next.js comum; o banco continua sendo o Supabase que já existe.
+
+1. **Vercel** — importe o repositório e configure as duas variáveis de ambiente:
+   `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (as mesmas do `.env.local`).
+   A chave anônima é pública por natureza; quem protege os dados é o RLS.
+2. **Supabase → Authentication → URL Configuration** — ponha o domínio de produção em
+   *Site URL* e em *Redirect URLs* (`https://SEU-DOMINIO/auth/callback`). Sem isso o link de
+   confirmação de e-mail continua apontando para `localhost` e ninguém consegue ativar a conta.
+3. **Supabase → Authentication → Providers → Email** — mantenha a confirmação de e-mail
+   ligada, para não entrar conta com e-mail inventado.
+4. Aplique todas as migrações pendentes no SQL Editor, em ordem.
+
+Antes de abrir para terceiros, confira no SQL Editor que nenhuma tabela ficou sem RLS:
+
+```sql
+select tablename from pg_tables
+ where schemaname = 'public'
+   and tablename not in (select tablename from pg_tables t
+                          join pg_class c on c.relname = t.tablename
+                         where c.relrowsecurity and t.schemaname = 'public');
+```
+
+A consulta tem que voltar vazia. Uma tabela sem RLS é acessível por qualquer conta logada.
 
 ## Estrutura
 

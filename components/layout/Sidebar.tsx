@@ -3,14 +3,19 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brain, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Brain, ChevronsLeft, ChevronsRight, ShieldCheck } from "lucide-react";
 import { NAV_ITEMS } from "./navigation";
+import { normalizarAbas } from "@/lib/acesso";
 import { useSidebarMobile } from "./SidebarMobileContext";
 
-export function Sidebar() {
+export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean }) {
   const pathname = usePathname();
   const [recolhida, setRecolhida] = useState(false);
   const { aberta, fechar } = useSidebarMobile();
+
+  // Só esconde o que não foi liberado — quem barra de verdade é o middleware.
+  const liberadas = normalizarAbas(abas);
+  const itens = NAV_ITEMS.filter((item) => liberadas.includes(item.id));
 
   // Lido do localStorage após montar (evita mismatch de hidratação SSR vs cliente).
   useEffect(() => {
@@ -53,7 +58,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">
-        {NAV_ITEMS.map((item) => {
+        {itens.map((item) => {
           const active = pathname.startsWith(item.href);
           const Icon = item.icon;
           return (
@@ -75,6 +80,24 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {ehMaster && (
+          <Link
+            href="/admin"
+            onClick={fechar}
+            title={recolhida ? "Administração" : undefined}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors mt-2 border-t border-border pt-3 ${
+              recolhida ? "justify-center px-0" : ""
+            } ${
+              pathname.startsWith("/admin")
+                ? "bg-accent-soft text-accent font-medium"
+                : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+            }`}
+          >
+            <ShieldCheck size={16} strokeWidth={2} className="shrink-0" />
+            {!recolhida && "Administração"}
+          </Link>
+        )}
       </nav>
 
       <button

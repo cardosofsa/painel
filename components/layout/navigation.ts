@@ -13,18 +13,28 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
+import { ABAS, type AbaId } from "@/lib/acesso";
 
-export const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/pdv", label: "PDV", icon: ScanBarcode },
-  { href: "/vendas", label: "Vendas", icon: Receipt },
-  { href: "/precificacao", label: "Precificação", icon: Tag },
-  { href: "/produtos", label: "Produtos", icon: Package },
-  { href: "/clientes", label: "Clientes", icon: Users },
-  { href: "/fornecedores", label: "Fornecedores", icon: Truck },
-  { href: "/compras", label: "Compras", icon: ShoppingCart },
-  { href: "/estoque", label: "Estoque", icon: Boxes },
-  { href: "/financeiro", label: "Financeiro", icon: Wallet },
-  { href: "/catalogo", label: "Catálogo", icon: BookOpen },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
-];
+/** Ícone de cada aba. O catálogo em si (id, rótulo, rota) mora em `lib/acesso.ts`,
+ * que o middleware também usa e por isso não pode importar ícone nenhum. */
+const ICONES: Record<AbaId, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  pdv: ScanBarcode,
+  vendas: Receipt,
+  precificacao: Tag,
+  produtos: Package,
+  clientes: Users,
+  fornecedores: Truck,
+  compras: ShoppingCart,
+  estoque: Boxes,
+  financeiro: Wallet,
+  catalogo: BookOpen,
+  configuracoes: Settings,
+};
+
+export const NAV_ITEMS: { id: AbaId; href: string; label: string; icon: LucideIcon }[] = ABAS.map((aba) => ({
+  id: aba.id,
+  href: aba.href,
+  label: aba.label,
+  icon: ICONES[aba.id],
+}));
