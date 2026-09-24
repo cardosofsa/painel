@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   resultadoParaPreco,
+  resultadoParaPrecoComFaixas,
   resolverPorMargem,
+  resolverPorMarkup,
   resolverPorLucro,
   resolverComFaixas,
   analisarConcorrencia,
@@ -95,6 +97,26 @@ describe("resolverPorMargem", () => {
   });
 });
 
+describe("resolverPorMarkup", () => {
+  it("entrega exatamente o markup pedido sobre o custo, não sobre o preço", () => {
+    const r = resolverPorMarkup(30, 0.5, SEM_TAXAS);
+    expect(r.lucroLiquido).toBeCloseTo(30 * 0.5, 10); // 50% de 30 = 15
+    expect(r.markupSobreCustoPct).toBeCloseTo(0.5, 10);
+    expect(r.margemEfetivaPct).toBeLessThan(0.5); // margem sobre preço é sempre menor que markup sobre custo
+  });
+
+  it("embute as taxas da plataforma no preço, igual às outras formas de cálculo", () => {
+    const r = resolverPorMarkup(30, 0.5, SHOPEE);
+    expect(r.lucroLiquido).toBeCloseTo(15, 10);
+    expect(r.viavel).toBe(true);
+  });
+
+  it("é inviável com custo zero ou taxas somando 100%", () => {
+    expect(resolverPorMarkup(0, 0.5, SHOPEE).viavel).toBe(false);
+    expect(resolverPorMarkup(30, 0.5, { ...SEM_TAXAS, taxaVariavelPct: 1 }).viavel).toBe(false);
+  });
+});
+
 describe("resolverPorLucro", () => {
   it("entrega exatamente o lucro em reais pedido", () => {
     const r = resolverPorLucro(30, 25, SHOPEE);
@@ -147,11 +169,49 @@ describe("resolverComFaixas", () => {
     const { faixa } = resolverComFaixas(1, "preco", 5, { impostoPct: 0, taxaAdicionalPct: 0 }, faixasAltas);
     expect(faixa.comissaoPct).toBe(14);
   });
+
+  it("também resolve o modo markup, escolhendo a faixa do preço resultante", () => {
+    const { resultado, faixa } = resolverComFaixas(200, "markup", 0.3, { impostoPct: 0.06, taxaAdicionalPct: 0 }, faixas);
+    expect(resultado.viavel).toBe(true);
+    expect(resultado.markupSobreCustoPct).toBeCloseTo(0.3, 5);
+    expect(faixa.comissaoPct).toBe(22);
+  });
+});
+
+describe("resultadoParaPrecoComFaixas", () => {
+  const faixas: FaixaComissao[] = [
+    { min: 0, max: 39.99, comissaoPct: 14, tarifaFixa: 4 },
+    { min: 40, max: 79.99, comissaoPct: 18, tarifaFixa: 4 },
+    { min: 80, max: null, comissaoPct: 22, tarifaFixa: 4 },
+  ];
+
+  it("usa a comissão e a tarifa fixa da faixa correspondente ao preço informado, não a do preço recomendado", () => {
+    // Preço de R$ 30 cai na faixa de 14% + tarifa fixa de R$ 4, mesmo que o preço "ideal" do
+    // produto esteja noutra faixa.
+    const r = resultadoParaPrecoComFaixas(30, 10, { impostoPct: 0, taxaAdicionalPct: 0 }, faixas);
+    expect(r.taxaVariavelValor).toBeCloseTo(30 * 0.14, 10);
+    // lucro = preço - custo - tarifa fixa(4) - comissão(4.2) - imposto(0)
+    expect(r.lucroLiquido).toBeCloseTo(30 - 10 - 4 - 30 * 0.14, 10);
+  });
+
+  it("muda de faixa ao trocar de preço, como um preço mínimo e máximo escolhidos pelo usuário", () => {
+    const noMinimo = resultadoParaPrecoComFaixas(35, 10, { impostoPct: 0, taxaAdicionalPct: 0 }, faixas);
+    const noMaximo = resultadoParaPrecoComFaixas(100, 10, { impostoPct: 0, taxaAdicionalPct: 0 }, faixas);
+    expect(noMinimo.taxaVariavelValor).toBeCloseTo(35 * 0.14, 10);
+    expect(noMaximo.taxaVariavelValor).toBeCloseTo(100 * 0.22, 10);
+    expect(noMaximo.lucroLiquido).toBeGreaterThan(noMinimo.lucroLiquido);
+  });
+
+  it("sem faixas cadastradas, não cobra comissão nem taxa fixa", () => {
+    const r = resultadoParaPrecoComFaixas(50, 10, { impostoPct: 0, taxaAdicionalPct: 0 }, []);
+    expect(r.taxaVariavelValor).toBe(0);
+    expect(r.lucroLiquido).toBeCloseTo(50 - 10, 10);
+  });
 });
 
 describe("formatarFaixaLabel", () => {
   it("formata faixa fechada e faixa aberta", () => {
-    expect(formatarFaixaLabel({ min: 80, max: 99.99, comissaoPct: 0, tarifaFixa: 0 })).toContain("–");
+    expect(formatarFaixaLabel({ min: 80, max: 99.99, comissaoPct: 0, tarifaFixa: 0 })).toContain(" a ");
     expect(formatarFaixaLabel({ min: 200, max: null, comissaoPct: 0, tarifaFixa: 0 })).toContain("ou mais");
   });
 });

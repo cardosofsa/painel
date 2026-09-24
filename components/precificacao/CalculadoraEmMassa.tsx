@@ -237,6 +237,7 @@ export function CalculadoraEmMassa({
       lucroLiquido: r.resultado.lucroLiquido,
       margemEfetivaPct: r.resultado.margemEfetivaPct,
       componentes: null,
+      faixaVenda: null,
     };
   }
 

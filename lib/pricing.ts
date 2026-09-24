@@ -14,11 +14,12 @@ export interface TaxasPlataforma {
   taxaExtraTipo?: "percentual" | "fixo" | null;
 }
 
-export type ModoCalculo = "margem" | "lucro" | "preco";
+export type ModoCalculo = "margem" | "lucro" | "preco" | "markup";
 
-/** As três formas de chegar ao preço, com os rótulos usados nas telas de precificação. */
+/** As quatro formas de chegar ao preço, com os rótulos usados nas telas de precificação. */
 export const MODOS: { id: ModoCalculo; label: string }[] = [
   { id: "margem", label: "Margem Alvo" },
+  { id: "markup", label: "Markup sobre Custo" },
   { id: "lucro", label: "Lucro Desejado (R$)" },
   { id: "preco", label: "Preço Fixo" },
 ];
@@ -123,6 +124,23 @@ export function resolverPorLucro(
   return resultadoParaPreco(precoVenda, custoTotal, taxas);
 }
 
+/**
+ * Resolve o preço de venda a partir de custo + taxas da plataforma + markup desejado sobre o
+ * custo (markup = lucro líquido / custo, diferente de margem = lucro líquido / preço).
+ * price = (custo * (1 + markup) + taxaFixa + extraFixo) / (1 - taxaVariavelPct - taxaAdicionalPct - impostoPct - extraFracao)
+ */
+export function resolverPorMarkup(
+  custoTotal: number,
+  markupDesejadoPct: number,
+  taxas: TaxasPlataforma,
+): ResultadoPrecificacao {
+  const denom = 1 - taxas.taxaVariavelPct - taxas.taxaAdicionalPct - taxas.impostoPct - extraFracao(taxas);
+  if (denom <= 0.001 || custoTotal <= 0) return resultadoInviavel(custoTotal);
+
+  const precoVenda = (custoTotal * (1 + markupDesejadoPct) + taxas.taxaFixa + extraFixo(taxas)) / denom;
+  return resultadoParaPreco(precoVenda, custoTotal, taxas);
+}
+
 export interface FaixaComissao {
   min: number;
   max: number | null;
@@ -135,7 +153,7 @@ export function formatarFaixaLabel(faixa: FaixaComissao): string {
   const min = faixa.min.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   if (faixa.max === null) return `${min} ou mais`;
   const max = faixa.max.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  return `${min} – ${max}`;
+  return `${min} a ${max}`;
 }
 
 function encontrarFaixa(faixas: FaixaComissao[], preco: number): FaixaComissao {
@@ -154,6 +172,18 @@ export interface ResultadoComFaixa {
   faixa: FaixaComissao;
 }
 
+function resolverPorModo(
+  modo: ModoCalculo,
+  custoTotal: number,
+  parametro: number,
+  taxas: TaxasPlataforma,
+): ResultadoPrecificacao {
+  if (modo === "margem") return resolverPorMargem(custoTotal, parametro, taxas);
+  if (modo === "markup") return resolverPorMarkup(custoTotal, parametro, taxas);
+  if (modo === "lucro") return resolverPorLucro(custoTotal, parametro, taxas);
+  return resultadoParaPreco(parametro, custoTotal, taxas);
+}
+
 /**
  * Resolve o preço considerando uma tabela de faixas de comissão por preço (ex.: Shopee): a
  * comissão/tarifa dependem do preço final, que por sua vez depende da comissão — resolve por
@@ -168,12 +198,7 @@ export function resolverComFaixas(
 ): ResultadoComFaixa {
   if (faixas.length === 0) {
     const taxas: TaxasPlataforma = { ...taxasBase, taxaVariavelPct: 0, taxaFixa: 0 };
-    const resultado =
-      modo === "margem"
-        ? resolverPorMargem(custoTotal, parametro, taxas)
-        : modo === "lucro"
-          ? resolverPorLucro(custoTotal, parametro, taxas)
-          : resultadoParaPreco(parametro, custoTotal, taxas);
+    const resultado = resolverPorModo(modo, custoTotal, parametro, taxas);
     return { resultado, faixa: { min: 0, max: null, comissaoPct: 0, tarifaFixa: 0 } };
   }
 
@@ -182,9 +207,7 @@ export function resolverComFaixas(
 
   for (let i = 0; i < 5; i++) {
     const taxas: TaxasPlataforma = { ...taxasBase, taxaVariavelPct: faixa.comissaoPct / 100, taxaFixa: faixa.tarifaFixa };
-    if (modo === "margem") resultado = resolverPorMargem(custoTotal, parametro, taxas);
-    else if (modo === "lucro") resultado = resolverPorLucro(custoTotal, parametro, taxas);
-    else resultado = resultadoParaPreco(parametro, custoTotal, taxas);
+    resultado = resolverPorModo(modo, custoTotal, parametro, taxas);
 
     if (!resultado.viavel) break;
     const novaFaixa = encontrarFaixa(faixas, resultado.precoVenda);
@@ -193,6 +216,28 @@ export function resolverComFaixas(
   }
 
   return { resultado, faixa };
+}
+
+/**
+ * Calcula o resultado (lucro, margem) para um preço de venda já definido, mas considerando a
+ * tabela de faixas de comissão — usado para saber o lucro num preço mínimo/máximo escolhido
+ * pelo usuário, que pode cair numa faixa de comissão diferente da do preço recomendado.
+ */
+export function resultadoParaPrecoComFaixas(
+  precoVenda: number,
+  custoTotal: number,
+  taxasBase: Omit<TaxasPlataforma, "taxaVariavelPct" | "taxaFixa">,
+  faixas: FaixaComissao[],
+): ResultadoPrecificacao {
+  if (faixas.length === 0) {
+    return resultadoParaPreco(precoVenda, custoTotal, { ...taxasBase, taxaVariavelPct: 0, taxaFixa: 0 });
+  }
+  const faixa = encontrarFaixa(faixas, precoVenda);
+  return resultadoParaPreco(precoVenda, custoTotal, {
+    ...taxasBase,
+    taxaVariavelPct: faixa.comissaoPct / 100,
+    taxaFixa: faixa.tarifaFixa,
+  });
 }
 
 export interface Concorrente {

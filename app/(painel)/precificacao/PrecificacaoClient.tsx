@@ -15,8 +15,10 @@ import { formatBRL } from "@/lib/format";
 import { paraCsv as paraCsvColunas, baixarArquivo } from "@/lib/csv";
 import {
   resolverPorMargem,
+  resolverPorMarkup,
   resolverPorLucro,
   resultadoParaPreco,
+  resultadoParaPrecoComFaixas,
   resolverComFaixas,
   formatarFaixaLabel,
   analisarConcorrencia,
@@ -24,6 +26,7 @@ import {
   type ModoCalculo,
   type Concorrente,
   type TaxasPlataforma,
+  type ResultadoPrecificacao,
   MODOS,
   type FaixaComissao,
 } from "@/lib/pricing";
@@ -153,8 +156,11 @@ export function PrecificacaoClient({
   const [mostrarDetalheResultado, setMostrarDetalheResultado] = useState(false);
   const [modo, setModo] = useState<ModoCalculo>("margem");
   const [margemPct, setMargemPct] = useState(28);
+  const [markupPct, setMarkupPct] = useState(50);
   const [lucroDesejado, setLucroDesejado] = useState(30);
   const [precoFixo, setPrecoFixo] = useState(99.9);
+  const [precoMinimo, setPrecoMinimo] = useState<number | "">("");
+  const [precoMaximo, setPrecoMaximo] = useState<number | "">("");
   const [impostoPct, setImpostoPct] = useState(aliquotaDasPadrao);
   const [modoTaxas, setModoTaxas] = useState<"manual" | "loja">("manual");
   const [lojaId, setLojaId] = useState<string | null>(null);
@@ -198,24 +204,51 @@ export function PrecificacaoClient({
     };
   }, [modoTaxas, lojaSelecionada, impostoPct, taxaFixa, taxaVariavelPct, taxaAdicionalPct]);
 
+  const taxasBaseFaixas = useMemo(
+    () => ({
+      impostoPct: impostoPct / 100,
+      taxaAdicionalPct: taxaAdicionalPct / 100,
+      taxaExtraValor: lojaSelecionada?.taxaExtraValor ?? undefined,
+      taxaExtraTipo: lojaSelecionada?.taxaExtraTipo ?? null,
+    }),
+    [impostoPct, taxaAdicionalPct, lojaSelecionada],
+  );
+
+  const usaFaixas = modoTaxas === "loja" && lojaSelecionada?.tipoTaxa === "faixas";
+
   const { resultado, faixaShopee } = useMemo(() => {
-    if (modoTaxas === "loja" && lojaSelecionada?.tipoTaxa === "faixas") {
-      const taxasBase = {
-        impostoPct: impostoPct / 100,
-        taxaAdicionalPct: taxaAdicionalPct / 100,
-        taxaExtraValor: lojaSelecionada.taxaExtraValor ?? undefined,
-        taxaExtraTipo: lojaSelecionada.taxaExtraTipo,
-      };
-      const parametro = modo === "margem" ? margemPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo;
-      const { resultado: r, faixa } = resolverComFaixas(custoTotal, modo, parametro, taxasBase, lojaSelecionada.faixas);
+    const parametro =
+      modo === "margem" ? margemPct / 100 : modo === "markup" ? markupPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo;
+
+    if (usaFaixas && lojaSelecionada) {
+      const { resultado: r, faixa } = resolverComFaixas(custoTotal, modo, parametro, taxasBaseFaixas, lojaSelecionada.faixas);
       return { resultado: r, faixaShopee: faixa as FaixaComissao | null };
     }
     let r;
     if (modo === "margem") r = resolverPorMargem(custoTotal, margemPct / 100, taxas);
+    else if (modo === "markup") r = resolverPorMarkup(custoTotal, markupPct / 100, taxas);
     else if (modo === "lucro") r = resolverPorLucro(custoTotal, lucroDesejado, taxas);
     else r = resultadoParaPreco(precoFixo, custoTotal, taxas);
     return { resultado: r, faixaShopee: null as FaixaComissao | null };
-  }, [modoTaxas, lojaSelecionada, custoTotal, modo, margemPct, lucroDesejado, precoFixo, taxas, impostoPct, taxaAdicionalPct]);
+  }, [usaFaixas, lojaSelecionada, custoTotal, modo, margemPct, markupPct, lucroDesejado, precoFixo, taxas, taxasBaseFaixas]);
+
+  /** Lucro no menor e no maior preço que o usuário aceitaria vender — cada ponta pode cair
+   * numa faixa de comissão diferente da do preço recomendado, por isso resolve de novo. */
+  const resultadoNoPreco = useMemo(() => {
+    return (preco: number): ResultadoPrecificacao =>
+      usaFaixas && lojaSelecionada
+        ? resultadoParaPrecoComFaixas(preco, custoTotal, taxasBaseFaixas, lojaSelecionada.faixas)
+        : resultadoParaPreco(preco, custoTotal, taxas);
+  }, [usaFaixas, lojaSelecionada, custoTotal, taxasBaseFaixas, taxas]);
+
+  const resultadoMin = useMemo(
+    () => (precoMinimo !== "" && precoMinimo > 0 && custoTotal > 0 ? resultadoNoPreco(precoMinimo) : null),
+    [precoMinimo, custoTotal, resultadoNoPreco],
+  );
+  const resultadoMax = useMemo(
+    () => (precoMaximo !== "" && precoMaximo > 0 && custoTotal > 0 ? resultadoNoPreco(precoMaximo) : null),
+    [precoMaximo, custoTotal, resultadoNoPreco],
+  );
 
   const taxaVariavelPctEfetiva =
     modoTaxas === "loja" && lojaSelecionada
@@ -326,6 +359,17 @@ export function PrecificacaoClient({
       lucroLiquido: resultado.lucroLiquido,
       margemEfetivaPct: resultado.margemEfetivaPct,
       componentes,
+      faixaVenda:
+        resultadoMin && resultadoMax
+          ? {
+              precoMinimo: resultadoMin.precoVenda,
+              precoMaximo: resultadoMax.precoVenda,
+              lucroMinimo: resultadoMin.lucroLiquido,
+              margemMinimaPct: resultadoMin.margemEfetivaPct,
+              lucroMaximo: resultadoMax.lucroLiquido,
+              margemMaximaPct: resultadoMax.margemEfetivaPct,
+            }
+          : null,
     };
   }
 
@@ -351,6 +395,7 @@ export function PrecificacaoClient({
       lucroLiquido: h.lucro,
       margemEfetivaPct: h.preco_calculado > 0 ? h.lucro / h.preco_calculado : 0,
       componentes: h.componentes,
+      faixaVenda: null,
     };
   }
 
@@ -869,6 +914,22 @@ export function PrecificacaoClient({
                 />
               </div>
             )}
+            {modo === "markup" && (
+              <div>
+                <label className="text-xs text-text-secondary mb-1.5 block">Markup sobre o Custo (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={markupPct}
+                  onChange={(e) => setMarkupPct(Number(e.target.value) || 0)}
+                  className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+                />
+                <p className="text-xs text-text-tertiary mt-1.5">
+                  Diferente da margem: markup é o lucro sobre o custo (ex.: 50% de markup num custo de R$ 10 dá R$ 5 de
+                  lucro), enquanto margem é o lucro sobre o preço de venda.
+                </p>
+              </div>
+            )}
             {modo === "lucro" && (
               <div>
                 <label className="text-xs text-text-secondary mb-1.5 block">Lucro Líquido Desejado (R$)</label>
@@ -1062,6 +1123,64 @@ export function PrecificacaoClient({
           </Card>
 
           <Card>
+            <h3 className="text-sm font-medium text-text-primary mb-1">Faixa de Venda (opcional)</h3>
+            <p className="text-xs text-text-tertiary mb-3">
+              Defina o menor e o maior preço que você aceitaria vender para ver o lucro mínimo e máximo possível — útil
+              pra negociar com o cliente sem perder dinheiro.
+            </p>
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div>
+                <label className="text-xs text-text-secondary mb-1.5 block">Preço Mínimo (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={precoMinimo}
+                  onChange={(e) => setPrecoMinimo(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="Ex: 79,90"
+                  className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-text-secondary mb-1.5 block">Preço Máximo (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={precoMaximo}
+                  onChange={(e) => setPrecoMaximo(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="Ex: 129,90"
+                  className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+            {(resultadoMin || resultadoMax) && (
+              <div className="grid grid-cols-2 gap-4 text-sm border-t border-border pt-3">
+                <div>
+                  <div className="text-xs text-text-tertiary mb-0.5">Lucro no mínimo</div>
+                  {resultadoMin ? (
+                    <span className={`font-mono ${resultadoMin.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
+                      {formatBRL(resultadoMin.lucroLiquido)} ({(resultadoMin.margemEfetivaPct * 100).toFixed(1)}%)
+                    </span>
+                  ) : (
+                    <span className="text-text-tertiary">—</span>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs text-text-tertiary mb-0.5">Lucro no máximo</div>
+                  {resultadoMax ? (
+                    <span className={`font-mono ${resultadoMax.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
+                      {formatBRL(resultadoMax.lucroLiquido)} ({(resultadoMax.margemEfetivaPct * 100).toFixed(1)}%)
+                    </span>
+                  ) : (
+                    <span className="text-text-tertiary">—</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          <Card>
             <span className="text-xs font-medium text-text-tertiary uppercase block mb-2">Composição do Preço</span>
             <PriceBreakdownChart
               data={[
@@ -1114,7 +1233,7 @@ export function PrecificacaoClient({
                 <div>
                   <div className="text-xs text-text-tertiary">Faixa de preços</div>
                   <div className="font-mono text-text-primary">
-                    {formatBRL(analiseConcorrencia.precoMinConcorrentes)} – {formatBRL(analiseConcorrencia.precoMaxConcorrentes)}
+                    {formatBRL(analiseConcorrencia.precoMinConcorrentes)} a {formatBRL(analiseConcorrencia.precoMaxConcorrentes)}
                   </div>
                 </div>
               </div>

@@ -182,6 +182,7 @@ export function VariacoesView({
       lucroLiquido: resultado.lucroLiquido,
       margemEfetivaPct: resultado.margemEfetivaPct,
       componentes: null,
+      faixaVenda: null,
     };
   }
 

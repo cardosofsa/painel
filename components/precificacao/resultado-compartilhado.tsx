@@ -8,6 +8,17 @@ import { Modal } from "@/components/ui/Modal";
 import { formatBRL } from "@/lib/format";
 import { resultadoParaPreco, type ComponenteKit, type TaxasPlataforma } from "@/lib/pricing";
 
+/** Lucro no menor e no maior preço que o vendedor aceitaria praticar — opcional, só aparece
+ * no texto/imagem no formato "completo" (ver montarTextoResumo). */
+export interface FaixaVendaExport {
+  precoMinimo: number;
+  precoMaximo: number;
+  lucroMinimo: number;
+  margemMinimaPct: number;
+  lucroMaximo: number;
+  margemMaximaPct: number;
+}
+
 export interface ResumoExport {
   titulo: string;
   precoVenda: number;
@@ -23,6 +34,7 @@ export interface ResumoExport {
   lucroLiquido: number;
   margemEfetivaPct: number;
   componentes: ComponenteKit[] | null;
+  faixaVenda: FaixaVendaExport | null;
 }
 
 export function precoPsicologico(preco: number): number {
@@ -53,6 +65,14 @@ export function montarTextoResumo(r: ResumoExport, formato: "simples" | "complet
   }
   linhas.push("", `Preço de venda: ${formatBRL(r.precoVenda)}`);
   linhas.push(`Lucro líquido: ${formatBRL(r.lucroLiquido)} (${(r.margemEfetivaPct * 100).toFixed(1)}%)`);
+  if (formato === "completo" && r.faixaVenda) {
+    linhas.push(
+      "",
+      `Faixa de venda: ${formatBRL(r.faixaVenda.precoMinimo)} a ${formatBRL(r.faixaVenda.precoMaximo)}`,
+      `Lucro mínimo: ${formatBRL(r.faixaVenda.lucroMinimo)} (${(r.faixaVenda.margemMinimaPct * 100).toFixed(1)}%)`,
+      `Lucro máximo: ${formatBRL(r.faixaVenda.lucroMaximo)} (${(r.faixaVenda.margemMaximaPct * 100).toFixed(1)}%)`,
+    );
+  }
   return linhas.join("\n");
 }
 
@@ -267,6 +287,28 @@ export function useExportarPrecificacao() {
                     {formatBRL(imagemParaExportar.dados.lucroLiquido)} ({(imagemParaExportar.dados.margemEfetivaPct * 100).toFixed(1)}%)
                   </span>
                 </div>
+                {imagemParaExportar.formato === "completo" && imagemParaExportar.dados.faixaVenda && (
+                  <div style={{ borderTop: "1px solid #e5e7eb", marginTop: 10, paddingTop: 10 }}>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
+                      Faixa de venda: {formatBRL(imagemParaExportar.dados.faixaVenda.precoMinimo)} a{" "}
+                      {formatBRL(imagemParaExportar.dados.faixaVenda.precoMaximo)}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
+                      <span>Lucro mínimo</span>
+                      <span>
+                        {formatBRL(imagemParaExportar.dados.faixaVenda.lucroMinimo)} (
+                        {(imagemParaExportar.dados.faixaVenda.margemMinimaPct * 100).toFixed(1)}%)
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#374151" }}>
+                      <span>Lucro máximo</span>
+                      <span>
+                        {formatBRL(imagemParaExportar.dados.faixaVenda.lucroMaximo)} (
+                        {(imagemParaExportar.dados.faixaVenda.margemMaximaPct * 100).toFixed(1)}%)
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
