@@ -83,6 +83,18 @@ sessão do usuário. Toda trava que importa tem que estar no banco.
 | PIN de edição de venda | hash bcrypt conferido dentro de `editar_venda` (`0021`) |
 | Liberação por aba | middleware — é roteamento, **não** isolamento de dados |
 
+Autenticação tem tradutor próprio: `traduzirErroAuth()` em `lib/erros.ts`. Os códigos da
+GoTrue (`invalid_credentials`, `email_not_confirmed`, `otp_expired`…) não são SQLSTATE e não
+passam por `traduzirErroSupabase`. Nunca mostre `error.message` de auth direto na tela.
+
+`/recuperar` e `/auth/reset` são públicas no middleware **e não** `isAuthEntryRoute` — o
+motivo está comentado no próprio `lib/supabase/middleware.ts` e no README. Mexer nisso
+quebra a recuperação de senha de conta suspensa, que é silencioso: continua funcionando para
+a conta master.
+
+A regra de senha mora só em `senhaSchema` (`lib/validacao.ts`), usada pelas quatro telas que
+pedem senha. Não escreva o mínimo à mão.
+
 O PIN nunca é enviado ao cliente: `perfil_negocio.pin_admin_hash` fica fora de todo
 `select` e a tela recebe só um booleano.
 

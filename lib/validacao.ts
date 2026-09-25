@@ -185,6 +185,34 @@ export const vendaEdicaoSchema = z.object({
 
 const dataIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
 
+/**
+ * Regra única de senha do sistema. Antes o mínimo estava escrito à mão em três arquivos
+ * diferentes (cadastro, troca de senha e os `minLength` dos inputs), o que significa que
+ * mudar a regra exigia achar todos.
+ *
+ * Máximo de 72 de propósito: o bcrypt ignora tudo além do 72º byte, então aceitar uma senha
+ * mais longa daria ao usuário a impressão de mais segurança do que ele tem de fato.
+ */
+export const SENHA_MIN = 8;
+export const SENHA_MAX = 72;
+
+export const senhaSchema = z
+  .string()
+  .min(SENHA_MIN, `A senha precisa ter pelo menos ${SENHA_MIN} caracteres`)
+  .max(SENHA_MAX, `A senha pode ter no máximo ${SENHA_MAX} caracteres`)
+  .refine((s) => s === s.trim(), "A senha não pode começar ou terminar com espaço");
+
+export const emailAuthSchema = z.string().trim().toLowerCase().email("E-mail inválido").max(200);
+
+export const recuperacaoSchema = z.object({ email: emailAuthSchema });
+
+export const novaSenhaSchema = z
+  .object({ senha: senhaSchema, confirmacao: z.string() })
+  .refine((d) => d.senha === d.confirmacao, {
+    message: "As senhas não coincidem",
+    path: ["confirmacao"],
+  });
+
 export const fornecedorSchema = z.object({
   nome: textoCurto,
   cnpj: z.string().trim().max(32),

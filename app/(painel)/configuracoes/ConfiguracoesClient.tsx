@@ -14,6 +14,8 @@ import { StatusChip } from "@/components/ui/Badge";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { createClient } from "@/lib/supabase/client";
 import { formatBRL } from "@/lib/format";
+import { traduzirErroAuth } from "@/lib/erros";
+import { senhaSchema, SENHA_MIN } from "@/lib/validacao";
 import { formatarFaixaLabel } from "@/lib/pricing";
 import {
   criarCategoria,
@@ -784,8 +786,9 @@ function ContaCard({ email }: { email: string }) {
       toast.error("Informe a senha atual.");
       return;
     }
-    if (novaSenha.length < 6) {
-      toast.error("A senha precisa ter pelo menos 6 caracteres.");
+    const validacao = senhaSchema.safeParse(novaSenha);
+    if (!validacao.success) {
+      toast.error(validacao.error.issues[0].message);
       return;
     }
     if (novaSenha !== confirmarSenha) {
@@ -795,6 +798,10 @@ function ContaCard({ email }: { email: string }) {
     setSalvando(true);
     const supabase = createClient();
 
+    // Re-login imediatamente antes: é o que satisfaz a exigência de "sessão recente" quando
+    // "Secure password change" está ligado no painel do Supabase — e esse ajuste do painel,
+    // não este código, é o que de fato impede alguém de trocar a senha pelo console do
+    // navegador com uma sessão aberta.
     const { error: erroReautenticacao } = await supabase.auth.signInWithPassword({ email, password: senhaAtual });
     if (erroReautenticacao) {
       setSalvando(false);
@@ -803,15 +810,22 @@ function ContaCard({ email }: { email: string }) {
     }
 
     const { error } = await supabase.auth.updateUser({ password: novaSenha });
-    setSalvando(false);
     if (error) {
-      toast.error(error.message);
+      setSalvando(false);
+      toast.error(traduzirErroAuth(error));
       return;
     }
+
+    // Trocar a senha não revoga os refresh tokens já emitidos. Sem isto, "troquei a senha
+    // porque alguém entrou na minha conta" deixa o invasor logado no aparelho dele.
+    const { error: erroSaida } = await supabase.auth.signOut({ scope: "others" });
+    setSalvando(false);
+    if (erroSaida) console.error("[auth] signOut others", erroSaida.code, erroSaida.message);
+
     setSenhaAtual("");
     setNovaSenha("");
     setConfirmarSenha("");
-    toast.success("Senha alterada com sucesso");
+    toast.success("Senha alterada. As sessões em outros aparelhos foram encerradas.");
   }
 
   return (
@@ -826,15 +840,17 @@ function ContaCard({ email }: { email: string }) {
       <FormField label="Senha atual">
         <input
           type="password"
+          autoComplete="current-password"
           className={inputClass}
           value={senhaAtual}
           onChange={(e) => setSenhaAtual(e.target.value)}
         />
       </FormField>
-      <FormField label="Nova senha">
+      <FormField label={`Nova senha (mínimo ${SENHA_MIN} caracteres)`}>
         <input
           type="password"
-          minLength={6}
+          minLength={SENHA_MIN}
+          autoComplete="new-password"
           className={inputClass}
           value={novaSenha}
           onChange={(e) => setNovaSenha(e.target.value)}
@@ -843,7 +859,8 @@ function ContaCard({ email }: { email: string }) {
       <FormField label="Confirmar nova senha">
         <input
           type="password"
-          minLength={6}
+          minLength={SENHA_MIN}
+          autoComplete="new-password"
           className={inputClass}
           value={confirmarSenha}
           onChange={(e) => setConfirmarSenha(e.target.value)}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sun, Moon, User, LogOut, Settings, Menu } from "lucide-react";
+import { Sun, Moon, LogOut, Settings, Menu } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "./ThemeContext";
 import { useSidebarMobile } from "./SidebarMobileContext";
@@ -85,9 +85,6 @@ export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
             <Link href="/configuracoes" onClick={() => setMenuAberto(false)} className="flex items-center gap-2 px-3 py-2 text-text-secondary hover:bg-surface-2 hover:text-text-primary">
               <Settings size={14} /> Configurações
             </Link>
-            <button className="w-full flex items-center gap-2 px-3 py-2 text-text-secondary hover:bg-surface-2 hover:text-text-primary text-left">
-              <User size={14} /> Perfil
-            </button>
             <button onClick={sair} className="w-full flex items-center gap-2 px-3 py-2 text-negative hover:bg-negative-soft text-left">
               <LogOut size={14} /> Sair
             </button>

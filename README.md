@@ -25,8 +25,66 @@ Variáveis de ambiente (em `.env.local`):
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto no Supabase |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Chave anônima (`anon public`) do projeto |
+| `NEXT_PUBLIC_SITE_URL` | Opcional em dev, **recomendada em produção**: base dos links enviados por e-mail |
 
 Não existe service role key no projeto, e não deve existir: tudo passa pelo RLS.
+
+## Autenticação
+
+| Rota | Para quê |
+| --- | --- |
+| `/login` | Entrar. Oferece reenvio da confirmação quando o e-mail ainda não foi confirmado |
+| `/signup` | Criar conta. O cadastro nasce `pendente` e passa por aprovação do master |
+| `/recuperar` | Pedir o link de redefinição de senha |
+| `/auth/reset` | Definir a nova senha (tela terminal, chega-se nela pelo link do e-mail) |
+| `/auth/callback` | Recebe todo link de e-mail: confirmação, recuperação, convite |
+
+Três coisas que não são óbvias e é melhor não desfazer sem pensar:
+
+- **`/recuperar` responde igual exista ou não a conta.** Diferenciar transformaria a tela num
+  verificador de quem tem cadastro no sistema. A única exceção tratada é o limite de envio.
+- **`/recuperar` e `/auth/reset` são rotas públicas no middleware, mas não são
+  `isAuthEntryRoute`.** Se fossem, a regra `user && isAuthEntryRoute → /dashboard` expulsaria
+  quem acabou de ganhar sessão pelo link, e a redefinição ficaria inalcançável. E se não
+  fossem públicas, conta `suspensa` ou `pendente` seria mandada para `/aguardando` e **nunca
+  conseguiria trocar a senha** — justamente o caso em que trocar mais importa.
+- **Erro de autenticação passa por `traduzirErroAuth`** (`lib/erros.ts`), não por
+  `traduzirErroSupabase`, que só conhece código do Postgres.
+
+### Configuração obrigatória no painel do Supabase
+
+O código não alcança nada disto, e sem isto o fluxo falha em produção:
+
+1. **Authentication → URL Configuration** — *Site URL* com o domínio de produção e, em
+   *Redirect URLs*, `https://SEU-DOMINIO/auth/callback` **e** `https://SEU-DOMINIO/auth/reset`.
+   Sem isso a GoTrue troca o destino pelo Site URL em silêncio e o link "não funciona".
+2. **Authentication → Email Templates** — trocar os dois templates abaixo. É o que faz o
+   link funcionar quando a pessoa se cadastra no computador e abre o e-mail no celular: o
+   formato padrão (`{{ .ConfirmationURL }}`) usa PKCE, cujo verificador fica guardado só no
+   navegador de origem.
+
+   *Confirm signup*:
+   ```html
+   <p>Confirme seu cadastro no Segundo Cérebro:</p>
+   <p><a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=signup">Confirmar minha conta</a></p>
+   ```
+
+   *Reset password*:
+   ```html
+   <p>Recebemos um pedido para redefinir sua senha:</p>
+   <p><a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery">Definir nova senha</a></p>
+   <p>Se não foi você, ignore este e-mail.</p>
+   ```
+3. **Authentication → Providers → Email** — ligar **Confirm email** e **Secure password
+   change**. O segundo é o que realmente exige a senha atual: a re-autenticação feita em
+   Configurações é o que satisfaz a exigência de "sessão recente", mas sozinha ela não
+   impede uma chamada direta à API.
+4. **Authentication → Policies** — mínimo de 8 caracteres (igual ao `senhaSchema`) e
+   **Leaked password protection** (HaveIBeenPwned).
+5. **Authentication → Attack Protection** — captcha. Não há bloqueio por tentativas na
+   aplicação; o limite é o da GoTrue, que é por IP.
+6. **SMTP próprio.** O SMTP embutido entrega poucos e-mails por hora — com cadastro e
+   recuperação por e-mail, isso inviabiliza o uso real.
 
 ## Banco de dados
 

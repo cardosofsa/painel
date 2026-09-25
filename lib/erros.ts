@@ -70,3 +70,68 @@ export function traduzirErroSupabase(erro: ErroSupabase): string {
 export function lancarErroSupabase(erro: ErroSupabase): never {
   throw new Error(traduzirErroSupabase(erro));
 }
+
+/**
+ * Erros de autenticação (GoTrue), que são outro universo de códigos: `traduzirErroSupabase`
+ * só conhece SQLSTATE do Postgres, então todo erro de login/cadastro caía no fallback ou,
+ * pior, era repassado cru em inglês num app inteiro em pt-BR.
+ *
+ * Referência: https://supabase.com/docs/guides/auth/debugging/error-codes
+ */
+export interface ErroAuth {
+  code?: string;
+  message: string;
+  status?: number;
+}
+
+/**
+ * O caso que mais importa aqui é `email_not_confirmed`. Antes ele era colapsado em
+ * "E-mail ou senha inválidos", o que é uma mentira que o usuário não tem como desmontar
+ * sozinho: a senha dele está certa, e sem essa distinção ele fica tentando variações da
+ * senha para sempre.
+ */
+const POR_CODIGO_AUTH: Record<string, string> = {
+  invalid_credentials: "E-mail ou senha incorretos.",
+  email_not_confirmed: "Sua conta ainda não foi confirmada. Abra o e-mail que enviamos e clique no link.",
+  email_exists: "Este e-mail já está cadastrado.",
+  user_already_exists: "Este e-mail já está cadastrado.",
+  email_address_invalid: "Esse endereço de e-mail não parece válido.",
+  weak_password: "Senha fraca demais. Use pelo menos 8 caracteres e evite sequências óbvias.",
+  same_password: "A nova senha precisa ser diferente da atual.",
+  over_request_rate_limit: "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente de novo.",
+  over_email_send_rate_limit: "Já enviamos um e-mail há pouco. Aguarde alguns minutos antes de pedir outro.",
+  otp_expired: "Este link expirou ou já foi usado. Peça um novo.",
+  reauthentication_needed: "Por segurança, entre de novo antes de fazer essa alteração.",
+  session_not_found: "Sua sessão expirou. Entre de novo para continuar.",
+  user_not_found: "Conta não encontrada.",
+  signup_disabled: "O cadastro de novas contas está desativado no momento.",
+  validation_failed: "Confira os dados preenchidos.",
+};
+
+/** Slugs usados na querystring (`/login?erro=...`), para o callback avisar o motivo. */
+export const ERROS_LINK: Record<string, string> = {
+  link_expirado: "Este link expirou ou já foi usado. Peça um novo abaixo.",
+  link_invalido: "Não foi possível validar este link. Peça um novo abaixo.",
+  sessao_expirada: "Sua sessão expirou. Entre de novo para continuar.",
+};
+
+export function traduzirErroAuth(erro: ErroAuth): string {
+  if (erro.code && POR_CODIGO_AUTH[erro.code]) return POR_CODIGO_AUTH[erro.code];
+
+  // Versões mais antigas da GoTrue não mandam `code`; sobra só a mensagem e o status.
+  const msg = erro.message.toLowerCase();
+  if (msg.includes("invalid login credentials")) return POR_CODIGO_AUTH.invalid_credentials;
+  if (msg.includes("email not confirmed")) return POR_CODIGO_AUTH.email_not_confirmed;
+  if (msg.includes("user already registered")) return POR_CODIGO_AUTH.user_already_exists;
+  if (msg.includes("should be different")) return POR_CODIGO_AUTH.same_password;
+  if (msg.includes("password") && msg.includes("at least")) return POR_CODIGO_AUTH.weak_password;
+  if (msg.includes("expired") || msg.includes("invalid or has expired")) return POR_CODIGO_AUTH.otp_expired;
+  if (erro.status === 429) return POR_CODIGO_AUTH.over_request_rate_limit;
+  if (msg.includes("failed to fetch") || msg.includes("fetch failed")) {
+    return "Não foi possível falar com o servidor. Verifique sua conexão e tente de novo.";
+  }
+
+  // Mesma disciplina do fallback de `traduzirErroSupabase`: nada cru para a tela.
+  console.error("[auth]", erro.code ?? erro.status ?? "sem-codigo", erro.message);
+  return "Não foi possível concluir a operação. Tente de novo em alguns instantes.";
+}

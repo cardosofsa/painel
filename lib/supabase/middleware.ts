@@ -48,11 +48,28 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  /**
+   * `/recuperar` e `/auth/reset` precisam ser públicas por um motivo que só aparece com
+   * conta de outra pessoa: sem isso, o bloco `user && !isPublicRoute` lá embaixo consulta
+   * `perfis_acesso` e manda quem está `pendente`, `suspenso` ou vencido para `/aguardando`
+   * — ou seja, a conta suspensa NUNCA conseguiria trocar a senha, que é justamente o caso
+   * em que trocar mais importa. Testar só com a conta master esconde isso, porque para
+   * conta ativa a página abre normalmente.
+   */
   const isPublicRoute =
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
+    pathname.startsWith("/recuperar") ||
     pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/vitrine");
+
+  /**
+   * Só login e cadastro. `/auth/reset` NÃO pode entrar aqui: nesse ponto o usuário já tem
+   * sessão — criada pelo próprio link de recuperação —, então a regra
+   * `user && isAuthEntryRoute → /dashboard` expulsaria exatamente quem precisa da tela,
+   * tornando a redefinição de senha inalcançável por construção.
+   */
   const isAuthEntryRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
 
   if (!user && !isPublicRoute) {
