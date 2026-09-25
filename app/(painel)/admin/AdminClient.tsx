@@ -12,7 +12,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatarDataHora } from "@/lib/format";
 import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta } from "@/lib/acesso";
 import { atualizarAcessoConta } from "./actions";
 
@@ -41,11 +41,6 @@ const ROTULO_STATUS: Record<StatusConta, { label: string; tone: "positive" | "ne
   pendente: { label: "Pendente", tone: "neutral" },
   suspenso: { label: "Suspenso", tone: "negative" },
 };
-
-function dataCurta(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR");
-}
 
 function desdeUltimoAcesso(dias: number | null) {
   if (dias === null) return "Nunca entrou";
@@ -171,7 +166,7 @@ export function AdminClient({ contas }: { contas: ContaAdmin[] }) {
                         {c.papel === "master" && <ShieldCheck size={13} className="text-accent" />}
                       </div>
                       <div className="text-xs text-text-tertiary">
-                        Entrou em {dataCurta(c.criado_em)}
+                        Entrou em {formatarDataHora(c.criado_em)}
                         {c.observacao ? ` · ${c.observacao}` : ""}
                       </div>
                     </Td>
@@ -218,7 +213,19 @@ export function AdminClient({ contas }: { contas: ContaAdmin[] }) {
         )}
       </Card>
 
-      <AcessoModal conta={editando} onClose={() => setEditando(null)} onSalvar={salvar} salvando={pending} />
+      {/*
+        O `key` precisa ficar AQUI, no componente que tem os `useState`, e não no `<Modal>`
+        de dentro: os estados de `AcessoModal` são inicializados a partir de `conta`, que é
+        `null` na primeira montagem. Sem isso o modal abria sempre em "pendente" e sem aba
+        marcada, e salvar rebaixava uma conta ativa.
+      */}
+      <AcessoModal
+        key={editando?.user_id ?? "fechado"}
+        conta={editando}
+        onClose={() => setEditando(null)}
+        onSalvar={salvar}
+        salvando={pending}
+      />
       {ConfirmDialog}
     </>
   );
@@ -253,7 +260,6 @@ function AcessoModal({
 
   return (
     <Modal
-      key={conta?.user_id ?? "fechado"}
       open={!!conta}
       onClose={onClose}
       title={conta ? `Acesso — ${conta.email}` : ""}

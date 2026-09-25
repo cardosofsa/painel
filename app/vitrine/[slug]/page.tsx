@@ -1,15 +1,66 @@
+import type { Metadata } from "next";
 import { BookOpen } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { lancarErroSupabase } from "@/lib/erros";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VitrineInterativa } from "@/components/catalogo/VitrineInterativa";
 import type { LinhaCatalogoPublico, ItemVitrine } from "@/components/catalogo/VitrineView";
+
+/**
+ * Metadata própria da vitrine.
+ *
+ * Sem isso a página herdava o metadata raiz, e colar o link no WhatsApp mostrava a prévia
+ * "Segundo Cérebro — Sistema local de gestão: precificação, produtos, estoque…" para o
+ * cliente final. Como o WhatsApp *é* o canal de distribuição desta página, a prévia é
+ * parte do produto.
+ *
+ * `robots: noindex` é intencional: o link é para enviar a clientes, não para ranquear no
+ * Google — e o catálogo muda de preço e de estoque o tempo todo.
+ */
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("obter_catalogo_publico", { p_slug: slug });
+
+  const linhas = (data ?? []) as LinhaCatalogoPublico[];
+  const nome = linhas[0]?.catalogo_nome;
+  if (!nome) {
+    return { title: "Catálogo não encontrado", robots: { index: false, follow: false } };
+  }
+
+  const comProduto = linhas.filter((l) => l.produto_id !== null && l.preco !== null);
+  const capa = comProduto.find((l) => l.imagem_url)?.imagem_url ?? undefined;
+  const descricao =
+    comProduto.length > 0
+      ? `${comProduto.length} ${comProduto.length === 1 ? "produto disponível" : "produtos disponíveis"} no catálogo de ${nome}.`
+      : `Catálogo de ${nome}.`;
+
+  return {
+    title: `${nome} — Catálogo`,
+    description: descricao,
+    robots: { index: false, follow: false },
+    openGraph: {
+      type: "website",
+      title: `${nome} — Catálogo`,
+      description: descricao,
+      images: capa ? [{ url: capa }] : undefined,
+    },
+    twitter: {
+      card: capa ? "summary_large_image" : "summary",
+      title: `${nome} — Catálogo`,
+      description: descricao,
+      images: capa ? [capa] : undefined,
+    },
+  };
+}
 
 export default async function VitrinePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("obter_catalogo_publico", { p_slug: slug });
 
-  if (error) throw new Error(error.message);
+  // Página anônima: a mensagem crua do Postgres não pode chegar ao cliente final.
+  if (error) lancarErroSupabase(error);
 
   const linhas = (data ?? []) as LinhaCatalogoPublico[];
   const nome = linhas[0]?.catalogo_nome;

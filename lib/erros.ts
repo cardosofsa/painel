@@ -30,6 +30,10 @@ export function traduzirErroSupabase(erro: ErroSupabase): string {
   const constraint = nomeDaConstraint(erro.message);
   if (constraint && POR_CONSTRAINT[constraint]) return POR_CONSTRAINT[constraint];
 
+  // P0001 é `raise exception` das nossas próprias RPCs: a mensagem já foi escrita em pt-BR
+  // pensando no usuário final ("Estoque insuficiente...", "PIN incorreto."). Passa direto.
+  if (erro.code === "P0001") return erro.message;
+
   switch (erro.code) {
     case "23505":
       return "Esse registro já existe — verifique se não está duplicando algo que já cadastrou.";
@@ -54,7 +58,12 @@ export function traduzirErroSupabase(erro: ErroSupabase): string {
     return "Não foi possível falar com o servidor. Verifique sua conexão e tente de novo.";
   }
 
-  return erro.message;
+  // Fallback: NÃO repassar a mensagem crua. Ela costuma trazer nome de tabela, de coluna e
+  // de constraint ('relation "produto_grupos" does not exist'), o que não ajuda em nada
+  // quem está usando o sistema e entrega o desenho do banco para qualquer um — inclusive
+  // para o visitante anônimo da vitrine. O texto original fica no log do servidor.
+  console.error("[supabase]", erro.code ?? "sem-codigo", erro.message, erro.details ?? "");
+  return "Não foi possível concluir a operação. Tente de novo; se continuar, avise o suporte.";
 }
 
 /** Lança o erro já traduzido — usado nas server actions, no lugar de `throw new Error(error.message)`. */

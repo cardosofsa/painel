@@ -1,11 +1,21 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/layout/ThemeContext";
 import "./globals.css";
 
 const geist = Geist({
   variable: "--font-geist",
+  subsets: ["latin"],
+});
+
+/**
+ * Fonte monoespaçada de verdade. Até aqui `--font-mono` apontava para a mesma Geist
+ * proporcional, então as ~300 ocorrências de `font-mono` (R$, SKU, datas, estoque) não
+ * alinhavam coluna nenhuma nas tabelas — que é justamente o motivo de existirem.
+ */
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
@@ -23,7 +33,7 @@ try {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${geist.variable} h-full`} suppressHydrationWarning>
+    <html lang="pt-BR" className={`${geist.variable} ${geistMono.variable} h-full`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

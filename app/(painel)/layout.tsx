@@ -7,14 +7,16 @@ import { ABAS_OBRIGATORIAS } from "@/lib/acesso";
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
 
+  // A marcação de visita (para o painel master saber quem usa de verdade) entra no mesmo
+  // `Promise.all`: o resultado dela não é usado, e esperá-la em série custava um
+  // round-trip inteiro ao Supabase ANTES de qualquer `page.tsx` começar a renderizar —
+  // em 100% das navegações do painel. A função em si já ignora chamadas seguidas, mas
+  // isso só evita a escrita, não a ida até o banco.
   const [perfilNegocioRes, acessoRes] = await Promise.all([
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
     supabase.from("perfis_acesso").select("papel, abas").maybeSingle(),
+    supabase.rpc("tocar_ultimo_acesso"),
   ]);
-
-  // Marca a visita para o painel master saber quem usa de verdade. A própria função
-  // ignora chamadas seguidas (só grava se a última foi há mais de uma hora).
-  await supabase.rpc("tocar_ultimo_acesso");
 
   return (
     <SidebarMobileProvider>

@@ -17,7 +17,7 @@ export default async function ConfiguracoesPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, produtosRes, perfilRes] =
+  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes] =
     await Promise.all([
       supabase.from("categorias").select("id, nome").order("nome"),
       supabase
@@ -34,10 +34,15 @@ export default async function ConfiguracoesPage() {
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       supabase.from("armazens").select("id, nome, endereco, lojas_abastecidas").order("nome"),
       supabase.from("formas_pagamento").select("id, nome").order("nome"),
-      supabase.from("produtos").select("categoria_id"),
+      // Contagem por categoria agregada no banco: antes vinha uma linha por produto só
+      // para somar em memória.
+      supabase.rpc("contagem_produtos_por_categoria"),
+      // `pin_admin_hash` NÃO entra no select: tudo que a tela precisa saber é se existe um
+      // PIN cadastrado. Antes o PIN vinha em texto puro até o Client Component e ficava
+      // legível no DOM e no payload RSC, apesar do input `type="password"`.
       supabase
         .from("perfil_negocio")
-        .select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp, pin_admin")
+        .select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp, pin_admin_hash")
         .maybeSingle(),
     ]);
 
@@ -72,14 +77,12 @@ export default async function ConfiguracoesPage() {
     regime_tributario: perfilRes.data?.regime_tributario ?? "",
     aliquota_das: perfilRes.data?.aliquota_das ?? 6,
     whatsapp: perfilRes.data?.whatsapp ?? "",
-    pin_admin: perfilRes.data?.pin_admin ?? "",
+    pin_configurado: !!perfilRes.data?.pin_admin_hash,
   };
 
-  const contagemPorCategoria = new Map<string, number>();
-  for (const p of produtosRes.data ?? []) {
-    if (!p.categoria_id) continue;
-    contagemPorCategoria.set(p.categoria_id, (contagemPorCategoria.get(p.categoria_id) ?? 0) + 1);
-  }
+  const contagemPorCategoria = new Map<string, number>(
+    ((contagemRes.data ?? []) as { categoria_id: string; total: number }[]).map((c) => [c.categoria_id, Number(c.total)]),
+  );
 
   const categorias: Categoria[] = (categoriasRes.data ?? []).map((c) => ({
     id: c.id,

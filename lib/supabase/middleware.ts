@@ -26,6 +26,26 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  /**
+   * Redirect que PRESERVA os cookies de sessão.
+   *
+   * `getUser()` acima pode renovar o token; quando isso acontece, o `setAll` grava os
+   * cookies novos em `supabaseResponse`. Um `NextResponse.redirect()` cru cria uma resposta
+   * nova e joga esses cookies fora — o navegador segue com o refresh token antigo que, com
+   * rotação ligada, já foi invalidado. O sintoma é logout aleatório ou loop
+   * /dashboard → /login, intermitente e difícil de reproduzir.
+   */
+  function redirecionarPara(destino: string) {
+    const url = request.nextUrl.clone();
+    url.pathname = destino;
+    url.search = "";
+    const resposta = NextResponse.redirect(url);
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      resposta.cookies.set(cookie);
+    }
+    return resposta;
+  }
+
   const { pathname } = request.nextUrl;
 
   const isPublicRoute =
@@ -36,15 +56,11 @@ export async function updateSession(request: NextRequest) {
   const isAuthEntryRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
 
   if (!user && !isPublicRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return redirecionarPara("/login");
   }
 
   if (user && isAuthEntryRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    return redirecionarPara("/dashboard");
   }
 
   /**
@@ -67,27 +83,19 @@ export async function updateSession(request: NextRequest) {
     // deixa o master decidir, em vez de liberar por omissão.
     if (!liberada) {
       if (naTelaDeEspera) return supabaseResponse;
-      const url = request.nextUrl.clone();
-      url.pathname = "/aguardando";
-      return NextResponse.redirect(url);
+      return redirecionarPara("/aguardando");
     }
 
     if (naTelaDeEspera) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+      return redirecionarPara("/dashboard");
     }
 
     if (rotaEhLivre(pathname) && perfil?.papel !== "master") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+      return redirecionarPara("/dashboard");
     }
 
     if (!podeAcessarRota(perfil?.abas ?? [], pathname)) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+      return redirecionarPara("/dashboard");
     }
   }
 

@@ -13,7 +13,7 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { SalesChart } from "@/components/charts/SalesChart";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatarDataCurta, hojeIsoLocal } from "@/lib/format";
 import { paraCsv, baixarArquivo } from "@/lib/csv";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { cancelarVenda } from "./actions";
@@ -68,10 +68,6 @@ function inicioDoPeriodo(periodo: PeriodoId): Date {
   return inicio;
 }
 
-function dataCurta(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-}
-
 export function VendasClient({
   vendas,
   diasJanela,
@@ -108,11 +104,14 @@ export function VendasClient({
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
+    // As duas chaves precisam usar a MESMA convenção de fuso. Com `toISOString()` (UTC), uma
+    // venda das 22h em Brasília vira 01h do dia seguinte e era somada no dia errado —
+    // justamente o horário de pico de um PDV. `sv-SE` dá o formato ISO em horário local.
     for (let d = new Date(inicio); d <= hoje; d.setDate(d.getDate() + 1)) {
-      porDia.set(d.toISOString().slice(0, 10), 0);
+      porDia.set(hojeIsoLocal(d), 0);
     }
     for (const v of validas) {
-      const chave = new Date(v.data_venda).toISOString().slice(0, 10);
+      const chave = hojeIsoLocal(new Date(v.data_venda));
       porDia.set(chave, (porDia.get(chave) ?? 0) + v.total);
     }
 
@@ -298,7 +297,7 @@ export function VendasClient({
               {doPeriodo.map((v) => (
                 <Tr key={v.id}>
                   <Td mono>{v.numero}</Td>
-                  <Td>{dataCurta(v.data_venda)}</Td>
+                  <Td>{formatarDataCurta(v.data_venda)}</Td>
                   <Td>{v.cliente_nome ?? "—"}</Td>
                   <Td>{v.forma_pagamento ?? "—"}</Td>
                   <Td>
@@ -424,7 +423,13 @@ export function VendasClient({
         )}
       </Modal>
 
+      {/*
+        `key` no componente externo, não no `<Modal>` de dentro: os `useState` de
+        `EditarVendaModal` leem `venda` na montagem, que é `null` da primeira vez. Sem isso
+        o modal abria com desconto e entrega zerados e salvar gravava esses zeros.
+      */}
       <EditarVendaModal
+        key={editando?.id ?? "fechado"}
         venda={editando}
         clientes={clientes}
         formasPagamento={formasPagamento}

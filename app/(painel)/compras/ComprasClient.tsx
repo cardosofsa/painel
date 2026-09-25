@@ -11,7 +11,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarPedidoCompra, marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 
@@ -51,10 +51,6 @@ interface Opcao {
 const PERIODOS = ["Todos", "Últimos 7 dias", "Este mês"] as const;
 const STATUS_OPCOES = ["Todos", "Pendente", "Recebido"] as const;
 
-function formatarData(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR");
-}
-
 export function ComprasClient({
   pedidos,
   fornecedores,
@@ -93,19 +89,38 @@ export function ComprasClient({
       }
       if (fornecedorFiltro !== "Todos" && p.fornecedor_nome !== fornecedorFiltro) return false;
       if (periodo !== "Todos") {
-        const dataPedido = new Date(p.data_pedido);
+        // `data_pedido` é coluna `date`; sem o "T00:00:00" ela é lida como meia-noite UTC e,
+        // em UTC-3, todo dia 1º cai no mês anterior.
+        const dataPedido = new Date(`${p.data_pedido}T00:00:00`);
         const diffDias = (agora.getTime() - dataPedido.getTime()) / 86400000;
         if (periodo === "Últimos 7 dias" && diffDias > 7) return false;
-        if (periodo === "Este mês" && dataPedido.getMonth() !== agora.getMonth()) return false;
+        // Comparar só o mês deixava março de 2025 passar no filtro de março de 2026.
+        if (
+          periodo === "Este mês" &&
+          (dataPedido.getMonth() !== agora.getMonth() || dataPedido.getFullYear() !== agora.getFullYear())
+        ) {
+          return false;
+        }
       }
       return true;
     });
   }, [pedidos, periodo, statusFiltro, fornecedorFiltro]);
 
   const pendentes = pedidos.filter((p) => p.status === "pendente");
-  const recebidosMes = pedidos.filter((p) => p.status === "recebido");
   const capitalComprometido = pendentes.reduce((acc, p) => acc + p.valor_total, 0);
+
+  // "Recebidos neste Mês" tem que olhar o mês DO RECEBIMENTO. Antes era a lista inteira de
+  // recebidos de todos os tempos, então o card mostrava o histórico e chamava de "neste mês".
+  const inicioDoMes = hojeIsoLocal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const recebidosMes = pedidos.filter((p) => p.status === "recebido" && (p.data_recebimento ?? "") >= inicioDoMes);
   const totalLiquidado = recebidosMes.reduce((acc, p) => acc + p.valor_total, 0);
+
+  // A lista vem ordenada por `data_pedido`; "Última Entrada" precisa da mais recente por
+  // `data_recebimento`, que é outra coisa — o pedido emitido por último não é o que chegou
+  // por último.
+  const ultimaEntrada = [...pedidos]
+    .filter((p) => p.status === "recebido" && p.data_recebimento)
+    .sort((a, b) => (b.data_recebimento ?? "").localeCompare(a.data_recebimento ?? ""))[0];
 
   function marcarRecebido(id: string, numero: string) {
     startTransition(async () => {
@@ -155,7 +170,10 @@ export function ComprasClient({
         </Card>
         <Card>
           <CardEyebrow>Última Entrada</CardEyebrow>
-          <HeroMetric value={recebidosMes[0]?.fornecedor_nome ?? "—"} caption={recebidosMes[0]?.nf ? `NF ${recebidosMes[0].nf}` : undefined} />
+          <HeroMetric
+            value={ultimaEntrada?.fornecedor_nome ?? "—"}
+            caption={ultimaEntrada?.data_recebimento ? `em ${formatarDataIso(ultimaEntrada.data_recebimento)}` : undefined}
+          />
         </Card>
       </div>
 
@@ -210,7 +228,7 @@ export function ComprasClient({
                     <div className="text-xs text-text-tertiary font-mono">{p.cnpj}</div>
                   </Td>
                   <Td>{p.armazem_nome ?? "—"}</Td>
-                  <Td mono>{formatarData(p.data_pedido)}</Td>
+                  <Td mono>{formatarDataIso(p.data_pedido)}</Td>
                   <Td align="right" mono>
                     {formatBRL(p.valor_total)}
                   </Td>
@@ -252,18 +270,18 @@ export function ComprasClient({
               </div>
               <div>
                 <div className="text-xs text-text-tertiary">Data do Pedido</div>
-                <div className="text-text-primary font-mono">{formatarData(pedidoDetalhe.data_pedido)}</div>
+                <div className="text-text-primary font-mono">{formatarDataIso(pedidoDetalhe.data_pedido)}</div>
               </div>
               <div>
                 <div className="text-xs text-text-tertiary">Entrega Prevista</div>
                 <div className="text-text-primary font-mono">
-                  {pedidoDetalhe.data_entrega_prevista ? formatarData(pedidoDetalhe.data_entrega_prevista) : "—"}
+                  {pedidoDetalhe.data_entrega_prevista ? formatarDataIso(pedidoDetalhe.data_entrega_prevista) : "—"}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-text-tertiary">Data de Chegada</div>
                 <div className="text-text-primary font-mono">
-                  {pedidoDetalhe.data_recebimento ? formatarData(pedidoDetalhe.data_recebimento) : "Ainda não chegou"}
+                  {pedidoDetalhe.data_recebimento ? formatarDataIso(pedidoDetalhe.data_recebimento) : "Ainda não chegou"}
                 </div>
               </div>
               <div>
@@ -370,13 +388,13 @@ function NovoPedidoModal({
   const [nf, setNf] = useState("");
   const [nfArquivo, setNfArquivo] = useState<File | null>(null);
   const { enviar: enviarNfArquivo, enviando: enviandoNf } = useSupabaseUpload("notas-fiscais");
-  const [dataPedido, setDataPedido] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dataPedido, setDataPedido] = useState(() => hojeIsoLocal());
   const [dataEntregaPrevista, setDataEntregaPrevista] = useState("");
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>(formasPagamento[0]?.nome ?? "");
   const [contaId, setContaId] = useState(contas[0]?.id ?? "");
   const [parcelado, setParcelado] = useState(false);
   const [parcelas, setParcelas] = useState(2);
-  const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => hojeIsoLocal());
   const [itens, setItens] = useState<ItemPedidoInput[]>([]);
 
   const valorTotal = itens.reduce((acc, it) => acc + it.quantidade * it.custo_unitario, 0);
@@ -416,7 +434,7 @@ function NovoPedidoModal({
     setContaId(contas[0]?.id ?? "");
     setParcelado(false);
     setParcelas(2);
-    setDataPrimeiraParcela(new Date().toISOString().slice(0, 10));
+    setDataPrimeiraParcela(hojeIsoLocal());
     setItens([]);
     onClose();
   }

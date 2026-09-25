@@ -11,8 +11,8 @@ import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-import { formatBRL } from "@/lib/format";
-import { paraCsv as paraCsvColunas, baixarArquivo } from "@/lib/csv";
+import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
+import { paraCsv as paraCsvColunas, matrizParaCsv, baixarArquivo } from "@/lib/csv";
 import {
   resolverPorMargem,
   resolverPorMarkup,
@@ -114,13 +114,17 @@ export interface ProdutoOpcao {
   preco_venda: number;
 }
 
-function paraCsv(valor: string | number) {
-  const texto = String(valor);
-  return /[",\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+/**
+ * Chave de lista para item ainda não salvo (insumo do kit, concorrente sem produto
+ * vinculado). Antes eram dois contadores no escopo do módulo, mas reatribuir variável de
+ * fora do componente é efeito colateral durante o render — o lint reclama, com razão, e o
+ * contador ainda seria compartilhado entre montagens.
+ */
+let sequenciaLocal = 0;
+function proximoIdLocal(prefixo: string): string {
+  sequenciaLocal += 1;
+  return `${prefixo}-${Date.now().toString(36)}-${sequenciaLocal}`;
 }
-
-let nextId = 1;
-let nextConcorrenteId = 1;
 
 // Identifica, dentro do JSONB de componentes salvo no histórico, a linha que representa
 // o campo "Custo do Produto" (e não um insumo) — é o que permite recarregar no campo certo.
@@ -268,8 +272,7 @@ export function PrecificacaoClient({
   }
 
   function adicionarComponente() {
-    nextId += 1;
-    setComponentes((prev) => [...prev, { id: `novo-${nextId}`, nome: "Novo insumo", quantidade: 1, custoUnitario: 0 }]);
+    setComponentes((prev) => [...prev, { id: proximoIdLocal("novo"), nome: "Novo insumo", quantidade: 1, custoUnitario: 0 }]);
   }
 
   function removerComponente(id: string) {
@@ -310,34 +313,46 @@ export function PrecificacaoClient({
   );
 
   async function adicionarConcorrente() {
-    if (!novoConcorrenteNome.trim() || novoConcorrentePreco === "" || novoConcorrentePreco <= 0) return;
+    if (!novoConcorrenteNome.trim()) return toast.error("Informe o nome do concorrente.");
+    if (novoConcorrentePreco === "" || novoConcorrentePreco <= 0) {
+      return toast.error("Informe um preço maior que zero para o concorrente.");
+    }
     const dados = {
       nome: novoConcorrenteNome.trim(),
       preco: Number(novoConcorrentePreco),
       link: novoConcorrenteLink.trim() || null,
     };
-    setNovoConcorrenteNome("");
-    setNovoConcorrentePreco("");
-    setNovoConcorrenteLink("");
     if (produtoId) {
+      // Só limpa os campos depois que o servidor confirmou: antes eles eram esvaziados
+      // primeiro e uma falha levava embora nome, preço e link digitados.
       try {
         const salvo = await criarConcorrente(produtoId, dados);
         setConcorrentes((prev) => [...prev, salvo]);
+        limparCamposConcorrente();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao salvar concorrente");
       }
       return;
     }
-    nextConcorrenteId += 1;
-    setConcorrentes((prev) => [...prev, { id: `conc${nextConcorrenteId}`, ...dados }]);
+    setConcorrentes((prev) => [...prev, { id: proximoIdLocal("conc"), ...dados }]);
+    limparCamposConcorrente();
+  }
+
+  function limparCamposConcorrente() {
+    setNovoConcorrenteNome("");
+    setNovoConcorrentePreco("");
+    setNovoConcorrenteLink("");
   }
 
   async function removerConcorrente(id: string) {
+    const anteriores = concorrentes;
     setConcorrentes((prev) => prev.filter((c) => c.id !== id));
     if (produtoId) {
       try {
         await removerConcorrenteSalvo(id);
       } catch (e) {
+        // Sem o rollback, o item sumia da tela mas continuava no banco e voltava no reload.
+        setConcorrentes(anteriores);
         toast.error(e instanceof Error ? e.message : "Erro ao remover concorrente");
       }
     }
@@ -416,14 +431,7 @@ export function PrecificacaoClient({
       h.lucro.toFixed(2),
       h.preco_calculado > 0 ? ((h.lucro / h.preco_calculado) * 100).toFixed(1) : "0.0",
     ]);
-    const csv = [cabecalho, ...linhas].map((linha) => linha.map(paraCsv).join(",")).join("\n");
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "historico-precificacoes.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    baixarArquivo("historico-precificacoes.csv", matrizParaCsv([cabecalho, ...linhas]));
   }
 
   function duplicarHistorico(h: PrecificacaoHist) {
@@ -1366,8 +1374,8 @@ export function PrecificacaoClient({
                         <Td align="right" mono>
                           {formatBRL(h.lucro)}
                         </Td>
-                        <Td align="right" mono className="text-positive">
-                          +{h.preco_calculado > 0 ? ((h.lucro / h.preco_calculado) * 100).toFixed(1) : "0.0"}%
+                        <Td align="right" mono className={classeValor(h.lucro)}>
+                          {formatarMargemPct(h.lucro, h.preco_calculado)}
                         </Td>
                         <Td align="right">
                           <RowMenu
@@ -1441,11 +1449,9 @@ export function PrecificacaoClient({
 
                       <div className="flex justify-between font-medium pt-1.5 border-t border-border">
                         <span className="text-text-primary">Lucro líquido</span>
-                        <span className="font-mono text-positive">
+                        <span className={`font-mono ${classeValor(historicoDetalhe.lucro)}`}>
                           {formatBRL(historicoDetalhe.lucro)} (
-                          {historicoDetalhe.preco_calculado > 0
-                            ? ((historicoDetalhe.lucro / historicoDetalhe.preco_calculado) * 100).toFixed(1)
-                            : "0.0"}
+                          {formatarMargemPct(historicoDetalhe.lucro, historicoDetalhe.preco_calculado)}
                           %)
                         </span>
                       </div>
@@ -1515,8 +1521,8 @@ export function PrecificacaoClient({
                             <div className="flex items-center gap-4 text-xs">
                               <span className="text-text-secondary">custo {formatBRL(v.custo)}</span>
                               <span className="font-mono text-accent">{formatBRL(v.preco_calculado)}</span>
-                              <span className="font-mono text-positive">
-                                {v.preco_calculado > 0 ? ((v.lucro / v.preco_calculado) * 100).toFixed(1) : "0.0"}%
+                              <span className={`font-mono ${classeValor(v.lucro)}`}>
+                                {formatarMargemPct(v.lucro, v.preco_calculado)}
                               </span>
                             </div>
                           </div>

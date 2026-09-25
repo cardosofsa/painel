@@ -10,7 +10,8 @@ import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { formatBRL } from "@/lib/format";
+import { useConfirm } from "@/components/ui/ConfirmModal";
+import { formatBRL, hojeIsoLocal } from "@/lib/format";
 import { criarCompromisso, removerCompromisso, type CompromissoInput } from "./actions";
 
 export interface Conta {
@@ -241,11 +242,12 @@ const NOMES_MES = [
 const DIAS_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 function hojeIso() {
-  return new Date().toISOString().slice(0, 10);
+  return hojeIsoLocal();
 }
 
 function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
   const [, startTransition] = useTransition();
+  const { confirm, ConfirmDialog } = useConfirm();
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth());
@@ -278,7 +280,13 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
     setMes(novo.getMonth());
   }
 
-  function remover(id: string) {
+  async function remover(id: string, titulo: string) {
+    const ok = await confirm({
+      title: "Remover compromisso?",
+      message: `"${titulo}" será apagado da agenda.`,
+      confirmLabel: "Remover",
+    });
+    if (!ok) return;
     startTransition(async () => {
       try {
         await removerCompromisso(id);
@@ -373,7 +381,11 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
                     {c.descricao ? ` — ${c.descricao}` : ""}
                   </div>
                 </div>
-                <button onClick={() => remover(c.id)} className="text-text-tertiary hover:text-negative">
+                <button
+                  onClick={() => remover(c.id, c.titulo)}
+                  aria-label={`Remover compromisso ${c.titulo}`}
+                  className="text-text-tertiary hover:text-negative"
+                >
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -388,6 +400,7 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
         dataPadrao={diaSelecionado ?? hojeIso()}
         onClose={() => setModalAberto(false)}
       />
+      {ConfirmDialog}
     </Card>
   );
 }

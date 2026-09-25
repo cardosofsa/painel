@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hojeIsoLocal } from "@/lib/format";
 import { FornecedoresClient, type Fornecedor } from "./FornecedoresClient";
 
 export default async function FornecedoresPage() {
@@ -12,7 +13,7 @@ export default async function FornecedoresPage() {
     supabase
       .from("pedidos_compra")
       .select("valor_total")
-      .gte("data_pedido", tresMesesAtras.toISOString().slice(0, 10)),
+      .gte("data_pedido", hojeIsoLocal(tresMesesAtras)),
   ]);
 
   if (fornecedoresRes.error) throw new Error(fornecedoresRes.error.message);

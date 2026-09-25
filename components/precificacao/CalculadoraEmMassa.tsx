@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { formatBRL } from "@/lib/format";
+import { useConfirm } from "@/components/ui/ConfirmModal";
+import { formatBRL, classeValor } from "@/lib/format";
 import { resolverPorMargem, resolverComFaixas, type FaixaComissao } from "@/lib/pricing";
 import { paraCsv, baixarArquivo } from "@/lib/csv";
 import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";
@@ -17,7 +18,7 @@ import {
   useExportarPrecificacao,
   SimuladorPreco,
 } from "@/components/precificacao/resultado-compartilhado";
-import { salvarPrecificacao } from "@/app/(painel)/precificacao/actions";
+import { salvarPrecificacoesEmMassa } from "@/app/(painel)/precificacao/actions";
 import type { PrecificacaoHist } from "@/app/(painel)/precificacao/PrecificacaoClient";
 
 interface ProdutoOpcao {
@@ -85,6 +86,7 @@ export function CalculadoraEmMassa({
   setVisao: (visao: "individual" | "variacoes" | "massa" | "historico") => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [linhas, setLinhas] = useState<LinhaEmMassa[]>([linhaVazia()]);
   const [visualizacao, setVisualizacao] = useState<"tabela" | "resultado">("tabela");
   const [filtroResultado, setFiltroResultado] = useState<"todos" | "subir" | "ok">("todos");
@@ -146,7 +148,18 @@ export function CalculadoraEmMassa({
     setLinhas((prev) => prev.filter((l) => l.id !== id));
   }
 
-  function limparTabela() {
+  async function limparTabela() {
+    // Pode haver até 200 linhas digitadas à mão, e o botão fica ao lado de
+    // "+ Adicionar linha". Sem confirmação nem desfazer, um clique errado apagava tudo.
+    const preenchidas = linhas.filter((l) => l.sku.trim() !== "" || l.nome.trim() !== "").length;
+    if (preenchidas > 0) {
+      const ok = await confirm({
+        title: "Limpar a tabela?",
+        message: `${preenchidas} linha(s) preenchida(s) serão apagadas. Não dá para desfazer.`,
+        confirmLabel: "Limpar tudo",
+      });
+      if (!ok) return;
+    }
     setLinhas([linhaVazia()]);
   }
 
@@ -243,11 +256,12 @@ export function CalculadoraEmMassa({
 
   function salvarNoHistorico() {
     startTransition(async () => {
-      let sucesso = 0;
-      let falhas = 0;
-      for (const r of resultados) {
-        try {
-          await salvarPrecificacao({
+      // Um INSERT só, em vez de uma Server Action por linha. E o erro é mostrado inteiro:
+      // o `catch { falhas += 1 }` de antes engolia a mensagem, e o usuário via "12 linha(s)
+      // falharam" sem nunca descobrir o motivo.
+      try {
+        const total = await salvarPrecificacoesEmMassa(
+          resultados.map((r) => ({
             produto_id: r.linha.produtoId,
             produto_nome: r.linha.nome || r.linha.sku,
             canal: r.loja ? `${r.loja.canalNome} — ${r.loja.nome}` : null,
@@ -264,15 +278,13 @@ export function CalculadoraEmMassa({
             margem_pct: r.linha.margemPct / 100,
             preco_calculado: r.resultado.precoVenda,
             lucro: r.resultado.lucroLiquido,
-            origem: "em_massa",
-          });
-          sucesso += 1;
-        } catch {
-          falhas += 1;
-        }
+            origem: "em_massa" as const,
+          })),
+        );
+        toast.success(`${total} precificação(ões) salva(s) no histórico`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar as precificações");
       }
-      if (sucesso > 0) toast.success(`${sucesso} precificação(ões) salva(s) no histórico`);
-      if (falhas > 0) toast.error(`${falhas} linha(s) falharam ao salvar`);
     });
   }
 
@@ -356,7 +368,7 @@ export function CalculadoraEmMassa({
                       <Td align="right" mono className={r.diferenca > 0 ? "text-negative" : "text-positive"}>
                         {r.linha.precoAtual > 0 ? `${r.diferenca >= 0 ? "-" : "+"} ${formatBRL(Math.abs(r.diferenca))}` : "—"}
                       </Td>
-                      <Td align="right" mono className="text-positive">
+                      <Td align="right" mono className={classeValor(r.resultado.lucroLiquido)}>
                         {formatBRL(r.resultado.lucroLiquido)}
                       </Td>
                       <Td align="right">
@@ -524,6 +536,7 @@ export function CalculadoraEmMassa({
         </Card>
 
         {modaisExportacao}
+        {ConfirmDialog}
       </div>
     );
   }
@@ -691,6 +704,7 @@ export function CalculadoraEmMassa({
       <Button variant="primary" className="w-full mt-4" onClick={calcularTodos}>
         Calcular Todos
       </Button>
+      {ConfirmDialog}
     </Card>
   );
 }

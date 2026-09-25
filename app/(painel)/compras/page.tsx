@@ -1,9 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
+import { hojeIsoLocal } from "@/lib/format";
 import { ComprasClient, type Pedido } from "./ComprasClient";
+
+/** Janela máxima carregada; os filtros de período da tela recortam daqui. */
+const DIAS_JANELA = 90;
 
 export default async function ComprasPage() {
   const supabase = await createClient();
+
+  const inicio = new Date();
+  inicio.setDate(inicio.getDate() - DIAS_JANELA);
+  const inicioJanela = hojeIsoLocal(inicio);
 
   const [
     pedidosRes,
@@ -16,12 +24,18 @@ export default async function ComprasPage() {
     titulosRes,
     gruposRes,
   ] = await Promise.all([
+      // Janela de 90 dias, igual ao que /vendas já faz. Sem ela esta consulta trazia TODO
+      // pedido de compra já feito com os itens aninhados — o payload mais pesado do app —
+      // e os filtros "Últimos 7 dias / Este mês" eram aplicados no cliente depois de
+      // baixar tudo. Pedido pendente antigo entra na janela de qualquer jeito (ver abaixo).
       supabase
         .from("pedidos_compra")
         .select(
           "id, numero, fornecedor_id, armazem_id, nf, nf_arquivo_path, valor_total, status, data_pedido, data_entrega_prevista, data_recebimento, forma_pagamento, parcelas, pedidos_compra_itens(produto_id, produto_nome, quantidade, custo_unitario)",
         )
-        .order("data_pedido", { ascending: false }),
+        .or(`data_pedido.gte.${inicioJanela},status.eq.pendente`)
+        .order("data_pedido", { ascending: false })
+        .limit(500),
       supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
       supabase.from("fornecedores").select("id, nome, cnpj"),
       supabase.from("produtos").select("id, nome, custo, grupo_id, variante_nome").order("nome"),

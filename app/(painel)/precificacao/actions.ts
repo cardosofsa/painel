@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, precificacaoSchema } from "@/lib/validacao";
+import { validar, precificacaoSchema, anuncioSchema } from "@/lib/validacao";
 import type { ComponenteKit } from "@/lib/pricing";
 
 export interface PrecificacaoInput {
@@ -32,6 +32,29 @@ export async function salvarPrecificacao(dados: PrecificacaoInput) {
   if (error) lancarErroSupabase(error);
   revalidatePath("/precificacao");
   revalidatePath("/produtos");
+}
+
+/**
+ * Salva a planilha da calculadora em massa num INSERT só.
+ *
+ * Antes a tela chamava `salvarPrecificacao` linha a linha, em série: 50 linhas viravam 50
+ * POSTs sequenciais, 50 clients Supabase novos e 100 `revalidatePath` — no recurso que se
+ * chama, literalmente, "em massa". Devolve quantas entraram, e o erro sobe inteiro em vez
+ * de virar uma contagem anônima de falhas.
+ */
+export async function salvarPrecificacoesEmMassa(linhas: PrecificacaoInput[]): Promise<number> {
+  if (linhas.length === 0) return 0;
+  if (linhas.length > 500) throw new Error("Máximo de 500 precificações por vez.");
+
+  const supabase = await createClient();
+  const validadas = linhas.map((l) => validar(precificacaoSchema, l));
+
+  const { error } = await supabase.from("precificacoes").insert(validadas);
+  if (error) lancarErroSupabase(error);
+
+  revalidatePath("/precificacao");
+  revalidatePath("/produtos");
+  return validadas.length;
 }
 
 export async function removerPrecificacao(id: string) {
@@ -77,20 +100,24 @@ export interface AnuncioInput {
 
 export async function criarAnuncio(dados: AnuncioInput) {
   const supabase = await createClient();
+  // Valida ANTES do primeiro insert: sem isso, um NaN vindo da tela passava pelo insert do
+  // anúncio e só estourava no das variações, deixando o anúncio pai órfão no banco.
+  const v = validar(anuncioSchema, dados);
   const { data: anuncio, error } = await supabase
     .from("anuncios")
     .insert({
-      produto_id: dados.produto_id,
-      loja_id: dados.loja_id,
-      nome_anuncio: dados.nome_anuncio,
-      titulo_anuncio: dados.titulo_anuncio,
-      componentes_base: dados.componentes_base,
+      produto_id: v.produto_id,
+      loja_id: v.loja_id,
+      nome_anuncio: v.nome_anuncio,
+      titulo_anuncio: v.titulo_anuncio,
+      componentes_base: v.componentes_base,
     })
     .select("id")
     .single();
-  if (error || !anuncio) throw new Error(error?.message ?? "Erro ao criar anúncio");
+  if (error) lancarErroSupabase(error);
+  if (!anuncio) throw new Error("Erro ao criar anúncio.");
 
-  const variacoes = dados.variacoes.map((v) => ({ ...v, anuncio_id: anuncio.id }));
+  const variacoes = v.variacoes.map((item) => ({ ...item, anuncio_id: anuncio.id }));
   const { error: erroVariacoes } = await supabase.from("anuncio_variacoes").insert(variacoes);
   if (erroVariacoes) lancarErroSupabase(erroVariacoes);
 
@@ -118,7 +145,8 @@ export async function criarConcorrente(produtoId: string, dados: ConcorrenteInpu
     .insert({ produto_id: produtoId, nome: dados.nome, preco: dados.preco, link: dados.link })
     .select("id, nome, preco, link")
     .single();
-  if (error || !data) throw new Error(error?.message ?? "Erro ao salvar concorrente");
+  if (error) lancarErroSupabase(error);
+  if (!data) throw new Error("Erro ao salvar concorrente.");
   revalidatePath("/precificacao");
   return data;
 }

@@ -60,7 +60,7 @@ export function EditarVendaModal({
   }
 
   return (
-    <Modal key={venda?.id ?? "fechado"} open={!!venda} onClose={onClose} title={venda ? `Editar Venda ${venda.numero}` : ""}>
+    <Modal open={!!venda} onClose={onClose} title={venda ? `Editar Venda ${venda.numero}` : ""}>
       <FormField label="Cliente">
         <select className={inputClass} value={clienteId ?? ""} onChange={(e) => setClienteId(e.target.value || null)}>
           <option value="">Sem cliente identificado</option>

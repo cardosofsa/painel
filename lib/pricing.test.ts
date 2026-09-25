@@ -256,3 +256,61 @@ describe("analisarConcorrencia", () => {
     expect(analisarConcorrencia(base, [{ id: "1", nome: "A", preco: 0, link: null }], SEM_TAXAS)).toBeNull();
   });
 });
+
+/**
+ * NaN é o caso que os testes originais não cobriam, e era exatamente por onde o bug
+ * passava: `NaN <= 0` é `false`, então o guard antigo (`custoTotal <= 0`) deixava um NaN
+ * atravessar e a função devolvia `viavel: true` com preço NaN — que seguia até o INSERT,
+ * onde `JSON.stringify(NaN)` vira `null` e viola o NOT NULL da coluna.
+ *
+ * A origem prática é um `Number("1,50")` — o usuário digitando no formato brasileiro.
+ */
+describe("proteção contra NaN e Infinity", () => {
+  it("resultadoParaPreco recusa custo NaN", () => {
+    const r = resultadoParaPreco(100, NaN, SHOPEE);
+    expect(r.viavel).toBe(false);
+    expect(Number.isFinite(r.precoVenda)).toBe(true);
+    expect(Number.isFinite(r.custoTotal)).toBe(true);
+  });
+
+  it("resultadoParaPreco recusa preço NaN", () => {
+    const r = resultadoParaPreco(NaN, 30, SHOPEE);
+    expect(r.viavel).toBe(false);
+    expect(Number.isFinite(r.lucroLiquido)).toBe(true);
+  });
+
+  it("resolverPorMargem recusa custo NaN", () => {
+    const r = resolverPorMargem(NaN, 0.28, SHOPEE);
+    expect(r.viavel).toBe(false);
+    expect(Number.isFinite(r.precoVenda)).toBe(true);
+  });
+
+  it("resolverPorMargem recusa margem NaN", () => {
+    const r = resolverPorMargem(30, NaN, SHOPEE);
+    expect(r.viavel).toBe(false);
+  });
+
+  it("resolverPorLucro recusa custo e lucro NaN", () => {
+    expect(resolverPorLucro(NaN, 30, SHOPEE).viavel).toBe(false);
+    expect(resolverPorLucro(30, NaN, SHOPEE).viavel).toBe(false);
+  });
+
+  it("resolverPorMarkup recusa custo e markup NaN", () => {
+    expect(resolverPorMarkup(NaN, 0.5, SHOPEE).viavel).toBe(false);
+    expect(resolverPorMarkup(30, NaN, SHOPEE).viavel).toBe(false);
+  });
+
+  it("recusa Infinity do mesmo jeito que NaN", () => {
+    expect(resolverPorMargem(Infinity, 0.28, SHOPEE).viavel).toBe(false);
+    expect(resultadoParaPreco(Infinity, 30, SHOPEE).viavel).toBe(false);
+  });
+
+  it("nenhum campo do resultado inviável sai como NaN — senão a tela mostra 'R$ NaN'", () => {
+    const r = resolverPorMargem(NaN, NaN, SHOPEE);
+    for (const [campo, valor] of Object.entries(r)) {
+      if (typeof valor === "number") {
+        expect(Number.isFinite(valor), `${campo} não pode ser NaN`).toBe(true);
+      }
+    }
+  });
+});

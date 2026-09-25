@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
+import { validar, fornecedorSchema } from "@/lib/validacao";
 
 export interface FornecedorInput {
   nome: string;
@@ -16,14 +17,14 @@ export interface FornecedorInput {
 
 export async function criarFornecedor(dados: FornecedorInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("fornecedores").insert(dados);
+  const { error } = await supabase.from("fornecedores").insert(validar(fornecedorSchema, dados));
   if (error) lancarErroSupabase(error);
   revalidatePath("/fornecedores");
 }
 
 export async function atualizarFornecedor(id: string, dados: FornecedorInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("fornecedores").update(dados).eq("id", id);
+  const { error } = await supabase.from("fornecedores").update(validar(fornecedorSchema, dados)).eq("id", id);
   if (error) lancarErroSupabase(error);
   revalidatePath("/fornecedores");
 }

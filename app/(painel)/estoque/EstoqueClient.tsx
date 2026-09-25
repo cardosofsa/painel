@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatarDataHora } from "@/lib/format";
 import { registrarMovimentacaoEstoque } from "./actions";
 
 export interface ProdutoEstoque {
@@ -44,7 +44,7 @@ export function EstoqueClient({
   armazens: Armazem[];
   movimentacoes: Movimentacao[];
 }) {
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
   const [modalAberto, setModalAberto] = useState(false);
   const [movProdutoId, setMovProdutoId] = useState(produtos[0]?.id ?? "");
   const [movTipo, setMovTipo] = useState<"entrada" | "saida">("entrada");
@@ -56,7 +56,14 @@ export function EstoqueClient({
   const valorTotal = produtos.reduce((acc, p) => acc + p.estoque * p.custo, 0);
 
   function registrar() {
-    if (!movProdutoId || movQtd <= 0) return;
+    if (!movProdutoId) {
+      toast.error("Escolha o produto da movimentação.");
+      return;
+    }
+    if (movQtd <= 0) {
+      toast.error("A quantidade precisa ser maior que zero.");
+      return;
+    }
     startTransition(async () => {
       try {
         await registrarMovimentacaoEstoque({ produtoId: movProdutoId, tipo: movTipo, quantidade: movQtd, motivo: movMotivo || (movTipo === "entrada" ? "Entrada manual" : "Saída manual") });
@@ -166,7 +173,7 @@ export function EstoqueClient({
                     {m.tipo === "entrada" ? "+" : "-"}
                     {m.quantidade} un
                   </div>
-                  <div className="text-xs text-text-tertiary">{new Date(m.data_movimentacao).toLocaleString("pt-BR")}</div>
+                  <div className="text-xs text-text-tertiary">{formatarDataHora(m.data_movimentacao)}</div>
                 </div>
               </div>
             ))}
@@ -207,10 +214,12 @@ export function EstoqueClient({
         </FormField>
 
         <div className="flex gap-2 mt-5">
-          <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)}>
+          <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)} disabled={pending}>
             Cancelar
           </Button>
-          <Button variant="primary" className="flex-1" onClick={registrar}>
+          {/* `loading` também desabilita (ver Button.tsx): sem isso, dois cliques rápidos
+              gravavam duas movimentações e o estoque saía dobrado. */}
+          <Button variant="primary" className="flex-1" onClick={registrar} loading={pending}>
             Registrar
           </Button>
         </div>

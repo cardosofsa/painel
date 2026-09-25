@@ -68,7 +68,9 @@
   --color-negative-soft: var(--negative-soft);
 
   --font-sans: var(--font-geist);
-  --font-mono: var(--font-geist);
+  /* Monoespaçada de verdade: é ela que alinha as colunas de R$, SKU e data nas tabelas.
+     Antes apontava para a --font-geist proporcional, e todo `font-mono` era decorativo. */
+  --font-mono: var(--font-geist-mono);
 
   --radius-DEFAULT: var(--radius);
 }

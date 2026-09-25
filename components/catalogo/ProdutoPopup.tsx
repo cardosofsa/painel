@@ -64,7 +64,7 @@ export function ProdutoPopup({
           <div className="aspect-square bg-surface-2 rounded-lg flex items-center justify-center overflow-hidden mb-2">
             {imagens.length > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element -- URL pública do storage
-              <img src={imagens[Math.min(imagemAtiva, imagens.length - 1)]} alt={nomeCompleto} className="w-full h-full object-cover" />
+              <img src={imagens[Math.min(imagemAtiva, imagens.length - 1)]} alt={nomeCompleto} decoding="async" className="w-full h-full object-cover" />
             ) : (
               <ImageIcon size={40} className="text-text-tertiary" />
             )}
@@ -81,7 +81,7 @@ export function ProdutoPopup({
                   }`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element -- URL pública do storage */}
-                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

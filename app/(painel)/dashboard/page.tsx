@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hojeIsoLocal, formatarDataIso } from "@/lib/format";
 import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
 
 function rotuloVencimento(dataVencimento: string): { status: string; tone: "negative" | "positive" | "neutral" } {
@@ -17,9 +18,18 @@ function rotuloVencimento(dataVencimento: string): { status: string; tone: "nega
 export default async function DashboardPage() {
   const supabase = await createClient();
 
+  // O antigo toISOString() convertia para UTC: no dia 1º às 22h em Brasília ele já
+  // devolvia o dia 2, e as compras/precificações do dia 1º sumiam do resumo do mês.
   const inicioMes = new Date();
   inicioMes.setDate(1);
-  const inicioMesIso = inicioMes.toISOString().slice(0, 10);
+  const inicioMesIso = hojeIsoLocal(inicioMes);
+
+  const inicioAgenda = new Date();
+  inicioAgenda.setDate(inicioAgenda.getDate() - 45);
+  const fimAgenda = new Date();
+  fimAgenda.setDate(fimAgenda.getDate() + 45);
+  const inicioAgendaIso = hojeIsoLocal(inicioAgenda);
+  const fimAgendaIso = hojeIsoLocal(fimAgenda);
 
   // A janela de vendas começa no menor dos dois marcos (início do mês ou 7 dias
   // atrás) para que hoje/semana/mês saiam todos de uma consulta só.
@@ -59,7 +69,16 @@ export default async function DashboardPage() {
         .limit(8),
       supabase.from("pedidos_compra").select("valor_total").gte("data_pedido", inicioMesIso),
       supabase.from("precificacoes").select("id", { count: "exact", head: true }).gte("criado_em", inicioMesIso),
-      supabase.from("compromissos").select("id, titulo, data, hora, descricao").order("data").order("hora"),
+      // O card da agenda só desenha o mês corrente; sem janela, esta consulta trazia a
+      // agenda inteira, de todos os anos. Uma folga de 45 dias cobre a navegação para o
+      // mês anterior e o seguinte.
+      supabase
+        .from("compromissos")
+        .select("id, titulo, data, hora, descricao")
+        .gte("data", inicioAgendaIso)
+        .lte("data", fimAgendaIso)
+        .order("data")
+        .order("hora"),
       supabase
         .from("vendas")
         .select("total, lucro, data_venda")
@@ -112,7 +131,7 @@ export default async function DashboardPage() {
     return {
       status,
       tone,
-      vencimento: new Date(c.data_vencimento).toLocaleDateString("pt-BR"),
+      vencimento: formatarDataIso(c.data_vencimento),
       tipo: c.tipo === "pagar" ? "A Pagar" : "A Receber",
       descricao: c.descricao,
       valor: c.tipo === "pagar" ? -c.valor : c.valor,

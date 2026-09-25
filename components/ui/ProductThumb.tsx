@@ -9,7 +9,7 @@ export function ProductThumb({ src, sku, size = 40 }: { src: string | null; sku:
       >
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element -- thumbnails vêm de URLs externas arbitrárias
-          <img src={src} alt={sku} className="w-full h-full object-cover" />
+          <img src={src} alt={sku} loading="lazy" decoding="async" className="w-full h-full object-cover" />
         ) : (
           <ImageIcon size={16} className="text-text-tertiary" />
         )}

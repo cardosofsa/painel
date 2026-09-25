@@ -12,6 +12,8 @@ import {
   armazemSchema,
   formaPagamentoSchema,
   perfilNegocioSchema,
+  pinAdminSchema,
+  categoriaSchema,
 } from "@/lib/validacao";
 
 const PATH = "/configuracoes";
@@ -19,7 +21,7 @@ const PATH = "/configuracoes";
 // ---------- Categorias ----------
 export async function criarCategoria(nome: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("categorias").insert({ nome });
+  const { error } = await supabase.from("categorias").insert(validar(categoriaSchema, { nome }));
   if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
 }
@@ -124,11 +126,22 @@ export interface FaixaComissaoInput {
 
 export async function atualizarFaixasCanal(canalId: string, faixas: FaixaComissaoInput[]) {
   const supabase = await createClient();
+
+  // Valida TUDO antes de apagar qualquer coisa. Antes a validação acontecia dentro do
+  // `.map()`, ou seja, depois do DELETE: uma faixa inválida apagava a tabela de comissões
+  // da Shopee do usuário e não inseria nada no lugar — e é ela que define todo o cálculo
+  // de preço do sistema.
+  const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...validar(faixaComissaoSchema, f) }));
+  for (const linha of linhas) {
+    if (linha.preco_max !== null && linha.preco_max <= linha.preco_min) {
+      throw new Error(`A faixa ${linha.ordem} termina antes de começar — confira os valores mínimo e máximo.`);
+    }
+  }
+
   const { error: erroDelete } = await supabase.from("faixas_comissao_canal").delete().eq("canal_id", canalId);
   if (erroDelete) lancarErroSupabase(erroDelete);
 
-  if (faixas.length > 0) {
-    const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...validar(faixaComissaoSchema, f) }));
+  if (linhas.length > 0) {
     const { error: erroInsert } = await supabase.from("faixas_comissao_canal").insert(linhas);
     if (erroInsert) lancarErroSupabase(erroInsert);
   }
@@ -241,7 +254,6 @@ export interface PerfilNegocioInput {
   regime_tributario: string;
   aliquota_das: number;
   whatsapp: string | null;
-  pin_admin: string | null;
 }
 
 export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {
@@ -257,4 +269,19 @@ export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {
   if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
   revalidatePath("/precificacao");
+}
+
+/**
+ * O PIN nunca trafega de volta para o navegador nem é gravado em texto: a RPC guarda só o
+ * hash bcrypt. Por isso ele sai do `perfil_negocio` normal e tem uma action própria — a
+ * tela só sabe se existe um PIN cadastrado, nunca qual é.
+ */
+export async function definirPinAdmin(pin: string | null) {
+  const supabase = await createClient();
+  const validado = validar(pinAdminSchema, { pin });
+
+  const { error } = await supabase.rpc("definir_pin_admin", { p_pin: validado.pin });
+  if (error) lancarErroSupabase(error);
+  revalidatePath(PATH);
+  revalidatePath("/vendas");
 }

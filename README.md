@@ -31,7 +31,7 @@ Não existe service role key no projeto, e não deve existir: tudo passa pelo RL
 ## Banco de dados
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql` → `0020_perfis_acesso_admin.sql`). **Elas são aplicadas manualmente**: abra
+(`0001_init.sql` → `0022_indices_e_agregacoes.sql`). **Elas são aplicadas manualmente**: abra
 o SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem numérica.
 
 Convenções ao criar uma migração nova:
@@ -51,13 +51,28 @@ duas contas nunca enxergam os dados uma da outra. Acima disso existe a **conta m
 vê todos os cadastros em `/admin`, aprova quem entra e decide quais abas cada conta usa.
 
 - Quem se cadastra entra como `pendente` e cai em `/aguardando` até o master liberar.
-- A liberação por aba é aplicada no middleware (`lib/supabase/middleware.ts`), não no menu —
-  esconder o link não impediria ninguém de digitar a URL.
-- O catálogo de abas fica em `lib/acesso.ts`, e `perfis_acesso` não tem policy de escrita:
-  toda alteração passa por RPC `security definer` que confere `e_master()`.
+- **A suspensão vale no banco, não só na tela.** Todas as policies exigem `conta_ativa()`
+  (migração `0021`), então uma conta pendente, suspensa ou vencida não lê nem escreve nada
+  — nem pelo navegador, nem chamando o PostgREST direto com a chave anônima. Antes da 0021
+  a barreira existia só no middleware e suspender uma conta apenas escondia o menu.
+- A liberação **por aba** continua sendo enforcement de rota, no middleware
+  (`lib/supabase/middleware.ts`), não no menu — esconder o link não impediria ninguém de
+  digitar a URL. Ela é controle de navegação e de licenciamento, não de isolamento de
+  dados: o que garante isolamento é o RLS por `user_id`.
+- O catálogo de abas fica em `lib/acesso.ts` (com testes em `lib/acesso.test.ts`), e
+  `perfis_acesso` não tem policy de escrita: toda alteração passa por RPC
+  `security definer` que confere `e_master()`.
+- O PIN de administração é guardado como hash bcrypt e **nunca volta para o navegador** —
+  a tela só recebe um booleano "tem PIN?". Quem confere o PIN é a RPC `editar_venda`, no
+  banco; uma checagem só na Server Action seria contornável chamando a RPC pelo console.
 
 Para promover a primeira conta a master, rode o `update` documentado no cabeçalho de
 `supabase/migrations/0020_perfis_acesso_admin.sql` — sem isso `/admin` fica inacessível.
+
+> ⚠️ A `0021` exige que a `0020` já tenha rodado (ela aborta com mensagem clara se não
+> tiver). Depois de aplicá-la, rode as duas consultas de conferência do rodapé do arquivo:
+> as duas precisam voltar vazias. Uma conta sem linha em `perfis_acesso` perde acesso aos
+> próprios dados.
 
 ## Deploy
 
@@ -98,9 +113,12 @@ components/
   precificacao/      calculadora em massa e o card de resultado compartilhado
   charts/            gráficos (Recharts)
 lib/
-  pricing.ts         o coração do sistema: resolve preço por margem, lucro ou preço fixo,
-                     incluindo faixas de comissão por preço (Shopee)
+  pricing.ts         o coração do sistema: resolve preço por margem, lucro, markup ou preço
+                     fixo, incluindo faixas de comissão por preço (Shopee)
   alertas.ts         erosão de margem e previsão de ruptura de estoque
+  acesso.ts          catálogo de abas e regras de quem enxerga o quê (usado pelo middleware)
+  format.ts          moeda, datas e parsing de número — ver aviso de fuso abaixo
+  csv.ts             exportação com escape correto de vírgula, aspas e quebra de linha
   supabase/          clients de browser, server e middleware de sessão
 proxy.ts             middleware de sessão do Next 16 (protege as rotas)
 supabase/migrations/ schema versionado
@@ -119,6 +137,20 @@ as mutações vivem em `actions.ts` e terminam com `revalidatePath`.
 | `npm test` | Testes unitários (Vitest) |
 
 Antes de dar um trabalho por concluído: `npx tsc --noEmit`, `npm run lint` e `npm test`.
+
+## Armadilhas conhecidas
+
+**Datas.** As colunas `date` do Postgres chegam como `"2026-01-01"`, e `new Date("2026-01-01")`
+é meia-noite **UTC** — que no Brasil (UTC-3) renderiza 31/12/2025. Use sempre
+`formatarDataIso` para exibir e `hojeIsoLocal()` para montar filtro de período;
+`toISOString().slice(0,10)` devolve o dia seguinte depois das 21h.
+
+**Números digitados.** `Number("19,90")` é `NaN`, e `NaN` escapa de quase tudo: `??` não o
+pega, `NaN <= 0` é `false` e `JSON.stringify(NaN)` vira `null`. Use `numeroOuNulo()` de
+`lib/format.ts` em qualquer input numérico.
+
+**CSV.** Exporte por `paraCsv`/`matrizParaCsv` de `lib/csv.ts`. Um nome como `Silva, João`
+sem escape desloca todas as colunas a partir daquela linha.
 
 ## Conta de teste
 

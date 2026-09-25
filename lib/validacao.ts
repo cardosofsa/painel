@@ -163,7 +163,11 @@ export const perfilNegocioSchema = z.object({
   regime_tributario: z.string().trim().max(100),
   aliquota_das: percentual,
   whatsapp: z.string().trim().max(20).nullable(),
-  pin_admin: z
+});
+
+/** O PIN é gravado como hash pela RPC `definir_pin_admin`; nunca volta para o cliente. */
+export const pinAdminSchema = z.object({
+  pin: z
     .string()
     .trim()
     .regex(/^\d{4,8}$/, "O PIN deve ter de 4 a 8 números")
@@ -177,6 +181,140 @@ export const vendaEdicaoSchema = z.object({
   desconto: dinheiro,
   valor_entrega: dinheiro,
   pin: z.string().trim().min(1, "Informe o PIN"),
+});
+
+const dataIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
+
+export const fornecedorSchema = z.object({
+  nome: textoCurto,
+  cnpj: z.string().trim().max(32),
+  contato: z.string().trim().max(200),
+  telefone: z.string().trim().max(32),
+  cidade: z.string().trim().max(200),
+  prazo: z.string().trim().max(100),
+  status: z.enum(["ativo", "inativo"]),
+});
+
+export const movimentacaoSchema = z.object({
+  tipo: z.enum(["entrada", "saida"]),
+  valor: dinheiro,
+  descricao: textoCurto,
+  origem: z.string().trim().max(200).nullable(),
+  categoria: z.string().trim().max(200).nullable(),
+  conta_id: uuid,
+  afeta_lucro: z.boolean(),
+  data_movimentacao: dataIso,
+});
+
+export const despesaFixaSchema = z.object({
+  nome: textoCurto,
+  metodo: z.string().trim().max(200).nullable(),
+  valor: dinheiro,
+  dia_vencimento: z.number().int("Dia inválido").min(1, "O dia começa em 1").max(31, "O dia vai até 31"),
+  conta_id: uuidOpcional,
+});
+
+export const contaPagarReceberSchema = z.object({
+  tipo: z.enum(["pagar", "receber"]),
+  descricao: textoCurto,
+  valor: dinheiro,
+  data_vencimento: dataIso,
+  conta_id: uuidOpcional,
+});
+
+/** O período alimenta um DELETE em massa — daí o cuidado extra com a ordem das datas. */
+export const periodoSchema = z
+  .object({ dataInicio: dataIso, dataFim: dataIso })
+  .refine((p) => p.dataFim >= p.dataInicio, { message: "A data final é anterior à inicial" });
+
+export const compromissoSchema = z.object({
+  titulo: textoCurto,
+  data: dataIso,
+  // `<input type="time">` devolve "HH:MM", mas o Postgres devolve "HH:MM:SS" — aceita os
+  // dois para a edição de um compromisso já salvo não ser recusada.
+  hora: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Hora inválida").nullable(),
+  descricao: textoOpcional,
+});
+
+export const movimentacaoEstoqueSchema = z.object({
+  produtoId: uuid,
+  tipo: z.enum(["entrada", "saida"]),
+  // Precisa ser positiva: a RPC deriva o sinal a partir de `tipo`, então uma quantidade
+  // negativa numa "saída" vira entrada e o estoque SOBE registrando uma baixa.
+  quantidade: z.number().int("Quantidade precisa ser inteira").min(1, "Quantidade mínima é 1").max(1_000_000),
+  motivo: z.string().trim().max(200),
+});
+
+export const categoriaSchema = z.object({ nome: textoCurto });
+
+export const pedidoCompraSchema = z.object({
+  fornecedor_id: uuid,
+  armazem_id: uuidOpcional,
+  nf: z.string().trim().max(100).nullable(),
+  nf_arquivo_path: z.string().max(500).nullable(),
+  data_pedido: dataIso,
+  data_entrega_prevista: dataIso.nullable(),
+  forma_pagamento: z.string().trim().max(100),
+  conta_id: uuid,
+  parcelado: z.boolean(),
+  // Teto obrigatório: `Array.from({ length: parcelas })` com um número enorme vindo do
+  // cliente aloca a lista inteira e derruba o processo Node antes de tocar no banco.
+  parcelas: z.number().int("Número de parcelas inválido").min(1).max(48, "Máximo de 48 parcelas").nullable(),
+  data_primeiro_vencimento: dataIso,
+  itens: z
+    .array(
+      z.object({
+        produto_id: uuidOpcional,
+        produto_nome: textoCurto,
+        quantidade: z.number().int("Quantidade precisa ser inteira").min(1, "Quantidade mínima é 1").max(1_000_000),
+        custo_unitario: dinheiro,
+      }),
+    )
+    .min(1, "O pedido precisa ter pelo menos um item")
+    .max(500, "Pedido com itens demais"),
+});
+
+/**
+ * Porta de entrada dos números da tela de Variações. É aqui que `NaN` é barrado: ele
+ * nasce de um `Number("1,50")` (o usuário digitando no formato brasileiro), atravessa os
+ * guards de `pricing.ts` — `NaN <= 0` é `false` — e só era descoberto no INSERT, com o
+ * anúncio pai já gravado e órfão. `z.number().finite()` recusa NaN e Infinity.
+ */
+export const anuncioSchema = z.object({
+  produto_id: uuidOpcional,
+  loja_id: uuidOpcional,
+  nome_anuncio: textoCurto,
+  titulo_anuncio: z.string().trim().max(200).nullable(),
+  componentes_base: z
+    .array(
+      z.object({
+        id: z.string().max(100),
+        nome: z.string().trim().max(200),
+        quantidade: z.number().finite().min(0).max(100_000),
+        custoUnitario: dinheiro,
+      }),
+    )
+    .max(200)
+    .nullable(),
+  variacoes: z
+    .array(
+      z.object({
+        nome_variacao: z.string().trim().max(200),
+        multiplicador: z.number().finite("Multiplicador inválido").min(0).max(10_000),
+        custo: dinheiro,
+        taxa_variavel_pct: fracao,
+        taxa_fixa: dinheiro,
+        taxa_adicional_pct: fracao,
+        imposto_pct: fracao,
+        taxa_extra_valor: z.number().finite().min(0).max(1_000_000).nullable(),
+        taxa_extra_tipo: z.enum(["percentual", "fixo"]).nullable(),
+        margem_pct: z.number().finite().min(-1).max(1).nullable(),
+        preco_calculado: dinheiro,
+        lucro: z.number().finite("Lucro inválido").min(-10_000_000).max(10_000_000),
+      }),
+    )
+    .min(1, "O anúncio precisa ter pelo menos uma variação")
+    .max(200, "Anúncio com variações demais"),
 });
 
 /**

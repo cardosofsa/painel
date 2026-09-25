@@ -1,10 +1,38 @@
 import { createClient } from "@/lib/supabase/server";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber } from "./FinanceiroClient";
 import { calcularErosaoMargem, calcularPrevisaoRuptura } from "@/lib/alertas";
+import { hojeIsoLocal } from "@/lib/format";
+import { lancarErroSupabase } from "@/lib/erros";
 
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
+interface CustoRecente {
+  produto_id: string;
+  produto_nome: string;
+  custo_compra: number;
+  custo_precificacao: number;
 }
+
+/** Totais agregados no banco — ver `resumo_financeiro` na migração 0022. */
+export interface ResumoFinanceiro {
+  total_entradas: number;
+  total_saidas: number;
+  saldo_liquido: number;
+  entradas_com_lucro: number;
+  saidas_com_lucro: number;
+  quantidade: number;
+}
+
+const RESUMO_VAZIO: ResumoFinanceiro = {
+  total_entradas: 0,
+  total_saidas: 0,
+  saldo_liquido: 0,
+  entradas_com_lucro: 0,
+  saidas_com_lucro: 0,
+  quantidade: 0,
+};
+
+// Alias local. O `toISOString()` que havia aqui dava a data em UTC e, depois das 21h em
+// Brasília, já apontava para o dia seguinte — deslocando toda a janela de consulta.
+const isoDate = hojeIsoLocal;
 
 export default async function FinanceiroPage() {
   const supabase = await createClient();
@@ -22,9 +50,8 @@ export default async function FinanceiroPage() {
     fluxoRes,
     despesasCatRes,
     produtosRes,
-    pedidosRecebidosRes,
-    itensCompraRes,
-    precificacoesRes,
+    custosRes,
+    resumoRes,
     saidasEstoqueRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
@@ -48,9 +75,14 @@ export default async function FinanceiroPage() {
       .eq("tipo", "saida")
       .gte("data_movimentacao", isoDate(inicioMes)),
     supabase.from("produtos").select("id, nome, estoque").eq("ativo", true),
-    supabase.from("pedidos_compra").select("id, data_recebimento").eq("status", "recebido"),
-    supabase.from("pedidos_compra_itens").select("produto_id, produto_nome, custo_unitario, pedido_compra_id"),
-    supabase.from("precificacoes").select("produto_id, custo, criado_em").not("produto_id", "is", null).order("criado_em", { ascending: false }),
+    // Antes eram duas varreduras totais aqui — `pedidos_compra_itens` e `precificacoes`
+    // inteiras — para montar em memória um mapa de ~50 entradas. A RPC faz o mesmo com
+    // `distinct on`, numa passada indexada.
+    supabase.rpc("custos_recentes_por_produto"),
+    // Totais somados no banco. O card "Saldo Líquido Realizado" somava o array de 100
+    // lançamentos que a tela recebia, então o número ficava errado a partir do 101º — e
+    // `numeric` do Postgres é exato, sem o acúmulo de centavos do float do JavaScript.
+    supabase.rpc("resumo_financeiro", { p_inicio: null, p_fim: null }),
     supabase
       .from("estoque_movimentacoes")
       .select("produto_id, quantidade")
@@ -58,17 +90,25 @@ export default async function FinanceiroPage() {
       .gte("data_movimentacao", isoDate(inicio30Dias)),
   ]);
 
-  if (contasRes.error) throw new Error(contasRes.error.message);
-  if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
-  if (despesasRes.error) throw new Error(despesasRes.error.message);
-  if (cprRes.error) throw new Error(cprRes.error.message);
-  if (produtosRes.error) throw new Error(produtosRes.error.message);
-  if (pedidosRecebidosRes.error) throw new Error(pedidosRecebidosRes.error.message);
-  if (itensCompraRes.error) throw new Error(itensCompraRes.error.message);
-  if (precificacoesRes.error) throw new Error(precificacoesRes.error.message);
-  if (saidasEstoqueRes.error) throw new Error(saidasEstoqueRes.error.message);
-  if (fluxoRes.error) throw new Error(fluxoRes.error.message);
-  if (despesasCatRes.error) throw new Error(despesasCatRes.error.message);
+  // Só as consultas ESSENCIAIS derrubam a tela. Antes eram 11 `throw`: uma falha em
+  // `precificacoes` — que alimenta apenas o card de erosão de margem — apagava saldo, fluxo
+  // de caixa, contas a pagar e lançamentos junto.
+  if (contasRes.error) lancarErroSupabase(contasRes.error);
+  if (movimentacoesRes.error) lancarErroSupabase(movimentacoesRes.error);
+  if (despesasRes.error) lancarErroSupabase(despesasRes.error);
+  if (cprRes.error) lancarErroSupabase(cprRes.error);
+
+  // Secundárias: se falharem, a tela carrega sem o card correspondente.
+  for (const [nome, res] of [
+    ["fluxo de caixa", fluxoRes],
+    ["despesas por categoria", despesasCatRes],
+    ["produtos", produtosRes],
+    ["custos recentes", custosRes],
+    ["resumo financeiro", resumoRes],
+    ["saídas de estoque", saidasEstoqueRes],
+  ] as const) {
+    if (res.error) console.error(`[financeiro] falha ao carregar ${nome}:`, res.error.message);
+  }
 
   const mapaFluxo = new Map<string, { entradas: number; saidas: number }>();
   for (const m of fluxoRes.data ?? []) {
@@ -120,23 +160,13 @@ export default async function FinanceiroPage() {
     conta_nome: (c.conta_id && contasPorId.get(c.conta_id)) ?? null,
   }));
 
-  // Erosão de margem: cruza a compra recebida mais recente de cada produto com o custo da última precificação salva.
-  const dataRecebimentoPorPedido = new Map((pedidosRecebidosRes.data ?? []).map((p) => [p.id, p.data_recebimento]));
-  const comprasRecentesPorProduto = new Map<string, { custo_unitario: number; produto_nome: string; data: string }>();
-  for (const item of itensCompraRes.data ?? []) {
-    if (!item.produto_id) continue;
-    const data = dataRecebimentoPorPedido.get(item.pedido_compra_id);
-    if (!data) continue;
-    const atual = comprasRecentesPorProduto.get(item.produto_id);
-    if (!atual || data > atual.data) {
-      comprasRecentesPorProduto.set(item.produto_id, { custo_unitario: item.custo_unitario, produto_nome: item.produto_nome, data });
-    }
-  }
-
+  // Erosão de margem: cruza a compra recebida mais recente de cada produto com o custo da
+  // última precificação salva. A RPC já devolve os dois lados prontos, um registro por SKU.
+  const comprasRecentesPorProduto = new Map<string, { custo_unitario: number; produto_nome: string }>();
   const precificacoesRecentesPorProduto = new Map<string, { custo: number }>();
-  for (const p of precificacoesRes.data ?? []) {
-    if (!p.produto_id || precificacoesRecentesPorProduto.has(p.produto_id)) continue;
-    precificacoesRecentesPorProduto.set(p.produto_id, { custo: p.custo });
+  for (const c of (custosRes.data ?? []) as CustoRecente[]) {
+    comprasRecentesPorProduto.set(c.produto_id, { custo_unitario: c.custo_compra, produto_nome: c.produto_nome });
+    precificacoesRecentesPorProduto.set(c.produto_id, { custo: c.custo_precificacao });
   }
 
   const alertasErosaoMargem = calcularErosaoMargem(precificacoesRecentesPorProduto, comprasRecentesPorProduto);
@@ -158,6 +188,7 @@ export default async function FinanceiroPage() {
       despesasPorCategoria={despesasPorCategoria}
       alertasErosaoMargem={alertasErosaoMargem}
       alertasRupturaEstoque={alertasRupturaEstoque}
+      resumo={((resumoRes.data as ResumoFinanceiro[] | null)?.[0]) ?? RESUMO_VAZIO}
     />
   );
 }

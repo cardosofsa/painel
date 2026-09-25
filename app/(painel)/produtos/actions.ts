@@ -69,7 +69,8 @@ export async function criarProduto(dados: ProdutoInput) {
   const supabase = await createClient();
   const { loja_ids, ...produto } = validar(produtoSchema, dados);
   const { data, error } = await supabase.from("produtos").insert(produto).select("id").single();
-  if (error || !data) throw new Error(error?.message ?? "Erro ao criar produto");
+  if (error) lancarErroSupabase(error);
+  if (!data) throw new Error("Erro ao criar produto.");
   await sincronizarLojasProduto(supabase, data.id, loja_ids);
   revalidateTudo();
 }

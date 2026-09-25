@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { hojeIsoLocal } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
+import { validar, pedidoCompraSchema } from "@/lib/validacao";
 
 export interface ItemPedidoInput {
   produto_id: string | null;
@@ -39,37 +41,42 @@ function revalidateTudo() {
 function somarMeses(dataIso: string, meses: number) {
   const d = new Date(dataIso + "T00:00:00");
   d.setMonth(d.getMonth() + meses);
-  return d.toISOString().slice(0, 10);
+  return hojeIsoLocal(d);
 }
 
 export async function criarPedidoCompra(dados: PedidoCompraInput) {
   const supabase = await createClient();
-  const valorTotal = dados.itens.reduce((acc, it) => acc + it.quantidade * it.custo_unitario, 0);
+  // O schema impõe o teto de 48 parcelas. Sem ele, um `parcelas: 1e8` vindo do cliente
+  // fazia o `Array.from({ length })` lá embaixo alocar a lista inteira e derrubar o
+  // processo Node antes mesmo de encostar no banco.
+  const v = validar(pedidoCompraSchema, dados);
+  const valorTotal = v.itens.reduce((acc, it) => acc + it.quantidade * it.custo_unitario, 0);
 
   const { data: pedido, error: erroPedido } = await supabase
     .from("pedidos_compra")
     .insert({
-      fornecedor_id: dados.fornecedor_id,
-      armazem_id: dados.armazem_id,
-      nf: dados.nf,
-      nf_arquivo_path: dados.nf_arquivo_path,
+      fornecedor_id: v.fornecedor_id,
+      armazem_id: v.armazem_id,
+      nf: v.nf,
+      nf_arquivo_path: v.nf_arquivo_path,
       valor_total: valorTotal,
-      data_pedido: dados.data_pedido,
-      data_entrega_prevista: dados.data_entrega_prevista,
-      forma_pagamento: dados.forma_pagamento,
-      parcelas: dados.parcelado ? dados.parcelas : null,
+      data_pedido: v.data_pedido,
+      data_entrega_prevista: v.data_entrega_prevista,
+      forma_pagamento: v.forma_pagamento,
+      parcelas: v.parcelado ? v.parcelas : null,
       status: "pendente",
     })
     .select("id, numero")
     .single();
 
-  if (erroPedido || !pedido) throw new Error(erroPedido?.message ?? "Erro ao criar pedido");
+  if (erroPedido) lancarErroSupabase(erroPedido);
+  if (!pedido) throw new Error("Erro ao criar pedido.");
 
-  const itensParaInserir = dados.itens.map((it) => ({ ...it, pedido_compra_id: pedido.id }));
+  const itensParaInserir = v.itens.map((it) => ({ ...it, pedido_compra_id: pedido.id }));
   const { error: erroItens } = await supabase.from("pedidos_compra_itens").insert(itensParaInserir);
   if (erroItens) lancarErroSupabase(erroItens);
 
-  const parcelas = dados.parcelado ? Math.max(1, dados.parcelas ?? 1) : 1;
+  const parcelas = v.parcelado ? Math.max(1, v.parcelas ?? 1) : 1;
   const valorParcela = Math.round((valorTotal / parcelas) * 100) / 100;
   const titulos = Array.from({ length: parcelas }, (_, i) => {
     const ultima = i === parcelas - 1;
@@ -78,9 +85,9 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
       tipo: "pagar" as const,
       descricao: parcelas > 1 ? `Pedido ${pedido.numero} — parcela ${i + 1}/${parcelas}` : `Pedido ${pedido.numero}`,
       valor,
-      data_vencimento: somarMeses(dados.data_primeiro_vencimento, i),
+      data_vencimento: somarMeses(v.data_primeiro_vencimento, i),
       status: "pendente" as const,
-      conta_id: dados.conta_id,
+      conta_id: v.conta_id,
       referencia_pedido_compra_id: pedido.id,
     };
   });
@@ -94,7 +101,8 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
 export async function obterUrlNotaFiscal(caminho: string) {
   const supabase = await createClient();
   const { data, error } = await supabase.storage.from("notas-fiscais").createSignedUrl(caminho, 300);
-  if (error || !data) throw new Error(error?.message ?? "Erro ao gerar link da nota fiscal");
+  if (error) lancarErroSupabase(error);
+  if (!data) throw new Error("Erro ao gerar link da nota fiscal.");
   return data.signedUrl;
 }
 

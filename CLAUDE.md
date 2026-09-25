@@ -61,6 +61,30 @@ Ao criar uma migração:
   `language plpgsql security definer set search_path = public` para expor só o necessário
   sem dar SELECT direto nas tabelas via RLS — nunca conceda acesso amplo às tabelas cruas
   para `anon`.
+- **Tabela nova precisa de `conta_ativa()` na policy**, no mesmo formato das outras:
+  `using (auth.uid() = user_id and conta_ativa())`, com o mesmo predicado no `with check`.
+  Sem isso a tabela fica acessível a conta pendente ou suspensa (ver `0021`).
+- **`with check` não é opcional.** Sem ele, um usuário pode fazer UPDATE reatribuindo o
+  `user_id` da linha para outra conta, ou INSERT com `user_id` alheio, direto pelo
+  PostgREST. Várias server actions fazem `insert(dados)` com objeto do cliente e é o
+  `with check` que segura.
+
+## Controle de acesso: onde cada trava mora
+
+A regra é: **se a checagem só existe no servidor do app, ela não existe.** A aplicação usa
+a chave anônima, então qualquer RPC ou tabela é alcançável pelo console do navegador com a
+sessão do usuário. Toda trava que importa tem que estar no banco.
+
+| Trava | Onde vive |
+| --- | --- |
+| Isolamento entre contas | RLS `auth.uid() = user_id` em todas as tabelas |
+| Conta pendente/suspensa/vencida | `conta_ativa()` dentro de cada policy (`0021`) |
+| Conta master | `e_master()` dentro de cada RPC `admin_*` (`0020`) |
+| PIN de edição de venda | hash bcrypt conferido dentro de `editar_venda` (`0021`) |
+| Liberação por aba | middleware — é roteamento, **não** isolamento de dados |
+
+O PIN nunca é enviado ao cliente: `perfil_negocio.pin_admin_hash` fica fora de todo
+`select` e a tela recebe só um booleano.
 
 ## Arquitetura
 
@@ -79,15 +103,18 @@ components/
   precificacao/      calculadora em massa e o card de resultado compartilhado
   charts/            gráficos (Recharts)
 lib/
-  pricing.ts         o coração do sistema: resolve preço por margem, lucro ou preço fixo,
-                     incluindo faixas de comissão por preço (Shopee) — tem testes em
+  pricing.ts         o coração do sistema: resolve preço por margem, lucro, markup ou preço
+                     fixo, incluindo faixas de comissão por preço (Shopee) — tem testes em
                      pricing.test.ts, mudanças aqui exigem rodar os testes
   alertas.ts         erosão de margem e previsão de ruptura de estoque (alertas.test.ts)
+  acesso.ts          catálogo de abas + regras de acesso usadas pelo middleware
+                     (acesso.test.ts — é controle de acesso, mantenha coberto)
   validacao.ts       schemas Zod + helper validar() — toda server action valida entrada aqui
-  erros.ts           traduzirErroSupabase()/lancarErroSupabase() — traduz erro cru do
-                     Postgres (código, constraint) para mensagem em pt-BR antes do toast
-  csv.ts             exportação de tabelas para CSV
-  format.ts          formatação (moeda, datas)
+  erros.ts           traduzirErroSupabase()/lancarErroSupabase() — traduz erro do Postgres
+                     para pt-BR; o fallback é genérico de propósito, para não vazar nome de
+                     tabela/constraint no toast (P0001 passa direto, é mensagem nossa)
+  csv.ts             exportação para CSV, com escape (csv.test.ts)
+  format.ts          moeda, datas e numeroOuNulo() (format.test.ts)
   hooks/             hooks compartilhados (ex.: useSupabaseUpload para upload no Storage)
   supabase/          clients: client.ts (browser), server.ts (Server Components/Actions),
                      middleware.ts (sessão)
@@ -108,6 +135,24 @@ Server Action.
 modal/componente quando o item selecionado muda, prefira montar/desmontar via `key`
 (`key={`algo-${item?.id ?? "fechado"}`}`) em vez de chamar `setState` de forma síncrona
 dentro de um `useEffect`.
+
+**O `key` vai no componente que tem o `useState`, não no `<Modal>` de dentro.** Pôr no
+lugar errado não remonta nada: o `useState` continua inicializado com o valor da primeira
+montagem, quando o item ainda era `null`. Isso já causou três bugs de perda de dado —
+inclusive um em que abrir "Gerenciar acesso" de uma conta ativa mostrava "Pendente" e
+salvar rebaixava a conta.
+
+## Armadilhas de dado
+
+- **Data:** coluna `date` chega como `"2026-01-01"` e `new Date()` disso é meia-noite UTC —
+  no Brasil, um dia antes. Use `formatarDataIso` e `hojeIsoLocal()` de `lib/format.ts`;
+  nunca `toISOString().slice(0,10)`, que vira o dia seguinte depois das 21h.
+- **NaN:** `Number("19,90")` é `NaN`, e ele escapa de `??`, de `x <= 0` e vira `null` no
+  `JSON.stringify`. Use `numeroOuNulo()` em todo input numérico.
+- **CSV:** use `paraCsv`/`matrizParaCsv` de `lib/csv.ts` — eles escapam vírgula, aspas e
+  quebra de linha.
+- **Somas de dinheiro** de listas grandes vão no banco (`numeric` é exato). Somar em JS o
+  array que a página carregou dá o total só do que foi carregado.
 
 ## Design
 

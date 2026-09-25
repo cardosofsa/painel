@@ -42,6 +42,13 @@ export function PdvClient({
   const [checkoutAberto, setCheckoutAberto] = useState(false);
   const [recibo, setRecibo] = useState<DadosComprovante | null>(null);
   const [whatsappRecibo, setWhatsappRecibo] = useState<string | null>(null);
+  /**
+   * Contador de venda, usado só como `key` do checkout. O `CheckoutModal` guarda cliente,
+   * forma de pagamento e vencimento em estado próprio; sem remontar, a venda seguinte abria
+   * com o cliente da anterior já selecionado — e, se aquele cliente tivesse fiado liberado,
+   * o botão "Venda Fiado" vinha habilitado por engano.
+   */
+  const [vendaSeq, setVendaSeq] = useState(0);
 
   const subtotal = calcularSubtotal(estado.itens);
   const desconto = calcularDesconto(estado, subtotal);
@@ -175,6 +182,7 @@ export function PdvClient({
         toast.success(`${venda.venda_numero} registrada — lucro ${formatBRL(venda.venda_lucro)}`);
         setEstado(CARRINHO_VAZIO);
         setCheckoutAberto(false);
+        setVendaSeq((n) => n + 1);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao registrar a venda");
       }
@@ -220,6 +228,7 @@ export function PdvClient({
       </Modal>
 
       <CheckoutModal
+        key={vendaSeq}
         aberto={checkoutAberto}
         onFechar={() => setCheckoutAberto(false)}
         total={total}

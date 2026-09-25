@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, numeroOuNulo, formatarMargemPct, classeValor } from "@/lib/format";
 import {
   resolverPorMargem,
   resolverPorLucro,
@@ -148,9 +148,12 @@ export function VariacoesView({
       prev.map((v) => {
         if (v.id !== id) return v;
         if (campo === "nome") return { ...v, nome: valor };
-        if (campo === "multiplicador") return { ...v, multiplicador: Number(valor) || 1 };
-        if (campo === "parametroOverride") return { ...v, parametroOverride: valor.trim() === "" ? null : Number(valor) };
-        return { ...v, custoManual: valor.trim() === "" ? null : Number(valor) };
+        // `Number("1,50")` — o usuário digitando no formato brasileiro — devolve NaN, e o
+        // `??` lá na frente não pega NaN: ele atravessava o cálculo inteiro e só estourava
+        // no INSERT. `numeroOuNulo` converte vírgula e recusa qualquer coisa não finita.
+        if (campo === "multiplicador") return { ...v, multiplicador: numeroOuNulo(valor) ?? 1 };
+        if (campo === "parametroOverride") return { ...v, parametroOverride: numeroOuNulo(valor) };
+        return { ...v, custoManual: numeroOuNulo(valor) };
       }),
     );
   }
@@ -491,8 +494,8 @@ export function VariacoesView({
                     <Td align="right" mono>
                       {formatBRL(resultado.lucroLiquido)}
                     </Td>
-                    <Td align="right" mono className="text-positive">
-                      {(resultado.margemEfetivaPct * 100).toFixed(1)}%
+                    <Td align="right" mono className={classeValor(resultado.lucroLiquido)}>
+                      {formatarMargemPct(resultado.lucroLiquido, resultado.precoVenda)}
                     </Td>
                     <Td align="right">
                       <button
@@ -656,8 +659,8 @@ export function VariacoesView({
                       <div className="flex items-center gap-4 text-xs">
                         <span className="text-text-secondary">custo {formatBRL(v.custo)}</span>
                         <span className="font-mono text-accent">{formatBRL(v.preco_calculado)}</span>
-                        <span className="font-mono text-positive">
-                          {v.preco_calculado > 0 ? ((v.lucro / v.preco_calculado) * 100).toFixed(1) : "0.0"}%
+                        <span className={`font-mono ${classeValor(v.lucro)}`}>
+                          {formatarMargemPct(v.lucro, v.preco_calculado)}
                         </span>
                       </div>
                     </div>

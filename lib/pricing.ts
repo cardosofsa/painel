@@ -47,7 +47,9 @@ function extraFixo(taxas: TaxasPlataforma): number {
 
 function resultadoInviavel(custoTotal: number): ResultadoPrecificacao {
   return {
-    custoTotal,
+    // `custoTotal` pode chegar aqui como NaN (é justamente um dos motivos de ser inviável).
+    // Devolver NaN faria o `formatBRL` do card exibir "R$ NaN".
+    custoTotal: Number.isFinite(custoTotal) ? custoTotal : 0,
     precoVenda: 0,
     taxaVariavelValor: 0,
     taxaAdicionalValor: 0,
@@ -68,7 +70,10 @@ export function resultadoParaPreco(
   custoTotal: number,
   taxas: TaxasPlataforma,
 ): ResultadoPrecificacao {
-  if (custoTotal <= 0) return resultadoInviavel(custoTotal);
+  // `NaN <= 0` é `false`, então o guard antigo (`custoTotal <= 0`) deixava NaN passar e a
+  // função devolvia `viavel: true` com preço NaN — que ia parar no INSERT.
+  if (!Number.isFinite(custoTotal) || custoTotal <= 0) return resultadoInviavel(custoTotal);
+  if (!Number.isFinite(precoVenda)) return resultadoInviavel(custoTotal);
 
   const taxaVariavelValor = precoVenda * taxas.taxaVariavelPct;
   const taxaAdicionalValor = precoVenda * taxas.taxaAdicionalPct;
@@ -102,7 +107,9 @@ export function resolverPorMargem(
   taxas: TaxasPlataforma,
 ): ResultadoPrecificacao {
   const denom = 1 - taxas.taxaVariavelPct - taxas.taxaAdicionalPct - taxas.impostoPct - extraFracao(taxas) - margemDesejadaPct;
-  if (denom <= 0.001 || custoTotal <= 0) return resultadoInviavel(custoTotal);
+  if (!Number.isFinite(denom) || denom <= 0.001 || !Number.isFinite(custoTotal) || custoTotal <= 0) {
+    return resultadoInviavel(custoTotal);
+  }
 
   const precoVenda = (custoTotal + taxas.taxaFixa + extraFixo(taxas)) / denom;
   return resultadoParaPreco(precoVenda, custoTotal, taxas);
@@ -118,7 +125,11 @@ export function resolverPorLucro(
   taxas: TaxasPlataforma,
 ): ResultadoPrecificacao {
   const denom = 1 - taxas.taxaVariavelPct - taxas.taxaAdicionalPct - taxas.impostoPct - extraFracao(taxas);
-  if (denom <= 0.001 || custoTotal <= 0) return resultadoInviavel(custoTotal);
+  if (!Number.isFinite(denom) || denom <= 0.001 || !Number.isFinite(custoTotal) || custoTotal <= 0) {
+    return resultadoInviavel(custoTotal);
+  }
+
+  if (!Number.isFinite(lucroDesejado)) return resultadoInviavel(custoTotal);
 
   const precoVenda = (custoTotal + taxas.taxaFixa + extraFixo(taxas) + lucroDesejado) / denom;
   return resultadoParaPreco(precoVenda, custoTotal, taxas);
@@ -135,7 +146,11 @@ export function resolverPorMarkup(
   taxas: TaxasPlataforma,
 ): ResultadoPrecificacao {
   const denom = 1 - taxas.taxaVariavelPct - taxas.taxaAdicionalPct - taxas.impostoPct - extraFracao(taxas);
-  if (denom <= 0.001 || custoTotal <= 0) return resultadoInviavel(custoTotal);
+  if (!Number.isFinite(denom) || denom <= 0.001 || !Number.isFinite(custoTotal) || custoTotal <= 0) {
+    return resultadoInviavel(custoTotal);
+  }
+
+  if (!Number.isFinite(markupDesejadoPct)) return resultadoInviavel(custoTotal);
 
   const precoVenda = (custoTotal * (1 + markupDesejadoPct) + taxas.taxaFixa + extraFixo(taxas)) / denom;
   return resultadoParaPreco(precoVenda, custoTotal, taxas);

@@ -16,8 +16,10 @@ import { Wallet, Receipt, AlertTriangle, TrendingDown, PackageX, ShieldCheck, Do
 import Link from "next/link";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatarDataIso, hojeIsoLocal, classeValor } from "@/lib/format";
+import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
 import type { AlertaErosaoMargem, AlertaRupturaEstoque } from "@/lib/alertas";
+import type { ResumoFinanceiro } from "./page";
 import {
   criarMovimentacao,
   criarDespesaFixa,
@@ -76,10 +78,6 @@ export interface ContaPagarReceber {
 
 const FILTROS_CPR = ["Todos", "A Pagar", "A Receber", "Vencidos"] as const;
 
-function formatarData(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR");
-}
-
 export function FinanceiroClient({
   contas,
   movimentacoes,
@@ -89,6 +87,7 @@ export function FinanceiroClient({
   despesasPorCategoria,
   alertasErosaoMargem,
   alertasRupturaEstoque,
+  resumo,
 }: {
   contas: Conta[];
   movimentacoes: Movimentacao[];
@@ -98,6 +97,7 @@ export function FinanceiroClient({
   despesasPorCategoria: { categoria: string; valor: number }[];
   alertasErosaoMargem: AlertaErosaoMargem[];
   alertasRupturaEstoque: AlertaRupturaEstoque[];
+  resumo: ResumoFinanceiro;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -116,48 +116,37 @@ export function FinanceiroClient({
   }
 
   function exportarRelatorio() {
-    const paraCsv = (v: string | number) => {
-      const t = String(v);
-      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-    };
-    const linha = (campos: (string | number)[]) => campos.map(paraCsv).join(",");
-    const linhas: string[] = [];
+    const linhas: (string | number)[][] = [];
 
-    linhas.push(linha(["Resumo do Período"]));
-    linhas.push(linha(["Receita do Mês", receitaMensal.toFixed(2)]));
-    linhas.push(linha(["Despesas do Mês", despesasMensais.toFixed(2)]));
-    linhas.push(linha(["Resultado do Mês", resultadoMensal.toFixed(2)]));
-    linhas.push(linha(["Saldo Líquido Realizado", saldoLiquido.toFixed(2)]));
-    linhas.push(linha(["Saldo Atual em Contas", saldoAtual.toFixed(2)]));
-    linhas.push(linha(["Saldo Projetado (30 dias)", saldoProjetado30Dias.toFixed(2)]));
-    linhas.push("");
+    linhas.push(["Resumo do Período"]);
+    linhas.push(["Receita do Mês", receitaMensal.toFixed(2)]);
+    linhas.push(["Despesas do Mês", despesasMensais.toFixed(2)]);
+    linhas.push(["Resultado do Mês", resultadoMensal.toFixed(2)]);
+    linhas.push(["Saldo Líquido Realizado", saldoLiquido.toFixed(2)]);
+    linhas.push(["Saldo Atual em Contas", saldoAtual.toFixed(2)]);
+    linhas.push(["Saldo Projetado (30 dias)", saldoProjetado30Dias.toFixed(2)]);
+    linhas.push([]);
 
-    linhas.push(linha(["Lançamentos"]));
-    linhas.push(linha(["Data", "Descrição", "Categoria", "Conta", "Afeta Lucro", "Valor"]));
+    linhas.push(["Lançamentos"]);
+    linhas.push(["Data", "Descrição", "Categoria", "Conta", "Afeta Lucro", "Valor"]);
     for (const m of movimentacoes) {
-      linhas.push(linha([formatarData(m.data_movimentacao), m.descricao, m.categoria ?? "", m.conta_nome, m.afeta_lucro ? "Sim" : "Não", m.valor.toFixed(2)]));
+      linhas.push([formatarDataIso(m.data_movimentacao), m.descricao, m.categoria ?? "", m.conta_nome, m.afeta_lucro ? "Sim" : "Não", m.valor.toFixed(2)]);
     }
-    linhas.push("");
+    linhas.push([]);
 
-    linhas.push(linha(["Contas a Pagar & Receber Pendentes"]));
-    linhas.push(linha(["Tipo", "Descrição", "Vencimento", "Conta", "Valor"]));
+    linhas.push(["Contas a Pagar & Receber Pendentes"]);
+    linhas.push(["Tipo", "Descrição", "Vencimento", "Conta", "Valor"]);
     for (const c of contasPagarReceber.filter((c) => c.status === "pendente")) {
-      linhas.push(linha([c.tipo === "pagar" ? "A Pagar" : "A Receber", c.descricao, formatarData(c.data_vencimento), c.conta_nome ?? "", c.valor.toFixed(2)]));
+      linhas.push([c.tipo === "pagar" ? "A Pagar" : "A Receber", c.descricao, formatarDataIso(c.data_vencimento), c.conta_nome ?? "", c.valor.toFixed(2)]);
     }
 
-    const csv = linhas.join("\n");
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `relatorio-financeiro-${hojeIso}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    baixarArquivo(`relatorio-financeiro-${hojeIso}.csv`, matrizParaCsv(linhas));
   }
 
-  const totalEntradas = movimentacoes.filter((m) => m.valor > 0).reduce((a, m) => a + m.valor, 0);
-  const totalSaidas = movimentacoes.filter((m) => m.valor < 0).reduce((a, m) => a + m.valor, 0);
-  const saldoLiquido = totalEntradas + totalSaidas;
+  // Vem agregado do banco (RPC resumo_financeiro). Somar `movimentacoes` aqui daria o
+  // total dos 100 lançamentos que a página carrega, não o do período inteiro — um número
+  // errado que continuava parecendo certo.
+  const saldoLiquido = resumo.saldo_liquido;
   const custoFixoMensal = despesasFixas.reduce((a, d) => a + d.valor, 0);
 
   const receitaMensal = fluxoCaixaDiario.reduce((a, d) => a + d.entradas, 0);
@@ -168,7 +157,9 @@ export function FinanceiroClient({
   const cprFiltrado = contasPagarReceber.filter((c) => {
     if (filtroCpr === "A Pagar") return c.tipo === "pagar";
     if (filtroCpr === "A Receber") return c.tipo === "receber";
-    if (filtroCpr === "Vencidos") return c.status === "pendente";
+    // Vencido é pendente E com vencimento no passado; antes devolvia todos os pendentes,
+    // inclusive os que vencem daqui a meses.
+    if (filtroCpr === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIsoLocal();
     return true;
   });
 
@@ -180,12 +171,14 @@ export function FinanceiroClient({
   em7Dias.setDate(em7Dias.getDate() + 7);
   const em30Dias = new Date(hoje);
   em30Dias.setDate(em30Dias.getDate() + 30);
-  const hojeIso = hoje.toISOString().slice(0, 10);
-  const em7DiasIso = em7Dias.toISOString().slice(0, 10);
-  const em30DiasIso = em30Dias.toISOString().slice(0, 10);
+  // `toISOString()` converteria para UTC e, depois das 21h em Brasília, já devolveria o dia
+  // seguinte — jogando os vencimentos de hoje para fora de todos os filtros abaixo.
+  const hojeIso = hojeIsoLocal(hoje);
+  const em7DiasIso = hojeIsoLocal(em7Dias);
+  const em30DiasIso = hojeIsoLocal(em30Dias);
 
   const vencimentosProximos = contasPagarReceber.filter(
-    (c) => c.status === "pendente" && (c.data_vencimento <= hojeIso || c.data_vencimento <= em7DiasIso),
+    (c) => c.status === "pendente" && c.data_vencimento <= em7DiasIso,
   );
 
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
@@ -196,8 +189,9 @@ export function FinanceiroClient({
 
   const totalAlertas = vencimentosProximos.length + alertasErosaoMargem.length + alertasRupturaEstoque.length;
 
-  const lancamentosConsiderados = incluirFluxoNoLucro ? movimentacoes : movimentacoes.filter((m) => m.afeta_lucro);
-  const impactoNoLucro = lancamentosConsiderados.reduce((a, m) => a + m.valor, 0);
+  const impactoNoLucro = incluirFluxoNoLucro
+    ? resumo.saldo_liquido
+    : resumo.entradas_com_lucro + resumo.saidas_com_lucro;
 
   const contaFiltrada = filtroContaId ? contas.find((c) => c.id === filtroContaId) ?? null : null;
   const movimentacoesFiltradas = filtroContaId ? movimentacoes.filter((m) => m.conta_id === filtroContaId) : movimentacoes;
@@ -316,10 +310,13 @@ export function FinanceiroClient({
             {vencimentosProximos.map((c) => (
               <div key={c.id} className="flex items-center justify-between text-sm border border-border rounded-md px-3 py-2">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle size={14} className={c.data_vencimento <= hojeIso ? "text-negative" : "text-accent"} />
+                  {/* "Vencido" precisa ser texto, não só a cor do ícone: quem não distingue
+                      as duas cores não tem como saber o que já passou do prazo. */}
+                  <AlertTriangle size={14} className={c.data_vencimento < hojeIso ? "text-negative" : "text-accent"} />
                   <span className="text-text-primary">{c.descricao}</span>
+                  {c.data_vencimento < hojeIso && <StatusChip label="Vencido" tone="negative" />}
                   <span className="text-xs text-text-tertiary">
-                    {c.tipo === "pagar" ? "a pagar" : "a receber"} em {formatarData(c.data_vencimento)}
+                    {c.tipo === "pagar" ? "a pagar" : "a receber"} em {formatarDataIso(c.data_vencimento)}
                   </span>
                 </div>
                 <span className="font-mono text-text-secondary">{formatBRL(c.valor)}</span>
@@ -372,13 +369,18 @@ export function FinanceiroClient({
           <CardEyebrow>
             Resultado do Mês <InfoTooltip text="Receita do mês menos despesas do mês (Fluxo de Caixa dos últimos 30 dias)." />
           </CardEyebrow>
-          <HeroMetric value={formatBRL(resultadoMensal)} accent caption={`Margem líquida: ${margemLiquidaPct.toFixed(1)}%`} />
+          <HeroMetric
+            value={formatBRL(resultadoMensal)}
+            accent
+            valorNumerico={resultadoMensal}
+            caption={`Margem líquida: ${margemLiquidaPct.toFixed(1).replace(".", ",")}%`}
+          />
         </Card>
         <Card>
           <CardEyebrow>
-            Saldo Líquido Realizado <InfoTooltip text="Entradas menos saídas dos lançamentos listados abaixo em 'Lançamentos Recentes'." />
+            Saldo Líquido Realizado <InfoTooltip text="Entradas menos saídas de todos os lançamentos já registrados, somados no banco." />
           </CardEyebrow>
-          <HeroMetric value={formatBRL(saldoLiquido)} />
+          <HeroMetric value={formatBRL(saldoLiquido)} valorNumerico={saldoLiquido} />
         </Card>
       </div>
 
@@ -476,7 +478,7 @@ export function FinanceiroClient({
                   <Td align="right" mono className={c.tipo === "pagar" ? "text-negative" : "text-positive"}>
                     {formatBRL(c.valor)}
                   </Td>
-                  <Td mono>{formatarData(c.data_vencimento)}</Td>
+                  <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
                   <Td>
                     <StatusChip
                       label={c.status === "pendente" ? "Pendente" : c.status === "pago" ? "Pago" : "Recebido"}
@@ -530,7 +532,12 @@ export function FinanceiroClient({
             <div className="flex items-center gap-4 px-5 pb-4 text-xs text-text-secondary">
               <span>Entradas: <span className="font-mono text-positive">{formatBRL(entradasContaFiltrada)}</span></span>
               <span>Saídas: <span className="font-mono text-negative">{formatBRL(Math.abs(saidasContaFiltrada))}</span></span>
-              <span>Saldo do período: <span className="font-mono text-text-primary">{formatBRL(entradasContaFiltrada + saidasContaFiltrada)}</span></span>
+              <span>
+                Saldo dos lançamentos listados:{" "}
+                <span className={`font-mono ${classeValor(entradasContaFiltrada + saidasContaFiltrada)}`}>
+                  {formatBRL(entradasContaFiltrada + saidasContaFiltrada)}
+                </span>
+              </span>
             </div>
           )}
           {movimentacoesFiltradas.length === 0 ? (
@@ -543,7 +550,7 @@ export function FinanceiroClient({
             <Table>
               <Thead>
                 <tr>
-                  <Th>Vencimento</Th>
+                  <Th>Data</Th>
                   <Th>Descrição / Origem</Th>
                   <Th>Categoria</Th>
                   <Th>Conta</Th>
@@ -554,7 +561,7 @@ export function FinanceiroClient({
               <tbody>
                 {movimentacoesFiltradas.map((m) => (
                   <Tr key={m.id}>
-                    <Td mono>{formatarData(m.data_movimentacao)}</Td>
+                    <Td mono>{formatarDataIso(m.data_movimentacao)}</Td>
                     <Td>
                       <div>{m.descricao}</div>
                       <div className="text-xs text-text-tertiary">{m.origem}</div>
@@ -658,9 +665,15 @@ export function FinanceiroClient({
         )}
       </Card>
 
-      <NovaMovimentacaoModal open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contas} onSave={adicionarMovimentacao} salvando={pending} />
-      <NovaDespesaFixaModal open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />
-      <NovaCprModal open={modalCpr} onClose={() => setModalCpr(false)} contas={contas} onSave={adicionarCpr} salvando={pending} />
+      {/*
+        O `key` amarrado ao estado de abertura zera o formulário ao REABRIR, em vez de
+        limpá-lo no clique em salvar. Antes o campo era esvaziado antes de saber se o
+        servidor aceitou: quando falhava, o modal continuava aberto e vazio e o usuário
+        perdia tudo que tinha digitado.
+      */}
+      <NovaMovimentacaoModal key={`mov-${modalMovimentacao}`} open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contas} onSave={adicionarMovimentacao} salvando={pending} />
+      <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />
+      <NovaCprModal key={`cpr-${modalCpr}`} open={modalCpr} onClose={() => setModalCpr(false)} contas={contas} onSave={adicionarCpr} salvando={pending} />
       <LimparDadosModal open={modalLimpar} onClose={() => setModalLimpar(false)} confirm={confirm} />
       {ConfirmDialog}
     </>
@@ -678,9 +691,9 @@ function LimparDadosModal({
 }) {
   const [pending, startTransition] = useTransition();
   const hoje = new Date();
-  const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10);
+  const primeiroDiaMes = hojeIsoLocal(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
   const [dataInicio, setDataInicio] = useState(primeiroDiaMes);
-  const [dataFim, setDataFim] = useState(hoje.toISOString().slice(0, 10));
+  const [dataFim, setDataFim] = useState(hojeIsoLocal(hoje));
   const [escopo, setEscopo] = useState<EscopoLimpeza>({ lancamentos: true, contasPagarReceber: false });
   const [impacto, setImpacto] = useState<ImpactoLimpeza | null>(null);
   const [avaliando, setAvaliando] = useState(false);
@@ -830,7 +843,9 @@ function NovaMovimentacaoModal({
   const [afetaLucro, setAfetaLucro] = useState(true);
 
   function salvar() {
-    if (!descricao.trim() || valor <= 0 || !contaId) return;
+    if (!descricao.trim()) return toast.error("Descreva o lançamento.");
+    if (valor <= 0) return toast.error("O valor precisa ser maior que zero.");
+    if (!contaId) return toast.error("Escolha a conta do lançamento.");
     onSave({
       tipo,
       valor,
@@ -839,12 +854,8 @@ function NovaMovimentacaoModal({
       categoria: categoria || "Outros",
       conta_id: contaId,
       afeta_lucro: afetaLucro,
-      data_movimentacao: new Date().toISOString().slice(0, 10),
+      data_movimentacao: hojeIsoLocal(),
     });
-    setDescricao("");
-    setCategoria("");
-    setValor(0);
-    setAfetaLucro(true);
   }
 
   return (
@@ -917,12 +928,9 @@ function NovaDespesaFixaModal({
   const [contaId, setContaId] = useState(contas[0]?.id ?? "");
 
   function salvar() {
-    if (!nome.trim() || valor <= 0) return;
+    if (!nome.trim()) return toast.error("Dê um nome para a despesa fixa.");
+    if (valor <= 0) return toast.error("O valor precisa ser maior que zero.");
     onSave({ nome, metodo: metodo || null, valor, dia_vencimento: dia, conta_id: contaId || null });
-    setNome("");
-    setMetodo("");
-    setValor(0);
-    setDia(5);
   }
 
   return (
@@ -985,14 +993,13 @@ function NovaCprModal({
   const [tipo, setTipo] = useState<"pagar" | "receber">("pagar");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState(0);
-  const [vencimento, setVencimento] = useState(() => new Date().toISOString().slice(0, 10));
+  const [vencimento, setVencimento] = useState(() => hojeIsoLocal());
   const [contaId, setContaId] = useState(contas[0]?.id ?? "");
 
   function salvar() {
-    if (!descricao.trim() || valor <= 0) return;
+    if (!descricao.trim()) return toast.error("Descreva a conta a pagar ou receber.");
+    if (valor <= 0) return toast.error("O valor precisa ser maior que zero.");
     onSave({ tipo, descricao, valor, data_vencimento: vencimento, conta_id: contaId || null });
-    setDescricao("");
-    setValor(0);
   }
 
   return (

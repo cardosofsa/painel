@@ -10,6 +10,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusChip } from "@/components/ui/Badge";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { createClient } from "@/lib/supabase/client";
 import { formatBRL } from "@/lib/format";
@@ -34,6 +35,7 @@ import {
   atualizarFormaPagamento,
   removerFormaPagamento,
   salvarPerfilNegocio,
+  definirPinAdmin,
   type LojaInput,
   type FaixaComissaoInput,
   type CanalInput,
@@ -79,7 +81,8 @@ export interface PerfilNegocio {
   regime_tributario: string;
   aliquota_das: number;
   whatsapp: string;
-  pin_admin: string;
+  /** Só diz SE existe PIN. O valor nunca sai do banco. */
+  pin_configurado: boolean;
 }
 
 const ICONES_CANAL: Record<string, LucideIcon> = {
@@ -127,7 +130,8 @@ export function ConfiguracoesClient({
   const [regimeTributario, setRegimeTributario] = useState(perfil.regime_tributario);
   const [aliquotaDas, setAliquotaDas] = useState(perfil.aliquota_das);
   const [whatsapp, setWhatsapp] = useState(perfil.whatsapp);
-  const [pinAdmin, setPinAdmin] = useState(perfil.pin_admin);
+  // Campo write-only: começa sempre vazio, mesmo quando já existe um PIN cadastrado.
+  const [pinAdmin, setPinAdmin] = useState("");
 
   function salvarLojaHandler(dados: LojaInput) {
     startTransition(async () => {
@@ -228,10 +232,12 @@ export function ConfiguracoesClient({
   function adicionarCategoriaHandler() {
     if (!novaCategoria.trim()) return;
     const nome = novaCategoria.trim();
-    setNovaCategoria("");
     startTransition(async () => {
       try {
         await criarCategoria(nome);
+        // Limpa só depois do sucesso — se o nome já existir, o texto continua no campo
+        // para o usuário corrigir em vez de ter que digitar tudo de novo.
+        setNovaCategoria("");
         toast.success("Categoria adicionada");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao adicionar categoria");
@@ -349,7 +355,6 @@ export function ConfiguracoesClient({
       regime_tributario: regimeTributario,
       aliquota_das: aliquotaDas,
       whatsapp: whatsapp.trim() || null,
-      pin_admin: pinAdmin.trim() || null,
     };
     startTransition(async () => {
       try {
@@ -357,6 +362,23 @@ export function ConfiguracoesClient({
         toast.success("Perfil do negócio salvo");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao salvar perfil");
+      }
+    });
+  }
+
+  function salvarPin() {
+    const pin = pinAdmin.trim();
+    if (pin && !/^\d{4,8}$/.test(pin)) {
+      toast.error("O PIN deve ter de 4 a 8 números.");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await definirPinAdmin(pin || null);
+        setPinAdmin("");
+        toast.success(pin ? "PIN atualizado" : "PIN removido — a edição de vendas fica bloqueada");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao salvar PIN");
       }
     });
   }
@@ -434,7 +456,7 @@ export function ConfiguracoesClient({
                         <div className="flex items-center gap-3">
                           {l.logo_url ? (
                             // eslint-disable-next-line @next/next/no-img-element -- logo vem de URL do Storage
-                            <img src={l.logo_url} alt={l.nome} className="w-8 h-8 rounded-md object-cover border border-border" />
+                            <img src={l.logo_url} alt={l.nome} loading="lazy" decoding="async" className="w-8 h-8 rounded-md object-cover border border-border" />
                           ) : (
                             <div
                               className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
@@ -692,23 +714,32 @@ export function ConfiguracoesClient({
           </Card>
 
           <Card className="h-full flex flex-col">
-            <h3 className="font-semibold text-text-primary mb-4">PIN de Administração</h3>
-            <FormField label="PIN (4 a 8 números)">
+            <div className="flex items-center gap-2 mb-4">
+              <h3 className="font-semibold text-text-primary">PIN de Administração</h3>
+              <StatusChip
+                label={perfil.pin_configurado ? "Cadastrado" : "Não cadastrado"}
+                tone={perfil.pin_configurado ? "positive" : "neutral"}
+              />
+            </div>
+            <FormField label={perfil.pin_configurado ? "Novo PIN (4 a 8 números)" : "PIN (4 a 8 números)"}>
               <input
                 type="password"
                 inputMode="numeric"
+                autoComplete="new-password"
                 className={inputClass}
                 value={pinAdmin}
                 onChange={(e) => setPinAdmin(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                placeholder="Ex: 1234"
+                placeholder={perfil.pin_configurado ? "Digite para trocar" : "Ex: 1234"}
               />
             </FormField>
             <p className="text-xs text-text-tertiary mb-4">
-              Pedido em Vendas antes de editar uma venda já finalizada. Deixe em branco para desativar a edição.
+              Pedido em Vendas antes de editar uma venda já finalizada. O PIN é guardado
+              cifrado e nunca é exibido de volta — para trocar, digite um novo.
+              {perfil.pin_configurado && " Salvar com o campo vazio remove o PIN e bloqueia a edição de vendas."}
             </p>
             <div className="mt-auto pt-2">
-              <Button variant="primary" onClick={salvarPerfil} loading={pending}>
-                Salvar PIN
+              <Button variant="primary" onClick={salvarPin} loading={pending}>
+                {perfil.pin_configurado ? "Trocar PIN" : "Salvar PIN"}
               </Button>
             </div>
           </Card>
@@ -1050,7 +1081,7 @@ function LojaModal({
         <div className="flex items-center gap-3">
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- logo vem de URL do Storage
-            <img src={logoUrl} alt={nome} className="w-10 h-10 rounded-md object-cover border border-border" />
+            <img src={logoUrl} alt={nome} loading="lazy" decoding="async" className="w-10 h-10 rounded-md object-cover border border-border" />
           ) : (
             <div className="w-10 h-10 rounded-md bg-surface-2 border border-border" />
           )}

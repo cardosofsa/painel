@@ -13,7 +13,8 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { ProductThumb } from "@/components/ui/ProductThumb";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatarDataHora, classeValor } from "@/lib/format";
+import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
 import { PriceHistoryChart } from "@/components/charts/PriceHistoryChart";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import {
@@ -239,8 +240,18 @@ export function ProdutosClient({
   }
 
   async function removerFotoExtra(imagemId: string) {
+    // O botão de remover fica sobre a foto com `opacity-0 group-hover:opacity-100`: no
+    // celular não existe hover, então ele é invisível mas continua clicável em toda a área
+    // da imagem. Sem confirmação, tocar na foto para ampliá-la a apagava.
+    const ok = await confirm({
+      title: "Remover esta foto?",
+      message: "A foto sai do produto e da vitrine. Não dá para desfazer.",
+      confirmLabel: "Remover foto",
+    });
+    if (!ok) return;
     try {
       await removerImagemProduto(imagemId);
+      toast("Foto removida");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao remover foto");
     }
@@ -323,10 +334,6 @@ export function ProdutosClient({
 
   function exportarCsv() {
     const cabecalho = ["SKU", "Nome", "Categoria", "Fornecedor", "Armazém", "Custo", "Preço Venda", "Estoque", "Estoque Mínimo", "Ativo"];
-    const paraCsv = (v: string | number) => {
-      const t = String(v);
-      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-    };
     const linhas = filtrados.map((p) => [
       p.sku,
       p.nome,
@@ -339,14 +346,7 @@ export function ProdutosClient({
       p.estoque_minimo,
       p.ativo ? "Sim" : "Não",
     ]);
-    const csv = [cabecalho, ...linhas].map((linha) => linha.map(paraCsv).join(",")).join("\n");
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "produtos.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    baixarArquivo("produtos.csv", matrizParaCsv([cabecalho, ...linhas]));
   }
 
   return (
@@ -554,7 +554,7 @@ export function ProdutosClient({
               {editandoAtual.imagens.map((img) => (
                 <div key={img.id} className="relative w-14 h-14 rounded-md overflow-hidden border border-border group">
                   {/* eslint-disable-next-line @next/next/no-img-element -- URL do Storage */}
-                  <img src={img.url} alt="" className="w-full h-full object-cover" />
+                  <img src={img.url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   <button
                     type="button"
                     onClick={() => removerFotoExtra(img.id)}
@@ -837,7 +837,10 @@ function ProdutoResumo({
         </div>
         <div className="border border-border rounded-md p-3">
           <div className="text-xs text-text-tertiary mb-1">Margem</div>
-          <div className="font-mono text-lg text-positive">{margemPct.toFixed(1)}%</div>
+          <div className={`font-mono text-lg ${classeValor(margemPct)}`}>
+            {margemPct >= 0 ? "+" : "−"}
+            {Math.abs(margemPct).toFixed(1).replace(".", ",")}%
+          </div>
         </div>
       </div>
 
@@ -862,7 +865,7 @@ function ProdutoResumo({
               <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
                 <div>
                   <div className="text-text-primary">{m.motivo}</div>
-                  <div className="text-xs text-text-tertiary">{new Date(m.data_movimentacao).toLocaleString("pt-BR")}</div>
+                  <div className="text-xs text-text-tertiary">{formatarDataHora(m.data_movimentacao)}</div>
                 </div>
                 <span className={`font-mono ${m.tipo === "entrada" ? "text-positive" : "text-negative"}`}>
                   {m.tipo === "entrada" ? "+" : "-"}
@@ -889,7 +892,7 @@ function ProdutoResumo({
               <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
                 <div>
                   <div className="text-text-primary">{h.canal ?? "—"}</div>
-                  <div className="text-xs text-text-tertiary">{new Date(h.criado_em).toLocaleDateString("pt-BR")}</div>
+                  <div className="text-xs text-text-tertiary">{formatarDataHora(h.criado_em)}</div>
                 </div>
                 <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
               </div>

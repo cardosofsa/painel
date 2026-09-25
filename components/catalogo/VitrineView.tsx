@@ -72,7 +72,13 @@ export function VitrineView({ itens, onClickItem }: { itens: ItemVitrine[]; onCl
                 <div className="aspect-square bg-surface-2 flex items-center justify-center overflow-hidden">
                   {item.imagem_url ? (
                     // eslint-disable-next-line @next/next/no-img-element -- URL pública do storage, catálogo é fora do domínio de otimização do Next
-                    <img src={item.imagem_url} alt={item.produto_nome} className="w-full h-full object-cover" />
+                    <img
+                      src={item.imagem_url}
+                      alt={item.produto_nome}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <ImageIcon size={28} className="text-text-tertiary" />
                   )}

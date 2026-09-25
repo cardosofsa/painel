@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
+import { validar, compromissoSchema } from "@/lib/validacao";
 
 const PATH = "/dashboard";
 
@@ -15,14 +16,14 @@ export interface CompromissoInput {
 
 export async function criarCompromisso(dados: CompromissoInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("compromissos").insert(dados);
+  const { error } = await supabase.from("compromissos").insert(validar(compromissoSchema, dados));
   if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
 }
 
 export async function atualizarCompromisso(id: string, dados: CompromissoInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("compromissos").update(dados).eq("id", id);
+  const { error } = await supabase.from("compromissos").update(validar(compromissoSchema, dados)).eq("id", id);
   if (error) lancarErroSupabase(error);
   revalidatePath(PATH);
 }
