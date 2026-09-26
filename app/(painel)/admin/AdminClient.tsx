@@ -2,19 +2,23 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ShieldCheck, Users } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ShieldCheck, Users, Download } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
-import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta } from "@/lib/acesso";
-import { atualizarAcessoConta } from "./actions";
+import { paraCsv, baixarArquivo } from "@/lib/csv";
+import { TODAS_AS_ABAS, ABAS_PADRAO, ABAS_OBRIGATORIAS, type StatusConta } from "@/lib/acesso";
+import { atualizarAcessoConta, atualizarStatusEmLote } from "./actions";
+import { HistoricoAdmin, type LinhaHistorico } from "./HistoricoAdmin";
+import { VisaoGeralAdmin } from "./VisaoGeralAdmin";
 
 export interface ContaAdmin {
   user_id: string;
@@ -42,6 +46,8 @@ const ROTULO_STATUS: Record<StatusConta, { label: string; tone: "positive" | "ne
   suspenso: { label: "Suspenso", tone: "negative" },
 };
 
+const ABAS_PAINEL = ["Contas", "Visão Geral", "Histórico"] as const;
+
 function desdeUltimoAcesso(dias: number | null) {
   if (dias === null) return "Nunca entrou";
   if (dias === 0) return "Hoje";
@@ -49,11 +55,13 @@ function desdeUltimoAcesso(dias: number | null) {
   return `Há ${dias} dias`;
 }
 
-export function AdminClient({ contas }: { contas: ContaAdmin[] }) {
+export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; historico: LinhaHistorico[] }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [editando, setEditando] = useState<ContaAdmin | null>(null);
+  const [aba, setAba] = useState<(typeof ABAS_PAINEL)[number]>("Contas");
   const [busca, setBusca] = useState("");
+  const [selecionados, setSelecionados] = useState<string[]>([]);
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -63,9 +71,24 @@ export function AdminClient({ contas }: { contas: ContaAdmin[] }) {
 
   const pendentes = contas.filter((c) => c.status === "pendente").length;
   const ativas = contas.filter((c) => c.status === "ativo").length;
-  const ativasNaSemana = contas.filter(
-    (c) => c.dias_sem_acesso !== null && c.dias_sem_acesso <= 7,
-  ).length;
+  const ativasNaSemana = contas.filter((c) => c.dias_sem_acesso !== null && c.dias_sem_acesso <= 7).length;
+
+  // Contas master nunca entram em ação de suspensão em lote — nem na seleção, pra não
+  // convidar o clique errado.
+  const selecionaveis = filtradas.filter((c) => c.papel !== "master");
+  const todosSelecionadosNaPagina = selecionaveis.length > 0 && selecionaveis.every((c) => selecionados.includes(c.user_id));
+
+  function alternarSelecaoTodos() {
+    if (todosSelecionadosNaPagina) {
+      setSelecionados((prev) => prev.filter((id) => !selecionaveis.some((c) => c.user_id === id)));
+    } else {
+      setSelecionados((prev) => Array.from(new Set([...prev, ...selecionaveis.map((c) => c.user_id)])));
+    }
+  }
+
+  function alternarSelecao(id: string) {
+    setSelecionados((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  }
 
   function salvar(dados: {
     user_id: string;
@@ -78,7 +101,6 @@ export function AdminClient({ contas }: { contas: ContaAdmin[] }) {
       try {
         await atualizarAcessoConta(dados);
         toast.success("Acesso atualizado");
-        setEditando(null);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar acesso");
       }
@@ -106,272 +128,227 @@ export function AdminClient({ contas }: { contas: ContaAdmin[] }) {
     salvar({ user_id: c.user_id, status: "suspenso", abas: c.abas, observacao: c.observacao, expira_em: c.expira_em });
   }
 
+  function aprovarSelecionadas() {
+    startTransition(async () => {
+      try {
+        await atualizarStatusEmLote(selecionados, "ativo");
+        toast.success(`${selecionados.length} conta(s) aprovada(s)`);
+        setSelecionados([]);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao aprovar contas");
+      }
+    });
+  }
+
+  async function suspenderSelecionadas() {
+    const ok = await confirm({
+      title: `Suspender ${selecionados.length} conta(s)?`,
+      message: "Todas perdem o acesso imediatamente. Nenhum dado é apagado — dá pra reativar depois.",
+      confirmLabel: "Suspender selecionadas",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      try {
+        await atualizarStatusEmLote(selecionados, "suspenso");
+        toast.success(`${selecionados.length} conta(s) suspensa(s)`);
+        setSelecionados([]);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao suspender contas");
+      }
+    });
+  }
+
+  function exportarCsv() {
+    const colunas = [
+      "email",
+      "papel",
+      "status",
+      "abas",
+      "criado_em",
+      "ultimo_acesso",
+      "total_produtos",
+      "total_vendas",
+      "faturamento_total",
+    ];
+    const linhas = contas.map((c) => ({
+      email: c.email,
+      papel: c.papel,
+      status: c.status,
+      abas: c.abas.length === TODAS_AS_ABAS.length ? "todas" : c.abas.join(";"),
+      criado_em: c.criado_em.slice(0, 10),
+      ultimo_acesso: c.ultimo_acesso ? c.ultimo_acesso.slice(0, 10) : "",
+      total_produtos: c.total_produtos,
+      total_vendas: c.total_vendas,
+      faturamento_total: c.faturamento_total.toFixed(2),
+    }));
+    baixarArquivo("contas.csv", paraCsv(linhas, colunas));
+  }
+
   return (
     <>
       <PageHeader eyebrow="Conta master" title="Administração" />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-        <Card>
-          <CardEyebrow>Contas no Sistema</CardEyebrow>
-          <HeroMetric value={String(contas.length)} caption={`${ativas} ativa(s)`} accent />
-        </Card>
-        <Card>
-          <CardEyebrow>Aguardando Liberação</CardEyebrow>
-          <HeroMetric value={String(pendentes)} caption={pendentes > 0 ? "Precisa da sua aprovação" : "Nada pendente"} />
-        </Card>
-        <Card>
-          <CardEyebrow>Ativas na Semana</CardEyebrow>
-          <HeroMetric value={String(ativasNaSemana)} caption="Entraram nos últimos 7 dias" />
-        </Card>
-        <Card>
-          <CardEyebrow>Suspensas</CardEyebrow>
-          <HeroMetric value={String(contas.filter((c) => c.status === "suspenso").length)} />
-        </Card>
+      <div className="flex gap-1 mb-5 border-b border-border">
+        {ABAS_PAINEL.map((a) => (
+          <button
+            key={a}
+            onClick={() => setAba(a)}
+            className={`px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors ${
+              aba === a ? "border-accent text-accent font-medium" : "border-transparent text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {a}
+          </button>
+        ))}
       </div>
 
-      <div className="mb-4">
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por e-mail…"
-          className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent w-full sm:w-80"
-        />
-      </div>
+      {aba === "Visão Geral" && <VisaoGeralAdmin contas={contas} />}
+      {aba === "Histórico" && <HistoricoAdmin linhas={historico} />}
 
-      <Card className="p-0 overflow-hidden">
-        {filtradas.length === 0 ? (
-          <EmptyState icon={Users} title="Nenhuma conta encontrada" />
-        ) : (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Conta</Th>
-                <Th>Status</Th>
-                <Th>Abas</Th>
-                <Th>Último acesso</Th>
-                <Th align="right">Produtos</Th>
-                <Th align="right">Vendas</Th>
-                <Th align="right">Faturamento</Th>
-                <Th align="right">Ações</Th>
-              </tr>
-            </Thead>
-            <tbody>
-              {filtradas.map((c) => {
-                const expirou = c.expirado;
-                return (
-                  <Tr key={c.user_id}>
-                    <Td>
-                      <div className="text-text-primary flex items-center gap-1.5">
-                        {c.email}
-                        {c.papel === "master" && <ShieldCheck size={13} className="text-accent" />}
-                      </div>
-                      <div className="text-xs text-text-tertiary">
-                        Entrou em {formatarDataHora(c.criado_em)}
-                        {c.observacao ? ` · ${c.observacao}` : ""}
-                      </div>
-                    </Td>
-                    <Td>
-                      <StatusChip
-                        label={expirou ? "Vencido" : ROTULO_STATUS[c.status].label}
-                        tone={expirou ? "negative" : ROTULO_STATUS[c.status].tone}
-                      />
-                    </Td>
-                    <Td>
-                      <span className="text-text-secondary">
-                        {c.abas.length === TODAS_AS_ABAS.length ? "Todas" : `${c.abas.length} de ${TODAS_AS_ABAS.length}`}
-                      </span>
-                    </Td>
-                    <Td className="text-text-secondary">{desdeUltimoAcesso(c.dias_sem_acesso)}</Td>
-                    <Td align="right" mono>
-                      {c.total_produtos}
-                    </Td>
-                    <Td align="right" mono>
-                      {c.total_vendas}
-                    </Td>
-                    <Td align="right" mono>
-                      {formatBRL(c.faturamento_total)}
-                    </Td>
-                    <Td align="right">
-                      <RowMenu
-                        actions={[
-                          { label: "Gerenciar acesso", onClick: () => setEditando(c) },
-                          ...(c.status === "pendente" ? [{ label: "Aprovar", onClick: () => aprovar(c) }] : []),
-                          ...(c.papel !== "master" && c.status !== "suspenso"
-                            ? [{ label: "Suspender", onClick: () => suspender(c), destructive: true }]
-                            : []),
-                          ...(c.status === "suspenso"
-                            ? [{ label: "Reativar", onClick: () => aprovar(c) }]
-                            : []),
-                        ]}
-                      />
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+      {aba === "Contas" && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            <Card>
+              <CardEyebrow>Contas no Sistema</CardEyebrow>
+              <HeroMetric value={String(contas.length)} caption={`${ativas} ativa(s)`} accent />
+            </Card>
+            <Card>
+              <CardEyebrow>Aguardando Liberação</CardEyebrow>
+              <HeroMetric value={String(pendentes)} caption={pendentes > 0 ? "Precisa da sua aprovação" : "Nada pendente"} />
+            </Card>
+            <Card>
+              <CardEyebrow>Ativas na Semana</CardEyebrow>
+              <HeroMetric value={String(ativasNaSemana)} caption="Entraram nos últimos 7 dias" />
+            </Card>
+            <Card>
+              <CardEyebrow>Suspensas</CardEyebrow>
+              <HeroMetric value={String(contas.filter((c) => c.status === "suspenso").length)} />
+            </Card>
+          </div>
 
-      {/*
-        O `key` precisa ficar AQUI, no componente que tem os `useState`, e não no `<Modal>`
-        de dentro: os estados de `AcessoModal` são inicializados a partir de `conta`, que é
-        `null` na primeira montagem. Sem isso o modal abria sempre em "pendente" e sem aba
-        marcada, e salvar rebaixava uma conta ativa.
-      */}
-      <AcessoModal
-        key={editando?.user_id ?? "fechado"}
-        conta={editando}
-        onClose={() => setEditando(null)}
-        onSalvar={salvar}
-        salvando={pending}
-      />
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por e-mail…"
+              className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent w-full sm:w-80"
+            />
+            <Button variant="secondary" onClick={exportarCsv}>
+              <Download size={14} /> Exportar CSV
+            </Button>
+          </div>
+
+          {selecionados.length > 0 && (
+            <div className="flex items-center gap-4 mb-3 px-4 py-2.5 bg-accent-soft rounded-md">
+              <span className="text-sm text-accent font-medium">{selecionados.length} selecionada(s)</span>
+              <button onClick={aprovarSelecionadas} className="text-sm text-text-secondary hover:text-text-primary" disabled={pending}>
+                Aprovar selecionadas
+              </button>
+              <button onClick={suspenderSelecionadas} className="text-sm text-negative hover:underline" disabled={pending}>
+                Suspender selecionadas
+              </button>
+              <button onClick={() => setSelecionados([])} className="text-sm text-text-tertiary hover:text-text-primary ml-auto">
+                Limpar seleção
+              </button>
+            </div>
+          )}
+
+          <Card className="p-0 overflow-hidden">
+            {filtradas.length === 0 ? (
+              <EmptyState icon={Users} title="Nenhuma conta encontrada" />
+            ) : (
+              <Table>
+                <Thead>
+                  <tr>
+                    <Th>
+                      <input
+                        type="checkbox"
+                        checked={todosSelecionadosNaPagina}
+                        onChange={alternarSelecaoTodos}
+                        className="w-4 h-4 accent-accent"
+                        aria-label="Selecionar todas as contas"
+                      />
+                    </Th>
+                    <Th>Conta</Th>
+                    <Th>Status</Th>
+                    <Th>Abas</Th>
+                    <Th>Último acesso</Th>
+                    <Th align="right">Produtos</Th>
+                    <Th align="right">Vendas</Th>
+                    <Th align="right">Faturamento</Th>
+                    <Th align="right">Ações</Th>
+                  </tr>
+                </Thead>
+                <tbody>
+                  {filtradas.map((c) => {
+                    const expirou = c.expirado;
+                    return (
+                      <Tr key={c.user_id}>
+                        <Td>
+                          {c.papel !== "master" && (
+                            <input
+                              type="checkbox"
+                              checked={selecionados.includes(c.user_id)}
+                              onChange={() => alternarSelecao(c.user_id)}
+                              className="w-4 h-4 accent-accent"
+                              aria-label={`Selecionar ${c.email}`}
+                            />
+                          )}
+                        </Td>
+                        <Td>
+                          <Link href={`/admin/${c.user_id}`} className="text-text-primary hover:text-accent flex items-center gap-1.5">
+                            {c.email}
+                            {c.papel === "master" && <ShieldCheck size={13} className="text-accent" />}
+                          </Link>
+                          <div className="text-xs text-text-tertiary">
+                            Entrou em {formatarDataHora(c.criado_em)}
+                            {c.observacao ? ` · ${c.observacao}` : ""}
+                          </div>
+                        </Td>
+                        <Td>
+                          <StatusChip
+                            label={expirou ? "Vencido" : ROTULO_STATUS[c.status].label}
+                            tone={expirou ? "negative" : ROTULO_STATUS[c.status].tone}
+                          />
+                        </Td>
+                        <Td>
+                          <span className="text-text-secondary">
+                            {c.abas.length === TODAS_AS_ABAS.length ? "Todas" : `${c.abas.length} de ${TODAS_AS_ABAS.length}`}
+                          </span>
+                        </Td>
+                        <Td className="text-text-secondary">{desdeUltimoAcesso(c.dias_sem_acesso)}</Td>
+                        <Td align="right" mono>
+                          {c.total_produtos}
+                        </Td>
+                        <Td align="right" mono>
+                          {c.total_vendas}
+                        </Td>
+                        <Td align="right" mono>
+                          {formatBRL(c.faturamento_total)}
+                        </Td>
+                        <Td align="right">
+                          <RowMenu
+                            actions={[
+                              { label: "Ver detalhes", onClick: () => router.push(`/admin/${c.user_id}`) },
+                              ...(c.status === "pendente" ? [{ label: "Aprovar", onClick: () => aprovar(c) }] : []),
+                              ...(c.papel !== "master" && c.status !== "suspenso"
+                                ? [{ label: "Suspender", onClick: () => suspender(c), destructive: true }]
+                                : []),
+                              ...(c.status === "suspenso" ? [{ label: "Reativar", onClick: () => aprovar(c) }] : []),
+                            ]}
+                          />
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            )}
+          </Card>
+        </>
+      )}
+
       {ConfirmDialog}
     </>
-  );
-}
-
-function AcessoModal({
-  conta,
-  onClose,
-  onSalvar,
-  salvando,
-}: {
-  conta: ContaAdmin | null;
-  onClose: () => void;
-  onSalvar: (dados: {
-    user_id: string;
-    status: StatusConta;
-    abas: string[];
-    observacao: string | null;
-    expira_em: string | null;
-  }) => void;
-  salvando: boolean;
-}) {
-  const [status, setStatus] = useState<StatusConta>(conta?.status ?? "pendente");
-  const [abas, setAbas] = useState<string[]>(conta?.abas ?? []);
-  const [observacao, setObservacao] = useState(conta?.observacao ?? "");
-  const [expiraEm, setExpiraEm] = useState(conta?.expira_em ?? "");
-
-  function alternarAba(id: string) {
-    if (ABAS_OBRIGATORIAS.includes(id as (typeof ABAS_OBRIGATORIAS)[number])) return;
-    setAbas((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
-  }
-
-  return (
-    <Modal
-      open={!!conta}
-      onClose={onClose}
-      title={conta ? `Acesso — ${conta.email}` : ""}
-      width="max-w-lg"
-    >
-      {conta && (
-        <div>
-          <FormField label="Status da conta">
-            <div className="flex gap-2">
-              {(["pendente", "ativo", "suspenso"] as StatusConta[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatus(s)}
-                  disabled={conta.papel === "master" && s !== "ativo"}
-                  className={`flex-1 h-9 rounded-md text-sm border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    status === s
-                      ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                      : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-                  }`}
-                >
-                  {ROTULO_STATUS[s].label}
-                </button>
-              ))}
-            </div>
-          </FormField>
-
-          <FormField label="Abas liberadas">
-            <div className="flex flex-wrap gap-1.5">
-              {ABAS.map((aba) => {
-                const obrigatoria = ABAS_OBRIGATORIAS.includes(aba.id);
-                const ligada = obrigatoria || abas.includes(aba.id);
-                return (
-                  <button
-                    key={aba.id}
-                    onClick={() => alternarAba(aba.id)}
-                    disabled={obrigatoria}
-                    title={obrigatoria ? "Esta aba não pode ser removida" : undefined}
-                    className={`h-8 px-2.5 rounded-md text-xs border transition-colors ${
-                      ligada
-                        ? "bg-accent-soft border-accent-soft text-accent"
-                        : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-                    } ${obrigatoria ? "opacity-60 cursor-not-allowed" : ""}`}
-                  >
-                    {aba.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-3 mt-2">
-              <button onClick={() => setAbas([...TODAS_AS_ABAS])} className="text-xs text-accent hover:underline">
-                Liberar todas
-              </button>
-              <button onClick={() => setAbas([...ABAS_PADRAO])} className="text-xs text-accent hover:underline">
-                Usar pacote padrão
-              </button>
-            </div>
-          </FormField>
-
-          <FormField label="Acesso vence em (opcional)">
-            <input type="date" className={inputClass} value={expiraEm} onChange={(e) => setExpiraEm(e.target.value)} />
-            <p className="text-xs text-text-tertiary mt-1">
-              Passada a data, a conta perde o acesso sozinha — útil para teste gratuito.
-            </p>
-          </FormField>
-
-          <FormField label="Anotação interna (só você vê)">
-            <textarea
-              className={`${inputClass} h-16 py-2 resize-none`}
-              value={observacao}
-              onChange={(e) => setObservacao(e.target.value)}
-              placeholder="Ex: plano combinado, vencimento, quem indicou…"
-            />
-          </FormField>
-
-          <div className="grid grid-cols-3 gap-3 text-sm border-t border-border pt-3 mb-4">
-            <div>
-              <div className="text-xs text-text-tertiary">Produtos</div>
-              <div className="font-mono text-text-primary">{conta.total_produtos}</div>
-            </div>
-            <div>
-              <div className="text-xs text-text-tertiary">Vendas</div>
-              <div className="font-mono text-text-primary">{conta.total_vendas}</div>
-            </div>
-            <div>
-              <div className="text-xs text-text-tertiary">Precificações</div>
-              <div className="font-mono text-text-primary">{conta.total_precificacoes}</div>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="secondary" className="flex-1" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button
-              variant="primary"
-              className="flex-1"
-              loading={salvando}
-              onClick={() =>
-                onSalvar({
-                  user_id: conta.user_id,
-                  status,
-                  abas,
-                  observacao: observacao.trim() || null,
-                  expira_em: expiraEm || null,
-                })
-              }
-            >
-              Salvar
-            </Button>
-          </div>
-        </div>
-      )}
-    </Modal>
   );
 }

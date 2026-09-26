@@ -31,4 +31,22 @@ export async function atualizarAcessoConta(dados: AcessoInput) {
   if (error) lancarErroSupabase(error);
 
   revalidatePath("/admin");
+  revalidatePath(`/admin/${dados.user_id}`);
+}
+
+/**
+ * Aprova/suspende várias contas numa chamada só, em vez de uma RPC por conta — o mesmo
+ * raciocínio que corrigiu o N+1 da calculadora em massa: menos idas ao banco, e as linhas
+ * de histórico saem todas na mesma transação.
+ */
+export async function atualizarStatusEmLote(userIds: string[], status: StatusConta) {
+  const supabase = await createClient();
+
+  const { error } = await supabase.rpc("admin_atualizar_status_lote", {
+    p_user_ids: userIds,
+    p_status: status,
+  });
+  if (error) lancarErroSupabase(error);
+
+  revalidatePath("/admin");
 }

@@ -1,0 +1,40 @@
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { lancarErroSupabase } from "@/lib/erros";
+import type { ContaAdmin } from "../AdminClient";
+import type { LinhaHistorico } from "../HistoricoAdmin";
+import { ContaDetalheClient } from "./ContaDetalheClient";
+
+export default async function ContaDetalhePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  // `admin_listar_contas()` já é o conjunto pequeno de contas do sistema — não vale a pena
+  // uma RPC dedicada só para buscar uma linha dele.
+  const [contasRes, atividadeRes, historicoRes] = await Promise.all([
+    supabase.rpc("admin_listar_contas"),
+    supabase.rpc("admin_atividade_conta", { p_user_id: id, p_dias: 90 }),
+    supabase
+      .from("historico_admin")
+      .select("id, admin_email, alvo_user_id, alvo_email, acao, detalhes, criado_em")
+      .eq("alvo_user_id", id)
+      .order("criado_em", { ascending: false })
+      .limit(50),
+  ]);
+
+  if (contasRes.error) lancarErroSupabase(contasRes.error);
+
+  const conta = ((contasRes.data ?? []) as ContaAdmin[]).find((c) => c.user_id === id);
+  if (!conta) notFound();
+
+  if (atividadeRes.error) console.error("[admin/detalhe] falha ao carregar atividade:", atividadeRes.error.message);
+  if (historicoRes.error) console.error("[admin/detalhe] falha ao carregar histórico:", historicoRes.error.message);
+
+  return (
+    <ContaDetalheClient
+      conta={conta}
+      atividade={(atividadeRes.data ?? []) as { dia: string; vendas: number; faturamento: number }[]}
+      historico={(historicoRes.data ?? []) as LinhaHistorico[]}
+    />
+  );
+}
