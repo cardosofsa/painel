@@ -53,17 +53,7 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
 
   return (
     <>
-      <PageHeader
-        eyebrow="Conta master"
-        title="Painel do Administrador"
-        actions={
-          <Link href="/admin">
-            <Button variant="secondary">
-              Administração completa <ArrowRight size={14} />
-            </Button>
-          </Link>
-        }
-      />
+      <PageHeader eyebrow="Conta master" title="Painel do Administrador" />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card className={pendentes.length > 0 ? "border-accent/40" : ""}>
@@ -145,6 +135,12 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
           )}
         </Card>
       </div>
+
+      <Link href="/admin" className="block mt-5">
+        <Button variant="secondary" className="w-full justify-center">
+          Administração completa <ArrowRight size={14} />
+        </Button>
+      </Link>
     </>
   );
 }

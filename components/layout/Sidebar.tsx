@@ -15,11 +15,13 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
 
   // Master administra o sistema, não roda a própria loja por esta conta — as abas de
   // operação de negócio (PDV, Vendas, Produtos...) não aparecem aqui NUNCA, por papel, não
-  // pelo array `abas` salvo no banco. Assim o menu não depende de manter esse dado limpo:
-  // mesmo que a conta tenha sido promovida com todas as abas (como a atual foi), o menu
-  // continua enxuto. Quem barra de verdade rota por URL é o middleware, não este filtro.
+  // pelo array `abas` salvo no banco. Só "Configurações" aparece (versão enxuta, só
+  // conta/senha — ver MasterConfiguracoesClient.tsx), porque toda conta precisa de um jeito
+  // de trocar a própria senha. Quem barra de verdade rota por URL é o middleware.
   const liberadas = normalizarAbas(abas);
-  const itens = ehMaster ? [] : NAV_ITEMS.filter((item) => liberadas.includes(item.id));
+  const itens = ehMaster
+    ? NAV_ITEMS.filter((item) => item.id === "configuracoes")
+    : NAV_ITEMS.filter((item) => liberadas.includes(item.id));
 
   // Lido do localStorage após montar (evita mismatch de hidratação SSR vs cliente).
   useEffect(() => {
@@ -54,21 +56,12 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
           recolhida ? "md:w-16" : "md:w-[232px]"
         } ${aberta ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       >
-      {/*
-        A marca agora é um link para /dashboard — rota obrigatória de qualquer conta. É o
-        caminho de volta do master para a dashboard personalizada a partir de qualquer
-        tela (inclusive de dentro de /admin), sem precisar de um segundo item de menu.
-      */}
-      <Link
-        href="/dashboard"
-        onClick={fechar}
-        className={`h-14 flex items-center gap-2 min-w-0 ${recolhida ? "justify-center px-2" : "px-5"}`}
-      >
+      <div className={`h-14 flex items-center gap-2 min-w-0 ${recolhida ? "justify-center px-2" : "px-5"}`}>
         <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
           <Brain size={14} strokeWidth={2.25} />
         </span>
         {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">Segundo Cérebro</span>}
-      </Link>
+      </div>
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">
         {itens.map((item) => {

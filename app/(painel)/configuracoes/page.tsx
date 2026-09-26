@@ -9,6 +9,7 @@ import {
   type FormaPagamento,
   type PerfilNegocio,
 } from "./ConfiguracoesClient";
+import { MasterConfiguracoesClient } from "./MasterConfiguracoesClient";
 
 export default async function ConfiguracoesPage() {
   const supabase = await createClient();
@@ -16,6 +17,19 @@ export default async function ConfiguracoesPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Master não roda loja nenhuma por esta conta — categorias, canais, armazéns, formas de
+  // pagamento e perfil do negócio não fazem sentido pra ela. Consulta pequena e cedo, antes
+  // do Promise.all grande de dado de loja, que nem chega a rodar para master.
+  const { data: perfilAcesso } = await supabase
+    .from("perfis_acesso")
+    .select("papel")
+    .eq("user_id", user?.id ?? "")
+    .maybeSingle();
+
+  if (perfilAcesso?.papel === "master") {
+    return <MasterConfiguracoesClient email={user?.email ?? ""} />;
+  }
 
   const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes] =
     await Promise.all([
