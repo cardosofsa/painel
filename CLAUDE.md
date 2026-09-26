@@ -49,6 +49,13 @@ Ao criar uma migração:
   default auth.uid()`, `enable row level security` e uma policy
   `using (auth.uid() = user_id)`. Tabela filha (sem `user_id` próprio) usa `exists (select 1
   from <tabela_pai> ... where ... user_id = auth.uid())`.
+- **Escreva a migração inteira como idempotente.** O SQL Editor do Supabase **não** envolve
+  o script numa transação: se ele falha no meio, tudo que veio antes fica commitado e o
+  banco fica num estado parcial que você precisa conseguir reexecutar por cima. Use
+  `if not exists` / `if exists`, `create or replace`, e proteja DDL condicional com
+  `do $$ ... if exists (select 1 from information_schema.columns ...) then ... end if; $$`.
+  Cuidado: `drop column IF EXISTS` não salva um `update` que referencia essa coluna — o
+  nome é resolvido ao executar o statement, e o erro vem antes (já quebrou a 0021).
 - **Termine sempre com `NOTIFY pgrst, 'reload schema';`** — sem isso o PostgREST continua
   servindo o schema antigo e a aplicação quebra com "column not found" mesmo depois da
   migração rodar.
