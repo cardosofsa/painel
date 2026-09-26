@@ -94,6 +94,14 @@ begin
       'formas_pagamento', 'compromissos', 'catalogos', 'produto_grupos', 'clientes', 'vendas'
     ])
   loop
+    -- Pula tabela que não existe neste banco em vez de abortar a migração inteira.
+    -- `drop policy IF EXISTS` protege contra a policy faltar, mas NÃO contra a tabela
+    -- faltar: nesse caso o erro é "relation does not exist" e tudo é revertido.
+    if to_regclass(format('public.%I', t)) is null then
+      raise notice 'tabela % não existe neste banco — policy ignorada', t;
+      continue;
+    end if;
+
     execute format('drop policy if exists "own_rows_%1$s" on %1$I', t);
     execute format(
       'create policy "own_rows_%1$s" on %1$I for all '
@@ -114,12 +122,29 @@ end $$;
 
 alter table perfil_negocio add column if not exists pin_admin_hash text;
 
--- Converte o PIN que já existia em texto puro, se houver.
-update perfil_negocio
-   set pin_admin_hash = crypt(pin_admin, gen_salt('bf'))
- where pin_admin is not null and pin_admin <> '' and pin_admin_hash is null;
-
-alter table perfil_negocio drop column if exists pin_admin;
+-- A coluna `pin_admin` veio da 0019. O bloco é condicional porque ela pode simplesmente
+-- não existir: ou a 0019 nunca foi aplicada neste banco, ou esta migração já rodou antes e
+-- a coluna já foi removida. Um `update ... where pin_admin ...` solto aborta com
+-- "column pin_admin does not exist" nos dois casos — o Postgres resolve o nome da coluna ao
+-- executar o statement, e `drop column IF EXISTS` mais abaixo não ajuda em nada porque o
+-- erro acontece antes.
+do $$
+begin
+  if exists (
+    select 1
+      from information_schema.columns
+     where table_schema = 'public'
+       and table_name = 'perfil_negocio'
+       and column_name = 'pin_admin'
+  ) then
+    execute $sql$
+      update perfil_negocio
+         set pin_admin_hash = crypt(pin_admin, gen_salt('bf'))
+       where pin_admin is not null and pin_admin <> '' and pin_admin_hash is null
+    $sql$;
+    execute 'alter table perfil_negocio drop column pin_admin';
+  end if;
+end $$;
 
 /** Grava (ou apaga, com p_pin nulo/vazio) o PIN do próprio usuário, sempre como hash. */
 create or replace function definir_pin_admin(p_pin text)
@@ -323,6 +348,11 @@ declare
 begin
   for t in select unnest(array['vendas', 'contas_a_pagar_receber', 'movimentacoes_financeiras', 'despesas_fixas'])
   loop
+    if to_regclass(format('public.%I', t)) is null then
+      raise notice 'tabela % não existe neste banco — trigger ignorado', t;
+      continue;
+    end if;
+
     execute format('drop trigger if exists trg_valida_conta_%1$s on %1$I', t);
     execute format(
       'create trigger trg_valida_conta_%1$s before insert or update of conta_id on %1$I '
