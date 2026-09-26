@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { hojeIsoLocal, formatarDataIso } from "@/lib/format";
+import { lancarErroSupabase } from "@/lib/erros";
 import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
+import { MasterDashboardClient } from "./MasterDashboardClient";
+import type { ContaAdmin } from "../admin/AdminClient";
+import type { LinhaHistorico } from "../admin/HistoricoAdmin";
 
 function rotuloVencimento(dataVencimento: string): { status: string; tone: "negative" | "positive" | "neutral" } {
   const hoje = new Date();
@@ -17,6 +21,40 @@ function rotuloVencimento(dataVencimento: string): { status: string; tone: "nega
 
 export default async function DashboardPage() {
   const supabase = await createClient();
+
+  // Master administra o sistema, não roda negócio nenhum por esta conta — a dashboard de
+  // negócio (vendas hoje/semana/mês, estoque baixo, vencimentos) ficaria toda zerada e sem
+  // sentido para ela. Consulta pequena e cedo, antes do Promise.all grande de negócio, que
+  // nem chega a rodar para master.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: perfil } = await supabase
+    .from("perfis_acesso")
+    .select("papel")
+    .eq("user_id", user?.id ?? "")
+    .maybeSingle();
+
+  if (perfil?.papel === "master") {
+    const [contasRes, historicoRes] = await Promise.all([
+      supabase.rpc("admin_listar_contas"),
+      supabase
+        .from("historico_admin")
+        .select("id, admin_email, alvo_user_id, alvo_email, acao, detalhes, criado_em")
+        .order("criado_em", { ascending: false })
+        .limit(5),
+    ]);
+
+    if (contasRes.error) lancarErroSupabase(contasRes.error);
+    if (historicoRes.error) console.error("[dashboard/master] falha ao carregar histórico:", historicoRes.error.message);
+
+    return (
+      <MasterDashboardClient
+        contas={(contasRes.data ?? []) as ContaAdmin[]}
+        historico={(historicoRes.data ?? []) as LinhaHistorico[]}
+      />
+    );
+  }
 
   // O antigo toISOString() convertia para UTC: no dia 1º às 22h em Brasília ele já
   // devolvia o dia 2, e as compras/precificações do dia 1º sumiam do resumo do mês.

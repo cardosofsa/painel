@@ -13,9 +13,13 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
   const [recolhida, setRecolhida] = useState(false);
   const { aberta, fechar } = useSidebarMobile();
 
-  // Só esconde o que não foi liberado — quem barra de verdade é o middleware.
+  // Master administra o sistema, não roda a própria loja por esta conta — as abas de
+  // operação de negócio (PDV, Vendas, Produtos...) não aparecem aqui NUNCA, por papel, não
+  // pelo array `abas` salvo no banco. Assim o menu não depende de manter esse dado limpo:
+  // mesmo que a conta tenha sido promovida com todas as abas (como a atual foi), o menu
+  // continua enxuto. Quem barra de verdade rota por URL é o middleware, não este filtro.
   const liberadas = normalizarAbas(abas);
-  const itens = NAV_ITEMS.filter((item) => liberadas.includes(item.id));
+  const itens = ehMaster ? [] : NAV_ITEMS.filter((item) => liberadas.includes(item.id));
 
   // Lido do localStorage após montar (evita mismatch de hidratação SSR vs cliente).
   useEffect(() => {
@@ -50,12 +54,21 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
           recolhida ? "md:w-16" : "md:w-[232px]"
         } ${aberta ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       >
-      <div className={`h-14 flex items-center gap-2 min-w-0 ${recolhida ? "justify-center px-2" : "px-5"}`}>
+      {/*
+        A marca agora é um link para /dashboard — rota obrigatória de qualquer conta. É o
+        caminho de volta do master para a dashboard personalizada a partir de qualquer
+        tela (inclusive de dentro de /admin), sem precisar de um segundo item de menu.
+      */}
+      <Link
+        href="/dashboard"
+        onClick={fechar}
+        className={`h-14 flex items-center gap-2 min-w-0 ${recolhida ? "justify-center px-2" : "px-5"}`}
+      >
         <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
           <Brain size={14} strokeWidth={2.25} />
         </span>
         {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">Segundo Cérebro</span>}
-      </div>
+      </Link>
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">
         {itens.map((item) => {
@@ -86,9 +99,12 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
             href="/admin"
             onClick={fechar}
             title={recolhida ? "Administração" : undefined}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors mt-2 border-t border-border pt-3 ${
-              recolhida ? "justify-center px-0" : ""
-            } ${
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+              // A borda de separação só faz sentido depois de uma lista de itens. Para
+              // master, `itens` está sempre vazio (ver acima), então este é o único item
+              // do menu — sem borda solta no topo.
+              itens.length > 0 ? "mt-2 border-t border-border pt-3" : ""
+            } ${recolhida ? "justify-center px-0" : ""} ${
               pathname.startsWith("/admin")
                 ? "bg-accent-soft text-accent font-medium"
                 : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
