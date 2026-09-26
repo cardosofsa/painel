@@ -93,9 +93,9 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
             onClick={fechar}
             title={recolhida ? "Administração" : undefined}
             className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-              // A borda de separação só faz sentido depois de uma lista de itens. Para
-              // master, `itens` está sempre vazio (ver acima), então este é o único item
-              // do menu — sem borda solta no topo.
+              // A borda de separação só faz sentido depois de uma lista de itens acima.
+              // Master tem só "Configurações" em `itens` (ver acima), então ainda há um
+              // item antes — a borda aparece normalmente, separando-o de "Administração".
               itens.length > 0 ? "mt-2 border-t border-border pt-3" : ""
             } ${recolhida ? "justify-center px-0" : ""} ${
               pathname.startsWith("/admin")

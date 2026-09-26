@@ -244,7 +244,8 @@ export function ContaDetalheClient({
                     <span className="text-text-secondary">{l.admin_email}</span>
                     <span className="text-xs text-text-tertiary">{formatarDataHora(l.criado_em)}</span>
                   </div>
-                  <div className="text-text-primary">{diff.length > 0 ? diff.join(" · ") : "—"}</div>
+                  {/* line-clamp: anotação interna é texto livre sem limite de tamanho. */}
+                  <div className="text-text-primary line-clamp-2">{diff.length > 0 ? diff.join(" · ") : "—"}</div>
                 </div>
               );
             })}

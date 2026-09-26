@@ -235,19 +235,19 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
       <Tabs tabs={ABAS_PAINEL} value={aba} onChange={setAba} className="mb-5" />
 
       {aba === "visao-geral" && (
-        <TabPanel key="visao-geral">
+        <TabPanel key="visao-geral" tabValue="visao-geral">
           <VisaoGeralAdmin contas={contas} />
         </TabPanel>
       )}
 
       {aba === "historico" && (
-        <TabPanel key="historico">
+        <TabPanel key="historico" tabValue="historico">
           <HistoricoAdmin linhas={historico} />
         </TabPanel>
       )}
 
       {aba === "contas" && (
-        <TabPanel key="contas">
+        <TabPanel key="contas" tabValue="contas">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
             <Card>
               <CardEyebrow>Contas no Sistema</CardEyebrow>

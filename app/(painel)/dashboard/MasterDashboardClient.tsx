@@ -127,7 +127,8 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
                       )}
                       <span className="text-xs text-text-tertiary shrink-0 ml-2">{formatarDataHora(l.criado_em)}</span>
                     </div>
-                    <div className="text-text-secondary">{diff.length > 0 ? diff.join(" · ") : "—"}</div>
+                    {/* line-clamp: anotação interna é texto livre sem limite de tamanho. */}
+                    <div className="text-text-secondary line-clamp-2">{diff.length > 0 ? diff.join(" · ") : "—"}</div>
                   </div>
                 );
               })}

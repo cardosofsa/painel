@@ -403,7 +403,7 @@ export function ConfiguracoesClient({
 
       <Tabs tabs={ABAS_TABS} value={aba} onChange={setAba} className="mb-6" />
 
-      <TabPanel key={aba}>
+      <TabPanel key={aba} tabValue={aba}>
       {aba === "Canais de Venda" && (
         <div className="space-y-4">
           {canais.map((c) => {

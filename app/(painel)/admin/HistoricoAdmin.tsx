@@ -54,8 +54,12 @@ export function HistoricoAdmin({ linhas }: { linhas: LinhaHistorico[] }) {
                     <span className="text-text-tertiary">{l.alvo_email} (removida)</span>
                   )}
                 </Td>
-                <Td className="text-text-secondary">
-                  {diff.length > 0 ? diff.join(" · ") : <span className="text-text-tertiary">—</span>}
+                {/* line-clamp: a anotação interna é texto livre sem limite de tamanho —
+                    sem isso, uma observação longa deixa a linha da tabela desproporcional. */}
+                <Td className="text-text-secondary max-w-xs">
+                  <span className="line-clamp-2">
+                    {diff.length > 0 ? diff.join(" · ") : <span className="text-text-tertiary">—</span>}
+                  </span>
                 </Td>
               </Tr>
             );

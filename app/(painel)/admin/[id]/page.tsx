@@ -5,8 +5,16 @@ import type { ContaAdmin } from "../AdminClient";
 import type { LinhaHistorico } from "../HistoricoAdmin";
 import { ContaDetalheClient } from "./ContaDetalheClient";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function ContaDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // Sem isso, um `id` malformado (link quebrado, digitado à mão) ainda dispara a RPC de
+  // atividade, que falha no banco por erro de tipo — desnecessário, já que o formato dá
+  // pra rejeitar sem gastar uma ida ao Postgres.
+  if (!UUID_RE.test(id)) notFound();
+
   const supabase = await createClient();
 
   // `admin_listar_contas()` já é o conjunto pequeno de contas do sistema — não vale a pena
