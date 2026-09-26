@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ShieldCheck, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -136,12 +136,6 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
           )}
         </Card>
       </div>
-
-      <Link href="/admin" className="block mt-5">
-        <Button variant="secondary" className="w-full justify-center">
-          Administração completa <ArrowRight size={14} />
-        </Button>
-      </Link>
     </>
   );
 }
