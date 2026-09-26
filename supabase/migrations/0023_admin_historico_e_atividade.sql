@@ -10,10 +10,19 @@
 -- Pré-requisito: 0020, 0021, 0022 aplicadas (usa e_master(), perfis_acesso, vendas).
 -- ============================================================
 
+-- `to_regclass` só resolve RELAÇÃO (tabela/view/índice) — nunca função. Checar `e_master`
+-- com ele sempre devolveria NULL, mesmo com a 0020 aplicada, e a guarda recusaria rodar
+-- para sempre. A checagem de função precisa ir em pg_proc.
 do $$
 begin
-  if to_regclass('public.perfis_acesso') is null or to_regclass('public.e_master') is null then
+  if to_regclass('public.perfis_acesso') is null then
     raise exception 'Aplique 0020_perfis_acesso_admin.sql antes desta.';
+  end if;
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'e_master'
+  ) then
+    raise exception 'Aplique 0020_perfis_acesso_admin.sql antes desta (função e_master ausente).';
   end if;
 end $$;
 
