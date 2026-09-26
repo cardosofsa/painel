@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { formatarDiffHistorico } from "./admin";
+import { formatarDiffHistorico, ordenarContas, type ContaOrdenavel } from "./admin";
+
+function conta(over: Partial<ContaOrdenavel>): ContaOrdenavel {
+  return { criado_em: "2026-01-01", ultimo_acesso: null, total_produtos: 0, total_vendas: 0, faturamento_total: 0, ...over };
+}
 
 describe("formatarDiffHistorico", () => {
   it("detalhes vazio ou ausente devolve lista vazia", () => {
@@ -51,5 +55,35 @@ describe("formatarDiffHistorico", () => {
       abas: { de: ["dashboard"], para: ["dashboard", "vendas"] },
     });
     expect(linhas).toHaveLength(2);
+  });
+});
+
+describe("ordenarContas", () => {
+  it("ordena crescente e decrescente por número", () => {
+    const contas = [conta({ faturamento_total: 50 }), conta({ faturamento_total: 200 }), conta({ faturamento_total: 10 })];
+    expect(ordenarContas(contas, "faturamento_total", "desc").map((c) => c.faturamento_total)).toEqual([200, 50, 10]);
+    expect(ordenarContas(contas, "faturamento_total", "asc").map((c) => c.faturamento_total)).toEqual([10, 50, 200]);
+  });
+
+  it("não muta o array original", () => {
+    const contas = [conta({ faturamento_total: 50 }), conta({ faturamento_total: 10 })];
+    const original = [...contas];
+    ordenarContas(contas, "faturamento_total", "asc");
+    expect(contas).toEqual(original);
+  });
+
+  it("'nunca acessou' (null) sempre vai pro fim, em qualquer direção", () => {
+    const contas = [
+      conta({ ultimo_acesso: "2026-03-01" }),
+      conta({ ultimo_acesso: null }),
+      conta({ ultimo_acesso: "2026-01-01" }),
+    ];
+    expect(ordenarContas(contas, "ultimo_acesso", "desc").at(-1)?.ultimo_acesso).toBeNull();
+    expect(ordenarContas(contas, "ultimo_acesso", "asc").at(-1)?.ultimo_acesso).toBeNull();
+  });
+
+  it("ordena por data (string ISO compara lexicograficamente igual)", () => {
+    const contas = [conta({ criado_em: "2026-03-01" }), conta({ criado_em: "2026-01-15" })];
+    expect(ordenarContas(contas, "criado_em", "asc").map((c) => c.criado_em)).toEqual(["2026-01-15", "2026-03-01"]);
   });
 });

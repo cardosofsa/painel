@@ -60,6 +60,42 @@ function formatarData(valor: unknown): string {
   return String(valor).slice(0, 10).split("-").reverse().join("/");
 }
 
+/** Campos pelos quais a tabela de contas do `/admin` pode ser ordenada. */
+export interface ContaOrdenavel {
+  criado_em: string;
+  ultimo_acesso: string | null;
+  total_produtos: number;
+  total_vendas: number;
+  faturamento_total: number;
+}
+
+export type CampoOrdenacaoConta = keyof ContaOrdenavel;
+
+/**
+ * Ordena uma lista de contas por um dos campos numéricos/data, sem mutar o array recebido.
+ * Fica em `lib/` (não inline no componente) porque a regra do `null` — "nunca acessou" vai
+ * sempre para o fim, não para o topo mesmo em ordem crescente — é fácil de acertar errado
+ * silenciosamente, e testável isolada.
+ */
+export function ordenarContas<T extends ContaOrdenavel>(
+  contas: T[],
+  campo: CampoOrdenacaoConta,
+  direcao: "asc" | "desc",
+): T[] {
+  const copia = [...contas];
+  copia.sort((a, b) => {
+    const va = a[campo];
+    const vb = b[campo];
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    if (va < vb) return direcao === "asc" ? -1 : 1;
+    if (va > vb) return direcao === "asc" ? 1 : -1;
+    return 0;
+  });
+  return copia;
+}
+
 /** Devolve uma linha por campo que de fato mudou. Diff vazio devolve lista vazia. */
 export function formatarDiffHistorico(detalhes: DetalhesHistorico | null | undefined): string[] {
   if (!detalhes) return [];

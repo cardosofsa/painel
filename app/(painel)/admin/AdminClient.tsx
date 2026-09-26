@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Users, Download } from "lucide-react";
+import { ShieldCheck, Users, Download, ChevronUp, ChevronDown } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -13,8 +13,10 @@ import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
+import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { formatBRL, formatarDataHora } from "@/lib/format";
 import { paraCsv, baixarArquivo } from "@/lib/csv";
+import { ordenarContas, type CampoOrdenacaoConta } from "@/lib/admin";
 import { TODAS_AS_ABAS, ABAS_PADRAO, ABAS_OBRIGATORIAS, type StatusConta } from "@/lib/acesso";
 import { atualizarAcessoConta, atualizarStatusEmLote } from "./actions";
 import { HistoricoAdmin, type LinhaHistorico } from "./HistoricoAdmin";
@@ -46,7 +48,22 @@ const ROTULO_STATUS: Record<StatusConta, { label: string; tone: "positive" | "ne
   suspenso: { label: "Suspenso", tone: "negative" },
 };
 
-const ABAS_PAINEL = ["Contas", "Visão Geral", "Histórico"] as const;
+const ABAS_PAINEL = [
+  { value: "contas", label: "Contas" },
+  { value: "visao-geral", label: "Visão Geral" },
+  { value: "historico", label: "Histórico" },
+] as const;
+type AbaPainel = (typeof ABAS_PAINEL)[number]["value"];
+
+const FILTROS_STATUS = ["todos", "ativo", "pendente", "suspenso"] as const;
+type FiltroStatus = (typeof FILTROS_STATUS)[number];
+
+const COLUNAS_ORDENAVEIS: { campo: CampoOrdenacaoConta; label: string }[] = [
+  { campo: "ultimo_acesso", label: "Último acesso" },
+  { campo: "total_produtos", label: "Produtos" },
+  { campo: "total_vendas", label: "Vendas" },
+  { campo: "faturamento_total", label: "Faturamento" },
+];
 
 function desdeUltimoAcesso(dias: number | null) {
   if (dias === null) return "Nunca entrou";
@@ -55,27 +72,54 @@ function desdeUltimoAcesso(dias: number | null) {
   return `Há ${dias} dias`;
 }
 
+/** Mesmo círculo com a inicial já usado em `TopBar.tsx` — não inventa avatar novo. */
+function AvatarConta({ email }: { email: string }) {
+  return (
+    <span className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-on text-xs font-semibold shrink-0">
+      {email[0]?.toUpperCase() ?? "?"}
+    </span>
+  );
+}
+
 export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; historico: LinhaHistorico[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [aba, setAba] = useState<(typeof ABAS_PAINEL)[number]>("Contas");
+  const [aba, setAba] = useState<AbaPainel>("contas");
   const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("todos");
   const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [ordenacao, setOrdenacao] = useState<{ campo: CampoOrdenacaoConta; direcao: "asc" | "desc" }>({
+    campo: "criado_em",
+    direcao: "desc",
+  });
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return contas;
-    return contas.filter((c) => c.email.toLowerCase().includes(termo));
-  }, [contas, busca]);
+    return contas
+      .filter((c) => !termo || c.email.toLowerCase().includes(termo))
+      .filter((c) => filtroStatus === "todos" || c.status === filtroStatus);
+  }, [contas, busca, filtroStatus]);
+
+  const ordenadas = useMemo(
+    () => ordenarContas(filtradas, ordenacao.campo, ordenacao.direcao),
+    [filtradas, ordenacao],
+  );
+
+  function alternarOrdenacao(campo: CampoOrdenacaoConta) {
+    setOrdenacao((prev) =>
+      prev.campo === campo ? { campo, direcao: prev.direcao === "asc" ? "desc" : "asc" } : { campo, direcao: "desc" },
+    );
+  }
 
   const pendentes = contas.filter((c) => c.status === "pendente").length;
   const ativas = contas.filter((c) => c.status === "ativo").length;
+  const suspensas = contas.filter((c) => c.status === "suspenso").length;
   const ativasNaSemana = contas.filter((c) => c.dias_sem_acesso !== null && c.dias_sem_acesso <= 7).length;
 
   // Contas master nunca entram em ação de suspensão em lote — nem na seleção, pra não
   // convidar o clique errado.
-  const selecionaveis = filtradas.filter((c) => c.papel !== "master");
+  const selecionaveis = ordenadas.filter((c) => c.papel !== "master");
   const todosSelecionadosNaPagina = selecionaveis.length > 0 && selecionaveis.every((c) => selecionados.includes(c.user_id));
 
   function alternarSelecaoTodos() {
@@ -188,25 +232,22 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
     <>
       <PageHeader eyebrow="Conta master" title="Administração" />
 
-      <div className="flex gap-1 mb-5 border-b border-border">
-        {ABAS_PAINEL.map((a) => (
-          <button
-            key={a}
-            onClick={() => setAba(a)}
-            className={`px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors ${
-              aba === a ? "border-accent text-accent font-medium" : "border-transparent text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            {a}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={ABAS_PAINEL} value={aba} onChange={setAba} className="mb-5" />
 
-      {aba === "Visão Geral" && <VisaoGeralAdmin contas={contas} />}
-      {aba === "Histórico" && <HistoricoAdmin linhas={historico} />}
+      {aba === "visao-geral" && (
+        <TabPanel key="visao-geral">
+          <VisaoGeralAdmin contas={contas} />
+        </TabPanel>
+      )}
 
-      {aba === "Contas" && (
-        <>
+      {aba === "historico" && (
+        <TabPanel key="historico">
+          <HistoricoAdmin linhas={historico} />
+        </TabPanel>
+      )}
+
+      {aba === "contas" && (
+        <TabPanel key="contas">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
             <Card>
               <CardEyebrow>Contas no Sistema</CardEyebrow>
@@ -222,17 +263,38 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
             </Card>
             <Card>
               <CardEyebrow>Suspensas</CardEyebrow>
-              <HeroMetric value={String(contas.filter((c) => c.status === "suspenso").length)} />
+              <HeroMetric value={String(suspensas)} />
             </Card>
           </div>
 
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por e-mail…"
-              className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent w-full sm:w-80"
-            />
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por e-mail…"
+                className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent w-full sm:w-72"
+              />
+              <div className="flex gap-1.5">
+                {FILTROS_STATUS.map((f) => {
+                  const contagem = f === "todos" ? contas.length : contas.filter((c) => c.status === f).length;
+                  const ativo = filtroStatus === f;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setFiltroStatus(f)}
+                      className={`h-9 px-3 rounded-md text-sm border transition-colors ${
+                        ativo
+                          ? "bg-accent-soft border-accent-soft text-accent font-medium"
+                          : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
+                      }`}
+                    >
+                      {f === "todos" ? "Todos" : ROTULO_STATUS[f].label} <span className="font-mono">({contagem})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <Button variant="secondary" onClick={exportarCsv}>
               <Download size={14} /> Exportar CSV
             </Button>
@@ -254,7 +316,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
           )}
 
           <Card className="p-0 overflow-hidden">
-            {filtradas.length === 0 ? (
+            {ordenadas.length === 0 ? (
               <EmptyState icon={Users} title="Nenhuma conta encontrada" />
             ) : (
               <Table>
@@ -272,15 +334,23 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
                     <Th>Conta</Th>
                     <Th>Status</Th>
                     <Th>Abas</Th>
-                    <Th>Último acesso</Th>
-                    <Th align="right">Produtos</Th>
-                    <Th align="right">Vendas</Th>
-                    <Th align="right">Faturamento</Th>
+                    {COLUNAS_ORDENAVEIS.map(({ campo, label }) => (
+                      <Th key={campo} align={campo === "ultimo_acesso" ? "left" : "right"}>
+                        <button
+                          onClick={() => alternarOrdenacao(campo)}
+                          className="inline-flex items-center gap-0.5 hover:text-text-primary"
+                        >
+                          {label}
+                          {ordenacao.campo === campo &&
+                            (ordenacao.direcao === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                        </button>
+                      </Th>
+                    ))}
                     <Th align="right">Ações</Th>
                   </tr>
                 </Thead>
                 <tbody>
-                  {filtradas.map((c) => {
+                  {ordenadas.map((c) => {
                     const expirou = c.expirado;
                     return (
                       <Tr key={c.user_id}>
@@ -296,14 +366,19 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
                           )}
                         </Td>
                         <Td>
-                          <Link href={`/admin/${c.user_id}`} className="text-text-primary hover:text-accent flex items-center gap-1.5">
-                            {c.email}
-                            {c.papel === "master" && <ShieldCheck size={13} className="text-accent" />}
+                          <Link href={`/admin/${c.user_id}`} className="flex items-center gap-2.5 group">
+                            <AvatarConta email={c.email} />
+                            <div className="min-w-0">
+                              <div className="text-text-primary group-hover:text-accent flex items-center gap-1.5 truncate">
+                                {c.email}
+                                {c.papel === "master" && <ShieldCheck size={13} className="text-accent shrink-0" />}
+                              </div>
+                              <div className="text-xs text-text-tertiary truncate">
+                                Entrou em {formatarDataHora(c.criado_em)}
+                                {c.observacao ? ` · ${c.observacao}` : ""}
+                              </div>
+                            </div>
                           </Link>
-                          <div className="text-xs text-text-tertiary">
-                            Entrou em {formatarDataHora(c.criado_em)}
-                            {c.observacao ? ` · ${c.observacao}` : ""}
-                          </div>
                         </Td>
                         <Td>
                           <StatusChip
@@ -345,7 +420,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
               </Table>
             )}
           </Card>
-        </>
+        </TabPanel>
       )}
 
       {ConfirmDialog}

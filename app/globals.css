@@ -99,3 +99,27 @@ body {
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+/* Transição de conteúdo ao trocar de aba (components/ui/Tabs.tsx: TabPanel). */
+@keyframes tab-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-tab-fade {
+  animation: tab-fade 180ms ease-out;
+}
+
+/* Quem pediu menos movimento ao sistema operacional não recebe a animação — a troca de
+   conteúdo fica instantânea, sem quebrar nada. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-tab-fade {
+    animation: none;
+  }
+}

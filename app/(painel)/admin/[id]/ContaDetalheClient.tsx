@@ -3,12 +3,12 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ShieldCheck, UserCog, KeyRound, CalendarClock, StickyNote } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
-import { FormField, inputClass } from "@/components/ui/Modal";
+import { inputClass } from "@/components/ui/Modal";
 import { SalesChart } from "@/components/charts/SalesChart";
 import { formatBRL, formatarDataCurta, formatarDataHora } from "@/lib/format";
 import { formatarDiffHistorico } from "@/lib/admin";
@@ -22,6 +22,22 @@ const ROTULO_STATUS: Record<StatusConta, { label: string; tone: "positive" | "ne
   pendente: { label: "Pendente", tone: "neutral" },
   suspenso: { label: "Suspenso", tone: "negative" },
 };
+
+/**
+ * Chip de vencimento calculado a partir do que está no formulário AGORA (antes de salvar) —
+ * mesmo raciocínio de fim-de-dia de `acessoExpirado()` em `lib/acesso.ts` (`T23:59:59`),
+ * só que aqui devolve a contagem de dias para dar feedback imediato ao editar a data.
+ */
+function calcularVencimento(expiraEm: string): { label: string; tone: "positive" | "negative" | "neutral" } | null {
+  if (!expiraEm) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const venc = new Date(`${expiraEm}T23:59:59`);
+  const diffDias = Math.ceil((venc.getTime() - hoje.getTime()) / 86400000);
+  if (diffDias < 0) return { label: `Vencido há ${Math.abs(diffDias)} dia(s)`, tone: "negative" };
+  if (diffDias === 0) return { label: "Vence hoje", tone: "negative" };
+  return { label: `Vence em ${diffDias} dia(s)`, tone: diffDias <= 7 ? "negative" : "positive" };
+}
 
 export function ContaDetalheClient({
   conta,
@@ -111,10 +127,16 @@ export function ContaDetalheClient({
           <SalesChart data={serieGrafico} />
         </Card>
 
-        <Card>
-          <h2 className="text-base font-semibold text-text-primary mb-3">Acesso e Permissões</h2>
+        <Card className="space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-text-primary">Acesso e Permissões</h2>
+            <StatusChip label={ROTULO_STATUS[status].label} tone={ROTULO_STATUS[status].tone} />
+          </div>
 
-          <FormField label="Status da conta">
+          <section>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
+              <UserCog size={13} /> Status
+            </div>
             <div className="flex gap-2">
               {(["pendente", "ativo", "suspenso"] as StatusConta[]).map((s) => (
                 <button
@@ -131,9 +153,17 @@ export function ContaDetalheClient({
                 </button>
               ))}
             </div>
-          </FormField>
+          </section>
 
-          <FormField label="Abas liberadas">
+          <section className="border-t border-border pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide">
+                <KeyRound size={13} /> Permissões
+              </div>
+              <span className="text-xs text-text-tertiary font-mono">
+                {abas.length} de {TODAS_AS_ABAS.length} liberadas
+              </span>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {ABAS.map((aba) => {
                 const obrigatoria = ABAS_OBRIGATORIAS.includes(aba.id);
@@ -155,29 +185,42 @@ export function ContaDetalheClient({
                 );
               })}
             </div>
-            <div className="flex gap-3 mt-2">
-              <button onClick={() => setAbas([...TODAS_AS_ABAS])} className="text-xs text-accent hover:underline">
+            <div className="flex gap-2 mt-2.5">
+              <Button variant="secondary" onClick={() => setAbas([...TODAS_AS_ABAS])}>
                 Liberar todas
-              </button>
-              <button onClick={() => setAbas([...ABAS_PADRAO])} className="text-xs text-accent hover:underline">
-                Usar pacote padrão
-              </button>
+              </Button>
+              <Button variant="secondary" onClick={() => setAbas([...ABAS_PADRAO])}>
+                Pacote padrão
+              </Button>
             </div>
-          </FormField>
+          </section>
 
-          <FormField label="Acesso vence em (opcional)">
-            <input type="date" className={inputClass} value={expiraEm} onChange={(e) => setExpiraEm(e.target.value)} />
-            <p className="text-xs text-text-tertiary mt-1">Passada a data, a conta perde o acesso sozinha — útil para teste gratuito.</p>
-          </FormField>
+          <section className="border-t border-border pt-4">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
+              <CalendarClock size={13} /> Vencimento
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="date" className={`${inputClass} flex-1`} value={expiraEm} onChange={(e) => setExpiraEm(e.target.value)} />
+              {calcularVencimento(expiraEm) && (
+                <StatusChip label={calcularVencimento(expiraEm)!.label} tone={calcularVencimento(expiraEm)!.tone} />
+              )}
+            </div>
+            <p className="text-xs text-text-tertiary mt-1.5">
+              {expiraEm ? "Passada a data, a conta perde o acesso sozinha." : "Sem data, o acesso não vence sozinho — útil para teste gratuito quando definida."}
+            </p>
+          </section>
 
-          <FormField label="Anotação interna (só você vê)">
+          <section className="border-t border-border pt-4">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
+              <StickyNote size={13} /> Anotação interna (só você vê)
+            </div>
             <textarea
               className={`${inputClass} h-16 py-2 resize-none`}
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
               placeholder="Ex: plano combinado, vencimento, quem indicou…"
             />
-          </FormField>
+          </section>
 
           <Button variant="primary" className="w-full" loading={pending} onClick={salvar}>
             Salvar

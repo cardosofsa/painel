@@ -95,10 +95,16 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
           ) : (
             <div className="divide-y divide-border">
               {pendentes.map((c) => (
-                <div key={c.user_id} className="flex items-center justify-between px-5 py-3 text-sm">
-                  <div className="min-w-0">
-                    <div className="text-text-primary truncate">{c.email}</div>
-                    <div className="text-xs text-text-tertiary">Cadastrada em {formatarDataHora(c.criado_em)}</div>
+                <div key={c.user_id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {/* Mesmo avatar da tabela de contas em /admin — consistência visual entre as duas telas. */}
+                    <span className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-on text-xs font-semibold shrink-0">
+                      {c.email[0]?.toUpperCase() ?? "?"}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-text-primary truncate">{c.email}</div>
+                      <div className="text-xs text-text-tertiary">Cadastrada em {formatarDataHora(c.criado_em)}</div>
+                    </div>
                   </div>
                   <Button variant="secondary" loading={pending && aprovando === c.user_id} onClick={() => aprovar(c)}>
                     Aprovar

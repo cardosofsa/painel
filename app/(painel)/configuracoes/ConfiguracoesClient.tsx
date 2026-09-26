@@ -11,6 +11,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusChip } from "@/components/ui/Badge";
+import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { createClient } from "@/lib/supabase/client";
 import { formatBRL } from "@/lib/format";
@@ -95,6 +96,7 @@ const ICONES_CANAL: Record<string, LucideIcon> = {
 };
 
 const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Conta"] as const;
+const ABAS_TABS = ABAS.map((a) => ({ value: a, label: a }));
 
 export function ConfiguracoesClient({
   categorias,
@@ -401,20 +403,9 @@ export function ConfiguracoesClient({
     <>
       <PageHeader title="Configurações do Negócio" />
 
-      <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto overflow-y-hidden">
-        {ABAS.map((a) => (
-          <button
-            key={a}
-            onClick={() => setAba(a)}
-            className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
-              aba === a ? "border-accent text-accent font-medium" : "border-transparent text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            {a}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={ABAS_TABS} value={aba} onChange={setAba} className="mb-6" />
 
+      <TabPanel key={aba}>
       {aba === "Canais de Venda" && (
         <div className="space-y-4">
           {canais.map((c) => {
@@ -757,6 +748,7 @@ export function ConfiguracoesClient({
           </Card>
         </div>
       )}
+      </TabPanel>
 
       <LojaModal key={`loja-${modalLoja?.loja?.id ?? modalLoja?.canal.id ?? "fechado"}`} modalLoja={modalLoja} onClose={() => setModalLoja(null)} onSave={salvarLojaHandler} salvando={pending} />
       <FaixasModal key={`faixas-${modalFaixas?.id ?? "fechado"}`} canal={modalFaixas} onClose={() => setModalFaixas(null)} onSave={salvarFaixasHandler} salvando={pending} />
