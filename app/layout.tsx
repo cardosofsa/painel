@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from "@/components/layout/ThemeContext";
 import "./globals.css";
 
@@ -53,6 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-full">
         <ThemeProvider>{children}</ThemeProvider>
         <Toaster position="bottom-right" richColors closeButton />
+        <Analytics />
       </body>
     </html>
   );
