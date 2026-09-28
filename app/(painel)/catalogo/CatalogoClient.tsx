@@ -23,6 +23,7 @@ import {
   type CatalogoInput,
   type ProdutoPrecoCatalogo,
 } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface Catalogo {
   id: string;
@@ -61,10 +62,10 @@ export function CatalogoClient({
     startTransition(async () => {
       try {
         if (modalCatalogo === "novo") {
-          await criarCatalogo(dados);
+          await executar(criarCatalogo(dados));
           toast.success("Catálogo criado");
         } else if (modalCatalogo) {
-          await atualizarCatalogo(modalCatalogo.id, dados);
+          await executar(atualizarCatalogo(modalCatalogo.id, dados));
           toast.success("Catálogo atualizado");
         }
         setModalCatalogo(null);
@@ -77,7 +78,7 @@ export function CatalogoClient({
   function alternarAtivoHandler(c: Catalogo) {
     startTransition(async () => {
       try {
-        await alternarAtivoCatalogo(c.id, c.ativo);
+        await executar(alternarAtivoCatalogo(c.id, c.ativo));
         toast.success(c.ativo ? "Catálogo desativado" : "Catálogo ativado");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar catálogo");
@@ -94,7 +95,7 @@ export function CatalogoClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await regenerarLinkCatalogo(c.id);
+        await executar(regenerarLinkCatalogo(c.id));
         toast.success("Novo link gerado");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao gerar novo link");
@@ -107,7 +108,7 @@ export function CatalogoClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerCatalogo(c.id);
+        await executar(removerCatalogo(c.id));
         toast("Catálogo removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover catálogo");
@@ -240,7 +241,9 @@ function PrecosCatalogoModal({ catalogo, onClose }: { catalogo: Catalogo | null;
 
   useEffect(() => {
     if (!catalogo) return;
-    listarPrecosCatalogo(catalogo.id)
+    // `executar` desembrulha o `Resultado` da action e relança a mensagem traduzida,
+    // que o `.catch` abaixo transforma em toast.
+    executar(listarPrecosCatalogo(catalogo.id))
       .then((dados) => {
         setItens(dados);
         setOverrides(
@@ -260,7 +263,7 @@ function PrecosCatalogoModal({ catalogo, onClose }: { catalogo: Catalogo | null;
         const preco = texto ? Number(texto) : null;
         return { produto_id: item.produto_id, preco: preco !== null && !Number.isNaN(preco) ? preco : null };
       });
-      await salvarPrecosCatalogo(catalogo.id, payload);
+      await executar(salvarPrecosCatalogo(catalogo.id, payload));
       toast.success("Preços salvos");
       onClose();
     } catch (e) {

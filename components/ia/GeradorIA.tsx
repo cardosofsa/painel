@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Sparkles, RefreshCw, Copy, Check, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { inputClass } from "@/components/ui/Modal";
+import { executar, type Resultado } from "@/lib/acao";
 
 export interface SugestaoIAUI {
   texto: string;
@@ -15,17 +16,16 @@ export interface SugestaoIAUI {
   doCache: boolean;
 }
 
-/**
- * A action devolve erro em vez de lançar: exceção de Server Action é redigida pelo Next
- * em produção, e a mensagem em pt-BR nunca chegaria aqui. Ver `ResultadoIA`.
- */
-export type ResultadoIAUI = { ok: true; sugestao: SugestaoIAUI } | { ok: false; erro: string };
-
 interface Props {
   /** Texto do botão. Ex.: "Gerar título com IA". */
   rotulo: string;
-  /** Closure montada pelo consumidor: é ela que carrega o contexto do produto. */
-  gerar: (instrucaoExtra: string | null) => Promise<ResultadoIAUI>;
+  /**
+   * Closure montada pelo consumidor: é ela que carrega o contexto do produto.
+   *
+   * Devolve `Resultado` como toda action do app — exceção de Server Action é redigida
+   * pelo Next em produção e a mensagem em pt-BR não chegaria aqui. Ver `lib/acao.ts`.
+   */
+  gerar: (instrucaoExtra: string | null) => Promise<Resultado<SugestaoIAUI>>;
   onUsar: (texto: string) => void;
   /** Teto do campo de destino, só para o contador visual. */
   limite: number;
@@ -75,13 +75,8 @@ export function GeradorIA({
     setConfirmando(false);
     startTransition(async () => {
       try {
-        const r = await gerar(instrucao.trim() || null);
-        // O erro vem no retorno, não como exceção — por isso não basta o try/catch.
-        if (!r.ok) {
-          toast.error(r.erro);
-          return;
-        }
-        setSugestao(r.sugestao);
+        // `executar` relança a mensagem traduzida para o catch abaixo.
+        setSugestao(await executar(gerar(instrucao.trim() || null)));
       } catch (e) {
         // Sobra só falha de transporte (rede caiu, sessão morreu no meio).
         toast.error(e instanceof Error ? e.message : "Não foi possível gerar agora.");

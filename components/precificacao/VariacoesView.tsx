@@ -27,6 +27,7 @@ import { criarAnuncio, removerAnuncio, gerarTituloAnuncioIA, type VariacaoInput 
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/app/(painel)/precificacao/PrecificacaoClient";
+import { executar } from "@/lib/acao";
 
 export function VariacoesView({
   produtos,
@@ -225,14 +226,14 @@ export function VariacoesView({
 
     startTransition(async () => {
       try {
-        await criarAnuncio({
+        await executar(criarAnuncio({
           produto_id: produtoId,
           loja_id: modoTaxas === "loja" ? lojaId : null,
           nome_anuncio: nomeAnuncio,
           titulo_anuncio: tituloAnuncio.trim() || null,
           componentes_base: [{ id: "base", nome: "Custo unitário base", quantidade: 1, custoUnitario: custoUnitarioBase }],
           variacoes: variacoesInput,
-        });
+        }));
         toast.success("Anúncio com variações salvo");
         setNomeAnuncio("");
         setTituloAnuncio("");
@@ -247,7 +248,7 @@ export function VariacoesView({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerAnuncio(a.id);
+        await executar(removerAnuncio(a.id));
         toast("Anúncio removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover anúncio");

@@ -15,22 +15,27 @@ import {
   pinAdminSchema,
   categoriaSchema,
 } from "@/lib/validacao";
+import { comResultado } from "@/lib/acao";
 
 const PATH = "/configuracoes";
 
 // ---------- Categorias ----------
 export async function criarCategoria(nome: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("categorias").insert(validar(categoriaSchema, { nome }));
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("categorias").insert(validar(categoriaSchema, { nome }));
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
 }
 
 export async function removerCategoria(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("categorias").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("categorias").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
 }
 
 // ---------- Lojas (dentro de um canal de venda) ----------
@@ -46,27 +51,33 @@ export interface LojaInput {
 }
 
 export async function criarLoja(dados: LojaInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("lojas_canal").insert(validar(lojaSchema, dados));
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("lojas_canal").insert(validar(lojaSchema, dados));
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+  });
 }
 
 export async function atualizarLoja(id: string, dados: LojaInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("lojas_canal").update(validar(lojaSchema, dados)).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("lojas_canal").update(validar(lojaSchema, dados)).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+  });
 }
 
 export async function removerLoja(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("lojas_canal").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("lojas_canal").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+  });
 }
 
 // ---------- Canais (categorias fixas de venda: Shopee, Mercado Livre, etc.) ----------
@@ -78,20 +89,24 @@ export interface CanalInput {
 }
 
 export async function criarCanal(dados: CanalInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("canais").insert(validar(canalSchema, dados));
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("canais").insert(validar(canalSchema, dados));
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+  });
 }
 
 export async function removerCanal(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("canais").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
-  revalidatePath("/produtos");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("canais").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+    revalidatePath("/produtos");
+  });
 }
 
 const CANAIS_PADRAO: CanalInput[] = [
@@ -102,18 +117,20 @@ const CANAIS_PADRAO: CanalInput[] = [
 ];
 
 export async function restaurarCanaisPadrao() {
-  const supabase = await createClient();
-  const { data: existentes, error: erroSelect } = await supabase.from("canais").select("nome");
-  if (erroSelect) lancarErroSupabase(erroSelect);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { data: existentes, error: erroSelect } = await supabase.from("canais").select("nome");
+    if (erroSelect) lancarErroSupabase(erroSelect);
 
-  const nomesExistentes = new Set((existentes ?? []).map((c) => c.nome));
-  const faltando = CANAIS_PADRAO.filter((c) => !nomesExistentes.has(c.nome));
-  if (faltando.length === 0) return;
+    const nomesExistentes = new Set((existentes ?? []).map((c) => c.nome));
+    const faltando = CANAIS_PADRAO.filter((c) => !nomesExistentes.has(c.nome));
+    if (faltando.length === 0) return;
 
-  const { error } = await supabase.from("canais").insert(faltando);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
+    const { error } = await supabase.from("canais").insert(faltando);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+  });
 }
 
 // ---------- Faixas de comissão por canal (ex.: tabela oficial da Shopee) ----------
@@ -125,29 +142,31 @@ export interface FaixaComissaoInput {
 }
 
 export async function atualizarFaixasCanal(canalId: string, faixas: FaixaComissaoInput[]) {
-  const supabase = await createClient();
+  return comResultado(async () => {
+    const supabase = await createClient();
 
-  // Valida TUDO antes de apagar qualquer coisa. Antes a validação acontecia dentro do
-  // `.map()`, ou seja, depois do DELETE: uma faixa inválida apagava a tabela de comissões
-  // da Shopee do usuário e não inseria nada no lugar — e é ela que define todo o cálculo
-  // de preço do sistema.
-  const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...validar(faixaComissaoSchema, f) }));
-  for (const linha of linhas) {
-    if (linha.preco_max !== null && linha.preco_max <= linha.preco_min) {
-      throw new Error(`A faixa ${linha.ordem} termina antes de começar — confira os valores mínimo e máximo.`);
+    // Valida TUDO antes de apagar qualquer coisa. Antes a validação acontecia dentro do
+    // `.map()`, ou seja, depois do DELETE: uma faixa inválida apagava a tabela de
+    // comissões da Shopee do usuário e não inseria nada no lugar — e é ela que define
+    // todo o cálculo de preço do sistema.
+    const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...validar(faixaComissaoSchema, f) }));
+    for (const linha of linhas) {
+      if (linha.preco_max !== null && linha.preco_max <= linha.preco_min) {
+        throw new Error(`A faixa ${linha.ordem} termina antes de começar — confira os valores mínimo e máximo.`);
+      }
     }
-  }
 
-  const { error: erroDelete } = await supabase.from("faixas_comissao_canal").delete().eq("canal_id", canalId);
-  if (erroDelete) lancarErroSupabase(erroDelete);
+    const { error: erroDelete } = await supabase.from("faixas_comissao_canal").delete().eq("canal_id", canalId);
+    if (erroDelete) lancarErroSupabase(erroDelete);
 
-  if (linhas.length > 0) {
-    const { error: erroInsert } = await supabase.from("faixas_comissao_canal").insert(linhas);
-    if (erroInsert) lancarErroSupabase(erroInsert);
-  }
+    if (linhas.length > 0) {
+      const { error: erroInsert } = await supabase.from("faixas_comissao_canal").insert(linhas);
+      if (erroInsert) lancarErroSupabase(erroInsert);
+    }
 
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+  });
 }
 
 // ---------- Contas ----------
@@ -158,30 +177,36 @@ export interface ContaInput {
 }
 
 export async function criarConta(dados: ContaInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("contas").insert(validar(contaSchema, dados));
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/dashboard");
-  revalidatePath("/financeiro");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contas").insert(validar(contaSchema, dados));
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/dashboard");
+    revalidatePath("/financeiro");
+  });
 }
 
 export async function atualizarConta(id: string, dados: ContaInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("contas").update(validar(contaSchema, dados)).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/dashboard");
-  revalidatePath("/financeiro");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contas").update(validar(contaSchema, dados)).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/dashboard");
+    revalidatePath("/financeiro");
+  });
 }
 
 export async function removerConta(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("contas").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/dashboard");
-  revalidatePath("/financeiro");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("contas").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/dashboard");
+    revalidatePath("/financeiro");
+  });
 }
 
 // ---------- Formas de Pagamento ----------
@@ -190,27 +215,33 @@ export interface FormaPagamentoInput {
 }
 
 export async function criarFormaPagamento(dados: FormaPagamentoInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("formas_pagamento").insert(validar(formaPagamentoSchema, dados));
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/compras");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("formas_pagamento").insert(validar(formaPagamentoSchema, dados));
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/compras");
+  });
 }
 
 export async function atualizarFormaPagamento(id: string, dados: FormaPagamentoInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("formas_pagamento").update(validar(formaPagamentoSchema, dados)).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/compras");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("formas_pagamento").update(validar(formaPagamentoSchema, dados)).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/compras");
+  });
 }
 
 export async function removerFormaPagamento(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("formas_pagamento").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/compras");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("formas_pagamento").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/compras");
+  });
 }
 
 // ---------- Armazéns ----------
@@ -221,30 +252,36 @@ export interface ArmazemInput {
 }
 
 export async function criarArmazem(dados: ArmazemInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("armazens").insert(validar(armazemSchema, dados));
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/estoque");
-  revalidatePath("/produtos");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("armazens").insert(validar(armazemSchema, dados));
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/estoque");
+    revalidatePath("/produtos");
+  });
 }
 
 export async function atualizarArmazem(id: string, dados: ArmazemInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("armazens").update(validar(armazemSchema, dados)).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/estoque");
-  revalidatePath("/produtos");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("armazens").update(validar(armazemSchema, dados)).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/estoque");
+    revalidatePath("/produtos");
+  });
 }
 
 export async function removerArmazem(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("armazens").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/estoque");
-  revalidatePath("/produtos");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("armazens").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/estoque");
+    revalidatePath("/produtos");
+  });
 }
 
 // ---------- Perfil do Negócio ----------
@@ -257,18 +294,20 @@ export interface PerfilNegocioInput {
 }
 
 export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Sessão expirada, faça login novamente");
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Sessão expirada, faça login novamente");
 
-  const { error } = await supabase
-    .from("perfil_negocio")
-    .upsert({ user_id: user.id, ...validar(perfilNegocioSchema, dados), atualizado_em: new Date().toISOString() });
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/precificacao");
+    const { error } = await supabase
+      .from("perfil_negocio")
+      .upsert({ user_id: user.id, ...validar(perfilNegocioSchema, dados), atualizado_em: new Date().toISOString() });
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/precificacao");
+  });
 }
 
 /**
@@ -277,11 +316,13 @@ export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {
  * tela só sabe se existe um PIN cadastrado, nunca qual é.
  */
 export async function definirPinAdmin(pin: string | null) {
-  const supabase = await createClient();
-  const validado = validar(pinAdminSchema, { pin });
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const validado = validar(pinAdminSchema, { pin });
 
-  const { error } = await supabase.rpc("definir_pin_admin", { p_pin: validado.pin });
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
-  revalidatePath("/vendas");
+    const { error } = await supabase.rpc("definir_pin_admin", { p_pin: validado.pin });
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/vendas");
+  });
 }

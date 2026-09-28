@@ -20,6 +20,7 @@ import {
   alternarStatusCliente,
   type ClienteInput,
 } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface Cliente extends ClienteInput {
   id: string;
@@ -97,10 +98,10 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
     startTransition(async () => {
       try {
         if (editando) {
-          await atualizarCliente(editando.id, form);
+          await executar(atualizarCliente(editando.id, form));
           toast.success("Cliente atualizado");
         } else {
-          await criarCliente(form);
+          await executar(criarCliente(form));
           toast.success("Cliente cadastrado");
         }
         setModalAberto(false);
@@ -118,7 +119,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerCliente(c.id);
+        await executar(removerCliente(c.id));
         toast("Cliente removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover cliente");
@@ -129,7 +130,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
   function alternarStatus(c: Cliente) {
     startTransition(async () => {
       try {
-        await alternarStatusCliente(c.id, c.status);
+        await executar(alternarStatusCliente(c.id, c.status));
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar status");
       }

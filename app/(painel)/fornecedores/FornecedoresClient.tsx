@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Truck } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface Fornecedor extends FornecedorInput {
   id: string;
@@ -61,10 +62,10 @@ export function FornecedoresClient({
     startTransition(async () => {
       try {
         if (editando) {
-          await atualizarFornecedor(editando.id, form);
+          await executar(atualizarFornecedor(editando.id, form));
           toast.success("Fornecedor atualizado");
         } else {
-          await criarFornecedor(form);
+          await executar(criarFornecedor(form));
           toast.success("Fornecedor cadastrado");
         }
         setModalAberto(false);
@@ -82,7 +83,7 @@ export function FornecedoresClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerFornecedor(f.id);
+        await executar(removerFornecedor(f.id));
         toast("Fornecedor removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover fornecedor");
@@ -93,7 +94,7 @@ export function FornecedoresClient({
   function alternarStatus(f: Fornecedor) {
     startTransition(async () => {
       try {
-        await alternarStatusFornecedor(f.id, f.status);
+        await executar(alternarStatusFornecedor(f.id, f.status));
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar status");
       }

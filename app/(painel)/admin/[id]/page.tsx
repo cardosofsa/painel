@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import type { ContaAdmin } from "../AdminClient";
 import type { LinhaHistorico } from "../HistoricoAdmin";
-import { ContaDetalheClient } from "./ContaDetalheClient";
+import { ContaDetalheClient, type UsoIa } from "./ContaDetalheClient";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -28,10 +28,9 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
       .eq("alvo_user_id", id)
       .order("criado_em", { ascending: false })
       .limit(50),
-    // Leitura direta: a policy de `perfis_acesso` já deixa o master ler qualquer linha
-    // (`auth.uid() = user_id or e_master()`), então isto não precisa de RPC nova. A
-    // ESCRITA continua sendo só por `admin_definir_limite_ia`, que é onde a trava mora.
-    supabase.from("perfis_acesso").select("ia_limite_diario").eq("user_id", id).maybeSingle(),
+    // Limite + consumo. `ia_uso` é legível só pelo dono, então o master passa por uma
+    // porta explícita gated por `e_master()` em vez de afrouxar o RLS (0025).
+    supabase.rpc("admin_uso_ia_conta", { p_user_id: id }).maybeSingle(),
   ]);
 
   if (contasRes.error) lancarErroSupabase(contasRes.error);
@@ -41,18 +40,16 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
 
   if (atividadeRes.error) console.error("[admin/detalhe] falha ao carregar atividade:", atividadeRes.error.message);
   if (historicoRes.error) console.error("[admin/detalhe] falha ao carregar histórico:", historicoRes.error.message);
-  // Enquanto a 0024 não for aplicada a coluna não existe: cai em `null` e a tela esconde
-  // o controle, em vez de quebrar a página inteira do detalhe da conta.
-  if (cotaRes.error) console.error("[admin/detalhe] falha ao carregar cota de IA:", cotaRes.error.message);
-
-  const limiteIa = (cotaRes.data as { ia_limite_diario: number } | null)?.ia_limite_diario ?? null;
+  // Enquanto a 0025 não for aplicada a RPC não existe: cai em `null` e a tela esconde o
+  // bloco, em vez de quebrar a página inteira do detalhe da conta.
+  if (cotaRes.error) console.error("[admin/detalhe] falha ao carregar uso de IA:", cotaRes.error.message);
 
   return (
     <ContaDetalheClient
       conta={conta}
       atividade={(atividadeRes.data ?? []) as { dia: string; vendas: number; faturamento: number }[]}
       historico={(historicoRes.data ?? []) as LinhaHistorico[]}
-      limiteIa={limiteIa}
+      usoIa={(cotaRes.data as UsoIa | null) ?? null}
     />
   );
 }

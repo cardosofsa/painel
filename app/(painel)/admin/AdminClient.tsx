@@ -21,6 +21,7 @@ import { TODAS_AS_ABAS, ABAS_PADRAO, ABAS_OBRIGATORIAS, type StatusConta } from 
 import { atualizarAcessoConta, atualizarStatusEmLote } from "./actions";
 import { HistoricoAdmin, type LinhaHistorico } from "./HistoricoAdmin";
 import { VisaoGeralAdmin } from "./VisaoGeralAdmin";
+import { executar } from "@/lib/acao";
 
 export interface ContaAdmin {
   user_id: string;
@@ -143,7 +144,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
   }) {
     startTransition(async () => {
       try {
-        await atualizarAcessoConta(dados);
+        await executar(atualizarAcessoConta(dados));
         toast.success("Acesso atualizado");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar acesso");
@@ -175,7 +176,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
   function aprovarSelecionadas() {
     startTransition(async () => {
       try {
-        await atualizarStatusEmLote(selecionados, "ativo");
+        await executar(atualizarStatusEmLote(selecionados, "ativo"));
         toast.success(`${selecionados.length} conta(s) aprovada(s)`);
         setSelecionados([]);
       } catch (e) {
@@ -193,7 +194,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
     if (!ok) return;
     startTransition(async () => {
       try {
-        await atualizarStatusEmLote(selecionados, "suspenso");
+        await executar(atualizarStatusEmLote(selecionados, "suspenso"));
         toast.success(`${selecionados.length} conta(s) suspensa(s)`);
         setSelecionados([]);
       } catch (e) {

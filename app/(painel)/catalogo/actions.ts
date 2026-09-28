@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, catalogoSchema, precoOverrideSchema } from "@/lib/validacao";
 import { mapaGrupos, rotuloProduto } from "@/lib/produtos";
+import { comResultado } from "@/lib/acao";
 
 const PATH = "/catalogo";
 
@@ -25,92 +26,106 @@ function gerarSlug() {
 }
 
 export async function criarCatalogo(dados: CatalogoInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("catalogos").insert({ ...validar(catalogoSchema, dados), slug: gerarSlug() });
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("catalogos").insert({ ...validar(catalogoSchema, dados), slug: gerarSlug() });
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
 }
 
 export async function atualizarCatalogo(id: string, dados: CatalogoInput) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("catalogos").update(validar(catalogoSchema, dados)).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("catalogos").update(validar(catalogoSchema, dados)).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
 }
 
 export async function alternarAtivoCatalogo(id: string, ativoAtual: boolean) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("catalogos").update({ ativo: !ativoAtual }).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("catalogos").update({ ativo: !ativoAtual }).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
 }
 
 export async function regenerarLinkCatalogo(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("catalogos").update({ slug: gerarSlug() }).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("catalogos").update({ slug: gerarSlug() }).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
 }
 
 export async function removerCatalogo(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("catalogos").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidatePath(PATH);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("catalogos").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
 }
 
 /** Produtos elegíveis (ativos + com estoque) e o preço que cada um mostra nesse catálogo. */
-export async function listarPrecosCatalogo(catalogoId: string): Promise<ProdutoPrecoCatalogo[]> {
-  const supabase = await createClient();
+export async function listarPrecosCatalogo(catalogoId: string) {
+  return comResultado(async (): Promise<ProdutoPrecoCatalogo[]> => {
+    const supabase = await createClient();
 
-  const [produtosRes, overridesRes, gruposRes] = await Promise.all([
-    supabase
-      .from("produtos")
-      .select("id, nome, preco_venda, grupo_id, variante_nome")
-      .eq("ativo", true)
-      .gt("estoque", 0)
-      .order("nome"),
-    supabase.from("catalogo_precos").select("produto_id, preco").eq("catalogo_id", catalogoId),
-    supabase.from("produto_grupos").select("id, nome"),
-  ]);
-  if (produtosRes.error) lancarErroSupabase(produtosRes.error);
-  if (overridesRes.error) lancarErroSupabase(overridesRes.error);
-  if (gruposRes.error) lancarErroSupabase(gruposRes.error);
+    const [produtosRes, overridesRes, gruposRes] = await Promise.all([
+      supabase
+        .from("produtos")
+        .select("id, nome, preco_venda, grupo_id, variante_nome")
+        .eq("ativo", true)
+        .gt("estoque", 0)
+        .order("nome"),
+      supabase.from("catalogo_precos").select("produto_id, preco").eq("catalogo_id", catalogoId),
+      supabase.from("produto_grupos").select("id, nome"),
+    ]);
+    if (produtosRes.error) lancarErroSupabase(produtosRes.error);
+    if (overridesRes.error) lancarErroSupabase(overridesRes.error);
+    if (gruposRes.error) lancarErroSupabase(gruposRes.error);
 
-  const overridePorProduto = new Map((overridesRes.data ?? []).map((o) => [o.produto_id, o.preco]));
-  // O override é por SKU (unique catalogo_id + produto_id), então cada variante
-  // precisa da própria linha — mas com rótulo, senão não dá pra saber qual é qual.
-  const grupos = mapaGrupos(gruposRes.data ?? []);
+    const overridePorProduto = new Map((overridesRes.data ?? []).map((o) => [o.produto_id, o.preco]));
+    // O override é por SKU (unique catalogo_id + produto_id), então cada variante
+    // precisa da própria linha — mas com rótulo, senão não dá pra saber qual é qual.
+    const grupos = mapaGrupos(gruposRes.data ?? []);
 
-  return (produtosRes.data ?? []).map((p) => ({
-    produto_id: p.id,
-    produto_nome: rotuloProduto({ ...p, grupo_nome: p.grupo_id ? (grupos.get(p.grupo_id) ?? null) : null }),
-    preco_venda: p.preco_venda,
-    preco_override: overridePorProduto.get(p.id) ?? null,
-  }));
+    return (produtosRes.data ?? []).map((p) => ({
+      produto_id: p.id,
+      produto_nome: rotuloProduto({ ...p, grupo_nome: p.grupo_id ? (grupos.get(p.grupo_id) ?? null) : null }),
+      preco_venda: p.preco_venda,
+      preco_override: overridePorProduto.get(p.id) ?? null,
+    }));
+  });
 }
 
 export async function salvarPrecosCatalogo(catalogoId: string, itens: { produto_id: string; preco: number | null }[]) {
-  const supabase = await createClient();
-  const validados = itens.map((item) => validar(precoOverrideSchema, item));
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const validados = itens.map((item) => validar(precoOverrideSchema, item));
 
-  const semOverride = validados.filter((i) => i.preco === null).map((i) => i.produto_id);
-  const comOverride = validados.filter((i): i is { produto_id: string; preco: number } => i.preco !== null);
+    const semOverride = validados.filter((i) => i.preco === null).map((i) => i.produto_id);
+    const comOverride = validados.filter((i): i is { produto_id: string; preco: number } => i.preco !== null);
 
-  if (semOverride.length > 0) {
-    const { error } = await supabase
-      .from("catalogo_precos")
-      .delete()
-      .eq("catalogo_id", catalogoId)
-      .in("produto_id", semOverride);
-    if (error) lancarErroSupabase(error);
-  }
+    if (semOverride.length > 0) {
+      const { error } = await supabase
+        .from("catalogo_precos")
+        .delete()
+        .eq("catalogo_id", catalogoId)
+        .in("produto_id", semOverride);
+      if (error) lancarErroSupabase(error);
+    }
 
-  if (comOverride.length > 0) {
-    const linhas = comOverride.map((i) => ({ catalogo_id: catalogoId, produto_id: i.produto_id, preco: i.preco }));
-    const { error } = await supabase.from("catalogo_precos").upsert(linhas, { onConflict: "catalogo_id,produto_id" });
-    if (error) lancarErroSupabase(error);
-  }
+    if (comOverride.length > 0) {
+      const linhas = comOverride.map((i) => ({ catalogo_id: catalogoId, produto_id: i.produto_id, preco: i.preco }));
+      const { error } = await supabase.from("catalogo_precos").upsert(linhas, { onConflict: "catalogo_id,produto_id" });
+      if (error) lancarErroSupabase(error);
+    }
 
-  revalidatePath(PATH);
+    revalidatePath(PATH);
+  });
 }

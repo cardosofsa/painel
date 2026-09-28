@@ -16,6 +16,7 @@ import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta }
 import { atualizarAcessoConta, definirLimiteIaConta } from "../actions";
 import type { ContaAdmin } from "../AdminClient";
 import type { LinhaHistorico } from "../HistoricoAdmin";
+import { executar } from "@/lib/acao";
 
 const ROTULO_STATUS: Record<StatusConta, { label: string; tone: "positive" | "negative" | "neutral" }> = {
   ativo: { label: "Ativo", tone: "positive" },
@@ -39,24 +40,32 @@ function calcularVencimento(expiraEm: string): { label: string; tone: "positive"
   return { label: `Vence em ${diffDias} dia(s)`, tone: diffDias <= 7 ? "negative" : "positive" };
 }
 
+export interface UsoIa {
+  limite: number;
+  usadas_hoje: number;
+  cache_hoje: number;
+  usadas_30dias: number;
+  cache_30dias: number;
+}
+
 export function ContaDetalheClient({
   conta,
   atividade,
   historico,
-  limiteIa,
+  usoIa,
 }: {
   conta: ContaAdmin;
   atividade: { dia: string; vendas: number; faturamento: number }[];
   historico: LinhaHistorico[];
-  /** `null` quando a migração 0024 ainda não foi aplicada — o controle some. */
-  limiteIa: number | null;
+  /** `null` quando a migração 0025 ainda não foi aplicada — o bloco some. */
+  usoIa: UsoIa | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState<StatusConta>(conta.status);
   const [abas, setAbas] = useState<string[]>(conta.abas);
   const [observacao, setObservacao] = useState(conta.observacao ?? "");
   const [expiraEm, setExpiraEm] = useState(conta.expira_em ?? "");
-  const [cotaIa, setCotaIa] = useState(limiteIa ?? 0);
+  const [cotaIa, setCotaIa] = useState(usoIa?.limite ?? 0);
 
   function alternarAba(id: string) {
     if (ABAS_OBRIGATORIAS.includes(id as (typeof ABAS_OBRIGATORIAS)[number])) return;
@@ -65,27 +74,25 @@ export function ContaDetalheClient({
 
   function salvarCotaIa() {
     startTransition(async () => {
-      // Devolve erro em vez de lançar (exceção de Server Action é redigida em produção),
-      // então o retorno precisa ser checado — o try/catch sozinho não pegaria.
-      const r = await definirLimiteIaConta(conta.user_id, cotaIa);
-      if (!r.ok) {
-        toast.error(r.erro);
-        return;
+      try {
+        await executar(definirLimiteIaConta(conta.user_id, cotaIa));
+        toast.success(cotaIa === 0 ? "Geração por IA desligada para esta conta" : `Cota de IA: ${cotaIa} por dia`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao alterar a cota de IA");
       }
-      toast.success(cotaIa === 0 ? "Geração por IA desligada para esta conta" : `Cota de IA: ${cotaIa} por dia`);
     });
   }
 
   function salvar() {
     startTransition(async () => {
       try {
-        await atualizarAcessoConta({
+        await executar(atualizarAcessoConta({
           user_id: conta.user_id,
           status,
           abas,
           observacao: observacao.trim() || null,
           expira_em: expiraEm || null,
-        });
+        }));
         toast.success("Acesso atualizado");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar acesso");
@@ -245,10 +252,15 @@ export function ContaDetalheClient({
 
           {/* Fora do formulário acima de propósito: grava por RPC própria, na hora. Some
               enquanto a 0024 não estiver aplicada. */}
-          {limiteIa !== null && (
+          {usoIa && (
             <section className="border-t border-border pt-4">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
-                <Sparkles size={13} /> Cota de IA por dia
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide">
+                  <Sparkles size={13} /> Cota de IA por dia
+                </div>
+                <span className="text-xs text-text-tertiary font-mono">
+                  {usoIa.usadas_hoje} de {usoIa.limite} usadas hoje
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -259,7 +271,7 @@ export function ContaDetalheClient({
                   value={cotaIa}
                   onChange={(e) => setCotaIa(Math.max(0, Math.min(1000, Number(e.target.value) || 0)))}
                 />
-                <Button variant="secondary" loading={pending} disabled={cotaIa === limiteIa} onClick={salvarCotaIa}>
+                <Button variant="secondary" loading={pending} disabled={cotaIa === usoIa.limite} onClick={salvarCotaIa}>
                   Aplicar
                 </Button>
               </div>
@@ -267,6 +279,12 @@ export function ContaDetalheClient({
                 {cotaIa === 0
                   ? "Zero desliga a geração por IA para esta conta."
                   : `${cotaIa} gerações por dia. O contador zera à meia-noite (horário de Brasília).`}
+              </p>
+              {/* O cache é o que separa "usou muito" de "custou muito": acerto de cache
+                  não gasta cota nem chama a API. */}
+              <p className="text-xs text-text-tertiary mt-1">
+                Últimos 30 dias: {usoIa.usadas_30dias} geração(ões) paga(s)
+                {usoIa.cache_30dias > 0 && ` · ${usoIa.cache_30dias} servida(s) pelo cache, sem custo`}
               </p>
             </section>
           )}

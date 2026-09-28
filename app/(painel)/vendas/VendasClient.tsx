@@ -18,6 +18,7 @@ import { paraCsv, baixarArquivo } from "@/lib/csv";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { cancelarVenda } from "./actions";
 import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
+import { executar } from "@/lib/acao";
 
 export interface VendaItem {
   produto_nome: string;
@@ -185,7 +186,7 @@ export function VendasClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await cancelarVenda(v.id);
+        await executar(cancelarVenda(v.id));
         toast.success(`Venda ${v.numero} cancelada`);
         setDetalhe(null);
       } catch (e) {

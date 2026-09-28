@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import { criarClienteRapido } from "../clientes/actions";
 import type { ClientePdv, ContaPdv } from "./tipos";
+import { executar } from "@/lib/acao";
 
 /** Ícone por forma de pagamento conhecida; o resto cai no genérico. */
 const ICONES: { padrao: RegExp; icone: typeof Banknote }[] = [
@@ -67,7 +68,7 @@ export function CheckoutModal({
     if (!novoNome.trim()) return;
     setCriandoCliente(true);
     try {
-      const criado = await criarClienteRapido(novoNome.trim(), novoWhatsapp.trim() || null, novoFiado);
+      const criado = await executar(criarClienteRapido(novoNome.trim(), novoWhatsapp.trim() || null, novoFiado));
       setClientesLocais((prev) => [...prev, { ...criado, whatsapp: novoWhatsapp.trim() || null }]);
       setClienteId(criado.id);
       setCadastroAberto(false);

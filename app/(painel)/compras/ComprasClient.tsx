@@ -14,6 +14,7 @@ import { PackageSearch } from "lucide-react";
 import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarPedidoCompra, marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface ItemPedido {
   produto_id: string | null;
@@ -125,7 +126,7 @@ export function ComprasClient({
   function marcarRecebido(id: string, numero: string) {
     startTransition(async () => {
       try {
-        await marcarPedidoRecebido(id);
+        await executar(marcarPedidoRecebido(id));
         toast.success(`Pedido ${numero} marcado como recebido`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao marcar como recebido");
@@ -139,7 +140,7 @@ export function ComprasClient({
       return;
     }
     try {
-      const url = await obterUrlNotaFiscal(p.nf_arquivo_path);
+      const url = await executar(obterUrlNotaFiscal(p.nf_arquivo_path));
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao abrir nota fiscal");
@@ -464,7 +465,7 @@ function NovoPedidoModal({
           if (!resultado) return;
           nfArquivoPath = resultado.path;
         }
-        await criarPedidoCompra({
+        await executar(criarPedidoCompra({
           fornecedor_id: fornecedorId,
           armazem_id: armazemId || null,
           nf: nf || null,
@@ -477,7 +478,7 @@ function NovoPedidoModal({
           parcelas: parcelado ? parcelas : null,
           data_primeiro_vencimento: parcelado ? dataPrimeiraParcela : dataPedido,
           itens,
-        });
+        }));
         toast.success("Pedido de compra criado");
         fechar();
       } catch (e) {

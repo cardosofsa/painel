@@ -45,6 +45,7 @@ import {
   type FormaPagamentoInput,
   type PerfilNegocioInput,
 } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface Categoria {
   id: string;
@@ -139,10 +140,10 @@ export function ConfiguracoesClient({
     startTransition(async () => {
       try {
         if (modalLoja?.loja) {
-          await atualizarLoja(modalLoja.loja.id, dados);
+          await executar(atualizarLoja(modalLoja.loja.id, dados));
           toast.success("Loja atualizada");
         } else {
-          await criarLoja(dados);
+          await executar(criarLoja(dados));
           toast.success("Loja adicionada");
         }
         setModalLoja(null);
@@ -157,7 +158,7 @@ export function ConfiguracoesClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerLoja(l.id);
+        await executar(removerLoja(l.id));
         toast("Loja removida");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover loja");
@@ -168,7 +169,7 @@ export function ConfiguracoesClient({
   function salvarFaixasHandler(canalId: string, faixas: FaixaComissaoInput[]) {
     startTransition(async () => {
       try {
-        await atualizarFaixasCanal(canalId, faixas);
+        await executar(atualizarFaixasCanal(canalId, faixas));
         toast.success("Faixas de comissão atualizadas");
         setModalFaixas(null);
       } catch (e) {
@@ -180,7 +181,7 @@ export function ConfiguracoesClient({
   function salvarCanalHandler(dados: CanalInput) {
     startTransition(async () => {
       try {
-        await criarCanal(dados);
+        await executar(criarCanal(dados));
         toast.success("Canal adicionado");
         setModalCanal(false);
       } catch (e) {
@@ -204,7 +205,7 @@ export function ConfiguracoesClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerCanal(c.id);
+        await executar(removerCanal(c.id));
         toast("Canal removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover canal");
@@ -223,7 +224,7 @@ export function ConfiguracoesClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await restaurarCanaisPadrao();
+        await executar(restaurarCanaisPadrao());
         toast.success("Canais padrão restaurados");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao restaurar canais");
@@ -236,7 +237,7 @@ export function ConfiguracoesClient({
     const nome = novaCategoria.trim();
     startTransition(async () => {
       try {
-        await criarCategoria(nome);
+        await executar(criarCategoria(nome));
         // Limpa só depois do sucesso — se o nome já existir, o texto continua no campo
         // para o usuário corrigir em vez de ter que digitar tudo de novo.
         setNovaCategoria("");
@@ -252,7 +253,7 @@ export function ConfiguracoesClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerCategoria(c.id);
+        await executar(removerCategoria(c.id));
         toast("Categoria removida");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover categoria");
@@ -264,10 +265,10 @@ export function ConfiguracoesClient({
     startTransition(async () => {
       try {
         if (modalConta === "novo") {
-          await criarConta(dados);
+          await executar(criarConta(dados));
           toast.success("Conta adicionada");
         } else if (modalConta) {
-          await atualizarConta(modalConta.id, dados);
+          await executar(atualizarConta(modalConta.id, dados));
           toast.success("Conta atualizada");
         }
         setModalConta(null);
@@ -282,7 +283,7 @@ export function ConfiguracoesClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerConta(c.id);
+        await executar(removerConta(c.id));
         toast("Conta removida");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover conta");
@@ -294,10 +295,10 @@ export function ConfiguracoesClient({
     startTransition(async () => {
       try {
         if (modalFormaPagamento === "novo") {
-          await criarFormaPagamento(dados);
+          await executar(criarFormaPagamento(dados));
           toast.success("Forma de pagamento adicionada");
         } else if (modalFormaPagamento) {
-          await atualizarFormaPagamento(modalFormaPagamento.id, dados);
+          await executar(atualizarFormaPagamento(modalFormaPagamento.id, dados));
           toast.success("Forma de pagamento atualizada");
         }
         setModalFormaPagamento(null);
@@ -312,7 +313,7 @@ export function ConfiguracoesClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerFormaPagamento(f.id);
+        await executar(removerFormaPagamento(f.id));
         toast("Forma de pagamento removida");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover forma de pagamento");
@@ -324,10 +325,10 @@ export function ConfiguracoesClient({
     startTransition(async () => {
       try {
         if (modalArmazem === "novo") {
-          await criarArmazem(dados);
+          await executar(criarArmazem(dados));
           toast.success("Armazém adicionado");
         } else if (modalArmazem) {
-          await atualizarArmazem(modalArmazem.id, dados);
+          await executar(atualizarArmazem(modalArmazem.id, dados));
           toast.success("Armazém atualizado");
         }
         setModalArmazem(null);
@@ -342,7 +343,7 @@ export function ConfiguracoesClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerArmazem(a.id);
+        await executar(removerArmazem(a.id));
         toast("Armazém removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover armazém");
@@ -360,7 +361,7 @@ export function ConfiguracoesClient({
     };
     startTransition(async () => {
       try {
-        await salvarPerfilNegocio(dados);
+        await executar(salvarPerfilNegocio(dados));
         toast.success("Perfil do negócio salvo");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao salvar perfil");
@@ -376,7 +377,7 @@ export function ConfiguracoesClient({
     }
     startTransition(async () => {
       try {
-        await definirPinAdmin(pin || null);
+        await executar(definirPinAdmin(pin || null));
         setPinAdmin("");
         toast.success(pin ? "PIN atualizado" : "PIN removido — a edição de vendas fica bloqueada");
       } catch (e) {

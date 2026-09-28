@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validar, iaContextoSchema } from "@/lib/validacao";
 import { lancarErroSupabase } from "@/lib/erros";
+import { comResultado, type Resultado } from "@/lib/acao";
 import { chamarGemini, ErroIA } from "./gemini";
 import {
   montarPromptTitulo,
@@ -23,18 +24,6 @@ import {
 } from "./prompts";
 
 export type TipoGeracao = "titulo" | "descricao";
-
-/**
- * Resultado da geração. **Retorna erro, não lança** — e isso é obrigatório, não estilo.
- *
- * O Next redige toda exceção lançada dentro de Server Action em produção: o servidor loga
- * a mensagem real com um `digest` e manda ao navegador um erro genérico. Ou seja, se esta
- * função lançasse, a mensagem em pt-BR que `traduzirErroIA` monta nunca chegaria à tela —
- * o usuário veria "Minified React error #441". Valor de RETORNO atravessa intacto.
- *
- * Mesmo motivo pelo qual `app/auth/actions.ts` já devolve `{ ok, mensagem }`.
- */
-export type ResultadoIA = { ok: true; sugestao: SugestaoGerada } | { ok: false; erro: string };
 
 export interface SugestaoGerada {
   texto: string;
@@ -64,22 +53,17 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number; 
 /** Falha de infraestrutura: o usuário não fez nada errado, então a cota volta. */
 const ESTORNAVEIS = new Set(["chave_invalida", "sem_credito", "servidor", "rede", "timeout"]);
 
+/**
+ * Devolve `Resultado` como toda action do app (ver `lib/acao.ts`): exceção de Server
+ * Action é redigida pelo Next em produção, e a mensagem em pt-BR de `traduzirErroIA`
+ * nunca chegaria à tela.
+ */
 export async function gerarComIA(
   supabase: SupabaseClient,
   tipo: TipoGeracao,
   contexto: unknown,
-): Promise<ResultadoIA> {
-  try {
-    return { ok: true, sugestao: await executar(supabase, tipo, contexto) };
-  } catch (e) {
-    // Toda mensagem que chega aqui já passou por um tradutor nosso (`traduzirErroIA`,
-    // `traduzirErroSupabase` via `lancarErroSupabase`, ou `validar`), então é segura de
-    // mostrar. Qualquer outra coisa vira genérico e o original fica só no log.
-    if (e instanceof ErroIA) return { ok: false, erro: e.message };
-    if (e instanceof Error) return { ok: false, erro: e.message };
-    console.error("[ia] erro inesperado:", e);
-    return { ok: false, erro: "Não foi possível gerar agora. Tente de novo." };
-  }
+): Promise<Resultado<SugestaoGerada>> {
+  return comResultado(() => executar(supabase, tipo, contexto));
 }
 
 async function executar(

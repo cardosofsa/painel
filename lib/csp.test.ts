@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gerarNonce, montarCsp } from "./csp";
+import { gerarNonce, montarCsp, cabecalhoRelatorio, ROTA_RELATORIO } from "./csp";
 
 const SUPABASE = "https://abc123.supabase.co";
 
@@ -64,5 +64,30 @@ describe("montarCsp", () => {
     expect(diretiva(csp, "frame-ancestors")).toBe("frame-ancestors 'none'");
     expect(diretiva(csp, "base-uri")).toBe("base-uri 'self'");
     expect(diretiva(csp, "form-action")).toBe("form-action 'self'");
+  });
+});
+
+describe("relatório de violações", () => {
+  it("em produção aponta report-uri e report-to para a mesma rota", () => {
+    const csp = montarCsp("n", { dev: false, origemSupabase: SUPABASE });
+    expect(csp).toContain("report-uri /api/csp-report");
+    expect(csp).toContain("report-to csp");
+  });
+
+  it("em dev não reporta — o console do navegador já mostra", () => {
+    const csp = montarCsp("n", { dev: true, origemSupabase: SUPABASE });
+    expect(csp).not.toContain("report-uri");
+    expect(csp).not.toContain("report-to");
+  });
+
+  it("o cabeçalho Reporting-Endpoints casa com o grupo usado em report-to", () => {
+    const csp = montarCsp("n", { dev: false });
+    const grupo = csp.match(/report-to (\S+)/)?.[1];
+    expect(grupo).toBeTruthy();
+    expect(cabecalhoRelatorio()).toContain(`${grupo}="${ROTA_RELATORIO}"`);
+  });
+
+  it("o relatório não vira diretiva com espaço duplo nem quebra o parsing", () => {
+    expect(montarCsp("n", { dev: false })).not.toContain("  ");
   });
 });

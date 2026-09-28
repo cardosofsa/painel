@@ -105,6 +105,14 @@ pedem senha. Não escreva o mínimo à mão.
 O PIN nunca é enviado ao cliente: `perfil_negocio.pin_admin_hash` fica fora de todo
 `select` e a tela recebe só um booleano.
 
+**Server Action devolve `Resultado`, nunca lança.** O Next redige toda exceção de Server
+Action em produção: o servidor loga a mensagem com um `digest` e o navegador recebe um erro
+genérico — ou seja, tudo que `lib/erros.ts` traduz ficava invisível justamente em produção.
+Por isso o corpo de toda action vai dentro de `comResultado()` e todo ponto de chamada usa
+`await executar(acao(...))`, que relança localmente para o `try/catch` de sempre. Ver
+`lib/acao.ts`. **Chamar uma action sem `executar()` engole o erro em silêncio** — o
+TypeScript não reclama de retorno ignorado. É a única armadilha do desenho.
+
 **IA (Gemini).** Única chamada externa do projeto e única env sem `NEXT_PUBLIC_`
 (`GEMINI_API_KEY`). `lib/ia/gemini.ts` **não pode** ser importado por Client Component — a
 chave iria para o bundle. Em `lib/ia/gerar.ts` a ordem é obrigatória: `ia_buscar_sugestao`

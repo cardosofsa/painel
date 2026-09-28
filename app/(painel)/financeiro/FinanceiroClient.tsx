@@ -35,6 +35,7 @@ import {
   type EscopoLimpeza,
   type ImpactoLimpeza,
 } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface Conta {
   id: string;
@@ -207,7 +208,7 @@ export function FinanceiroClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await quitarContaPagarReceber(c.id);
+        await executar(quitarContaPagarReceber(c.id));
         toast.success("Status atualizado");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao atualizar status");
@@ -218,7 +219,7 @@ export function FinanceiroClient({
   function adicionarMovimentacao(dados: MovimentacaoInput) {
     startTransition(async () => {
       try {
-        await criarMovimentacao(dados);
+        await executar(criarMovimentacao(dados));
         setModalMovimentacao(false);
         toast.success("Movimentação registrada");
       } catch (e) {
@@ -230,7 +231,7 @@ export function FinanceiroClient({
   function adicionarDespesaFixa(dados: DespesaFixaInput) {
     startTransition(async () => {
       try {
-        await criarDespesaFixa(dados);
+        await executar(criarDespesaFixa(dados));
         setModalDespesa(false);
         toast.success("Despesa fixa cadastrada");
       } catch (e) {
@@ -242,7 +243,7 @@ export function FinanceiroClient({
   function adicionarCpr(dados: ContaPagarReceberInput) {
     startTransition(async () => {
       try {
-        await criarContaPagarReceber(dados);
+        await executar(criarContaPagarReceber(dados));
         setModalCpr(false);
         toast.success("Registro adicionado");
       } catch (e) {
@@ -264,10 +265,10 @@ export function FinanceiroClient({
     startTransition(async () => {
       try {
         if (movExistente) {
-          await desfazerRetiradaDespesa(movExistente.id);
+          await executar(desfazerRetiradaDespesa(movExistente.id));
           toast("Retirada desfeita");
         } else {
-          await retirarDespesaDaConta(despesa.id);
+          await executar(retirarDespesaDaConta(despesa.id));
           toast.success("Valor retirado da conta");
         }
       } catch (e) {
@@ -710,7 +711,7 @@ function LimparDadosModal({
   async function avaliar() {
     setAvaliando(true);
     try {
-      const resultado = await avaliarLimpezaFinanceiro(dataInicio, dataFim, escopo);
+      const resultado = await executar(avaliarLimpezaFinanceiro(dataInicio, dataFim, escopo));
       setImpacto(resultado);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao avaliar impacto");
@@ -719,7 +720,9 @@ function LimparDadosModal({
     }
   }
 
-  async function executar() {
+  // Nome antigo era `executar`, que passou a colidir com o helper de action do
+  // `lib/acao`. `apagar` também diz melhor o que o botão faz.
+  async function apagar() {
     if (!impacto) return;
     const total = impacto.lancamentos + impacto.contasPagarReceber;
     if (total === 0) {
@@ -734,7 +737,7 @@ function LimparDadosModal({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await limparDadosFinanceiros(dataInicio, dataFim, escopo);
+        await executar(limparDadosFinanceiros(dataInicio, dataFim, escopo));
         toast.success("Dados removidos");
         fechar();
       } catch (e) {
@@ -813,7 +816,7 @@ function LimparDadosModal({
             {avaliando ? "Avaliando…" : "Avaliar Impacto"}
           </Button>
         ) : (
-          <Button variant="destructive" className="flex-1" onClick={executar} loading={pending}>
+          <Button variant="destructive" className="flex-1" onClick={apagar} loading={pending}>
             Apagar
           </Button>
         )}

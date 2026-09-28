@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, vendaEdicaoSchema } from "@/lib/validacao";
+import { comResultado } from "@/lib/acao";
 
 export interface VendaEdicaoInput {
   cliente_id: string | null;
@@ -30,23 +31,28 @@ function revalidateTudo() {
  * só repassa. A checagem NÃO pode morar aqui: a aplicação usa a chave anônima, então
  * `rpc('editar_venda', ...)` é chamável direto do console do navegador e qualquer trava
  * que exista só no servidor do app é contornada. Mesmo raciocínio de `admin/actions.ts`.
+ *
+ * "PIN incorreto" vem da RPC como `P0001` e precisa chegar à tela — daí o `comResultado`,
+ * sem o qual o Next redigiria a mensagem em produção. Ver `lib/acao.ts`.
  */
 export async function atualizarVenda(vendaId: string, dados: VendaEdicaoInput) {
-  const supabase = await createClient();
-  const validado = validar(vendaEdicaoSchema, dados);
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const validado = validar(vendaEdicaoSchema, dados);
 
-  const { error } = await supabase.rpc("editar_venda", {
-    p_venda_id: vendaId,
-    p_cliente_id: validado.cliente_id,
-    p_forma_pagamento: validado.forma_pagamento,
-    p_observacao: validado.observacao,
-    p_desconto: validado.desconto,
-    p_valor_entrega: validado.valor_entrega,
-    p_pin: validado.pin,
+    const { error } = await supabase.rpc("editar_venda", {
+      p_venda_id: vendaId,
+      p_cliente_id: validado.cliente_id,
+      p_forma_pagamento: validado.forma_pagamento,
+      p_observacao: validado.observacao,
+      p_desconto: validado.desconto,
+      p_valor_entrega: validado.valor_entrega,
+      p_pin: validado.pin,
+    });
+    if (error) lancarErroSupabase(error);
+
+    revalidateTudo();
   });
-  if (error) lancarErroSupabase(error);
-
-  revalidateTudo();
 }
 
 /**
@@ -55,15 +61,17 @@ export async function atualizarVenda(vendaId: string, dados: VendaEdicaoInput) {
  * nunca é apagada, pra o número seguir queimado e o histórico auditável.
  */
 export async function cancelarVenda(vendaId: string) {
-  const supabase = await createClient();
+  return comResultado(async () => {
+    const supabase = await createClient();
 
-  const { error } = await supabase.rpc("cancelar_venda", { p_venda_id: vendaId });
-  if (error) lancarErroSupabase(error);
+    const { error } = await supabase.rpc("cancelar_venda", { p_venda_id: vendaId });
+    if (error) lancarErroSupabase(error);
 
-  revalidatePath("/vendas");
-  revalidatePath("/pdv");
-  revalidatePath("/produtos");
-  revalidatePath("/estoque");
-  revalidatePath("/financeiro");
-  revalidatePath("/dashboard");
+    revalidatePath("/vendas");
+    revalidatePath("/pdv");
+    revalidatePath("/produtos");
+    revalidatePath("/estoque");
+    revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+  });
 }

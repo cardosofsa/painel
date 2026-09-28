@@ -13,6 +13,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL, hojeIsoLocal } from "@/lib/format";
 import { criarCompromisso, removerCompromisso, type CompromissoInput } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface Conta {
   id: string;
@@ -289,7 +290,7 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerCompromisso(id);
+        await executar(removerCompromisso(id));
         toast("Compromisso removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover compromisso");
@@ -428,7 +429,7 @@ function CompromissoModal({ open, dataPadrao, onClose }: { open: boolean; dataPa
     const dados: CompromissoInput = { titulo: titulo.trim(), data, hora: hora || null, descricao: descricao.trim() || null };
     startTransition(async () => {
       try {
-        await criarCompromisso(dados);
+        await executar(criarCompromisso(dados));
         toast.success("Compromisso adicionado");
         fechar();
       } catch (e) {

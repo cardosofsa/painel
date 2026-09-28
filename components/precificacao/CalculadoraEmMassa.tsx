@@ -20,6 +20,7 @@ import {
 } from "@/components/precificacao/resultado-compartilhado";
 import { salvarPrecificacoesEmMassa } from "@/app/(painel)/precificacao/actions";
 import type { PrecificacaoHist } from "@/app/(painel)/precificacao/PrecificacaoClient";
+import { executar } from "@/lib/acao";
 
 interface ProdutoOpcao {
   id: string;
@@ -260,7 +261,7 @@ export function CalculadoraEmMassa({
       // o `catch { falhas += 1 }` de antes engolia a mensagem, e o usuário via "12 linha(s)
       // falharam" sem nunca descobrir o motivo.
       try {
-        const total = await salvarPrecificacoesEmMassa(
+        const total = await executar(salvarPrecificacoesEmMassa(
           resultados.map((r) => ({
             produto_id: r.linha.produtoId,
             produto_nome: r.linha.nome || r.linha.sku,
@@ -280,7 +281,7 @@ export function CalculadoraEmMassa({
             lucro: r.resultado.lucroLiquido,
             origem: "em_massa" as const,
           })),
-        );
+        ));
         toast.success(`${total} precificação(ões) salva(s) no histórico`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao salvar as precificações");

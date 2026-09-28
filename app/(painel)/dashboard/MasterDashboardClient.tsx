@@ -14,6 +14,7 @@ import { ABAS_OBRIGATORIAS, ABAS_PADRAO } from "@/lib/acesso";
 import { atualizarAcessoConta } from "../admin/actions";
 import type { ContaAdmin } from "../admin/AdminClient";
 import type { LinhaHistorico } from "../admin/HistoricoAdmin";
+import { executar } from "@/lib/acao";
 
 /**
  * Dashboard própria do master — quem administra o sistema não roda negócio nenhum por esta
@@ -34,14 +35,14 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
     setAprovando(c.user_id);
     startTransition(async () => {
       try {
-        await atualizarAcessoConta({
+        await executar(atualizarAcessoConta({
           user_id: c.user_id,
           status: "ativo",
           // Mesma regra de AdminClient.tsx: conta nova entra com o pacote padrão.
           abas: c.abas.length > ABAS_OBRIGATORIAS.length ? c.abas : ABAS_PADRAO,
           observacao: c.observacao,
           expira_em: c.expira_em,
-        });
+        }));
         toast.success(`${c.email} aprovada`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao aprovar conta");

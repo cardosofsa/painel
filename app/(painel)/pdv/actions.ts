@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, vendaSchema } from "@/lib/validacao";
+import { comResultado } from "@/lib/acao";
 
 export interface VendaInput {
   itens: { produto_id: string; quantidade: number; preco_unitario: number }[];
@@ -28,34 +29,41 @@ export interface VendaRegistrada {
  * Tudo acontece dentro da RPC `registrar_venda`: validar estoque, criar a venda e os
  * itens, baixar o estoque e lançar o caixa (ou a conta a receber, no fiado) — numa
  * transação só. Se qualquer passo falhar, nada é gravado.
+ *
+ * É o caso mais crítico do `comResultado` (ver `lib/acao.ts`): "Estoque insuficiente para
+ * Camiseta Azul P" vem da RPC como `P0001` e diz ao operador de caixa exatamente o que
+ * fazer. Lançada, a mensagem seria redigida pelo Next em produção e ele veria um erro
+ * genérico com o cliente esperando na frente.
  */
-export async function registrarVenda(dados: VendaInput): Promise<VendaRegistrada> {
-  const supabase = await createClient();
-  const venda = validar(vendaSchema, dados);
+export async function registrarVenda(dados: VendaInput) {
+  return comResultado(async (): Promise<VendaRegistrada> => {
+    const supabase = await createClient();
+    const venda = validar(vendaSchema, dados);
 
-  const { data, error } = await supabase.rpc("registrar_venda", {
-    p_itens: venda.itens,
-    p_status: venda.status,
-    p_cliente_id: venda.cliente_id,
-    p_conta_id: venda.conta_id,
-    p_forma_pagamento: venda.forma_pagamento,
-    p_desconto: venda.desconto,
-    p_valor_entrega: venda.valor_entrega,
-    p_observacao: venda.observacao,
-    p_data_vencimento: venda.data_vencimento,
+    const { data, error } = await supabase.rpc("registrar_venda", {
+      p_itens: venda.itens,
+      p_status: venda.status,
+      p_cliente_id: venda.cliente_id,
+      p_conta_id: venda.conta_id,
+      p_forma_pagamento: venda.forma_pagamento,
+      p_desconto: venda.desconto,
+      p_valor_entrega: venda.valor_entrega,
+      p_observacao: venda.observacao,
+      p_data_vencimento: venda.data_vencimento,
+    });
+
+    if (error) lancarErroSupabase(error);
+
+    const registrada = (data as VendaRegistrada[] | null)?.[0];
+    if (!registrada) throw new Error("A venda não retornou confirmação do banco. Confira em Vendas antes de repetir.");
+
+    revalidatePath("/pdv");
+    revalidatePath("/vendas");
+    revalidatePath("/produtos");
+    revalidatePath("/estoque");
+    revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+
+    return registrada;
   });
-
-  if (error) lancarErroSupabase(error);
-
-  const registrada = (data as VendaRegistrada[] | null)?.[0];
-  if (!registrada) throw new Error("A venda não retornou confirmação do banco. Confira em Vendas antes de repetir.");
-
-  revalidatePath("/pdv");
-  revalidatePath("/vendas");
-  revalidatePath("/produtos");
-  revalidatePath("/estoque");
-  revalidatePath("/financeiro");
-  revalidatePath("/dashboard");
-
-  return registrada;
 }

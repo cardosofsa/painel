@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, produtoSchema, grupoProdutoSchema } from "@/lib/validacao";
-import { gerarComIA, type ResultadoIA } from "@/lib/ia/gerar";
+import { gerarComIA } from "@/lib/ia/gerar";
+import { comResultado } from "@/lib/acao";
 
 const PATH = "/produtos";
 
@@ -40,15 +41,17 @@ function revalidateTudo() {
 
 /** Grupo de variantes: só o nome comercial compartilhado. Estoque/preço/SKU seguem no produto. */
 export async function criarGrupoProduto(nome: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("produto_grupos")
-    .insert(validar(grupoProdutoSchema, { nome, descricao: null, imagem_url: null, categoria_id: null }))
-    .select("id, nome")
-    .single();
-  if (error || !data) lancarErroSupabase(error ?? { message: "Erro ao criar grupo" });
-  revalidateTudo();
-  return data;
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("produto_grupos")
+      .insert(validar(grupoProdutoSchema, { nome, descricao: null, imagem_url: null, categoria_id: null }))
+      .select("id, nome")
+      .single();
+    if (error || !data) lancarErroSupabase(error ?? { message: "Erro ao criar grupo" });
+    revalidateTudo();
+    return data;
+  });
 }
 
 async function sincronizarLojasProduto(
@@ -67,75 +70,86 @@ async function sincronizarLojasProduto(
 }
 
 export async function criarProduto(dados: ProdutoInput) {
-  const supabase = await createClient();
-  const { loja_ids, ...produto } = validar(produtoSchema, dados);
-  const { data, error } = await supabase.from("produtos").insert(produto).select("id").single();
-  if (error) lancarErroSupabase(error);
-  if (!data) throw new Error("Erro ao criar produto.");
-  await sincronizarLojasProduto(supabase, data.id, loja_ids);
-  revalidateTudo();
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { loja_ids, ...produto } = validar(produtoSchema, dados);
+    const { data, error } = await supabase.from("produtos").insert(produto).select("id").single();
+    if (error) lancarErroSupabase(error);
+    if (!data) throw new Error("Erro ao criar produto.");
+    await sincronizarLojasProduto(supabase, data.id, loja_ids);
+    revalidateTudo();
+  });
 }
 
 export async function atualizarProduto(id: string, dados: ProdutoInput) {
-  const supabase = await createClient();
-  const { loja_ids, ...produto } = validar(produtoSchema, dados);
-  const { error } = await supabase.from("produtos").update(produto).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  await sincronizarLojasProduto(supabase, id, loja_ids);
-  revalidateTudo();
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { loja_ids, ...produto } = validar(produtoSchema, dados);
+    const { error } = await supabase.from("produtos").update(produto).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    await sincronizarLojasProduto(supabase, id, loja_ids);
+    revalidateTudo();
+  });
 }
 
 export async function removerProduto(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("produtos").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidateTudo();
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("produtos").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidateTudo();
+  });
 }
 
 export async function alternarAtivoProduto(id: string, ativoAtual: boolean) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("produtos").update({ ativo: !ativoAtual }).eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidateTudo();
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("produtos").update({ ativo: !ativoAtual }).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidateTudo();
+  });
 }
 
 export async function acaoEmMassaProdutos(ids: string[], acao: "ativar" | "desativar" | "remover") {
-  const supabase = await createClient();
-  if (acao === "remover") {
-    const { error } = await supabase.from("produtos").delete().in("id", ids);
-    if (error) lancarErroSupabase(error);
-  } else {
-    const { error } = await supabase.from("produtos").update({ ativo: acao === "ativar" }).in("id", ids);
-    if (error) lancarErroSupabase(error);
-  }
-  revalidateTudo();
+  return comResultado(async () => {
+    const supabase = await createClient();
+    if (acao === "remover") {
+      const { error } = await supabase.from("produtos").delete().in("id", ids);
+      if (error) lancarErroSupabase(error);
+    } else {
+      const { error } = await supabase.from("produtos").update({ ativo: acao === "ativar" }).in("id", ids);
+      if (error) lancarErroSupabase(error);
+    }
+    revalidateTudo();
+  });
 }
 
 export async function adicionarImagemProduto(produtoId: string, url: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("produto_imagens").insert({ produto_id: produtoId, url });
-  if (error) lancarErroSupabase(error);
-  revalidateTudo();
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("produto_imagens").insert({ produto_id: produtoId, url });
+    if (error) lancarErroSupabase(error);
+    revalidateTudo();
+  });
 }
 
 export async function removerImagemProduto(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("produto_imagens").delete().eq("id", id);
-  if (error) lancarErroSupabase(error);
-  revalidateTudo();
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.from("produto_imagens").delete().eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidateTudo();
+  });
 }
 
 /**
  * Gera descrição de produto com IA.
  *
- * Retorna dado e NÃO revalida: nada é gravado aqui. O texto só vira `produtos.descricao`
- * quando o usuário aprovar no painel e salvar o formulário — o que importa porque essa
- * coluna é exibida na vitrine pública.
- *
- * Devolve `{ ok: false, erro }` em vez de lançar: exceção de Server Action é redigida pelo
- * Next em produção e a mensagem em pt-BR não chegaria à tela. Ver `ResultadoIA`.
+ * NÃO revalida: nada é gravado aqui. O texto só vira `produtos.descricao` quando o
+ * usuário aprovar no painel e salvar o formulário — o que importa porque essa coluna é
+ * exibida na vitrine pública.
  */
-export async function gerarDescricaoProdutoIA(contexto: unknown): Promise<ResultadoIA> {
+export async function gerarDescricaoProdutoIA(contexto: unknown) {
   const supabase = await createClient();
   return gerarComIA(supabase, "descricao", contexto);
 }

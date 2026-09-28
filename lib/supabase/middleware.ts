@@ -79,7 +79,10 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     pathname.startsWith("/recuperar") ||
     pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/auth/reset") ||
-    pathname.startsWith("/vitrine");
+    pathname.startsWith("/vitrine") ||
+    // O navegador reporta violação de CSP sem sessão. Sem esta linha o relatório viraria
+    // um redirect para /login e a violação nunca chegaria ao log.
+    pathname.startsWith("/api/csp-report");
 
   /**
    * Só login e cadastro. `/auth/reset` NÃO pode entrar aqui: nesse ponto o usuário já tem

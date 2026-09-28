@@ -9,6 +9,7 @@ import { StatusChip } from "@/components/ui/Badge";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
 import { registrarMovimentacaoEstoque } from "./actions";
+import { executar } from "@/lib/acao";
 
 export interface ProdutoEstoque {
   id: string;
@@ -66,7 +67,7 @@ export function EstoqueClient({
     }
     startTransition(async () => {
       try {
-        await registrarMovimentacaoEstoque({ produtoId: movProdutoId, tipo: movTipo, quantidade: movQtd, motivo: movMotivo || (movTipo === "entrada" ? "Entrada manual" : "Saída manual") });
+        await executar(registrarMovimentacaoEstoque({ produtoId: movProdutoId, tipo: movTipo, quantidade: movQtd, motivo: movMotivo || (movTipo === "entrada" ? "Entrada manual" : "Saída manual") }));
         setModalAberto(false);
         setMovQtd(1);
         setMovMotivo("");

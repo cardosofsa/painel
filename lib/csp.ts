@@ -14,6 +14,18 @@ const ORIGEM_SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
   : "";
 
+/** Rota que recebe as violações. Pública — o navegador a chama sem sessão. */
+export const ROTA_RELATORIO = "/api/csp-report";
+const GRUPO_RELATORIO = "csp";
+
+/**
+ * Cabeçalho `Reporting-Endpoints`, que dá nome ao grupo usado em `report-to`. Vai junto
+ * da CSP, no `proxy.ts`. Sem ele o `report-to` não tem para onde apontar.
+ */
+export function cabecalhoRelatorio(): string {
+  return `${GRUPO_RELATORIO}="${ROTA_RELATORIO}"`;
+}
+
 /**
  * 16 bytes de aleatoriedade criptográfica em base64. `crypto.getRandomValues` e `btoa` são
  * ambos nativos no runtime do proxy — evita depender de `Buffer`, que não existe lá.
@@ -77,7 +89,18 @@ export function montarCsp(
    * porque não há TLS na máquina.
    */
 
-  return Object.entries(diretivas)
+  const politica = Object.entries(diretivas)
     .map(([nome, valores]) => `${nome} ${valores.filter((v): v is string => Boolean(v)).join(" ")}`)
     .join("; ");
+
+  /**
+   * Sem relatório, uma CSP quebrada é silenciosa: o recurso some da tela e ninguém fica
+   * sabendo. Em dev o console do navegador já mostra; em produção, não há console nenhum
+   * para olhar — daí o endpoint, que só existe fora de dev.
+   *
+   * `report-uri` está obsoleto mas ainda é o único que o Safari entende; `report-to` é o
+   * substituto. Mandar os dois é a prática atual, e o navegador escolhe um.
+   */
+  if (dev) return politica;
+  return `${politica}; report-uri ${ROTA_RELATORIO}; report-to ${GRUPO_RELATORIO}`;
 }

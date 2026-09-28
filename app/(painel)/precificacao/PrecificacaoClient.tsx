@@ -53,6 +53,7 @@ import {
 } from "./actions";
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
+import { executar } from "@/lib/acao";
 
 export interface PrecificacaoHist {
   id: string;
@@ -353,7 +354,7 @@ export function PrecificacaoClient({
       // Só limpa os campos depois que o servidor confirmou: antes eles eram esvaziados
       // primeiro e uma falha levava embora nome, preço e link digitados.
       try {
-        const salvo = await criarConcorrente(produtoId, dados);
+        const salvo = await executar(criarConcorrente(produtoId, dados));
         setConcorrentes((prev) => [...prev, salvo]);
         limparCamposConcorrente();
       } catch (e) {
@@ -376,7 +377,7 @@ export function PrecificacaoClient({
     setConcorrentes((prev) => prev.filter((c) => c.id !== id));
     if (produtoId) {
       try {
-        await removerConcorrenteSalvo(id);
+        await executar(removerConcorrenteSalvo(id));
       } catch (e) {
         // Sem o rollback, o item sumia da tela mas continuava no banco e voltava no reload.
         setConcorrentes(anteriores);
@@ -509,7 +510,7 @@ export function PrecificacaoClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerPrecificacao(h.id);
+        await executar(removerPrecificacao(h.id));
         toast("Precificação removida");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover precificação");
@@ -522,7 +523,7 @@ export function PrecificacaoClient({
     if (!ok) return;
     startTransition(async () => {
       try {
-        await removerAnuncio(a.id);
+        await executar(removerAnuncio(a.id));
         toast("Produto removido");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Erro ao remover produto");
@@ -560,7 +561,7 @@ export function PrecificacaoClient({
         : componentes;
     startTransition(async () => {
       try {
-        await salvarPrecificacao({
+        await executar(salvarPrecificacao({
           produto_id: produtoId,
           produto_nome: nomeProduto,
           canal: lojaSelecionada ? `${lojaSelecionada.canalNome} — ${lojaSelecionada.nome}` : null,
@@ -578,7 +579,7 @@ export function PrecificacaoClient({
           preco_calculado: resultado.precoVenda,
           lucro: resultado.lucroLiquido,
           origem: "individual",
-        });
+        }));
         toast.success("Anúncio salvo no histórico");
 
         if (produtoId) {
@@ -588,7 +589,7 @@ export function PrecificacaoClient({
             confirmLabel: "Atualizar",
           });
           if (ok) {
-            await atualizarPrecoProduto(produtoId, resultado.precoVenda);
+            await executar(atualizarPrecoProduto(produtoId, resultado.precoVenda));
             toast.success("Preço do produto atualizado");
           }
         }

@@ -187,6 +187,11 @@ Cinco decisões de economia, que valem lembrar antes de mexer:
 Os cabeçalhos fixos (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, HSTS,
 `Permissions-Policy`) ficam em `next.config.ts`.
 
+Violações de CSP em produção são reportadas para `/api/csp-report` e aparecem no log com o
+prefixo `[csp]` — sem isso, uma política quebrada seria silenciosa: o recurso some da tela
+e ninguém fica sabendo. Em desenvolvimento não reporta, porque o console do navegador já
+mostra.
+
 O **Content-Security-Policy** é montado por requisição em `lib/csp.ts` e aplicado no
 `proxy.ts`, porque carrega um nonce novo a cada carregamento. O `script-src` não tem
 `'unsafe-inline'` nem `'unsafe-eval'`: script só roda se trouxer o nonce da requisição, que

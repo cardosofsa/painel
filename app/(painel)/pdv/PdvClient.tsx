@@ -15,6 +15,7 @@ import { ReciboModal } from "./ReciboModal";
 import { registrarVenda } from "./actions";
 import { rotuloProduto, type ClientePdv, type ContaPdv, type ItemCarrinho, type ProdutoPdv } from "./tipos";
 import type { DadosComprovante } from "@/lib/comprovante";
+import { executar } from "@/lib/acao";
 
 const CARRINHO_VAZIO: EstadoCarrinho = {
   itens: [],
@@ -150,7 +151,7 @@ export function PdvClient({
   }) {
     startTransition(async () => {
       try {
-        const venda = await registrarVenda({
+        const venda = await executar(registrarVenda({
           itens: estado.itens.map((i) => ({
             produto_id: i.produto_id,
             quantidade: i.quantidade,
@@ -164,7 +165,7 @@ export function PdvClient({
           valor_entrega: estado.valorEntrega,
           observacao: estado.observacao.trim() || null,
           data_vencimento: dados.data_vencimento,
-        });
+        }));
 
         const cliente = clientes.find((c) => c.id === dados.cliente_id) ?? null;
         setRecibo({

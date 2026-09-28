@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { gerarNonce, montarCsp } from "@/lib/csp";
+import { gerarNonce, montarCsp, cabecalhoRelatorio } from "@/lib/csp";
 
 export async function proxy(request: NextRequest) {
   // Um nonce por requisição: reaproveitar entre páginas anularia a proteção, porque o
@@ -10,6 +10,9 @@ export async function proxy(request: NextRequest) {
 
   const resposta = await updateSession(request, { nonce, politica });
   resposta.headers.set("Content-Security-Policy", politica);
+  // Dá nome ao grupo que `report-to` referencia. Sem ele o report-to não aponta pra lugar
+  // nenhum e a violação se perde.
+  resposta.headers.set("Reporting-Endpoints", cabecalhoRelatorio());
   return resposta;
 }
 

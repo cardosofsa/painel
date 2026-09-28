@@ -6,6 +6,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { atualizarVenda } from "./actions";
 import type { Venda } from "./VendasClient";
+import { executar } from "@/lib/acao";
 
 export interface ClienteOpcao {
   id: string;
@@ -42,14 +43,14 @@ export function EditarVendaModal({
     if (!venda) return;
     setSalvando(true);
     try {
-      await atualizarVenda(venda.id, {
+      await executar(atualizarVenda(venda.id, {
         cliente_id: clienteId,
         forma_pagamento: formaPagamento,
         observacao: observacao.trim() || null,
         desconto,
         valor_entrega: valorEntrega,
         pin,
-      });
+      }));
       toast.success(`Venda ${venda.numero} atualizada`);
       onSalvo();
     } catch (e) {
