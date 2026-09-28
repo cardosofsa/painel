@@ -2,8 +2,25 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { contaLiberada, podeAcessarRota, rotaEhLivre } from "@/lib/acesso";
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+export async function updateSession(request: NextRequest, csp: { nonce: string; politica: string }) {
+  /**
+   * O nonce e a política precisam ir TAMBÉM nos cabeçalhos da requisição, não só na
+   * resposta: é de lá que o Next lê o nonce para carimbar nas tags <script> que ele mesmo
+   * injeta. Só no cabeçalho da resposta, o HTML sairia com script sem nonce e a CSP
+   * derrubaria a hidratação — página em branco.
+   *
+   * Refaz o snapshot a cada chamada de propósito: o `setAll` do Supabase grava os cookies
+   * renovados em `request.cookies`, que por baixo reescreve o cabeçalho `cookie`. Capturar
+   * os headers uma vez lá em cima perderia a sessão renovada.
+   */
+  function proximaResposta() {
+    const headers = new Headers(request.headers);
+    headers.set("x-nonce", csp.nonce);
+    headers.set("Content-Security-Policy", csp.politica);
+    return NextResponse.next({ request: { headers } });
+  }
+
+  let supabaseResponse = proximaResposta();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,7 +32,7 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = proximaResposta();
           cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options));
         },
       },

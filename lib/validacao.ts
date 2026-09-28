@@ -6,6 +6,19 @@ import { z } from "zod";
  * sentido — custo negativo, margem de 500%, texto gigante, uuid malformado.
  */
 
+/**
+ * O Zod 4 compila validador com `new Function` quando o ambiente permite, e descobre isso
+ * testando `new Function("")` dentro de um try/catch. Sob a nossa CSP (ver `lib/csp.ts`,
+ * sem 'unsafe-eval') a chamada falha — o Zod trata e segue sem JIT, então nada quebra, mas
+ * o navegador registra um `securitypolicyviolation` a cada carregamento das telas com
+ * formulário. Desligar o JIT aqui evita a sonda e deixa o relatório de CSP limpo, útil pra
+ * que uma violação de verdade não se perca no ruído. O custo é irrelevante: são formulários
+ * pequenos, não validação em lote.
+ *
+ * Único ponto do app que importa `zod`, então configurar aqui alcança cliente e servidor.
+ */
+z.config({ jitless: true });
+
 const textoCurto = z.string().trim().min(1, "Campo obrigatório").max(200, "Texto longo demais");
 const textoOpcional = z.string().trim().max(500, "Texto longo demais").nullable();
 const dinheiro = z.number().finite("Valor inválido").min(0, "Não pode ser negativo").max(10_000_000, "Valor alto demais");

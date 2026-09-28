@@ -105,6 +105,13 @@ pedem senha. Não escreva o mínimo à mão.
 O PIN nunca é enviado ao cliente: `perfil_negocio.pin_admin_hash` fica fora de todo
 `select` e a tela recebe só um booleano.
 
+**CSP.** Cabeçalho fixo mora em `next.config.ts`; a CSP mora em `lib/csp.ts` (nonce por
+requisição, aplicada no `proxy.ts`). `script-src` não tem `'unsafe-inline'` nem
+`'unsafe-eval'`. Então: todo `<script>` inline precisa do nonce de `headers()`; toda origem
+externa nova precisa entrar em `lib/csp.ts` ou o navegador bloqueia em silêncio; e nada de
+`eval`/`new Function` no cliente — é por isso que o Zod está com `jitless: true` em
+`lib/validacao.ts`. Detalhes no README.
+
 ## Arquitetura
 
 ```

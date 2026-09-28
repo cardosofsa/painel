@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/layout/ThemeContext";
@@ -31,11 +32,23 @@ try {
 } catch (e) {}
 `;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  /**
+   * Nonce da CSP, posto em `x-nonce` pelo proxy a cada requisição (ver `lib/csp.ts`). Sem
+   * ele, o script de tema aqui embaixo é bloqueado e a página abre sempre no tema claro
+   * antes do React assumir — o exato flash que ele existe para evitar.
+   *
+   * Ler `headers()` torna o layout raiz dinâmico, então as quatro páginas que ainda eram
+   * pré-renderizadas (/, /login, /recuperar, /signup) passam a ser renderizadas por
+   * requisição. Custo desprezível: todas já passavam pelo proxy, que consulta a sessão no
+   * Supabase antes de qualquer uma delas responder.
+   */
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="pt-BR" className={`${geist.variable} ${geistMono.variable} h-full`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-full">
         <ThemeProvider>{children}</ThemeProvider>

@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
    * O app serve a vitrine pública (/vitrine/[slug]) na MESMA origem do painel autenticado.
    * Sem `X-Frame-Options`, um link de vitrine compartilhado no WhatsApp pode ser usado para
    * embutir /financeiro ou /configuracoes num iframe e capturar cliques do dono da conta.
+   *
+   * O Content-Security-Policy NÃO está aqui: ele leva um nonce diferente a cada
+   * requisição, então é montado no `proxy.ts` (ver `lib/csp.ts`).
    */
   async headers() {
     return [

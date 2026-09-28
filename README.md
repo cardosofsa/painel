@@ -132,6 +132,29 @@ Para promover a primeira conta a master, rode o `update` documentado no cabeçal
 > as duas precisam voltar vazias. Uma conta sem linha em `perfis_acesso` perde acesso aos
 > próprios dados.
 
+## Cabeçalhos de segurança
+
+Os cabeçalhos fixos (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, HSTS,
+`Permissions-Policy`) ficam em `next.config.ts`.
+
+O **Content-Security-Policy** é montado por requisição em `lib/csp.ts` e aplicado no
+`proxy.ts`, porque carrega um nonce novo a cada carregamento. O `script-src` não tem
+`'unsafe-inline'` nem `'unsafe-eval'`: script só roda se trouxer o nonce da requisição, que
+é o que impede um XSS de executar depois que o dado já entrou no HTML.
+
+Três consequências práticas ao mexer no app:
+
+- **`<script>` inline precisa do nonce**, lido de `headers().get("x-nonce")`. Hoje existe um
+  só, o anti-flash de tema em `app/layout.tsx`.
+- **Recurso de terceiro (CDN, fonte, imagem, API) precisa ser liberado em `lib/csp.ts`.** Sem
+  isso o navegador bloqueia calado — e em desenvolvimento pode passar despercebido. Hoje as
+  únicas origens externas liberadas são as do Supabase.
+- **Nada de `eval`/`new Function` no cliente.** É por isso que o Zod roda com
+  `jitless: true` em `lib/validacao.ts`.
+
+Ler `headers()` no layout raiz torna todas as rotas dinâmicas — de propósito, e sem custo
+real: toda requisição já passava pelo proxy, que consulta a sessão antes de responder.
+
 ## Deploy
 
 O app é um Next.js comum; o banco continua sendo o Supabase que já existe.
