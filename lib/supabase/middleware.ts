@@ -2,6 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { contaLiberada, podeAcessarRota, rotaEhLivre } from "@/lib/acesso";
 
+/**
+ * Casa o caminho exato ou um filho dele (`/vitrine` e `/vitrine/abc`, nunca
+ * `/vitrine-admin`). Era `startsWith` cru, que liberaria sem sessão qualquer rota nova
+ * cujo nome apenas começasse igual — hoje não existe nenhuma, e o objetivo é que continue
+ * não existindo por construção, não por sorte.
+ */
+function ehOuComeca(pathname: string, bases: string[]): boolean {
+  return bases.some((base) => pathname === base || pathname.startsWith(`${base}/`));
+}
+
 export async function updateSession(request: NextRequest, csp: { nonce: string; politica: string }) {
   /**
    * O nonce e a política precisam ir TAMBÉM nos cabeçalhos da requisição, não só na
@@ -73,16 +83,17 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
    * em que trocar mais importa. Testar só com a conta master esconde isso, porque para
    * conta ativa a página abre normalmente.
    */
-  const isPublicRoute =
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/signup") ||
-    pathname.startsWith("/recuperar") ||
-    pathname.startsWith("/auth/callback") ||
-    pathname.startsWith("/auth/reset") ||
-    pathname.startsWith("/vitrine") ||
+  const isPublicRoute = ehOuComeca(pathname, [
+    "/login",
+    "/signup",
+    "/recuperar",
+    "/auth/callback",
+    "/auth/reset",
+    "/vitrine",
     // O navegador reporta violação de CSP sem sessão. Sem esta linha o relatório viraria
     // um redirect para /login e a violação nunca chegaria ao log.
-    pathname.startsWith("/api/csp-report");
+    "/api/csp-report",
+  ]);
 
   /**
    * Só login e cadastro. `/auth/reset` NÃO pode entrar aqui: nesse ponto o usuário já tem
@@ -90,7 +101,7 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
    * `user && isAuthEntryRoute → /dashboard` expulsaria exatamente quem precisa da tela,
    * tornando a redefinição de senha inalcançável por construção.
    */
-  const isAuthEntryRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
+  const isAuthEntryRoute = ehOuComeca(pathname, ["/login", "/signup"]);
 
   if (!user && !isPublicRoute) {
     return redirecionarPara("/login");
@@ -114,7 +125,7 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
       .maybeSingle();
 
     const liberada = perfil ? contaLiberada(perfil) : false;
-    const naTelaDeEspera = pathname.startsWith("/aguardando");
+    const naTelaDeEspera = ehOuComeca(pathname, ["/aguardando"]);
 
     // Sem perfil (conta criada antes do trigger existir) vale como pendente: barra e
     // deixa o master decidir, em vez de liberar por omissão.

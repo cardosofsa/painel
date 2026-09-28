@@ -7,6 +7,17 @@ import { ABAS_OBRIGATORIAS } from "@/lib/acesso";
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
 
+  // `perfis_acesso` é a única tabela cuja policy não devolve só a própria linha: a
+  // `le_perfil_acesso` (migração 0020) é `auth.uid() = user_id OR e_master()`. Para o
+  // master isso traz TODAS as contas, o `maybeSingle()` abaixo estourava PGRST116, o
+  // `data` vinha nulo — e o próprio master ficava sem o link do /admin e com o menu
+  // reduzido às abas obrigatórias. Por isso o `.eq("user_id", ...)`, e por isso o
+  // `getUser()` precisa vir antes. É um round-trip a mais por navegação; a alternativa
+  // (ler o id do cookie sem validar) trocaria um bug visível por uma dúvida de segurança.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   // A marcação de visita (para o painel master saber quem usa de verdade) entra no mesmo
   // `Promise.all`: o resultado dela não é usado, e esperá-la em série custava um
   // round-trip inteiro ao Supabase ANTES de qualquer `page.tsx` começar a renderizar —
@@ -14,7 +25,7 @@ export default async function PainelLayout({ children }: { children: React.React
   // isso só evita a escrita, não a ida até o banco.
   const [perfilNegocioRes, acessoRes] = await Promise.all([
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
-    supabase.from("perfis_acesso").select("papel, abas").maybeSingle(),
+    supabase.from("perfis_acesso").select("papel, abas").eq("user_id", user?.id ?? "").maybeSingle(),
     supabase.rpc("tocar_ultimo_acesso"),
   ]);
 

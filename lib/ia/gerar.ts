@@ -151,9 +151,20 @@ async function executar(
  * `ia_consumir` não roda. Falha aqui é cosmética: zera o rótulo, não quebra a geração.
  */
 async function lerSaldo(supabase: SupabaseClient): Promise<{ usadas: number; limite: number }> {
+  // O `.eq("user_id", ...)` vale só para `perfis_acesso`: a policy dela deixa o master ver
+  // todas as contas, então sem filtro o `maybeSingle()` dava PGRST116 e o master lia
+  // sempre limite 0. `ia_uso` não tem essa exceção — a policy já devolve só a própria linha.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const [usoRes, perfilRes] = await Promise.all([
     supabase.from("ia_uso").select("geracoes").eq("dia", hojeSaoPaulo()).maybeSingle<{ geracoes: number }>(),
-    supabase.from("perfis_acesso").select("ia_limite_diario").maybeSingle<{ ia_limite_diario: number }>(),
+    supabase
+      .from("perfis_acesso")
+      .select("ia_limite_diario")
+      .eq("user_id", user?.id ?? "")
+      .maybeSingle<{ ia_limite_diario: number }>(),
   ]);
   return {
     usadas: usoRes.data?.geracoes ?? 0,

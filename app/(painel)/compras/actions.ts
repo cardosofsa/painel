@@ -104,6 +104,16 @@ export async function criarPedidoCompra(dados: PedidoCompraInput) {
 export async function obterUrlNotaFiscal(caminho: string) {
   return comResultado(async () => {
     const supabase = await createClient();
+
+    // Defesa em profundidade: hoje quem barra caminho alheio é só a policy
+    // `notas_fiscais_select_own` do Storage, que compara a primeira pasta com o auth.uid().
+    // Sem esta linha, relaxar aquela policy um dia viraria leitura de NF de outra conta —
+    // e o parâmetro chega cru do navegador.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user || !caminho.startsWith(`${user.id}/`)) throw new Error("Nota fiscal não encontrada.");
+
     const { data, error } = await supabase.storage.from("notas-fiscais").createSignedUrl(caminho, 300);
     if (error) lancarErroSupabase(error);
     if (!data) throw new Error("Erro ao gerar link da nota fiscal.");

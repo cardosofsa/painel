@@ -8,6 +8,11 @@ import {
   periodoSchema,
   validar,
   iaContextoSchema,
+  precoProdutoSchema,
+  imagemProdutoSchema,
+  concorrenteSchema,
+  acaoEmMassaProdutosSchema,
+  produtoSchema,
   SENHA_MIN,
   SENHA_MAX,
 } from "./validacao";
@@ -167,5 +172,102 @@ describe("iaContextoSchema", () => {
   it("aceita null e undefined nos campos opcionais — o formulário manda os dois", () => {
     const r = validar(iaContextoSchema, { ...base, sku: null, categoria: undefined, custo: null });
     expect(r.sku).toBeNull();
+  });
+});
+
+/**
+ * Os quatro schemas abaixo cobrem actions que antes gravavam direto no banco, sem passar
+ * por validação nenhuma, e cujos campos aparecem na vitrine pública ou no PDV.
+ */
+describe("precoProdutoSchema", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("recusa preço negativo — entrava no banco e reaparecia na vitrine", () => {
+    expect(() => validar(precoProdutoSchema, { produto_id: id, preco_venda: -10 })).toThrow(/negativo/);
+  });
+
+  it("recusa NaN, que escapa de `?? 0` e de `<= 0`", () => {
+    expect(() => validar(precoProdutoSchema, { produto_id: id, preco_venda: NaN })).toThrow();
+  });
+
+  it("recusa Infinity", () => {
+    expect(() => validar(precoProdutoSchema, { produto_id: id, preco_venda: Infinity })).toThrow();
+  });
+
+  it("recusa id que não é uuid", () => {
+    expect(() => validar(precoProdutoSchema, { produto_id: "1 or 1=1", preco_venda: 10 })).toThrow();
+  });
+
+  it("aceita zero — produto de brinde tem preço zero", () => {
+    expect(validar(precoProdutoSchema, { produto_id: id, preco_venda: 0 }).preco_venda).toBe(0);
+  });
+});
+
+describe("urlPublica (imagem de produto e link de concorrente)", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  // `z.string().url()` sozinho aceita os dois: `new URL()` considera ambos válidos.
+  it("recusa javascript:", () => {
+    expect(() => validar(imagemProdutoSchema, { produto_id: id, url: "javascript:alert(1)" })).toThrow(
+      /http/,
+    );
+  });
+
+  it("recusa data:", () => {
+    expect(() =>
+      validar(imagemProdutoSchema, { produto_id: id, url: "data:text/html,<script>alert(1)</script>" }),
+    ).toThrow(/http/);
+  });
+
+  it("aceita https do Storage", () => {
+    const url = "https://abc.supabase.co/storage/v1/object/public/produtos/u/p-1.png";
+    expect(validar(imagemProdutoSchema, { produto_id: id, url }).url).toBe(url);
+  });
+
+  it("vale também para produtoSchema.imagem_url, que usava só .url()", () => {
+    expect(() =>
+      validar(produtoSchema, {
+        sku: "A1",
+        nome: "Produto",
+        categoria_id: null,
+        fornecedor_id: null,
+        armazem_id: null,
+        custo: 1,
+        preco_venda: 2,
+        descricao: null,
+        codigo_barras: null,
+        imagem_url: "javascript:alert(1)",
+        estoque: 0,
+        estoque_minimo: 0,
+        saida_media_semanal: 0,
+        ativo: true,
+        grupo_id: null,
+        variante_nome: null,
+        loja_ids: [],
+      }),
+    ).toThrow(/imagem_url/);
+  });
+
+  it("aceita link nulo no concorrente — o campo é opcional na tela", () => {
+    const r = validar(concorrenteSchema, { produto_id: id, nome: "Loja X", preco: 50, link: null });
+    expect(r.link).toBeNull();
+  });
+});
+
+describe("acaoEmMassaProdutosSchema", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("recusa lista vazia", () => {
+    expect(() => validar(acaoEmMassaProdutosSchema, { ids: [], acao: "remover" })).toThrow();
+  });
+
+  // Sem teto a lista inteira vira querystring no PostgREST e volta 414.
+  it("recusa mais de 500 ids", () => {
+    const ids = Array.from({ length: 501 }, () => id);
+    expect(() => validar(acaoEmMassaProdutosSchema, { ids, acao: "ativar" })).toThrow(/500/);
+  });
+
+  it("recusa ação fora da lista", () => {
+    expect(() => validar(acaoEmMassaProdutosSchema, { ids: [id], acao: "apagar_tudo" })).toThrow();
   });
 });

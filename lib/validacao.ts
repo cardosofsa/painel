@@ -29,6 +29,21 @@ const inteiroNaoNegativo = z.number().int("Precisa ser um número inteiro").min(
 const uuid = z.string().uuid("Identificador inválido");
 const uuidOpcional = uuid.nullable();
 
+/**
+ * URL que vai parar na vitrine pública (imagem de produto, link de concorrente).
+ *
+ * `z.string().url()` sozinho NÃO basta: ele usa `new URL()`, para quem
+ * `javascript:alert(1)` e `data:text/html,...` são URLs perfeitamente válidas. Exigir o
+ * esquema http(s) é o que impede um link armado de ser gravado e depois renderizado num
+ * `<a href>` para um visitante anônimo.
+ */
+const urlPublica = z
+  .string()
+  .trim()
+  .url("URL inválida")
+  .max(1000, "URL longa demais")
+  .refine((u) => /^https?:\/\//i.test(u), "A URL precisa começar com http:// ou https://");
+
 export const produtoSchema = z.object({
   sku: textoCurto,
   nome: textoCurto,
@@ -39,7 +54,7 @@ export const produtoSchema = z.object({
   preco_venda: dinheiro,
   descricao: z.string().trim().max(2000).nullable(),
   codigo_barras: textoOpcional,
-  imagem_url: z.string().url("URL inválida").nullable(),
+  imagem_url: urlPublica.nullable(),
   estoque: inteiroNaoNegativo,
   estoque_minimo: inteiroNaoNegativo,
   saida_media_semanal: z.number().finite().min(0).max(1_000_000),
@@ -145,8 +160,42 @@ export const clienteSchema = z.object({
 export const grupoProdutoSchema = z.object({
   nome: textoCurto,
   descricao: z.string().trim().max(2000).nullable(),
-  imagem_url: z.string().url("URL inválida").nullable(),
+  imagem_url: urlPublica.nullable(),
   categoria_id: uuidOpcional,
+});
+
+/**
+ * Os três abaixo cobrem actions que gravavam direto no banco sem passar por schema nenhum,
+ * e cujos campos aparecem na **vitrine pública** ou no PDV.
+ *
+ * `preco_venda` era o pior: aceitava negativo, `NaN` e `1e308`, e não há check equivalente
+ * no Postgres (`produtos` só restringe `estoque >= 0`). Preço negativo entrava e reaparecia
+ * na vitrine e no carrinho.
+ */
+export const precoProdutoSchema = z.object({
+  produto_id: uuid,
+  preco_venda: dinheiro,
+});
+
+export const imagemProdutoSchema = z.object({
+  produto_id: uuid,
+  url: urlPublica,
+});
+
+export const concorrenteSchema = z.object({
+  produto_id: uuid,
+  nome: textoCurto,
+  preco: dinheiro,
+  link: urlPublica.nullable(),
+});
+
+/**
+ * Teto de 500 ids: sem ele, a lista inteira vira querystring no PostgREST e volta 414 com
+ * mensagem que não diz nada ao usuário. O RLS já impede mexer em produto alheio.
+ */
+export const acaoEmMassaProdutosSchema = z.object({
+  ids: z.array(uuid).min(1, "Selecione ao menos um produto").max(500, "Máximo de 500 produtos por vez"),
+  acao: z.enum(["ativar", "desativar", "remover"]),
 });
 
 export const vendaSchema = z.object({

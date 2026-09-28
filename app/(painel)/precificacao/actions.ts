@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, precificacaoSchema, anuncioSchema } from "@/lib/validacao";
+import { validar, precificacaoSchema, anuncioSchema, precoProdutoSchema, concorrenteSchema } from "@/lib/validacao";
 import type { ComponenteKit } from "@/lib/pricing";
 import { gerarComIA } from "@/lib/ia/gerar";
 import { comResultado } from "@/lib/acao";
@@ -74,8 +74,9 @@ export async function removerPrecificacao(id: string) {
 
 export async function atualizarPrecoProduto(produtoId: string, precoVenda: number) {
   return comResultado(async () => {
+    const v = validar(precoProdutoSchema, { produto_id: produtoId, preco_venda: precoVenda });
     const supabase = await createClient();
-    const { error } = await supabase.from("produtos").update({ preco_venda: precoVenda }).eq("id", produtoId);
+    const { error } = await supabase.from("produtos").update({ preco_venda: v.preco_venda }).eq("id", v.produto_id);
     if (error) lancarErroSupabase(error);
     revalidatePath("/produtos");
     revalidatePath("/precificacao");
@@ -154,10 +155,11 @@ export interface ConcorrenteInput {
 
 export async function criarConcorrente(produtoId: string, dados: ConcorrenteInput) {
   return comResultado(async () => {
+    const v = validar(concorrenteSchema, { produto_id: produtoId, ...dados });
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("concorrentes_preco")
-      .insert({ produto_id: produtoId, nome: dados.nome, preco: dados.preco, link: dados.link })
+      .insert({ produto_id: v.produto_id, nome: v.nome, preco: v.preco, link: v.link })
       .select("id, nome, preco, link")
       .single();
     if (error) lancarErroSupabase(error);

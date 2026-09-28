@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, produtoSchema, grupoProdutoSchema } from "@/lib/validacao";
+import {
+  validar,
+  produtoSchema,
+  grupoProdutoSchema,
+  imagemProdutoSchema,
+  acaoEmMassaProdutosSchema,
+} from "@/lib/validacao";
 import { gerarComIA } from "@/lib/ia/gerar";
 import { comResultado } from "@/lib/acao";
 
@@ -112,12 +118,13 @@ export async function alternarAtivoProduto(id: string, ativoAtual: boolean) {
 
 export async function acaoEmMassaProdutos(ids: string[], acao: "ativar" | "desativar" | "remover") {
   return comResultado(async () => {
+    const v = validar(acaoEmMassaProdutosSchema, { ids, acao });
     const supabase = await createClient();
-    if (acao === "remover") {
-      const { error } = await supabase.from("produtos").delete().in("id", ids);
+    if (v.acao === "remover") {
+      const { error } = await supabase.from("produtos").delete().in("id", v.ids);
       if (error) lancarErroSupabase(error);
     } else {
-      const { error } = await supabase.from("produtos").update({ ativo: acao === "ativar" }).in("id", ids);
+      const { error } = await supabase.from("produtos").update({ ativo: v.acao === "ativar" }).in("id", v.ids);
       if (error) lancarErroSupabase(error);
     }
     revalidateTudo();
@@ -126,8 +133,9 @@ export async function acaoEmMassaProdutos(ids: string[], acao: "ativar" | "desat
 
 export async function adicionarImagemProduto(produtoId: string, url: string) {
   return comResultado(async () => {
+    const v = validar(imagemProdutoSchema, { produto_id: produtoId, url });
     const supabase = await createClient();
-    const { error } = await supabase.from("produto_imagens").insert({ produto_id: produtoId, url });
+    const { error } = await supabase.from("produto_imagens").insert({ produto_id: v.produto_id, url: v.url });
     if (error) lancarErroSupabase(error);
     revalidateTudo();
   });
