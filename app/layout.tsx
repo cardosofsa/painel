@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/layout/ThemeContext";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const geist = Geist({
@@ -53,6 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-full">
         <ThemeProvider>{children}</ThemeProvider>
         <Toaster position="bottom-right" richColors closeButton />
+        <SpeedInsights />
       </body>
     </html>
   );
