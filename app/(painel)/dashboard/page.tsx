@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { hojeIsoLocal, formatarDataIso } from "@/lib/format";
+import { hojeIsoLocal, formatarDataIso, dataLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
 import { MasterDashboardClient } from "./MasterDashboardClient";
@@ -9,7 +9,7 @@ import type { LinhaHistorico } from "../admin/HistoricoAdmin";
 function rotuloVencimento(dataVencimento: string): { status: string; tone: "negative" | "positive" | "neutral" } {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
-  const venc = new Date(dataVencimento + "T00:00:00");
+  const venc = dataLocal(dataVencimento);
   const diffDias = Math.round((venc.getTime() - hoje.getTime()) / 86400000);
 
   if (diffDias < 0) return { status: "Atrasado", tone: "negative" };

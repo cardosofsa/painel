@@ -1,5 +1,6 @@
 import { ImageIcon } from "lucide-react";
 import { formatBRL } from "@/lib/format";
+import { ImagemStorage } from "@/components/ui/ImagemStorage";
 
 /** Formato exato devolvido por `obter_catalogo_publico` — quando o catálogo existe mas
  * não tem produto elegível, vem uma única linha com `produto_nome`/`preco` nulos. */
@@ -71,12 +72,9 @@ export function VitrineView({ itens, onClickItem }: { itens: ItemVitrine[]; onCl
               >
                 <div className="aspect-square bg-surface-2 flex items-center justify-center overflow-hidden">
                   {item.imagem_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- URL pública do storage, catálogo é fora do domínio de otimização do Next
-                    <img
+                    <ImagemStorage
                       src={item.imagem_url}
                       alt={item.produto_nome}
-                      loading="lazy"
-                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                   ) : (

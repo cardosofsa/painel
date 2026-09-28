@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoLocal, dataLocal } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, pedidoCompraSchema } from "@/lib/validacao";
@@ -40,7 +40,7 @@ function revalidateTudo() {
 }
 
 function somarMeses(dataIso: string, meses: number) {
-  const d = new Date(dataIso + "T00:00:00");
+  const d = dataLocal(dataIso);
   d.setMonth(d.getMonth() + meses);
   return hojeIsoLocal(d);
 }

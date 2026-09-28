@@ -7,6 +7,7 @@ import { Download, Printer, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { VitrineView, type ItemVitrine } from "./VitrineView";
 import { ProdutoPopup } from "./ProdutoPopup";
+import { campoBase } from "@/components/ui/Modal";
 
 /** Controla a vitrine inteira: filtros (categoria, busca, faixa de preço), o pop-up de
  * produto e a exportação — nome, imagem e PDF só do que está filtrado/visível na hora. */
@@ -69,7 +70,7 @@ export function VitrineInterativa({
         <select
           value={categoria}
           onChange={(e) => setCategoria(e.target.value)}
-          className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+          className={campoBase}
         >
           {categorias.map((c) => (
             <option key={c} value={c}>

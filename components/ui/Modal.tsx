@@ -62,5 +62,16 @@ export function FormField({
   );
 }
 
-export const inputClass =
-  "w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent transition-colors";
+/**
+ * Aparência de campo, **sem** largura. Use quando o campo não ocupa a linha toda: filtro
+ * numa barra, busca com largura fixa, input dentro de um flex.
+ *
+ * A separação existe porque a string do `inputClass` estava copiada à mão em 19 lugares,
+ * justamente nos que precisavam de outra largura — e nenhuma das cópias tinha o
+ * `transition-colors`, então campo de busca não animava o foco e campo de modal animava.
+ */
+export const campoBase =
+  "h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent transition-colors";
+
+/** Campo de formulário: ocupa a linha inteira. É o caso de tudo que vive num `FormField`. */
+export const inputClass = `w-full ${campoBase}`;

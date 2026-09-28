@@ -12,7 +12,7 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { SalesChart } from "@/components/charts/SalesChart";
-import { formatBRL, formatarDataCurta, hojeIsoLocal } from "@/lib/format";
+import { formatBRL, formatarDataCurta, hojeIsoLocal, dataLocal } from "@/lib/format";
 import { paraCsv, baixarArquivo } from "@/lib/csv";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { cancelarVenda } from "./actions";
@@ -116,7 +116,7 @@ export function VendasClient({
     }
 
     return Array.from(porDia.entries()).map(([iso, valor]) => ({
-      dia: new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+      dia: dataLocal(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
       vendas: valor,
     }));
   }, [validas, periodo]);

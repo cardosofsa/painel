@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatarDataIso, hojeIsoLocal, numeroOuNulo, formatarMargemPct, classeValor } from "./format";
+import { formatarDataIso, hojeIsoLocal, numeroOuNulo, formatarMargemPct, classeValor, dataLocal } from "./format";
 
 /**
  * O fuso é o ponto crítico aqui. O Brasil é UTC-3, então `new Date("2026-01-01")` — lido
@@ -100,5 +100,32 @@ describe("classeValor", () => {
     expect(classeValor(10)).toBe("text-positive");
     expect(classeValor(0)).toBe("text-positive");
     expect(classeValor(-1)).toBe("text-negative");
+  });
+});
+
+describe("dataLocal", () => {
+  // Mesmo bug de fuso que `formatarDataIso` cobre, mas para quem CALCULA com a data em
+  // vez de só exibir. O padrão estava copiado cru em seis telas.
+  it("01/01 não vira 31/12 do ano anterior", () => {
+    const d = dataLocal("2026-01-01");
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(0);
+    expect(d.getDate()).toBe(1);
+  });
+
+  it("aceita timestamptz cortando na data", () => {
+    expect(dataLocal("2026-03-15T22:30:00+00:00").getDate()).toBe(15);
+  });
+
+  it("diferença de dias bate — é o uso em 'vence em N dias'", () => {
+    const a = dataLocal("2026-03-01");
+    const b = dataLocal("2026-03-08");
+    expect(Math.round((b.getTime() - a.getTime()) / 86400000)).toBe(7);
+  });
+
+  it("mês e ano batem — comparar só o mês deixava março/2025 passar no filtro de março/2026", () => {
+    const d = dataLocal("2025-03-31");
+    expect(d.getMonth()).toBe(2);
+    expect(d.getFullYear()).toBe(2025);
   });
 });

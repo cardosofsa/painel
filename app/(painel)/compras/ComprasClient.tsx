@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal, FormField, inputClass } from "@/components/ui/Modal";
+import { Modal, FormField, inputClass, campoBase } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
-import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
+import { formatBRL, formatarDataIso, hojeIsoLocal, dataLocal } from "@/lib/format";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarPedidoCompra, marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
@@ -92,7 +92,7 @@ export function ComprasClient({
       if (periodo !== "Todos") {
         // `data_pedido` é coluna `date`; sem o "T00:00:00" ela é lida como meia-noite UTC e,
         // em UTC-3, todo dia 1º cai no mês anterior.
-        const dataPedido = new Date(`${p.data_pedido}T00:00:00`);
+        const dataPedido = dataLocal(p.data_pedido);
         const diffDias = (agora.getTime() - dataPedido.getTime()) / 86400000;
         if (periodo === "Últimos 7 dias" && diffDias > 7) return false;
         // Comparar só o mês deixava março de 2025 passar no filtro de março de 2026.
@@ -172,21 +172,21 @@ export function ComprasClient({
       </div>
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent">
+        <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className={campoBase}>
           {PERIODOS.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
         </select>
-        <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value as typeof statusFiltro)} className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent">
+        <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value as typeof statusFiltro)} className={campoBase}>
           {STATUS_OPCOES.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
           ))}
         </select>
-        <select value={fornecedorFiltro} onChange={(e) => setFornecedorFiltro(e.target.value)} className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent">
+        <select value={fornecedorFiltro} onChange={(e) => setFornecedorFiltro(e.target.value)} className={campoBase}>
           {fornecedoresDisponiveis.map((f) => (
             <option key={f} value={f}>
               {f}

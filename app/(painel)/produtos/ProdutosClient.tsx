@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal, FormField, inputClass } from "@/components/ui/Modal";
+import { Modal, FormField, inputClass, campoBase } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { ProductThumb } from "@/components/ui/ProductThumb";
@@ -31,6 +31,8 @@ import {
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { executarComToast } from "@/lib/acao-cliente";
+import { rotuloProduto } from "@/lib/produtos";
+import { ImagemStorage } from "@/components/ui/ImagemStorage";
 
 export interface ImagemProduto {
   id: string;
@@ -44,12 +46,6 @@ export interface Produto extends ProdutoInput {
   armazem_nome: string | null;
   grupo_nome: string | null;
   imagens: ImagemProduto[];
-}
-
-/** Rótulo que distingue variantes do mesmo grupo — "Camiseta — Azul P". */
-export function rotuloProduto(p: { nome: string; grupo_nome: string | null; variante_nome: string | null }): string {
-  const base = p.grupo_nome ?? p.nome;
-  return p.variante_nome ? `${base} — ${p.variante_nome}` : base;
 }
 
 export interface MovimentacaoEstoque {
@@ -372,7 +368,7 @@ export function ProdutosClient({
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           placeholder="Buscar por nome ou SKU…"
-          className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent w-full sm:w-64"
+          className={`${campoBase} w-full sm:w-64`}
         />
         <div className="flex gap-2 flex-wrap">
           {categoriasNomes.map((c) => (
@@ -544,8 +540,7 @@ export function ProdutosClient({
             <div className="flex flex-wrap gap-2 mb-2">
               {editandoAtual.imagens.map((img) => (
                 <div key={img.id} className="relative w-14 h-14 rounded-md overflow-hidden border border-border group">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- URL do Storage */}
-                  <img src={img.url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                  <ImagemStorage src={img.url} alt="" className="w-full h-full object-cover" />
                   <button
                     type="button"
                     onClick={() => removerFotoExtra(img.id)}

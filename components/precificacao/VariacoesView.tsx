@@ -28,6 +28,7 @@ import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/app/(painel)/precificacao/PrecificacaoClient";
 import { executarComToast } from "@/lib/acao-cliente";
+import { inputClass } from "@/components/ui/Modal";
 
 export function VariacoesView({
   produtos,
@@ -261,7 +262,7 @@ export function VariacoesView({
               value={nomeAnuncio}
               onChange={(e) => setNomeAnuncio(e.target.value)}
               placeholder="Ex: Óleo para Barba"
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+              className={inputClass}
             />
           </div>
           <div>
@@ -269,7 +270,7 @@ export function VariacoesView({
             <input
               value={tituloAnuncio}
               onChange={(e) => setTituloAnuncio(e.target.value)}
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+              className={inputClass}
             />
             <GeradorIA
               key={`ia-titulo-var-${produtoId ?? nomeAnuncio}`}
@@ -301,7 +302,7 @@ export function VariacoesView({
           <select
             value={produtoId ?? ""}
             onChange={(e) => setProdutoId(e.target.value || null)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           >
             <option value="">Nenhum</option>
             {produtos.map((p) => (
@@ -429,7 +430,7 @@ export function VariacoesView({
           <select
             value={lojaId ?? ""}
             onChange={(e) => setLojaId(e.target.value || null)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           >
             <option value="">Selecione…</option>
             {canaisAgrupados.map((canalNome) => (

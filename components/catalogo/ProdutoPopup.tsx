@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import type { ItemVitrine, VarianteVitrine } from "./VitrineView";
+import { ImagemStorage } from "@/components/ui/ImagemStorage";
 
 /** Monta o link do WhatsApp: com o número do negócio quando cadastrado, ou o mesmo formato
  * sem número já usado em outras partes do sistema (deixa a pessoa escolher o contato). */
@@ -63,8 +64,7 @@ export function ProdutoPopup({
         <div>
           <div className="aspect-square bg-surface-2 rounded-lg flex items-center justify-center overflow-hidden mb-2">
             {imagens.length > 0 ? (
-              // eslint-disable-next-line @next/next/no-img-element -- URL pública do storage
-              <img src={imagens[Math.min(imagemAtiva, imagens.length - 1)]} alt={nomeCompleto} decoding="async" className="w-full h-full object-cover" />
+              <ImagemStorage src={imagens[Math.min(imagemAtiva, imagens.length - 1)]} alt={nomeCompleto} prioridade className="w-full h-full object-cover" />
             ) : (
               <ImageIcon size={40} className="text-text-tertiary" />
             )}
@@ -80,8 +80,7 @@ export function ProdutoPopup({
                     i === imagemAtiva ? "border-accent" : "border-border"
                   }`}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- URL pública do storage */}
-                  <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                  <ImagemStorage src={url} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

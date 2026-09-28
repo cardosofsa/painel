@@ -11,7 +11,19 @@ export function formatBRL(value: number) {
  */
 export function formatarDataIso(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR");
+  return dataLocal(iso).toLocaleDateString("pt-BR");
+}
+
+/**
+ * Converte uma coluna `date` do Postgres em `Date` no fuso local, para quem precisa
+ * **calcular** com ela (diferença de dias, comparação de mês) e não só exibir.
+ *
+ * Existe porque o `new Date(iso + "T00:00:00")` estava copiado cru em seis telas, ao lado
+ * de um `formatarDataIso` que documenta o motivo do sufixo. Bastava uma cópia perder o
+ * `T00:00:00` para o bug de "um dia a menos" voltar — e ele já voltou antes.
+ */
+export function dataLocal(iso: string): Date {
+  return new Date(`${iso.slice(0, 10)}T00:00:00`);
 }
 
 /** Formata um `timestamptz` (que já carrega fuso) com data e hora. */

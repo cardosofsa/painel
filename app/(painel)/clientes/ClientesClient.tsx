@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal, FormField, inputClass } from "@/components/ui/Modal";
+import { Modal, FormField, inputClass, campoBase } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -156,7 +156,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           placeholder="Buscar por nome, WhatsApp ou documento…"
-          className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent w-full sm:w-80"
+          className={`${campoBase} w-full sm:w-80`}
         />
       </div>
 

@@ -21,6 +21,7 @@ import { atualizarAcessoConta, atualizarStatusEmLote } from "./actions";
 import { HistoricoAdmin, type LinhaHistorico } from "./HistoricoAdmin";
 import { VisaoGeralAdmin } from "./VisaoGeralAdmin";
 import { executarComToast } from "@/lib/acao-cliente";
+import { campoBase } from "@/components/ui/Modal";
 
 export interface ContaAdmin {
   user_id: string;
@@ -262,7 +263,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Buscar por e-mail…"
-                className="h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent w-full sm:w-72"
+                className={`${campoBase} w-full sm:w-72`}
               />
               <div className="flex gap-1.5">
                 {FILTROS_STATUS.map((f) => {

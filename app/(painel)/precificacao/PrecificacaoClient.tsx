@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal } from "@/components/ui/Modal";
+import { Modal, inputClass, campoBase } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
@@ -668,7 +668,7 @@ export function PrecificacaoClient({
                 }}
                 onFocus={() => setSugestoesAbertas(true)}
                 onBlur={() => setTimeout(() => setSugestoesAbertas(false), 150)}
-                className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+                className={inputClass}
                 placeholder="Insira aqui Nome do Produto"
               />
               {sugestoesAbertas && sugestoesProdutos.length > 0 && (
@@ -691,7 +691,7 @@ export function PrecificacaoClient({
             <input
               value={nomeAnuncio}
               onChange={(e) => setNomeAnuncio(e.target.value)}
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+              className={inputClass}
               placeholder="Insira aqui Nome do Anúncio"
             />
             {/* `key` pelo produto: trocar de produto zera a sugestão sem useEffect. */}
@@ -730,7 +730,7 @@ export function PrecificacaoClient({
               step="0.01"
               value={custoProduto || ""}
               onChange={(e) => setCustoProduto(Number(e.target.value) || 0)}
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+              className={inputClass}
               placeholder="0,00"
             />
           </Card>
@@ -842,7 +842,7 @@ export function PrecificacaoClient({
                     <select
                       value={lojaId ?? ""}
                       onChange={(e) => setLojaId(e.target.value || null)}
-                      className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+                      className={inputClass}
                     >
                       <option value="">Selecione…</option>
                       {canaisAgrupados.map((canalNome) => (
@@ -1020,13 +1020,13 @@ export function PrecificacaoClient({
                 value={novoConcorrenteNome}
                 onChange={(e) => setNovoConcorrenteNome(e.target.value)}
                 placeholder="Loja / anúncio concorrente"
-                className="flex-1 min-w-[140px] h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+                className={`${campoBase} flex-1 min-w-[140px]`}
               />
               <input
                 value={novoConcorrenteLink}
                 onChange={(e) => setNovoConcorrenteLink(e.target.value)}
                 placeholder="Link (opcional)"
-                className="flex-1 min-w-[140px] h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+                className={`${campoBase} flex-1 min-w-[140px]`}
               />
               <input
                 type="number"

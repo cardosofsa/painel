@@ -46,6 +46,7 @@ import {
   type PerfilNegocioInput,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { ImagemStorage } from "@/components/ui/ImagemStorage";
 
 export interface Categoria {
   id: string;
@@ -384,8 +385,7 @@ export function ConfiguracoesClient({
                       <div key={l.id} className="flex items-center justify-between border border-border rounded-md p-3">
                         <div className="flex items-center gap-3">
                           {l.logo_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- logo vem de URL do Storage
-                            <img src={l.logo_url} alt={l.nome} loading="lazy" decoding="async" className="w-8 h-8 rounded-md object-cover border border-border" />
+                            <ImagemStorage src={l.logo_url} alt={l.nome} className="w-8 h-8 rounded-md object-cover border border-border" />
                           ) : (
                             <div
                               className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
@@ -925,8 +925,7 @@ function LojaModal({
       <FormField label="Logo (opcional)">
         <div className="flex items-center gap-3">
           {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- logo vem de URL do Storage
-            <img src={logoUrl} alt={nome} loading="lazy" decoding="async" className="w-10 h-10 rounded-md object-cover border border-border" />
+            <ImagemStorage src={logoUrl} alt={nome} className="w-10 h-10 rounded-md object-cover border border-border" />
           ) : (
             <div className="w-10 h-10 rounded-md bg-surface-2 border border-border" />
           )}

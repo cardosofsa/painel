@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBRL } from "@/lib/format";
 import { montarCards, rotuloProduto, type CardPdv, type ProdutoPdv } from "./tipos";
+import { ImagemStorage } from "@/components/ui/ImagemStorage";
 
 /**
  * Grade de produtos do caixa. O markup do card segue o da vitrine
@@ -132,8 +133,7 @@ export function GradeProdutos({
                 )}
                 <div className="aspect-square bg-surface-2 flex items-center justify-center overflow-hidden">
                   {card.imagem_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- URL pública do storage
-                    <img src={card.imagem_url} alt={card.nome} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                    <ImagemStorage src={card.imagem_url} alt={card.nome} className="w-full h-full object-cover" />
                   ) : (
                     <ImageIcon size={28} className="text-text-tertiary" />
                   )}

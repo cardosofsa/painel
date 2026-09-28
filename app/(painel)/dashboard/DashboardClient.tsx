@@ -11,7 +11,7 @@ import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-import { formatBRL, hojeIsoLocal } from "@/lib/format";
+import { formatBRL, hojeIsoLocal, formatarDataIso } from "@/lib/format";
 import { criarCompromisso, removerCompromisso, type CompromissoInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 
@@ -356,7 +356,7 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-text-tertiary">
               {diaSelecionado
-                ? `Compromissos em ${new Date(diaSelecionado + "T00:00:00").toLocaleDateString("pt-BR")}`
+                ? `Compromissos em ${formatarDataIso(diaSelecionado)}`
                 : "Próximos compromissos"}
             </span>
             {diaSelecionado && (
@@ -372,7 +372,7 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
                 <div>
                   <div className="text-sm text-text-primary">{c.titulo}</div>
                   <div className="text-xs text-text-tertiary">
-                    {new Date(c.data + "T00:00:00").toLocaleDateString("pt-BR")}
+                    {formatarDataIso(c.data)}
                     {c.hora ? ` às ${c.hora.slice(0, 5)}` : ""}
                     {c.descricao ? ` — ${c.descricao}` : ""}
                   </div>
