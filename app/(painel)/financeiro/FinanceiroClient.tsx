@@ -35,7 +35,7 @@ import {
   type EscopoLimpeza,
   type ImpactoLimpeza,
 } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface Conta {
   id: string;
@@ -207,47 +207,36 @@ export function FinanceiroClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(quitarContaPagarReceber(c.id));
-        toast.success("Status atualizado");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao atualizar status");
-      }
+      await executarComToast(quitarContaPagarReceber(c.id), { sucesso: "Status atualizado", erro: "Erro ao atualizar status" });
     });
   }
 
   function adicionarMovimentacao(dados: MovimentacaoInput) {
     startTransition(async () => {
-      try {
-        await executar(criarMovimentacao(dados));
+      const r = await executarComToast(criarMovimentacao(dados), { erro: "Erro ao registrar movimentação" });
+      if (r.ok) {
         setModalMovimentacao(false);
         toast.success("Movimentação registrada");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao registrar movimentação");
       }
     });
   }
 
   function adicionarDespesaFixa(dados: DespesaFixaInput) {
     startTransition(async () => {
-      try {
-        await executar(criarDespesaFixa(dados));
+      const r = await executarComToast(criarDespesaFixa(dados), { erro: "Erro ao cadastrar despesa fixa" });
+      if (r.ok) {
         setModalDespesa(false);
         toast.success("Despesa fixa cadastrada");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao cadastrar despesa fixa");
       }
     });
   }
 
   function adicionarCpr(dados: ContaPagarReceberInput) {
     startTransition(async () => {
-      try {
-        await executar(criarContaPagarReceber(dados));
+      const r = await executarComToast(criarContaPagarReceber(dados), { erro: "Erro ao adicionar registro" });
+      if (r.ok) {
         setModalCpr(false);
         toast.success("Registro adicionado");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao adicionar registro");
       }
     });
   }
@@ -263,16 +252,11 @@ export function FinanceiroClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        if (movExistente) {
-          await executar(desfazerRetiradaDespesa(movExistente.id));
-          toast("Retirada desfeita");
-        } else {
-          await executar(retirarDespesaDaConta(despesa.id));
-          toast.success("Valor retirado da conta");
-        }
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao atualizar despesa");
+      const erro = "Erro ao atualizar despesa";
+      if (movExistente) {
+        await executarComToast(desfazerRetiradaDespesa(movExistente.id), { sucesso: "Retirada desfeita", erro });
+      } else {
+        await executarComToast(retirarDespesaDaConta(despesa.id), { sucesso: "Valor retirado da conta", erro });
       }
     });
   }
@@ -710,14 +694,11 @@ function LimparDadosModal({
 
   async function avaliar() {
     setAvaliando(true);
-    try {
-      const resultado = await executar(avaliarLimpezaFinanceiro(dataInicio, dataFim, escopo));
-      setImpacto(resultado);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao avaliar impacto");
-    } finally {
-      setAvaliando(false);
-    }
+    const r = await executarComToast(avaliarLimpezaFinanceiro(dataInicio, dataFim, escopo), {
+      erro: "Erro ao avaliar impacto",
+    });
+    setAvaliando(false);
+    if (r.ok) setImpacto(r.dado);
   }
 
   // Nome antigo era `executar`, que passou a colidir com o helper de action do
@@ -736,12 +717,9 @@ function LimparDadosModal({
     const ok = await confirm({ title: "Apagar dados do Financeiro?", message: mensagem, confirmLabel: "Apagar" });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(limparDadosFinanceiros(dataInicio, dataFim, escopo));
-        toast.success("Dados removidos");
+      const r = await executarComToast(limparDadosFinanceiros(dataInicio, dataFim, escopo), { sucesso: "Dados removidos", erro: "Erro ao limpar dados" });
+      if (r.ok) {
         fechar();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao limpar dados");
       }
     });
   }

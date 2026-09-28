@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import { ArrowLeft, ShieldCheck, UserCog, KeyRound, CalendarClock, StickyNote, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -16,7 +15,7 @@ import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta }
 import { atualizarAcessoConta, definirLimiteIaConta } from "../actions";
 import type { ContaAdmin } from "../AdminClient";
 import type { LinhaHistorico } from "../HistoricoAdmin";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 const ROTULO_STATUS: Record<StatusConta, { label: string; tone: "positive" | "negative" | "neutral" }> = {
   ativo: { label: "Ativo", tone: "positive" },
@@ -74,29 +73,19 @@ export function ContaDetalheClient({
 
   function salvarCotaIa() {
     startTransition(async () => {
-      try {
-        await executar(definirLimiteIaConta(conta.user_id, cotaIa));
-        toast.success(cotaIa === 0 ? "Geração por IA desligada para esta conta" : `Cota de IA: ${cotaIa} por dia`);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao alterar a cota de IA");
-      }
+      await executarComToast(definirLimiteIaConta(conta.user_id, cotaIa), { sucesso: cotaIa === 0 ? "Geração por IA desligada para esta conta" : `Cota de IA: ${cotaIa} por dia`, erro: "Erro ao alterar a cota de IA" });
     });
   }
 
   function salvar() {
     startTransition(async () => {
-      try {
-        await executar(atualizarAcessoConta({
+      await executarComToast(atualizarAcessoConta({
           user_id: conta.user_id,
           status,
           abas,
           observacao: observacao.trim() || null,
           expira_em: expiraEm || null,
-        }));
-        toast.success("Acesso atualizado");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao atualizar acesso");
-      }
+        }), { sucesso: "Acesso atualizado", erro: "Erro ao atualizar acesso" });
     });
   }
 

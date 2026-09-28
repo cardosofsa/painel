@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -31,7 +30,7 @@ import {
 } from "./actions";
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface ImagemProduto {
   id: string;
@@ -214,13 +213,13 @@ export function ProdutosClient({
     const nome = novoGrupoNome.trim();
     if (!nome) return;
     startTransition(async () => {
-      try {
-        const grupo = await executar(criarGrupoProduto(nome));
-        setForm((prev) => ({ ...prev, grupo_id: grupo.id }));
+      const r = await executarComToast(criarGrupoProduto(nome), {
+        sucesso: "Grupo criado",
+        erro: "Erro ao criar grupo",
+      });
+      if (r.ok) {
+        setForm((prev) => ({ ...prev, grupo_id: r.dado.id }));
         setNovoGrupoAberto(false);
-        toast.success("Grupo criado");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao criar grupo");
       }
     });
   }
@@ -238,12 +237,10 @@ export function ProdutosClient({
       prefixo: `${editando.id}-extra`,
     });
     if (!resultado) return;
-    try {
-      await executar(adicionarImagemProduto(editando.id, resultado.publicUrl));
-      toast.success("Foto adicionada");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao adicionar foto");
-    }
+    await executarComToast(adicionarImagemProduto(editando.id, resultado.publicUrl), {
+      sucesso: "Foto adicionada",
+      erro: "Erro ao adicionar foto",
+    });
   }
 
   async function removerFotoExtra(imagemId: string) {
@@ -256,29 +253,25 @@ export function ProdutosClient({
       confirmLabel: "Remover foto",
     });
     if (!ok) return;
-    try {
-      await executar(removerImagemProduto(imagemId));
-      toast("Foto removida");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao remover foto");
-    }
+    await executarComToast(removerImagemProduto(imagemId), {
+      sucesso: "Foto removida",
+      erro: "Erro ao remover foto",
+    });
   }
 
   function salvar() {
     if (!form.nome.trim() || !form.sku.trim()) return;
     startTransition(async () => {
-      try {
-        if (editando) {
-          await executar(atualizarProduto(editando.id, form));
-          toast.success("Produto atualizado");
-        } else {
-          await executar(criarProduto(form));
-          toast.success("Produto cadastrado");
-        }
-        setModalAberto(false);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar produto");
-      }
+      const r = editando
+        ? await executarComToast(atualizarProduto(editando.id, form), {
+            sucesso: "Produto atualizado",
+            erro: "Erro ao salvar produto",
+          })
+        : await executarComToast(criarProduto(form), {
+            sucesso: "Produto cadastrado",
+            erro: "Erro ao salvar produto",
+          });
+      if (r.ok) setModalAberto(false);
     });
   }
 
@@ -289,23 +282,17 @@ export function ProdutosClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerProduto(p.id));
-        setSelecionados((prev) => prev.filter((s) => s !== p.id));
-        toast("Produto removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover produto");
-      }
+      const r = await executarComToast(removerProduto(p.id), {
+        sucesso: "Produto removido",
+        erro: "Erro ao remover produto",
+      });
+      if (r.ok) setSelecionados((prev) => prev.filter((s) => s !== p.id));
     });
   }
 
   function alternarAtivo(p: Produto) {
     startTransition(async () => {
-      try {
-        await executar(alternarAtivoProduto(p.id, p.ativo));
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao atualizar produto");
-      }
+      await executarComToast(alternarAtivoProduto(p.id, p.ativo), { erro: "Erro ao atualizar produto" });
     });
   }
 
@@ -319,17 +306,14 @@ export function ProdutosClient({
       if (!ok) return;
     }
     startTransition(async () => {
-      try {
-        await executar(acaoEmMassaProdutos(ids, acao));
-        toast.success(
+      const r = await executarComToast(acaoEmMassaProdutos(ids, acao), {
+        sucesso:
           acao === "remover"
             ? `${ids.length} produto(s) removido(s)`
             : `${ids.length} produto(s) ${acao === "ativar" ? "ativado(s)" : "desativado(s)"}`,
-        );
-        setSelecionados([]);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro na ação em massa");
-      }
+        erro: "Erro na ação em massa",
+      });
+      if (r.ok) setSelecionados([]);
     });
   }
 

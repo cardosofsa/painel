@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -20,7 +19,7 @@ import {
   alternarStatusCliente,
   type ClienteInput,
 } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface Cliente extends ClienteInput {
   id: string;
@@ -96,18 +95,16 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
   function salvar() {
     if (!form.nome.trim()) return;
     startTransition(async () => {
-      try {
-        if (editando) {
-          await executar(atualizarCliente(editando.id, form));
-          toast.success("Cliente atualizado");
-        } else {
-          await executar(criarCliente(form));
-          toast.success("Cliente cadastrado");
-        }
-        setModalAberto(false);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar cliente");
-      }
+      const r = editando
+        ? await executarComToast(atualizarCliente(editando.id, form), {
+            sucesso: "Cliente atualizado",
+            erro: "Erro ao salvar cliente",
+          })
+        : await executarComToast(criarCliente(form), {
+            sucesso: "Cliente cadastrado",
+            erro: "Erro ao salvar cliente",
+          });
+      if (r.ok) setModalAberto(false);
     });
   }
 
@@ -118,22 +115,13 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerCliente(c.id));
-        toast("Cliente removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover cliente");
-      }
+      await executarComToast(removerCliente(c.id), { sucesso: "Cliente removido", erro: "Erro ao remover cliente" });
     });
   }
 
   function alternarStatus(c: Cliente) {
     startTransition(async () => {
-      try {
-        await executar(alternarStatusCliente(c.id, c.status));
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao atualizar status");
-      }
+      await executarComToast(alternarStatusCliente(c.id, c.status), { erro: "Erro ao atualizar status" });
     });
   }
 

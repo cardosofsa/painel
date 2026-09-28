@@ -9,7 +9,7 @@ import { StatusChip } from "@/components/ui/Badge";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
 import { registrarMovimentacaoEstoque } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface ProdutoEstoque {
   id: string;
@@ -66,14 +66,12 @@ export function EstoqueClient({
       return;
     }
     startTransition(async () => {
-      try {
-        await executar(registrarMovimentacaoEstoque({ produtoId: movProdutoId, tipo: movTipo, quantidade: movQtd, motivo: movMotivo || (movTipo === "entrada" ? "Entrada manual" : "Saída manual") }));
+      const r = await executarComToast(registrarMovimentacaoEstoque({ produtoId: movProdutoId, tipo: movTipo, quantidade: movQtd, motivo: movMotivo || (movTipo === "entrada" ? "Entrada manual" : "Saída manual") }), { erro: "Erro ao registrar movimentação" });
+      if (r.ok) {
         setModalAberto(false);
         setMovQtd(1);
         setMovMotivo("");
         toast.success("Movimentação registrada");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao registrar movimentação");
       }
     });
   }

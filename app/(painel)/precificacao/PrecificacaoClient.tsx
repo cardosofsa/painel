@@ -53,7 +53,7 @@ import {
 } from "./actions";
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface PrecificacaoHist {
   id: string;
@@ -135,7 +135,6 @@ function proximoIdLocal(prefixo: string): string {
 // Identifica, dentro do JSONB de componentes salvo no histórico, a linha que representa
 // o campo "Custo do Produto" (e não um insumo) — é o que permite recarregar no campo certo.
 const ID_CUSTO_PRODUTO = "custo-produto";
-
 
 export function PrecificacaoClient({
   historico,
@@ -353,12 +352,10 @@ export function PrecificacaoClient({
     if (produtoId) {
       // Só limpa os campos depois que o servidor confirmou: antes eles eram esvaziados
       // primeiro e uma falha levava embora nome, preço e link digitados.
-      try {
-        const salvo = await executar(criarConcorrente(produtoId, dados));
-        setConcorrentes((prev) => [...prev, salvo]);
+      const r = await executarComToast(criarConcorrente(produtoId, dados), { erro: "Erro ao salvar concorrente" });
+      if (r.ok) {
+        setConcorrentes((prev) => [...prev, r.dado]);
         limparCamposConcorrente();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar concorrente");
       }
       return;
     }
@@ -376,13 +373,9 @@ export function PrecificacaoClient({
     const anteriores = concorrentes;
     setConcorrentes((prev) => prev.filter((c) => c.id !== id));
     if (produtoId) {
-      try {
-        await executar(removerConcorrenteSalvo(id));
-      } catch (e) {
-        // Sem o rollback, o item sumia da tela mas continuava no banco e voltava no reload.
-        setConcorrentes(anteriores);
-        toast.error(e instanceof Error ? e.message : "Erro ao remover concorrente");
-      }
+      const r = await executarComToast(removerConcorrenteSalvo(id), { erro: "Erro ao remover concorrente" });
+      // Sem o rollback, o item sumia da tela mas continuava no banco e voltava no reload.
+      if (!r.ok) setConcorrentes(anteriores);
     }
   }
 
@@ -509,12 +502,7 @@ export function PrecificacaoClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerPrecificacao(h.id));
-        toast("Precificação removida");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover precificação");
-      }
+      await executarComToast(removerPrecificacao(h.id), { sucesso: "Precificação removida", erro: "Erro ao remover precificação" });
     });
   }
 
@@ -522,12 +510,7 @@ export function PrecificacaoClient({
     const ok = await confirm({ title: "Remover produto?", message: `"${a.nome_anuncio}" e suas variações serão removidas definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerAnuncio(a.id));
-        toast("Produto removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover produto");
-      }
+      await executarComToast(removerAnuncio(a.id), { sucesso: "Produto removido", erro: "Erro ao remover produto" });
     });
   }
 
@@ -560,8 +543,8 @@ export function PrecificacaoClient({
         ? [{ id: ID_CUSTO_PRODUTO, nome: "Custo do produto", quantidade: 1, custoUnitario: custoProduto }, ...componentes]
         : componentes;
     startTransition(async () => {
-      try {
-        await executar(salvarPrecificacao({
+      const r = await executarComToast(
+        salvarPrecificacao({
           produto_id: produtoId,
           produto_nome: nomeProduto,
           canal: lojaSelecionada ? `${lojaSelecionada.canalNome} — ${lojaSelecionada.nome}` : null,
@@ -579,22 +562,25 @@ export function PrecificacaoClient({
           preco_calculado: resultado.precoVenda,
           lucro: resultado.lucroLiquido,
           origem: "individual",
-        }));
-        toast.success("Anúncio salvo no histórico");
+        }),
+        { sucesso: "Anúncio salvo no histórico", erro: "Erro ao salvar precificação" },
+      );
+      if (!r.ok) return;
 
-        if (produtoId) {
-          const ok = await confirm({
-            title: "Atualizar preço do produto?",
-            message: `Atualizar o preço de venda de "${nomeProduto}" para ${formatBRL(resultado.precoVenda)}?`,
-            confirmLabel: "Atualizar",
+      // Só oferece atualizar o preço do produto depois que o histórico gravou: antes, uma
+      // falha ao salvar caía no mesmo `catch` e o usuário nem chegava a ser perguntado.
+      if (produtoId) {
+        const ok = await confirm({
+          title: "Atualizar preço do produto?",
+          message: `Atualizar o preço de venda de "${nomeProduto}" para ${formatBRL(resultado.precoVenda)}?`,
+          confirmLabel: "Atualizar",
+        });
+        if (ok) {
+          await executarComToast(atualizarPrecoProduto(produtoId, resultado.precoVenda), {
+            sucesso: "Preço do produto atualizado",
+            erro: "Erro ao atualizar o preço do produto",
           });
-          if (ok) {
-            await executar(atualizarPrecoProduto(produtoId, resultado.precoVenda));
-            toast.success("Preço do produto atualizado");
-          }
         }
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar precificação");
       }
     });
   }
@@ -1605,7 +1591,6 @@ export function PrecificacaoClient({
     </>
   );
 }
-
 
 /**
  * Aviso da zona morta de comissão.

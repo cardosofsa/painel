@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -14,7 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Truck } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface Fornecedor extends FornecedorInput {
   id: string;
@@ -60,18 +59,16 @@ export function FornecedoresClient({
   function salvar() {
     if (!form.nome.trim()) return;
     startTransition(async () => {
-      try {
-        if (editando) {
-          await executar(atualizarFornecedor(editando.id, form));
-          toast.success("Fornecedor atualizado");
-        } else {
-          await executar(criarFornecedor(form));
-          toast.success("Fornecedor cadastrado");
-        }
-        setModalAberto(false);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar fornecedor");
-      }
+      const r = editando
+        ? await executarComToast(atualizarFornecedor(editando.id, form), {
+            sucesso: "Fornecedor atualizado",
+            erro: "Erro ao salvar fornecedor",
+          })
+        : await executarComToast(criarFornecedor(form), {
+            sucesso: "Fornecedor cadastrado",
+            erro: "Erro ao salvar fornecedor",
+          });
+      if (r.ok) setModalAberto(false);
     });
   }
 
@@ -82,22 +79,13 @@ export function FornecedoresClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerFornecedor(f.id));
-        toast("Fornecedor removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover fornecedor");
-      }
+      await executarComToast(removerFornecedor(f.id), { sucesso: "Fornecedor removido", erro: "Erro ao remover fornecedor" });
     });
   }
 
   function alternarStatus(f: Fornecedor) {
     startTransition(async () => {
-      try {
-        await executar(alternarStatusFornecedor(f.id, f.status));
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao atualizar status");
-      }
+      await executarComToast(alternarStatusFornecedor(f.id, f.status), { erro: "Erro ao atualizar status" });
     });
   }
 

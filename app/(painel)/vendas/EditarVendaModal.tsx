@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { atualizarVenda } from "./actions";
 import type { Venda } from "./VendasClient";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface ClienteOpcao {
   id: string;
@@ -42,22 +41,19 @@ export function EditarVendaModal({
   async function salvar() {
     if (!venda) return;
     setSalvando(true);
-    try {
-      await executar(atualizarVenda(venda.id, {
+    const r = await executarComToast(
+      atualizarVenda(venda.id, {
         cliente_id: clienteId,
         forma_pagamento: formaPagamento,
         observacao: observacao.trim() || null,
         desconto,
         valor_entrega: valorEntrega,
         pin,
-      }));
-      toast.success(`Venda ${venda.numero} atualizada`);
-      onSalvo();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao editar venda");
-    } finally {
-      setSalvando(false);
-    }
+      }),
+      { sucesso: `Venda ${venda.numero} atualizada`, erro: "Erro ao editar venda" },
+    );
+    setSalvando(false);
+    if (r.ok) onSalvo();
   }
 
   return (

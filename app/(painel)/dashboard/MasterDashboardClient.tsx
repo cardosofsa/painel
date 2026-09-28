@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import { ShieldCheck, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -14,7 +13,7 @@ import { ABAS_OBRIGATORIAS, ABAS_PADRAO } from "@/lib/acesso";
 import { atualizarAcessoConta } from "../admin/actions";
 import type { ContaAdmin } from "../admin/AdminClient";
 import type { LinhaHistorico } from "../admin/HistoricoAdmin";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 /**
  * Dashboard própria do master — quem administra o sistema não roda negócio nenhum por esta
@@ -34,21 +33,18 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
   function aprovar(c: ContaAdmin) {
     setAprovando(c.user_id);
     startTransition(async () => {
-      try {
-        await executar(atualizarAcessoConta({
+      await executarComToast(
+        atualizarAcessoConta({
           user_id: c.user_id,
           status: "ativo",
           // Mesma regra de AdminClient.tsx: conta nova entra com o pacote padrão.
           abas: c.abas.length > ABAS_OBRIGATORIAS.length ? c.abas : ABAS_PADRAO,
           observacao: c.observacao,
           expira_em: c.expira_em,
-        }));
-        toast.success(`${c.email} aprovada`);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao aprovar conta");
-      } finally {
-        setAprovando(null);
-      }
+        }),
+        { sucesso: `${c.email} aprovada`, erro: "Erro ao aprovar conta" },
+      );
+      setAprovando(null);
     });
   }
 

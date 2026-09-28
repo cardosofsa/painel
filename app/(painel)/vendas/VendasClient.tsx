@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
 import { Download, MessageCircle, Receipt } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -18,7 +17,7 @@ import { paraCsv, baixarArquivo } from "@/lib/csv";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { cancelarVenda } from "./actions";
 import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface VendaItem {
   produto_nome: string;
@@ -185,12 +184,9 @@ export function VendasClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(cancelarVenda(v.id));
-        toast.success(`Venda ${v.numero} cancelada`);
+      const r = await executarComToast(cancelarVenda(v.id), { sucesso: `Venda ${v.numero} cancelada`, erro: "Erro ao cancelar a venda" });
+      if (r.ok) {
         setDetalhe(null);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao cancelar a venda");
       }
     });
   }

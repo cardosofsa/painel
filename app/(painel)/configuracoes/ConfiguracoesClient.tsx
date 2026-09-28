@@ -45,7 +45,7 @@ import {
   type FormaPagamentoInput,
   type PerfilNegocioInput,
 } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface Categoria {
   id: string;
@@ -138,18 +138,13 @@ export function ConfiguracoesClient({
 
   function salvarLojaHandler(dados: LojaInput) {
     startTransition(async () => {
-      try {
-        if (modalLoja?.loja) {
-          await executar(atualizarLoja(modalLoja.loja.id, dados));
-          toast.success("Loja atualizada");
-        } else {
-          await executar(criarLoja(dados));
-          toast.success("Loja adicionada");
-        }
-        setModalLoja(null);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar loja");
-      }
+      const r = modalLoja?.loja
+        ? await executarComToast(atualizarLoja(modalLoja.loja.id, dados), {
+            sucesso: "Loja atualizada",
+            erro: "Erro ao salvar loja",
+          })
+        : await executarComToast(criarLoja(dados), { sucesso: "Loja adicionada", erro: "Erro ao salvar loja" });
+      if (r.ok) setModalLoja(null);
     });
   }
 
@@ -157,35 +152,24 @@ export function ConfiguracoesClient({
     const ok = await confirm({ title: "Remover loja?", message: `"${l.nome}" será removida definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerLoja(l.id));
-        toast("Loja removida");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover loja");
-      }
+      await executarComToast(removerLoja(l.id), { sucesso: "Loja removida", erro: "Erro ao remover loja" });
     });
   }
 
   function salvarFaixasHandler(canalId: string, faixas: FaixaComissaoInput[]) {
     startTransition(async () => {
-      try {
-        await executar(atualizarFaixasCanal(canalId, faixas));
-        toast.success("Faixas de comissão atualizadas");
+      const r = await executarComToast(atualizarFaixasCanal(canalId, faixas), { sucesso: "Faixas de comissão atualizadas", erro: "Erro ao salvar faixas" });
+      if (r.ok) {
         setModalFaixas(null);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar faixas");
       }
     });
   }
 
   function salvarCanalHandler(dados: CanalInput) {
     startTransition(async () => {
-      try {
-        await executar(criarCanal(dados));
-        toast.success("Canal adicionado");
+      const r = await executarComToast(criarCanal(dados), { sucesso: "Canal adicionado", erro: "Erro ao adicionar canal" });
+      if (r.ok) {
         setModalCanal(false);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao adicionar canal");
       }
     });
   }
@@ -204,12 +188,7 @@ export function ConfiguracoesClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerCanal(c.id));
-        toast("Canal removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover canal");
-      }
+      await executarComToast(removerCanal(c.id), { sucesso: "Canal removido", erro: "Erro ao remover canal" });
     });
   }
 
@@ -223,12 +202,7 @@ export function ConfiguracoesClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(restaurarCanaisPadrao());
-        toast.success("Canais padrão restaurados");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao restaurar canais");
-      }
+      await executarComToast(restaurarCanaisPadrao(), { sucesso: "Canais padrão restaurados", erro: "Erro ao restaurar canais" });
     });
   }
 
@@ -236,14 +210,12 @@ export function ConfiguracoesClient({
     if (!novaCategoria.trim()) return;
     const nome = novaCategoria.trim();
     startTransition(async () => {
-      try {
-        await executar(criarCategoria(nome));
+      const r = await executarComToast(criarCategoria(nome), { erro: "Erro ao adicionar categoria" });
+      if (r.ok) {
         // Limpa só depois do sucesso — se o nome já existir, o texto continua no campo
         // para o usuário corrigir em vez de ter que digitar tudo de novo.
         setNovaCategoria("");
         toast.success("Categoria adicionada");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao adicionar categoria");
       }
     });
   }
@@ -252,29 +224,21 @@ export function ConfiguracoesClient({
     const ok = await confirm({ title: "Remover categoria?", message: `"${c.nome}" será removida definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerCategoria(c.id));
-        toast("Categoria removida");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover categoria");
-      }
+      await executarComToast(removerCategoria(c.id), { sucesso: "Categoria removida", erro: "Erro ao remover categoria" });
     });
   }
 
   function salvarContaHandler(dados: ContaInput) {
     startTransition(async () => {
-      try {
-        if (modalConta === "novo") {
-          await executar(criarConta(dados));
-          toast.success("Conta adicionada");
-        } else if (modalConta) {
-          await executar(atualizarConta(modalConta.id, dados));
-          toast.success("Conta atualizada");
-        }
-        setModalConta(null);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar conta");
-      }
+      if (!modalConta) return;
+      const r =
+        modalConta === "novo"
+          ? await executarComToast(criarConta(dados), { sucesso: "Conta adicionada", erro: "Erro ao salvar conta" })
+          : await executarComToast(atualizarConta(modalConta.id, dados), {
+              sucesso: "Conta atualizada",
+              erro: "Erro ao salvar conta",
+            });
+      if (r.ok) setModalConta(null);
     });
   }
 
@@ -282,29 +246,22 @@ export function ConfiguracoesClient({
     const ok = await confirm({ title: "Remover conta?", message: `"${c.nome}" será removida definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerConta(c.id));
-        toast("Conta removida");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover conta");
-      }
+      await executarComToast(removerConta(c.id), { sucesso: "Conta removida", erro: "Erro ao remover conta" });
     });
   }
 
   function salvarFormaPagamentoHandler(dados: FormaPagamentoInput) {
     startTransition(async () => {
-      try {
-        if (modalFormaPagamento === "novo") {
-          await executar(criarFormaPagamento(dados));
-          toast.success("Forma de pagamento adicionada");
-        } else if (modalFormaPagamento) {
-          await executar(atualizarFormaPagamento(modalFormaPagamento.id, dados));
-          toast.success("Forma de pagamento atualizada");
-        }
-        setModalFormaPagamento(null);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar forma de pagamento");
-      }
+      if (!modalFormaPagamento) return;
+      const erro = "Erro ao salvar forma de pagamento";
+      const r =
+        modalFormaPagamento === "novo"
+          ? await executarComToast(criarFormaPagamento(dados), { sucesso: "Forma de pagamento adicionada", erro })
+          : await executarComToast(atualizarFormaPagamento(modalFormaPagamento.id, dados), {
+              sucesso: "Forma de pagamento atualizada",
+              erro,
+            });
+      if (r.ok) setModalFormaPagamento(null);
     });
   }
 
@@ -312,29 +269,21 @@ export function ConfiguracoesClient({
     const ok = await confirm({ title: "Remover forma de pagamento?", message: `"${f.nome}" será removida definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerFormaPagamento(f.id));
-        toast("Forma de pagamento removida");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover forma de pagamento");
-      }
+      await executarComToast(removerFormaPagamento(f.id), { sucesso: "Forma de pagamento removida", erro: "Erro ao remover forma de pagamento" });
     });
   }
 
   function salvarArmazemHandler(dados: ArmazemInput) {
     startTransition(async () => {
-      try {
-        if (modalArmazem === "novo") {
-          await executar(criarArmazem(dados));
-          toast.success("Armazém adicionado");
-        } else if (modalArmazem) {
-          await executar(atualizarArmazem(modalArmazem.id, dados));
-          toast.success("Armazém atualizado");
-        }
-        setModalArmazem(null);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar armazém");
-      }
+      if (!modalArmazem) return;
+      const r =
+        modalArmazem === "novo"
+          ? await executarComToast(criarArmazem(dados), { sucesso: "Armazém adicionado", erro: "Erro ao salvar armazém" })
+          : await executarComToast(atualizarArmazem(modalArmazem.id, dados), {
+              sucesso: "Armazém atualizado",
+              erro: "Erro ao salvar armazém",
+            });
+      if (r.ok) setModalArmazem(null);
     });
   }
 
@@ -342,12 +291,7 @@ export function ConfiguracoesClient({
     const ok = await confirm({ title: "Remover armazém?", message: `"${a.nome}" será removido definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerArmazem(a.id));
-        toast("Armazém removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover armazém");
-      }
+      await executarComToast(removerArmazem(a.id), { sucesso: "Armazém removido", erro: "Erro ao remover armazém" });
     });
   }
 
@@ -360,12 +304,7 @@ export function ConfiguracoesClient({
       whatsapp: whatsapp.trim() || null,
     };
     startTransition(async () => {
-      try {
-        await executar(salvarPerfilNegocio(dados));
-        toast.success("Perfil do negócio salvo");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar perfil");
-      }
+      await executarComToast(salvarPerfilNegocio(dados), { sucesso: "Perfil do negócio salvo", erro: "Erro ao salvar perfil" });
     });
   }
 
@@ -376,12 +315,10 @@ export function ConfiguracoesClient({
       return;
     }
     startTransition(async () => {
-      try {
-        await executar(definirPinAdmin(pin || null));
+      const r = await executarComToast(definirPinAdmin(pin || null), { erro: "Erro ao salvar PIN" });
+      if (r.ok) {
         setPinAdmin("");
         toast.success(pin ? "PIN atualizado" : "PIN removido — a edição de vendas fica bloqueada");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar PIN");
       }
     });
   }

@@ -27,7 +27,7 @@ import { criarAnuncio, removerAnuncio, gerarTituloAnuncioIA, type VariacaoInput 
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/app/(painel)/precificacao/PrecificacaoClient";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export function VariacoesView({
   produtos,
@@ -225,20 +225,17 @@ export function VariacoesView({
     });
 
     startTransition(async () => {
-      try {
-        await executar(criarAnuncio({
+      const r = await executarComToast(criarAnuncio({
           produto_id: produtoId,
           loja_id: modoTaxas === "loja" ? lojaId : null,
           nome_anuncio: nomeAnuncio,
           titulo_anuncio: tituloAnuncio.trim() || null,
           componentes_base: [{ id: "base", nome: "Custo unitário base", quantidade: 1, custoUnitario: custoUnitarioBase }],
           variacoes: variacoesInput,
-        }));
-        toast.success("Anúncio com variações salvo");
+        }), { sucesso: "Anúncio com variações salvo", erro: "Erro ao salvar anúncio" });
+      if (r.ok) {
         setNomeAnuncio("");
         setTituloAnuncio("");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar anúncio");
       }
     });
   }
@@ -247,12 +244,7 @@ export function VariacoesView({
     const ok = await confirm({ title: "Remover anúncio?", message: `"${a.nome_anuncio}" e suas variações serão removidas definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerAnuncio(a.id));
-        toast("Anúncio removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover anúncio");
-      }
+      await executarComToast(removerAnuncio(a.id), { sucesso: "Anúncio removido", erro: "Erro ao remover anúncio" });
     });
   }
 

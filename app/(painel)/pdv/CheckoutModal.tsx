@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { Banknote, ChevronLeft, CreditCard, Link2, MoreHorizontal, Smartphone, UserPlus, Wallet } from "lucide-react";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import { criarClienteRapido } from "../clientes/actions";
 import type { ClientePdv, ContaPdv } from "./tipos";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 /** Ícone por forma de pagamento conhecida; o resto cai no genérico. */
 const ICONES: { padrao: RegExp; icone: typeof Banknote }[] = [
@@ -67,19 +66,18 @@ export function CheckoutModal({
   async function cadastrarCliente() {
     if (!novoNome.trim()) return;
     setCriandoCliente(true);
-    try {
-      const criado = await executar(criarClienteRapido(novoNome.trim(), novoWhatsapp.trim() || null, novoFiado));
-      setClientesLocais((prev) => [...prev, { ...criado, whatsapp: novoWhatsapp.trim() || null }]);
-      setClienteId(criado.id);
+    const r = await executarComToast(
+      criarClienteRapido(novoNome.trim(), novoWhatsapp.trim() || null, novoFiado),
+      { sucesso: "Cliente cadastrado", erro: "Erro ao cadastrar cliente" },
+    );
+    setCriandoCliente(false);
+    if (r.ok) {
+      setClientesLocais((prev) => [...prev, { ...r.dado, whatsapp: novoWhatsapp.trim() || null }]);
+      setClienteId(r.dado.id);
       setCadastroAberto(false);
       setNovoNome("");
       setNovoWhatsapp("");
       setNovoFiado(false);
-      toast.success("Cliente cadastrado");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao cadastrar cliente");
-    } finally {
-      setCriandoCliente(false);
     }
   }
 

@@ -14,7 +14,7 @@ import { PackageSearch } from "lucide-react";
 import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { criarPedidoCompra, marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface ItemPedido {
   produto_id: string | null;
@@ -125,12 +125,7 @@ export function ComprasClient({
 
   function marcarRecebido(id: string, numero: string) {
     startTransition(async () => {
-      try {
-        await executar(marcarPedidoRecebido(id));
-        toast.success(`Pedido ${numero} marcado como recebido`);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao marcar como recebido");
-      }
+      await executarComToast(marcarPedidoRecebido(id), { sucesso: `Pedido ${numero} marcado como recebido`, erro: "Erro ao marcar como recebido" });
     });
   }
 
@@ -139,12 +134,10 @@ export function ComprasClient({
       setNotaDetalhe(p);
       return;
     }
-    try {
-      const url = await executar(obterUrlNotaFiscal(p.nf_arquivo_path));
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao abrir nota fiscal");
-    }
+    const r = await executarComToast(obterUrlNotaFiscal(p.nf_arquivo_path), {
+      erro: "Erro ao abrir nota fiscal",
+    });
+    if (r.ok) window.open(r.dado, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -458,14 +451,14 @@ function NovoPedidoModal({
       return;
     }
     startTransition(async () => {
-      try {
-        let nfArquivoPath: string | null = null;
-        if (nfArquivo) {
-          const resultado = await enviarNfArquivo(nfArquivo, { maxSizeMb: 10, tiposAceitos: ["application/pdf", "image/"], prefixo: "nf" });
-          if (!resultado) return;
-          nfArquivoPath = resultado.path;
-        }
-        await executar(criarPedidoCompra({
+      let nfArquivoPath: string | null = null;
+      if (nfArquivo) {
+        const resultado = await enviarNfArquivo(nfArquivo, { maxSizeMb: 10, tiposAceitos: ["application/pdf", "image/"], prefixo: "nf" });
+        if (!resultado) return;
+        nfArquivoPath = resultado.path;
+      }
+      const r = await executarComToast(
+        criarPedidoCompra({
           fornecedor_id: fornecedorId,
           armazem_id: armazemId || null,
           nf: nf || null,
@@ -478,12 +471,10 @@ function NovoPedidoModal({
           parcelas: parcelado ? parcelas : null,
           data_primeiro_vencimento: parcelado ? dataPrimeiraParcela : dataPedido,
           itens,
-        }));
-        toast.success("Pedido de compra criado");
-        fechar();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao criar pedido");
-      }
+        }),
+        { sucesso: "Pedido de compra criado", erro: "Erro ao criar pedido" },
+      );
+      if (r.ok) fechar();
     });
   }
 

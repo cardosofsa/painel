@@ -13,7 +13,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL, hojeIsoLocal } from "@/lib/format";
 import { criarCompromisso, removerCompromisso, type CompromissoInput } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface Conta {
   id: string;
@@ -289,12 +289,7 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerCompromisso(id));
-        toast("Compromisso removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover compromisso");
-      }
+      await executarComToast(removerCompromisso(id), { sucesso: "Compromisso removido", erro: "Erro ao remover compromisso" });
     });
   }
 
@@ -428,12 +423,9 @@ function CompromissoModal({ open, dataPadrao, onClose }: { open: boolean; dataPa
     }
     const dados: CompromissoInput = { titulo: titulo.trim(), data, hora: hora || null, descricao: descricao.trim() || null };
     startTransition(async () => {
-      try {
-        await executar(criarCompromisso(dados));
-        toast.success("Compromisso adicionado");
+      const r = await executarComToast(criarCompromisso(dados), { sucesso: "Compromisso adicionado", erro: "Erro ao salvar compromisso" });
+      if (r.ok) {
         fechar();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar compromisso");
       }
     });
   }

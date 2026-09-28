@@ -15,7 +15,7 @@ import { ReciboModal } from "./ReciboModal";
 import { registrarVenda } from "./actions";
 import { rotuloProduto, type ClientePdv, type ContaPdv, type ItemCarrinho, type ProdutoPdv } from "./tipos";
 import type { DadosComprovante } from "@/lib/comprovante";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 const CARRINHO_VAZIO: EstadoCarrinho = {
   itens: [],
@@ -150,8 +150,8 @@ export function PdvClient({
     data_vencimento: string | null;
   }) {
     startTransition(async () => {
-      try {
-        const venda = await executar(registrarVenda({
+      const r = await executarComToast(
+        registrarVenda({
           itens: estado.itens.map((i) => ({
             produto_id: i.produto_id,
             quantidade: i.quantidade,
@@ -165,8 +165,12 @@ export function PdvClient({
           valor_entrega: estado.valorEntrega,
           observacao: estado.observacao.trim() || null,
           data_vencimento: dados.data_vencimento,
-        }));
-
+        }),
+        // Sem `sucesso` aqui: o toast precisa do número e do lucro que só vêm na resposta.
+        { erro: "Erro ao registrar a venda" },
+      );
+      if (r.ok) {
+        const venda = r.dado;
         const cliente = clientes.find((c) => c.id === dados.cliente_id) ?? null;
         setRecibo({
           numero: venda.venda_numero,
@@ -184,8 +188,6 @@ export function PdvClient({
         setEstado(CARRINHO_VAZIO);
         setCheckoutAberto(false);
         setVendaSeq((n) => n + 1);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao registrar a venda");
       }
     });
   }

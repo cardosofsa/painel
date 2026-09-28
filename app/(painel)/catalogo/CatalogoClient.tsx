@@ -23,7 +23,7 @@ import {
   type CatalogoInput,
   type ProdutoPrecoCatalogo,
 } from "./actions";
-import { executar } from "@/lib/acao";
+import { executarComToast } from "@/lib/acao-cliente";
 
 export interface Catalogo {
   id: string;
@@ -60,29 +60,24 @@ export function CatalogoClient({
 
   function salvarCatalogoHandler(dados: CatalogoInput) {
     startTransition(async () => {
-      try {
-        if (modalCatalogo === "novo") {
-          await executar(criarCatalogo(dados));
-          toast.success("Catálogo criado");
-        } else if (modalCatalogo) {
-          await executar(atualizarCatalogo(modalCatalogo.id, dados));
-          toast.success("Catálogo atualizado");
-        }
-        setModalCatalogo(null);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao salvar catálogo");
-      }
+      if (!modalCatalogo) return;
+      const r =
+        modalCatalogo === "novo"
+          ? await executarComToast(criarCatalogo(dados), {
+              sucesso: "Catálogo criado",
+              erro: "Erro ao salvar catálogo",
+            })
+          : await executarComToast(atualizarCatalogo(modalCatalogo.id, dados), {
+              sucesso: "Catálogo atualizado",
+              erro: "Erro ao salvar catálogo",
+            });
+      if (r.ok) setModalCatalogo(null);
     });
   }
 
   function alternarAtivoHandler(c: Catalogo) {
     startTransition(async () => {
-      try {
-        await executar(alternarAtivoCatalogo(c.id, c.ativo));
-        toast.success(c.ativo ? "Catálogo desativado" : "Catálogo ativado");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao atualizar catálogo");
-      }
+      await executarComToast(alternarAtivoCatalogo(c.id, c.ativo), { sucesso: c.ativo ? "Catálogo desativado" : "Catálogo ativado", erro: "Erro ao atualizar catálogo" });
     });
   }
 
@@ -94,12 +89,7 @@ export function CatalogoClient({
     });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(regenerarLinkCatalogo(c.id));
-        toast.success("Novo link gerado");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao gerar novo link");
-      }
+      await executarComToast(regenerarLinkCatalogo(c.id), { sucesso: "Novo link gerado", erro: "Erro ao gerar novo link" });
     });
   }
 
@@ -107,12 +97,7 @@ export function CatalogoClient({
     const ok = await confirm({ title: "Remover catálogo?", message: `"${c.nome}" e seu link serão removidos definitivamente.` });
     if (!ok) return;
     startTransition(async () => {
-      try {
-        await executar(removerCatalogo(c.id));
-        toast("Catálogo removido");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Erro ao remover catálogo");
-      }
+      await executarComToast(removerCatalogo(c.id), { sucesso: "Catálogo removido", erro: "Erro ao remover catálogo" });
     });
   }
 
@@ -241,36 +226,36 @@ function PrecosCatalogoModal({ catalogo, onClose }: { catalogo: Catalogo | null;
 
   useEffect(() => {
     if (!catalogo) return;
-    // `executar` desembrulha o `Resultado` da action e relança a mensagem traduzida,
-    // que o `.catch` abaixo transforma em toast.
-    executar(listarPrecosCatalogo(catalogo.id))
-      .then((dados) => {
-        setItens(dados);
+    // O toast de erro sai de dentro de `executarComToast`, com a mensagem traduzida que o
+    // servidor devolveu — o `.catch` que havia aqui trocava tudo por "Erro ao carregar
+    // produtos" e escondia, por exemplo, a conta estar suspensa.
+    executarComToast(listarPrecosCatalogo(catalogo.id), { erro: "Erro ao carregar produtos" })
+      .then((r) => {
+        if (!r.ok) return;
+        setItens(r.dado);
         setOverrides(
-          Object.fromEntries(dados.filter((d) => d.preco_override !== null).map((d) => [d.produto_id, String(d.preco_override)])),
+          Object.fromEntries(
+            r.dado.filter((d) => d.preco_override !== null).map((d) => [d.produto_id, String(d.preco_override)]),
+          ),
         );
       })
-      .catch(() => toast.error("Erro ao carregar produtos"))
       .finally(() => setCarregando(false));
   }, [catalogo]);
 
   async function salvar() {
     if (!catalogo) return;
     setSalvando(true);
-    try {
-      const payload = itens.map((item) => {
-        const texto = overrides[item.produto_id]?.trim();
-        const preco = texto ? Number(texto) : null;
-        return { produto_id: item.produto_id, preco: preco !== null && !Number.isNaN(preco) ? preco : null };
-      });
-      await executar(salvarPrecosCatalogo(catalogo.id, payload));
-      toast.success("Preços salvos");
-      onClose();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar preços");
-    } finally {
-      setSalvando(false);
-    }
+    const payload = itens.map((item) => {
+      const texto = overrides[item.produto_id]?.trim();
+      const preco = texto ? Number(texto) : null;
+      return { produto_id: item.produto_id, preco: preco !== null && !Number.isNaN(preco) ? preco : null };
+    });
+    const r = await executarComToast(salvarPrecosCatalogo(catalogo.id, payload), {
+      sucesso: "Preços salvos",
+      erro: "Erro ao salvar preços",
+    });
+    setSalvando(false);
+    if (r.ok) onClose();
   }
 
   return (
