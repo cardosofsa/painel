@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ShieldCheck, UserCog, KeyRound, CalendarClock, StickyNote } from "lucide-react";
+import { ArrowLeft, ShieldCheck, UserCog, KeyRound, CalendarClock, StickyNote, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -13,7 +13,7 @@ import { SalesChart } from "@/components/charts/SalesChart";
 import { formatBRL, formatarDataCurta, formatarDataHora } from "@/lib/format";
 import { formatarDiffHistorico } from "@/lib/admin";
 import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta } from "@/lib/acesso";
-import { atualizarAcessoConta } from "../actions";
+import { atualizarAcessoConta, definirLimiteIaConta } from "../actions";
 import type { ContaAdmin } from "../AdminClient";
 import type { LinhaHistorico } from "../HistoricoAdmin";
 
@@ -43,20 +43,37 @@ export function ContaDetalheClient({
   conta,
   atividade,
   historico,
+  limiteIa,
 }: {
   conta: ContaAdmin;
   atividade: { dia: string; vendas: number; faturamento: number }[];
   historico: LinhaHistorico[];
+  /** `null` quando a migração 0024 ainda não foi aplicada — o controle some. */
+  limiteIa: number | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState<StatusConta>(conta.status);
   const [abas, setAbas] = useState<string[]>(conta.abas);
   const [observacao, setObservacao] = useState(conta.observacao ?? "");
   const [expiraEm, setExpiraEm] = useState(conta.expira_em ?? "");
+  const [cotaIa, setCotaIa] = useState(limiteIa ?? 0);
 
   function alternarAba(id: string) {
     if (ABAS_OBRIGATORIAS.includes(id as (typeof ABAS_OBRIGATORIAS)[number])) return;
     setAbas((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
+  }
+
+  function salvarCotaIa() {
+    startTransition(async () => {
+      // Devolve erro em vez de lançar (exceção de Server Action é redigida em produção),
+      // então o retorno precisa ser checado — o try/catch sozinho não pegaria.
+      const r = await definirLimiteIaConta(conta.user_id, cotaIa);
+      if (!r.ok) {
+        toast.error(r.erro);
+        return;
+      }
+      toast.success(cotaIa === 0 ? "Geração por IA desligada para esta conta" : `Cota de IA: ${cotaIa} por dia`);
+    });
   }
 
   function salvar() {
@@ -225,6 +242,34 @@ export function ContaDetalheClient({
           <Button variant="primary" className="w-full" loading={pending} onClick={salvar}>
             Salvar
           </Button>
+
+          {/* Fora do formulário acima de propósito: grava por RPC própria, na hora. Some
+              enquanto a 0024 não estiver aplicada. */}
+          {limiteIa !== null && (
+            <section className="border-t border-border pt-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
+                <Sparkles size={13} /> Cota de IA por dia
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  className={`${inputClass} flex-1`}
+                  value={cotaIa}
+                  onChange={(e) => setCotaIa(Math.max(0, Math.min(1000, Number(e.target.value) || 0)))}
+                />
+                <Button variant="secondary" loading={pending} disabled={cotaIa === limiteIa} onClick={salvarCotaIa}>
+                  Aplicar
+                </Button>
+              </div>
+              <p className="text-xs text-text-tertiary mt-1.5">
+                {cotaIa === 0
+                  ? "Zero desliga a geração por IA para esta conta."
+                  : `${cotaIa} gerações por dia. O contador zera à meia-noite (horário de Brasília).`}
+              </p>
+            </section>
+          )}
         </Card>
       </div>
 

@@ -122,5 +122,12 @@ export function formatarDiffHistorico(detalhes: DetalhesHistorico | null | undef
     linhas.push(`Observação: "${de}" → "${para}"`);
   }
 
+  // Gravado por `admin_definir_limite_ia` (migração 0024). Sem este bloco a mudança de
+  // cota apareceria como linha vazia no histórico.
+  if (detalhes.ia_limite_diario) {
+    const rotular = (v: unknown) => (Number(v) === 0 ? "desligada" : `${v}/dia`);
+    linhas.push(`Cota de IA: ${rotular(detalhes.ia_limite_diario.de)} → ${rotular(detalhes.ia_limite_diario.para)}`);
+  }
+
   return linhas;
 }

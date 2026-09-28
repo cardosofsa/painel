@@ -87,3 +87,28 @@ describe("ordenarContas", () => {
     expect(ordenarContas(contas, "criado_em", "asc").map((c) => c.criado_em)).toEqual(["2026-01-15", "2026-03-01"]);
   });
 });
+
+describe("formatarDiffHistorico — cota de IA", () => {
+  it("mostra a mudança de cota de forma legível", () => {
+    const linhas = formatarDiffHistorico({ ia_limite_diario: { de: 20, para: 50 } });
+    expect(linhas).toEqual(["Cota de IA: 20/dia → 50/dia"]);
+  });
+
+  it("zero aparece como 'desligada', não como '0/dia'", () => {
+    expect(formatarDiffHistorico({ ia_limite_diario: { de: 20, para: 0 } })).toEqual([
+      "Cota de IA: 20/dia → desligada",
+    ]);
+    expect(formatarDiffHistorico({ ia_limite_diario: { de: 0, para: 10 } })).toEqual([
+      "Cota de IA: desligada → 10/dia",
+    ]);
+  });
+
+  it("convive com as outras mudanças na mesma linha de histórico", () => {
+    const linhas = formatarDiffHistorico({
+      status: { de: "pendente", para: "ativo" },
+      ia_limite_diario: { de: 20, para: 5 },
+    });
+    expect(linhas).toHaveLength(2);
+    expect(linhas[1]).toContain("Cota de IA");
+  });
+});
