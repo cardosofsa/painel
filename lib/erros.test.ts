@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { traduzirErroSupabase, traduzirErroAuth, ERROS_LINK } from "./erros";
+import { traduzirErroSupabase, traduzirErroAuth, traduzirErroIA, ERROS_LINK } from "./erros";
 
 // O fallback loga o original no servidor de propósito; silenciar para o output do teste
 // ficar limpo, mas conferir que ele É chamado (é o que garante que o erro não se perde).
@@ -93,5 +93,48 @@ describe("ERROS_LINK", () => {
 
   it("slug desconhecido não devolve nada, para o login não inventar mensagem", () => {
     expect(ERROS_LINK["qualquer-coisa"]).toBeUndefined();
+  });
+});
+
+describe("traduzirErroIA", () => {
+  const CODIGOS = [
+    "sem_chave",
+    "chave_invalida",
+    "sem_credito",
+    "limite_api",
+    "timeout",
+    "bloqueado_seguranca",
+    "vazio",
+    "servidor",
+    "rede",
+    "desconhecido",
+  ];
+
+  it("todo código tem mensagem em pt-BR, nunca string vazia", () => {
+    for (const codigo of CODIGOS) {
+      const msg = traduzirErroIA(codigo);
+      expect(msg.length).toBeGreaterThan(10);
+      expect(msg).toMatch(/[A-ZÀ-Ú]/);
+    }
+  });
+
+  it("código desconhecido cai no genérico em vez de vazar o código na tela", () => {
+    const msg = traduzirErroIA("algo_que_o_google_inventou_amanha");
+    expect(msg).not.toContain("algo_que_o_google");
+    expect(msg).toContain("Tente de novo");
+  });
+
+  it("a mensagem nunca expõe detalhe de infraestrutura para o usuário final", () => {
+    for (const codigo of CODIGOS) {
+      const msg = traduzirErroIA(codigo).toLowerCase();
+      for (const vazamento of ["gemini", "google", "api key", "token", "http", "500"]) {
+        expect(msg).not.toContain(vazamento);
+      }
+    }
+  });
+
+  it("falha de configuração manda avisar o administrador, não o usuário se virar", () => {
+    expect(traduzirErroIA("chave_invalida")).toContain("administrador");
+    expect(traduzirErroIA("sem_credito")).toContain("administrador");
   });
 });

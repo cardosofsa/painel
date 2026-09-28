@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, precificacaoSchema, anuncioSchema } from "@/lib/validacao";
 import type { ComponenteKit } from "@/lib/pricing";
+import { gerarComIA, type ResultadoIA } from "@/lib/ia/gerar";
 
 export interface PrecificacaoInput {
   produto_id: string | null;
@@ -156,4 +157,21 @@ export async function removerConcorrenteSalvo(id: string) {
   const { error } = await supabase.from("concorrentes_preco").delete().eq("id", id);
   if (error) lancarErroSupabase(error);
   revalidatePath("/precificacao");
+}
+
+/**
+ * Gera título de anúncio com IA. Serve as duas telas (individual e variações), já que
+ * `VariacoesView` importa deste mesmo arquivo.
+ *
+ * Diferente das outras actions daqui, retorna dado e NÃO chama `revalidatePath`: nada é
+ * gravado no domínio, e revalidar no meio de um formulário refetcharia a página inteira
+ * por causa de um contador. A trava de acesso é a de sempre — mora nas RPCs
+ * (`auth.uid()` + `conta_ativa()`), não neste arquivo.
+ *
+ * Devolve `{ ok: false, erro }` em vez de lançar: exceção de Server Action é redigida pelo
+ * Next em produção e a mensagem em pt-BR não chegaria à tela. Ver `ResultadoIA`.
+ */
+export async function gerarTituloAnuncioIA(contexto: unknown): Promise<ResultadoIA> {
+  const supabase = await createClient();
+  return gerarComIA(supabase, "titulo", contexto);
 }

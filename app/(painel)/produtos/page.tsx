@@ -107,6 +107,9 @@ export default async function ProdutosPage() {
       precificacoes={precificacoesRes.data ?? []}
       lojas={lojasRes.data ?? []}
       grupos={gruposRes.data ?? []}
+      // Lido no servidor de propósito: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no
+      // cliente o bundler trocaria por `undefined` calado e o botão sumiria sempre.
+      iaDisponivel={Boolean(process.env.GEMINI_API_KEY)}
     />
   );
 }

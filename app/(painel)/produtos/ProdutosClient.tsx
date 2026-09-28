@@ -26,8 +26,11 @@ import {
   adicionarImagemProduto,
   removerImagemProduto,
   criarGrupoProduto,
+  gerarDescricaoProdutoIA,
   type ProdutoInput,
 } from "./actions";
+import { GeradorIA } from "@/components/ia/GeradorIA";
+import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 
 export interface ImagemProduto {
   id: string;
@@ -102,6 +105,7 @@ export function ProdutosClient({
   precificacoes,
   lojas,
   grupos,
+  iaDisponivel,
 }: {
   produtos: Produto[];
   categorias: Opcao[];
@@ -111,6 +115,8 @@ export function ProdutosClient({
   precificacoes: PrecificacaoHist[];
   lojas: Opcao[];
   grupos: Opcao[];
+  /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
+  iaDisponivel: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -711,6 +717,32 @@ export function ProdutosClient({
             value={form.descricao ?? ""}
             placeholder="Aparece no pop-up do produto no catálogo público"
             onChange={(e) => setForm({ ...form, descricao: e.target.value || null })}
+          />
+          {/* `key` pelo produto: trocar de produto no modal zera a sugestão anterior sem
+              precisar de useEffect (o useState mora dentro do GeradorIA). */}
+          <GeradorIA
+            key={`ia-desc-${editando?.id ?? "novo"}`}
+            rotulo="Gerar descrição com IA"
+            limite={LIMITE_DESCRICAO}
+            valorAtual={form.descricao ?? ""}
+            disponivel={iaDisponivel}
+            desabilitado={!form.nome.trim()}
+            motivoDesabilitado={!form.nome.trim() ? "Preencha o nome do produto primeiro." : undefined}
+            gerar={(instrucaoExtra) =>
+              gerarDescricaoProdutoIA({
+                produtoNome: form.nome,
+                sku: form.sku || null,
+                categoria: categorias.find((c) => c.id === form.categoria_id)?.nome ?? null,
+                fornecedor: fornecedores.find((f) => f.id === form.fornecedor_id)?.nome ?? null,
+                variante: form.variante_nome,
+                descricaoAtual: form.descricao,
+                codigoBarras: form.codigo_barras,
+                custo: form.custo,
+                precoVenda: form.preco_venda,
+                instrucaoExtra,
+              })
+            }
+            onUsar={(texto) => setForm({ ...form, descricao: texto })}
           />
         </FormField>
         <div className="grid grid-cols-2 gap-4">

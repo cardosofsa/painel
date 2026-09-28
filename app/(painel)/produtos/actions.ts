@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, produtoSchema, grupoProdutoSchema } from "@/lib/validacao";
+import { gerarComIA, type ResultadoIA } from "@/lib/ia/gerar";
 
 const PATH = "/produtos";
 
@@ -122,4 +123,19 @@ export async function removerImagemProduto(id: string) {
   const { error } = await supabase.from("produto_imagens").delete().eq("id", id);
   if (error) lancarErroSupabase(error);
   revalidateTudo();
+}
+
+/**
+ * Gera descrição de produto com IA.
+ *
+ * Retorna dado e NÃO revalida: nada é gravado aqui. O texto só vira `produtos.descricao`
+ * quando o usuário aprovar no painel e salvar o formulário — o que importa porque essa
+ * coluna é exibida na vitrine pública.
+ *
+ * Devolve `{ ok: false, erro }` em vez de lançar: exceção de Server Action é redigida pelo
+ * Next em produção e a mensagem em pt-BR não chegaria à tela. Ver `ResultadoIA`.
+ */
+export async function gerarDescricaoProdutoIA(contexto: unknown): Promise<ResultadoIA> {
+  const supabase = await createClient();
+  return gerarComIA(supabase, "descricao", contexto);
 }

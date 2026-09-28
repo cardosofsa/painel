@@ -135,3 +135,26 @@ export function traduzirErroAuth(erro: ErroAuth): string {
   console.error("[auth]", erro.code ?? erro.status ?? "sem-codigo", erro.message);
   return "Não foi possível concluir a operação. Tente de novo em alguns instantes.";
 }
+
+/**
+ * Terceiro universo de erro, junto dos outros dois pelo mesmo motivo que `traduzirErroAuth`
+ * existe: o Gemini não fala SQLSTATE nem código da GoTrue. Este arquivo é o catálogo de
+ * tradutores do app.
+ *
+ * O detalhe cru (corpo da resposta, nome da exceção) fica no `console.error` de
+ * `lib/ia/gemini.ts` — ele pode conter eco do prompt, que carrega custo, preço e nome de
+ * fornecedor. Nada disso vai para a tela.
+ */
+const POR_CODIGO_IA: Record<string, string> = {
+  sem_chave: "A geração por IA não está configurada neste sistema.",
+  chave_invalida: "A chave da IA foi recusada. Avise o administrador do sistema.",
+  sem_credito: "Os créditos de IA do sistema acabaram. Avise o administrador.",
+  limite_api: "A IA está sobrecarregada no momento. Tente de novo em alguns minutos.",
+  timeout: "A IA demorou demais para responder. Tente de novo.",
+  bloqueado_seguranca: "A IA recusou gerar texto para este produto. Ajuste o nome ou a descrição e tente de novo.",
+  vazio: "A IA não devolveu nenhuma sugestão. Tente de novo.",
+};
+
+export function traduzirErroIA(codigo: string): string {
+  return POR_CODIGO_IA[codigo] ?? "Não foi possível falar com a IA agora. Tente de novo em alguns instantes.";
+}

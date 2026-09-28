@@ -359,6 +359,40 @@ export const anuncioSchema = z.object({
 });
 
 /**
+ * Contexto enviado à IA.
+ *
+ * Aqui o teto de cada campo não é só higiene de dado: é o **freio de custo**. Tudo que
+ * entra vira token pago em toda geração, e o contexto chega do navegador — sem limite,
+ * um cliente adulterado mandaria 500 concorrentes e um texto de 1 MB na conta do sistema.
+ * Ver a seção "Economia de IA" no README.
+ */
+export const iaContextoSchema = z.object({
+  produtoNome: z.string().trim().min(1, "Informe o nome do produto").max(300),
+  sku: z.string().trim().max(100).nullish(),
+  categoria: z.string().trim().max(120).nullish(),
+  fornecedor: z.string().trim().max(120).nullish(),
+  variante: z.string().trim().max(120).nullish(),
+  descricaoAtual: z.string().trim().max(2000).nullish(),
+  codigoBarras: z.string().trim().max(60).nullish(),
+  custo: dinheiro.nullish(),
+  precoVenda: dinheiro.nullish(),
+  canal: z.string().trim().max(120).nullish(),
+  loja: z.string().trim().max(120).nullish(),
+  precoCalculado: dinheiro.nullish(),
+  componentes: z
+    .array(z.object({ nome: z.string().trim().max(120), quantidade: z.number().finite().min(0).max(100_000) }))
+    .max(30)
+    .optional(),
+  concorrentes: z
+    .array(z.object({ nome: z.string().trim().max(120), preco: dinheiro.nullable() }))
+    .max(30)
+    .optional(),
+  instrucaoExtra: z.string().trim().max(300, "Instrução longa demais").nullish(),
+});
+
+export type IaContextoInput = z.infer<typeof iaContextoSchema>;
+
+/**
  * Valida e devolve os dados já tipados. Em caso de erro, lança com a primeira mensagem
  * legível — que o client já mostra no toast.
  */

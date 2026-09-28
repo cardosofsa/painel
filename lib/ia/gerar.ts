@@ -1,0 +1,186 @@
+/**
+ * Orquestração da geração por IA. Código de SERVIDOR — nunca importe de Client Component.
+ *
+ * Não é um módulo `"use server"` de propósito: os wrappers finos que o cliente enxerga
+ * moram nos `actions.ts` de cada feature, seguindo a convenção do projeto. Aqui fica a
+ * lógica que os dois compartilham.
+ */
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { validar, iaContextoSchema } from "@/lib/validacao";
+import { lancarErroSupabase } from "@/lib/erros";
+import { chamarGemini, ErroIA } from "./gemini";
+import {
+  montarPromptTitulo,
+  montarPromptDescricao,
+  interpretarSugestao,
+  esquemaSugestao,
+  hashContexto,
+  concorrentesRelevantes,
+  LIMITE_TITULO,
+  LIMITE_DESCRICAO,
+  type ContextoIA,
+} from "./prompts";
+
+export type TipoGeracao = "titulo" | "descricao";
+
+/**
+ * Resultado da geração. **Retorna erro, não lança** — e isso é obrigatório, não estilo.
+ *
+ * O Next redige toda exceção lançada dentro de Server Action em produção: o servidor loga
+ * a mensagem real com um `digest` e manda ao navegador um erro genérico. Ou seja, se esta
+ * função lançasse, a mensagem em pt-BR que `traduzirErroIA` monta nunca chegaria à tela —
+ * o usuário veria "Minified React error #441". Valor de RETORNO atravessa intacto.
+ *
+ * Mesmo motivo pelo qual `app/auth/actions.ts` já devolve `{ ok, mensagem }`.
+ */
+export type ResultadoIA = { ok: true; sugestao: SugestaoGerada } | { ok: false; erro: string };
+
+export interface SugestaoGerada {
+  texto: string;
+  palavrasChave: string[];
+  posicionamento: string | null;
+  /** Quantas gerações do dia já foram usadas, para a UI mostrar o saldo. */
+  usadas: number;
+  limite: number;
+  /** Veio do cache: não custou nada e não consumiu cota. */
+  doCache: boolean;
+}
+
+/**
+ * Parâmetros por tipo.
+ *
+ * `maxTokens` é teto de CUSTO, não só de tamanho — e inclui os tokens de raciocínio. Por
+ * isso não é apertado até o osso: se o raciocínio estourar o teto antes da resposta, a
+ * API devolve vazio e a cota teria sido gasta à toa. Quem controla o gasto de verdade é o
+ * `thinking_level` em `gemini.ts`.
+ */
+const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number; limite: number }> = {
+  // Título é curto, mas vem com palavras-chave e posicionamento na mesma resposta.
+  titulo: { maxTokens: 700, temperatura: 0.9, limite: LIMITE_TITULO },
+  descricao: { maxTokens: 1600, temperatura: 0.7, limite: LIMITE_DESCRICAO },
+};
+
+/** Falha de infraestrutura: o usuário não fez nada errado, então a cota volta. */
+const ESTORNAVEIS = new Set(["chave_invalida", "sem_credito", "servidor", "rede", "timeout"]);
+
+export async function gerarComIA(
+  supabase: SupabaseClient,
+  tipo: TipoGeracao,
+  contexto: unknown,
+): Promise<ResultadoIA> {
+  try {
+    return { ok: true, sugestao: await executar(supabase, tipo, contexto) };
+  } catch (e) {
+    // Toda mensagem que chega aqui já passou por um tradutor nosso (`traduzirErroIA`,
+    // `traduzirErroSupabase` via `lancarErroSupabase`, ou `validar`), então é segura de
+    // mostrar. Qualquer outra coisa vira genérico e o original fica só no log.
+    if (e instanceof ErroIA) return { ok: false, erro: e.message };
+    if (e instanceof Error) return { ok: false, erro: e.message };
+    console.error("[ia] erro inesperado:", e);
+    return { ok: false, erro: "Não foi possível gerar agora. Tente de novo." };
+  }
+}
+
+async function executar(
+  supabase: SupabaseClient,
+  tipo: TipoGeracao,
+  contexto: unknown,
+): Promise<SugestaoGerada> {
+  // 1. Valida. É o freio de custo de token, antes de qualquer coisa que gaste.
+  const ctx = validar(iaContextoSchema, contexto) as ContextoIA;
+
+  // 2. Sem chave não há o que fazer — e a cota não pode ser cobrada por isso.
+  if (!process.env.GEMINI_API_KEY) throw new ErroIA("sem_chave");
+
+  const { maxTokens, temperatura, limite } = PARAMETROS[tipo];
+  const hash = hashContexto(ctx, tipo);
+
+  // 3. Autentica E tenta o cache na mesma ida ao banco. É aqui que conta suspensa é
+  //    barrada — por isso este passo vem antes de falar com o Google.
+  const { data: cache, error: erroCache } = await supabase
+    .rpc("ia_buscar_sugestao", { p_tipo: tipo, p_hash: hash })
+    .maybeSingle<{ texto: string; palavras_chave: string[]; posicionamento: string | null }>();
+  if (erroCache) lancarErroSupabase(erroCache);
+
+  // 4. Acerto de cache: devolve sem chamar a API e sem consumir cota.
+  if (cache) {
+    const saldo = await lerSaldo(supabase);
+    return {
+      texto: cache.texto,
+      palavrasChave: cache.palavras_chave ?? [],
+      posicionamento: cache.posicionamento,
+      ...saldo,
+      doCache: true,
+    };
+  }
+
+  // 5. Erro de cache: reserva a vaga do dia. Estourou a cota, para aqui.
+  const { data: cota, error: erroCota } = await supabase
+    .rpc("ia_consumir", { p_tipo: tipo })
+    .maybeSingle<{ usadas: number; limite: number }>();
+  if (erroCota) lancarErroSupabase(erroCota);
+
+  const usadas = cota?.usadas ?? 0;
+  const limiteDiario = cota?.limite ?? 0;
+
+  // 6. Gera.
+  const temConcorrente = concorrentesRelevantes(ctx.concorrentes, ctx.precoCalculado ?? ctx.precoVenda).length > 0;
+  const prompt = tipo === "titulo" ? montarPromptTitulo(ctx) : montarPromptDescricao(ctx);
+
+  let bruto: string;
+  try {
+    bruto = await chamarGemini(prompt, {
+      maxTokens,
+      temperatura,
+      esquema: esquemaSugestao(tipo === "titulo" && temConcorrente),
+    });
+  } catch (e) {
+    // 7. Falha de infraestrutura não come a cota de quem não teve culpa. Bloqueio de
+    //    conteúdo e resposta vazia NÃO estornam: o token já foi gasto do outro lado.
+    if (e instanceof ErroIA && ESTORNAVEIS.has(e.codigo)) {
+      const { error } = await supabase.rpc("ia_estornar");
+      if (error) console.error("[ia] falha ao estornar cota:", error.message);
+    }
+    throw e;
+  }
+
+  const sugestao = interpretarSugestao(bruto, limite);
+  if (!sugestao.texto) throw new ErroIA("vazio", "texto vazio após interpretar");
+
+  const { error: erroGuardar } = await supabase.rpc("ia_guardar_sugestao", {
+    p_tipo: tipo,
+    p_hash: hash,
+    p_texto: sugestao.texto,
+    p_palavras_chave: sugestao.palavrasChave,
+    p_posicionamento: sugestao.posicionamento,
+  });
+  // Falhar ao gravar no cache não pode derrubar uma geração que deu certo — o usuário
+  // perde só a economia da próxima vez.
+  if (erroGuardar) console.error("[ia] falha ao gravar cache:", erroGuardar.message);
+
+  return { ...sugestao, usadas, limite: limiteDiario, doCache: false };
+}
+
+/**
+ * Saldo do dia para o rótulo "{usadas}/{limite} hoje" no acerto de cache, onde
+ * `ia_consumir` não roda. Falha aqui é cosmética: zera o rótulo, não quebra a geração.
+ */
+async function lerSaldo(supabase: SupabaseClient): Promise<{ usadas: number; limite: number }> {
+  const [usoRes, perfilRes] = await Promise.all([
+    supabase.from("ia_uso").select("geracoes").eq("dia", hojeSaoPaulo()).maybeSingle<{ geracoes: number }>(),
+    supabase.from("perfis_acesso").select("ia_limite_diario").maybeSingle<{ ia_limite_diario: number }>(),
+  ]);
+  return {
+    usadas: usoRes.data?.geracoes ?? 0,
+    limite: perfilRes.data?.ia_limite_diario ?? 0,
+  };
+}
+
+/**
+ * Mesmo fuso que a migração 0024 usa para virar o dia. `toISOString().slice(0,10)` daria
+ * o dia seguinte depois das 21h e o saldo apareceria zerado à noite.
+ */
+function hojeSaoPaulo(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+}

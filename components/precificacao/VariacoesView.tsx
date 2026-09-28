@@ -23,7 +23,9 @@ import {
   useExportarPrecificacao,
   SimuladorPreco,
 } from "@/components/precificacao/resultado-compartilhado";
-import { criarAnuncio, removerAnuncio, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
+import { criarAnuncio, removerAnuncio, gerarTituloAnuncioIA, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
+import { GeradorIA } from "@/components/ia/GeradorIA";
+import { LIMITE_TITULO } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/app/(painel)/precificacao/PrecificacaoClient";
 
 export function VariacoesView({
@@ -34,11 +36,14 @@ export function VariacoesView({
   confirm,
   setVisao,
   exportarAnunciosCsv,
+  iaDisponivel,
 }: {
   produtos: ProdutoOpcao[];
   lojas: LojaOpcao[];
   anuncios: AnuncioSalvo[];
   aliquotaDasPadrao: number;
+  /** Vem do servidor via PrecificacaoClient: `GEMINI_API_KEY` não é lida no cliente. */
+  iaDisponivel: boolean;
   confirm: (options: { title: string; message: string; confirmLabel?: string }) => Promise<boolean>;
   setVisao: (visao: "individual" | "variacoes" | "massa" | "historico") => void;
   exportarAnunciosCsv: () => void;
@@ -272,6 +277,29 @@ export function VariacoesView({
               value={tituloAnuncio}
               onChange={(e) => setTituloAnuncio(e.target.value)}
               className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
+            />
+            <GeradorIA
+              key={`ia-titulo-var-${produtoId ?? nomeAnuncio}`}
+              rotulo="Gerar título com IA"
+              limite={LIMITE_TITULO}
+              valorAtual={tituloAnuncio}
+              disponivel={iaDisponivel}
+              desabilitado={!nomeAnuncio.trim()}
+              motivoDesabilitado={!nomeAnuncio.trim() ? "Preencha o nome do anúncio primeiro." : undefined}
+              gerar={(instrucaoExtra) =>
+                gerarTituloAnuncioIA({
+                  produtoNome: nomeAnuncio,
+                  sku: produtos.find((p) => p.id === produtoId)?.sku ?? null,
+                  canal: lojaSelecionada?.canalNome ?? null,
+                  loja: lojaSelecionada?.nome ?? null,
+                  custo: custoUnitarioBase,
+                  // A variação entra como "itens que acompanham": é o que diferencia este
+                  // anúncio de um produto simples.
+                  componentes: variacoes.filter((v) => v.nome.trim()).map((v) => ({ nome: v.nome, quantidade: 1 })),
+                  instrucaoExtra,
+                })
+              }
+              onUsar={setTituloAnuncio}
             />
           </div>
         </div>

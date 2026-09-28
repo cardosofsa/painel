@@ -105,6 +105,15 @@ pedem senha. Não escreva o mínimo à mão.
 O PIN nunca é enviado ao cliente: `perfil_negocio.pin_admin_hash` fica fora de todo
 `select` e a tela recebe só um booleano.
 
+**IA (Gemini).** Única chamada externa do projeto e única env sem `NEXT_PUBLIC_`
+(`GEMINI_API_KEY`). `lib/ia/gemini.ts` **não pode** ser importado por Client Component — a
+chave iria para o bundle. Em `lib/ia/gerar.ts` a ordem é obrigatória: `ia_buscar_sugestao`
+(autentica + cache) → `ia_consumir` (cota) → `chamarGemini`. Inverter abre a chave para
+conta suspensa ou cobra cota por resposta que já estava no cache. A cota e o cache moram
+no banco (0024, tabelas só com policy de SELECT, escrita por `security definer`), pelo
+motivo de sempre: checagem só no Node é contornável. Não mexa em `lib/csp.ts` por causa
+disso — a chamada não sai do navegador. Detalhes e regras de economia no README.
+
 **CSP.** Cabeçalho fixo mora em `next.config.ts`; a CSP mora em `lib/csp.ts` (nonce por
 requisição, aplicada no `proxy.ts`). `script-src` não tem `'unsafe-inline'` nem
 `'unsafe-eval'`. Então: todo `<script>` inline precisa do nonce de `headers()`; toda origem

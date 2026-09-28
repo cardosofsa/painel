@@ -8,6 +8,7 @@ import {
   resolverComFaixas,
   analisarConcorrencia,
   formatarFaixaLabel,
+  zonaMortaDeFaixa,
   type TaxasPlataforma,
   type FaixaComissao,
 } from "./pricing";
@@ -312,5 +313,81 @@ describe("proteção contra NaN e Infinity", () => {
         expect(Number.isFinite(valor), `${campo} não pode ser NaN`).toBe(true);
       }
     }
+  });
+});
+
+describe("zonaMortaDeFaixa", () => {
+  // As 5 faixas oficiais da Shopee, iguais ao seed da migration 0005.
+  const SHOPEE: FaixaComissao[] = [
+    { min: 0, max: 7.99, comissaoPct: 50, tarifaFixa: 0 },
+    { min: 8, max: 79.99, comissaoPct: 20, tarifaFixa: 4 },
+    { min: 80, max: 99.99, comissaoPct: 14, tarifaFixa: 16 },
+    { min: 100, max: 199.99, comissaoPct: 14, tarifaFixa: 20 },
+    { min: 200, max: null, comissaoPct: 14, tarifaFixa: 26 },
+  ];
+
+  it("R$ 84,90 está em zona morta: R$ 79,99 rende mais", () => {
+    const z = zonaMortaDeFaixa(SHOPEE, 84.9);
+    expect(z).not.toBeNull();
+    expect(z!.inicio).toBe(80);
+    expect(z!.precoMelhor).toBe(79.99);
+    // 84,90 → 84,90 - (11,886 + 16) = 57,014. 79,99 → 59,992. Diferença ≈ 2,98.
+    expect(z!.ganhoLiquido).toBeCloseTo(2.98, 2);
+    // Empate em (59,992 + 16) / 0,86 = 88,36…
+    expect(z!.fim).toBeCloseTo(88.36, 1);
+  });
+
+  it("acha a armadilha nas quatro viradas de faixa", () => {
+    // Logo acima do piso de cada faixa, menos a primeira (que não tem degrau abaixo).
+    expect(zonaMortaDeFaixa(SHOPEE, 8.5)).not.toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, 82)).not.toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, 101)).not.toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, 201)).not.toBeNull();
+  });
+
+  it("preço saudável não vira alerta", () => {
+    // Bem dentro da faixa, acima do ponto de empate.
+    expect(zonaMortaDeFaixa(SHOPEE, 95)).toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, 150)).toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, 300)).toBeNull();
+    // Última posição antes do degrau: é justamente o melhor preço, não zona morta.
+    expect(zonaMortaDeFaixa(SHOPEE, 79.99)).toBeNull();
+  });
+
+  it("faixa mais barata não tem degrau abaixo dela", () => {
+    expect(zonaMortaDeFaixa(SHOPEE, 5)).toBeNull();
+  });
+
+  it("o preço melhor sempre rende mais líquido que o preço atual", () => {
+    for (const preco of [8.5, 9.5, 81, 85, 88, 100.5, 103, 201, 205]) {
+      const z = zonaMortaDeFaixa(SHOPEE, preco);
+      if (!z) continue;
+      expect(z.ganhoLiquido).toBeGreaterThan(0);
+      expect(z.precoMelhor).toBeLessThan(preco);
+    }
+  });
+
+  it("usa as faixas do usuário, não a tabela oficial", () => {
+    // Tabela editada sem degrau: comissão igual nas duas faixas, sem tarifa.
+    const semDegrau: FaixaComissao[] = [
+      { min: 0, max: 99.99, comissaoPct: 10, tarifaFixa: 0 },
+      { min: 100, max: null, comissaoPct: 10, tarifaFixa: 0 },
+    ];
+    expect(zonaMortaDeFaixa(semDegrau, 101)).toBeNull();
+
+    // Tabela editada COM degrau em outro ponto.
+    const degrauEm50: FaixaComissao[] = [
+      { min: 0, max: 49.99, comissaoPct: 10, tarifaFixa: 0 },
+      { min: 50, max: null, comissaoPct: 10, tarifaFixa: 15 },
+    ];
+    const z = zonaMortaDeFaixa(degrauEm50, 52);
+    expect(z?.precoMelhor).toBe(49.99);
+  });
+
+  it("entrada inválida ou tabela sem faixa não quebra", () => {
+    expect(zonaMortaDeFaixa([], 80)).toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, 0)).toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, NaN)).toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, -10)).toBeNull();
   });
 });

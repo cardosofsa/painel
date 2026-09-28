@@ -324,3 +324,75 @@ export function analisarConcorrencia(
     sugestao,
   };
 }
+
+// ============================================================
+// Zona morta de faixa de comissão
+// ============================================================
+
+export interface ZonaMorta {
+  /** Primeiro preço da faixa nova — onde o líquido despenca. */
+  inicio: number;
+  /** Último preço que ainda rende menos que `precoMelhor`. */
+  fim: number;
+  /** O preço logo abaixo da virada, que rende mais que qualquer valor da zona. */
+  precoMelhor: number;
+  /** Quanto a mais você recebe vendendo por `precoMelhor` em vez do preço atual. */
+  ganhoLiquido: number;
+}
+
+/** Centavos. Sem isso, 88.36999999 vaza para a tela como preço. */
+function arredondar(valor: number): number {
+  return Math.round(valor * 100) / 100;
+}
+
+/** Quanto sobra do preço depois da comissão da plataforma, na faixa correspondente. */
+function liquidoNaFaixa(faixas: FaixaComissao[], preco: number): number {
+  const faixa = encontrarFaixa(faixas, preco);
+  return preco - (preco * (faixa.comissaoPct / 100) + faixa.tarifaFixa);
+}
+
+/**
+ * Detecta a armadilha das faixas de comissão da Shopee: **atravessar o início de uma
+ * faixa pode fazer você RECEBER MENOS vendendo MAIS CARO.**
+ *
+ * Com a tabela oficial (20% + R$4 até 79,99; 14% + R$16 de 80 a 99,99):
+ *
+ *   R$ 79,99 → comissão R$ 20,00 → recebe R$ 59,99
+ *   R$ 80,00 → comissão R$ 27,20 → recebe R$ 52,80   (R$ 7,19 a menos!)
+ *
+ * O líquido só empata de novo em R$ 88,37. Ou seja, todo preço entre R$ 80,00 e R$ 88,36
+ * é estritamente pior que R$ 79,99 — e nada na tela avisava isso.
+ *
+ * Calculado a partir das faixas do BANCO do usuário, não de constante: quem editar a
+ * tabela de comissão continua coberto. Devolve `null` quando o preço não está em zona
+ * morta (o caso normal).
+ */
+export function zonaMortaDeFaixa(faixas: FaixaComissao[], precoVenda: number): ZonaMorta | null {
+  if (faixas.length < 2 || !Number.isFinite(precoVenda) || precoVenda <= 0) return null;
+
+  const faixaAtual = encontrarFaixa(faixas, precoVenda);
+  // O degrau está no PISO da faixa: quem já passou dele não tem para onde descer sem
+  // mudar de faixa.
+  if (faixaAtual.min <= 0) return null;
+
+  // Um centavo abaixo do piso é o último preço da faixa anterior — o candidato a melhor.
+  const precoMelhor = arredondar(faixaAtual.min - 0.01);
+  if (precoMelhor <= 0 || encontrarFaixa(faixas, precoMelhor) === faixaAtual) return null;
+
+  const liquidoMelhor = liquidoNaFaixa(faixas, precoMelhor);
+  const liquidoAtual = liquidoNaFaixa(faixas, precoVenda);
+  if (liquidoAtual >= liquidoMelhor) return null;
+
+  // Onde o líquido da faixa nova volta a empatar:
+  //   preco * (1 - comissao) - tarifa = liquidoMelhor
+  const proporcao = 1 - faixaAtual.comissaoPct / 100;
+  if (proporcao <= 0) return null;
+  const precoEmpate = (liquidoMelhor + faixaAtual.tarifaFixa) / proporcao;
+
+  return {
+    inicio: faixaAtual.min,
+    fim: arredondar(precoEmpate - 0.01),
+    precoMelhor,
+    ganhoLiquido: arredondar(liquidoMelhor - liquidoAtual),
+  };
+}

@@ -26,6 +26,8 @@ Variáveis de ambiente (em `.env.local`):
 | `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto no Supabase |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Chave anônima (`anon public`) do projeto |
 | `NEXT_PUBLIC_SITE_URL` | Opcional em dev, **recomendada em produção**: base dos links enviados por e-mail |
+| `GEMINI_API_KEY` | Opcional. Liga a geração de texto por IA. **Sem prefixo `NEXT_PUBLIC_`** — ver [Geração por IA](#geração-por-ia) |
+| `GEMINI_MODEL` | Opcional. Padrão `gemini-3.5-flash-lite` |
 
 Não existe service role key no projeto, e não deve existir: tudo passa pelo RLS.
 
@@ -131,6 +133,54 @@ Para promover a primeira conta a master, rode o `update` documentado no cabeçal
 > tiver). Depois de aplicá-la, rode as duas consultas de conferência do rodapé do arquivo:
 > as duas precisam voltar vazias. Uma conta sem linha em `perfis_acesso` perde acesso aos
 > próprios dados.
+
+## Geração por IA
+
+Dois botões, ambos opcionais: **título de anúncio** (precificação, abas Individual e
+Variações) e **descrição de produto** (modal de cadastro). Cada geração devolve também
+palavras-chave de busca e, quando há concorrente cadastrado, uma frase de posicionamento.
+
+Sem `GEMINI_API_KEY` configurada o app funciona igual e **os botões não aparecem** — é
+também o jeito de desligar o recurso sem deploy.
+
+**Nada é gravado sem você aprovar.** A sugestão abre num painel com "Usar este / Gerar
+outro / Descartar", e o texto só vira dado quando você salva o formulário. Isso importa
+porque `produtos.descricao` é exibida na vitrine pública: revise antes de publicar.
+
+**A IA não toca em número.** Preço, margem, comissão e faixa continuam 100% no
+`lib/pricing.ts`, determinístico e testado. O prompt proíbe explicitamente citar preço,
+desconto ou percentual.
+
+### Cota e custo
+
+A chave é uma só, do sistema, então cada conta tem uma **cota diária** (`perfis_acesso.
+ia_limite_diario`, padrão 20) que o master ajusta por conta. O limite mora no banco
+(migração 0024): contagem feita só no servidor do app seria contornável, e a PK
+`(user_id, dia)` é o que arbitra dois cliques simultâneos.
+
+Cinco decisões de economia, que valem lembrar antes de mexer:
+
+1. **Raciocínio no mínimo** (`thinking_level`). O modelo cobra o raciocínio como token de
+   saída; para escrever título ele não agrega e chega a dobrar a conta.
+2. **Cache por impressão digital do contexto.** Gerar de novo sem mudar nada devolve na
+   hora, sem chamar a API e **sem consumir cota**.
+3. **Uma chamada devolve tudo** — texto, palavras-chave e posicionamento. Um botão por
+   coisa custaria 3×.
+4. **Prompt enxuto**: campo vazio não vira linha, cada campo é truncado, no máximo 4
+   concorrentes, e foto nunca entra (multimodal custa muito mais).
+5. **Sem retry automático.** Retry multiplica custo; retentar é clique seu.
+
+### Ao mexer no código
+
+- A chamada sai do **servidor**. `lib/ia/gemini.ts` nunca pode ser importado por Client
+  Component, senão a chave vai para o bundle.
+- Por isso `lib/csp.ts` **não** é alterado: a CSP vale para o navegador, e esta requisição
+  não sai de lá.
+- `lib/ia/gerar.ts` tem uma ordem obrigatória: autentica e consulta o cache → só então
+  consome cota → só então chama a API. Inverter abriria a chave para conta suspensa, ou
+  cobraria cota por resposta que já estava no banco.
+- O que sai para o Google: nome, SKU, categoria, fornecedor, custo e preço do produto.
+  **Nenhum dado de cliente final** — nunca inclua `clientes` nem `vendas` no contexto.
 
 ## Cabeçalhos de segurança
 

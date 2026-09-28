@@ -7,6 +7,7 @@ import {
   pedidoCompraSchema,
   periodoSchema,
   validar,
+  iaContextoSchema,
   SENHA_MIN,
   SENHA_MAX,
 } from "./validacao";
@@ -127,5 +128,44 @@ describe("validar", () => {
         itens: [{ produto_id: null, produto_nome: "X", quantidade: 0, custo_unitario: 1 }],
       }),
     ).toThrow(/itens\.0\.quantidade/);
+  });
+});
+
+describe("iaContextoSchema", () => {
+  const base = { produtoNome: "Camiseta Dry Fit" };
+
+  it("aceita o mínimo: só o nome do produto", () => {
+    expect(validar(iaContextoSchema, base).produtoNome).toBe("Camiseta Dry Fit");
+  });
+
+  it("exige nome de produto — sem ele a geração seria lixo pago", () => {
+    expect(() => validar(iaContextoSchema, { produtoNome: "   " })).toThrow(/produtoNome/);
+  });
+
+  // Estes três são o FREIO DE CUSTO: o contexto chega do navegador, então sem teto um
+  // cliente adulterado manda um prompt gigante na conta do sistema.
+  it("recusa lista de concorrentes gigante", () => {
+    const concorrentes = Array.from({ length: 500 }, (_, i) => ({ nome: `C${i}`, preco: 10 }));
+    expect(() => validar(iaContextoSchema, { ...base, concorrentes })).toThrow(/concorrentes/);
+  });
+
+  it("recusa lista de componentes gigante", () => {
+    const componentes = Array.from({ length: 200 }, (_, i) => ({ nome: `I${i}`, quantidade: 1 }));
+    expect(() => validar(iaContextoSchema, { ...base, componentes })).toThrow(/componentes/);
+  });
+
+  it("recusa instrução livre gigante", () => {
+    expect(() => validar(iaContextoSchema, { ...base, instrucaoExtra: "a".repeat(5000) })).toThrow(
+      /instrucaoExtra/,
+    );
+  });
+
+  it("recusa nome de produto gigante", () => {
+    expect(() => validar(iaContextoSchema, { produtoNome: "a".repeat(5000) })).toThrow(/produtoNome/);
+  });
+
+  it("aceita null e undefined nos campos opcionais — o formulário manda os dois", () => {
+    const r = validar(iaContextoSchema, { ...base, sku: null, categoria: undefined, custo: null });
+    expect(r.sku).toBeNull();
   });
 });

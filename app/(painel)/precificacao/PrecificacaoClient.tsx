@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Clock } from "lucide-react";
+import { Clock, TriangleAlert } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -28,7 +28,9 @@ import {
   type TaxasPlataforma,
   type ResultadoPrecificacao,
   MODOS,
+  zonaMortaDeFaixa,
   type FaixaComissao,
+  type ZonaMorta,
 } from "@/lib/pricing";
 import { CalculadoraEmMassa } from "@/components/precificacao/CalculadoraEmMassa";
 import { VariacoesView } from "@/components/precificacao/VariacoesView";
@@ -47,7 +49,10 @@ import {
   removerAnuncio,
   criarConcorrente,
   removerConcorrenteSalvo,
+  gerarTituloAnuncioIA,
 } from "./actions";
+import { GeradorIA } from "@/components/ia/GeradorIA";
+import { LIMITE_TITULO } from "@/lib/ia/prompts";
 
 export interface PrecificacaoHist {
   id: string;
@@ -138,6 +143,7 @@ export function PrecificacaoClient({
   lojas,
   anuncios,
   concorrentesPorProduto,
+  iaDisponivel,
 }: {
   historico: PrecificacaoHist[];
   produtos: ProdutoOpcao[];
@@ -145,6 +151,8 @@ export function PrecificacaoClient({
   lojas: LojaOpcao[];
   anuncios: AnuncioSalvo[];
   concorrentesPorProduto: Record<string, Concorrente[]>;
+  /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
+  iaDisponivel: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -244,6 +252,25 @@ export function PrecificacaoClient({
         ? resultadoParaPrecoComFaixas(preco, custoTotal, taxasBaseFaixas, lojaSelecionada.faixas)
         : resultadoParaPreco(preco, custoTotal, taxas);
   }, [usaFaixas, lojaSelecionada, custoTotal, taxasBaseFaixas, taxas]);
+
+  /**
+   * A armadilha das faixas da Shopee: passar do piso de uma faixa pode fazer o vendedor
+   * RECEBER MENOS vendendo MAIS CARO. Ver `zonaMortaDeFaixa` em `lib/pricing.ts`.
+   */
+  const zonaMorta = useMemo(
+    () =>
+      usaFaixas && lojaSelecionada && resultado.viavel
+        ? zonaMortaDeFaixa(lojaSelecionada.faixas, resultado.precoVenda)
+        : null,
+    [usaFaixas, lojaSelecionada, resultado],
+  );
+
+  /** Passa para o modo "preço" fixo no valor que rende mais — o cálculo refaz sozinho. */
+  function aplicarPrecoMelhor(preco: number) {
+    setModo("preco");
+    setPrecoFixo(preco);
+    toast.success(`Preço ajustado para ${formatBRL(preco)}`);
+  }
 
   const resultadoMin = useMemo(
     () => (precoMinimo !== "" && precoMinimo > 0 && custoTotal > 0 ? resultadoNoPreco(precoMinimo) : null),
@@ -632,6 +659,7 @@ export function PrecificacaoClient({
           confirm={confirm}
           setVisao={setVisao}
           exportarAnunciosCsv={exportarAnunciosCsv}
+          iaDisponivel={iaDisponivel}
         />
       )}
 
@@ -676,9 +704,36 @@ export function PrecificacaoClient({
             <input
               value={nomeAnuncio}
               onChange={(e) => setNomeAnuncio(e.target.value)}
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent mb-3"
+              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
               placeholder="Insira aqui Nome do Anúncio"
             />
+            {/* `key` pelo produto: trocar de produto zera a sugestão sem useEffect. */}
+            <div className="mb-3">
+              <GeradorIA
+                key={`ia-titulo-${produtoId ?? nomeProduto}`}
+                rotulo="Gerar título com IA"
+                limite={LIMITE_TITULO}
+                valorAtual={nomeAnuncio}
+                disponivel={iaDisponivel}
+                desabilitado={!nomeProduto.trim()}
+                motivoDesabilitado={!nomeProduto.trim() ? "Informe o nome do produto primeiro." : undefined}
+                gerar={(instrucaoExtra) =>
+                  gerarTituloAnuncioIA({
+                    produtoNome: nomeProduto,
+                    sku: produtos.find((p) => p.id === produtoId)?.sku ?? null,
+                    canal: lojaSelecionada?.canalNome ?? null,
+                    loja: lojaSelecionada?.nome ?? null,
+                    custo: custoTotal,
+                    precoCalculado: resultado.viavel ? resultado.precoVenda : null,
+                    componentes: componentes.map((c) => ({ nome: c.nome, quantidade: c.quantidade })),
+                    // Só nome e preço: o link do concorrente não entra no prompt.
+                    concorrentes: concorrentes.map((c) => ({ nome: c.nome, preco: c.preco })),
+                    instrucaoExtra,
+                  })
+                }
+                onUsar={setNomeAnuncio}
+              />
+            </div>
             <label className="block text-xs font-medium text-text-secondary mb-1.5">
               Custo do Produto (R$) <span className="text-negative">*</span>
             </label>
@@ -818,9 +873,12 @@ export function PrecificacaoClient({
                     {lojaSelecionada &&
                       (lojaSelecionada.tipoTaxa === "faixas" ? (
                         faixaShopee && (
-                          <p className="text-xs text-text-tertiary mt-2 bg-surface-2 rounded-md p-2">
-                            Faixa aplicada: {formatarFaixaLabel(faixaShopee)} · comissão {faixaShopee.comissaoPct}% + {formatBRL(faixaShopee.tarifaFixa)}
-                          </p>
+                          <>
+                            <p className="text-xs text-text-tertiary mt-2 bg-surface-2 rounded-md p-2">
+                              Faixa aplicada: {formatarFaixaLabel(faixaShopee)} · comissão {faixaShopee.comissaoPct}% + {formatBRL(faixaShopee.tarifaFixa)}
+                            </p>
+                            <AvisoZonaMorta zona={zonaMorta} onAplicar={aplicarPrecoMelhor} />
+                          </>
                         )
                       ) : (
                         <p className="text-xs text-text-tertiary mt-2">
@@ -1547,3 +1605,40 @@ export function PrecificacaoClient({
   );
 }
 
+
+/**
+ * Aviso da zona morta de comissão.
+ *
+ * É o alerta que paga o módulo inteiro: um preço R$ 5 maior pode render R$ 7 a MENOS por
+ * venda, e nada na tela contava isso. Só aparece quando há zona morta de verdade — alerta
+ * que vive na tela vira ruído e para de ser lido.
+ */
+function AvisoZonaMorta({ zona, onAplicar }: { zona: ZonaMorta | null; onAplicar: (preco: number) => void }) {
+  if (!zona) return null;
+
+  return (
+    <div className="mt-2 rounded-md border border-negative bg-negative-soft p-2.5">
+      <div className="flex items-start gap-2">
+        <TriangleAlert size={14} className="text-negative shrink-0 mt-0.5" />
+        <div className="text-xs text-text-primary">
+          <p className="font-medium mb-1">Este preço cai numa zona morta da comissão.</p>
+          <p className="text-text-secondary">
+            Entre {formatBRL(zona.inicio)} e {formatBRL(zona.fim)} a comissão sobe de faixa e você recebe menos do que
+            receberia vendendo por {formatBRL(zona.precoMelhor)} — mesmo cobrando mais caro.
+          </p>
+          <p className="mt-1">
+            Vendendo a {formatBRL(zona.precoMelhor)} sobram <strong>{formatBRL(zona.ganhoLiquido)} a mais</strong> por
+            venda.
+          </p>
+          <button
+            type="button"
+            onClick={() => onAplicar(zona.precoMelhor)}
+            className="mt-2 text-accent hover:underline font-medium"
+          >
+            Usar {formatBRL(zona.precoMelhor)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
