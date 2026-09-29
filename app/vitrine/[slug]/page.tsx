@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     return { title: "Catálogo não encontrado", robots: { index: false, follow: false } };
   }
 
-  const comProduto = linhas.filter((l) => l.produto_id !== null && l.preco !== null);
+  const comProduto = linhas.filter((l) => l.produto_id !== null && l.preco !== null && l.preco > 0);
   const capa = comProduto.find((l) => l.imagem_url)?.imagem_url ?? undefined;
   const descricao =
     comProduto.length > 0
@@ -63,7 +63,14 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
 
   // Quando o catálogo existe mas não tem produto elegível, a função ainda devolve uma
   // linha (pra distinguir de "slug inválido"), só que com produto_id/preco nulos.
-  const validas = linhas.filter((i) => i.produto_id !== null && i.produto_nome !== null && i.preco !== null);
+  //
+  // `preco > 0` também é exigido: um produto sem preço definido no catálogo cai no
+  // `coalesce(cp.preco, p.preco_venda)` da RPC e, se `preco_venda` nunca foi preenchido,
+  // vem como 0 — sem esse filtro ele aparecia vendável por R$ 0,00 (ver
+  // `catalogo_precos`/`obter_catalogo_publico` — não há como distinguir "de graça" de
+  // "esqueceu de precificar" no banco, então tratamos preço zerado como "ainda não
+  // configurado", igual ao catálogo já faz com estoque zerado).
+  const validas = linhas.filter((i) => i.produto_id !== null && i.produto_nome !== null && i.preco !== null && i.preco > 0);
 
   // A RPC devolve uma linha por SKU (pra variante esgotada sumir sozinha pelo filtro
   // de estoque). Aqui as variantes do mesmo grupo viram UM item, com o menor preço.
