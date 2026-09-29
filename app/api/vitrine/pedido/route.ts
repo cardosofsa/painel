@@ -59,6 +59,13 @@ export async function POST(request: NextRequest) {
       p_whatsapp: dados.whatsapp,
       p_observacao: dados.observacao,
       p_idempotencia: dados.idempotencia,
+      p_email: dados.email,
+      p_cep: dados.cep,
+      p_logradouro: dados.logradouro,
+      p_numero: dados.numero,
+      p_bairro: dados.bairro,
+      p_cidade: dados.cidade,
+      p_uf: dados.uf,
     })
     .maybeSingle<{ numero: string; total: number }>();
 

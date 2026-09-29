@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { CatalogoClient, type Catalogo } from "./CatalogoClient";
 import type { PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
+import { enderecoEmLinha } from "@/lib/comprovante";
 
 /** Formato cru do join de pedidos, antes de virar `PedidoVitrine`. */
 interface LinhaPedido {
@@ -8,6 +9,13 @@ interface LinhaPedido {
   numero: string;
   cliente_nome: string;
   cliente_whatsapp: string;
+  cliente_email: string | null;
+  entrega_cep: string | null;
+  entrega_logradouro: string | null;
+  entrega_numero: string | null;
+  entrega_bairro: string | null;
+  entrega_cidade: string | null;
+  entrega_uf: string | null;
   observacao: string | null;
   total: number;
   status: PedidoVitrine["status"];
@@ -27,12 +35,12 @@ export default async function CatalogoPage() {
   const supabase = await createClient();
 
   const [catalogosRes, produtosRes, pedidosRes, clientesRes, contasRes, formasRes] = await Promise.all([
-    supabase.from("catalogos").select("id, nome, slug, ativo, criado_em").order("criado_em"),
+    supabase.from("catalogos").select("id, nome, slug, ativo, tipo_preco, criado_em").order("criado_em"),
     supabase.from("produtos").select("id", { count: "exact", head: true }).eq("ativo", true).gt("estoque", 0),
     supabase
       .from("pedidos_vitrine")
       .select(
-        "id, numero, cliente_nome, cliente_whatsapp, observacao, total, status, criado_em, venda_id, " +
+        "id, numero, cliente_nome, cliente_whatsapp, cliente_email, entrega_cep, entrega_logradouro, entrega_numero, entrega_bairro, entrega_cidade, entrega_uf, observacao, total, status, criado_em, venda_id, " +
           "catalogos(nome), pedidos_vitrine_itens(id, produto_id, produto_nome, quantidade, preco_unitario)",
       )
       .order("criado_em", { ascending: false })
@@ -55,6 +63,15 @@ export default async function CatalogoPage() {
     catalogo_nome: p.catalogos?.nome ?? null,
     cliente_nome: p.cliente_nome,
     cliente_whatsapp: p.cliente_whatsapp,
+    cliente_email: p.cliente_email,
+    entrega: enderecoEmLinha({
+      endereco: p.entrega_logradouro,
+      numero: p.entrega_numero,
+      bairro: p.entrega_bairro,
+      cidade: p.entrega_cidade,
+      uf: p.entrega_uf,
+      cep: p.entrega_cep,
+    }),
     observacao: p.observacao,
     total: Number(p.total),
     status: p.status,

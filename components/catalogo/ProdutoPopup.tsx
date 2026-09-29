@@ -1,21 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { ImageIcon, Minus, Plus, ShoppingCart } from "lucide-react";
+import { ImageIcon, MessageCircle, Minus, Plus, ShoppingCart } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button, IconButton } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
-import type { ItemVitrine, VarianteVitrine } from "./VitrineView";
+import type { ItemVitrine, VarianteVitrine } from "@/lib/vitrine-catalogo";
+import { textoConsultarProduto } from "@/lib/vitrine-catalogo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { Chip } from "@/components/ui/Chip";
-import { MAX_QTD, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
+import { MAX_QTD, linkPedidoWhatsapp, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
 
 export function ProdutoPopup({
   item,
+  nomeCatalogo,
+  negocioWhatsapp,
   onAdicionar,
   onClose,
 }: {
   item: ItemVitrine | null;
+  nomeCatalogo: string;
+  negocioWhatsapp: string | null;
   /** Manda o item escolhido para o carrinho, que vive em `VitrineInterativa`. */
   onAdicionar: (item: ItemCarrinhoVitrine) => void;
   onClose: () => void;
@@ -26,10 +31,12 @@ export function ProdutoPopup({
 
   const variantes: VarianteVitrine[] = item?.variantes ?? [];
   const temVariantes = variantes.length > 1;
-  // Sem escolha ainda, mostra a variante mais barata — a mesma que o card anunciou.
-  const selecionada =
-    variantes.find((v) => v.produto_id === varianteId) ??
-    variantes.reduce<VarianteVitrine | null>((menor, v) => (!menor || v.preco < menor.preco ? v : menor), null);
+  // Sem escolha ainda, mostra a variante mais barata com preço — a mesma que o card anunciou.
+  const maisBarata = variantes.reduce<VarianteVitrine | null>((menor, v) => {
+    if (v.preco === null) return menor;
+    return !menor || (menor.preco !== null && v.preco < menor.preco) ? v : menor;
+  }, null);
+  const selecionada = variantes.find((v) => v.produto_id === varianteId) ?? maisBarata ?? variantes[0] ?? null;
 
   const imagens = selecionada
     ? [selecionada.imagem_url, ...selecionada.imagens_extra].filter((url): url is string => !!url)
@@ -41,6 +48,30 @@ export function ProdutoPopup({
   function trocarVariante(id: string) {
     setVarianteId(id);
     setImagemAtiva(0);
+  }
+
+  /** Variante sem preço não entra no carrinho: o cliente pergunta pelo WhatsApp. */
+  const consultar = !!selecionada && selecionada.preco === null;
+  const preco = selecionada?.preco ?? 0;
+
+  const linkConsultar = item
+    ? linkPedidoWhatsapp(textoConsultarProduto(item.produto_nome, nomeCatalogo, selecionada?.variante_nome), negocioWhatsapp)
+    : "#";
+
+  function adicionar() {
+    if (!item || !selecionada || selecionada.preco === null) return;
+    const opcoes = variantes
+      .filter((v): v is VarianteVitrine & { preco: number } => v.preco !== null)
+      .map((v) => ({ produto_id: v.produto_id, rotulo: v.variante_nome ?? "Padrão", preco: v.preco }));
+    onAdicionar({
+      produto_id: selecionada.produto_id,
+      nome: nomeCompleto,
+      nomeBase: item.produto_nome,
+      preco: selecionada.preco,
+      quantidade,
+      opcoes: opcoes.length > 1 ? opcoes : undefined,
+    });
+    onClose();
   }
 
   return (
@@ -84,54 +115,54 @@ export function ProdutoPopup({
                 {variantes.map((v) => (
                   <Chip key={v.produto_id} onClick={() => trocarVariante(v.produto_id)} ativo={v.produto_id === selecionada.produto_id}>
                     {v.variante_nome ?? "Padrão"}
+                    {v.preco === null && <span className="text-text-tertiary"> · consultar</span>}
                   </Chip>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="font-mono text-2xl text-accent font-semibold mb-2">{formatBRL(selecionada.preco)}</div>
+          <div className="font-mono text-2xl text-accent font-semibold mb-2">
+            {consultar ? <span className="font-sans text-xl text-text-secondary">Consultar</span> : formatBRL(preco)}
+          </div>
 
           {item.descricao && <p className="text-sm text-text-secondary mb-4 whitespace-pre-wrap">{item.descricao}</p>}
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 border border-border rounded-md p-1">
-              <IconButton
-                onClick={() => setQuantidade((q) => Math.max(1, q - 1))}
-                disabled={quantidade <= 1}
-                aria-label="Diminuir quantidade"
-              >
-                <Minus size={16} />
-              </IconButton>
-              <span className="font-mono text-sm w-8 text-center tabular" aria-live="polite">
-                {quantidade}
-              </span>
-              <IconButton
-                onClick={() => setQuantidade((q) => Math.min(MAX_QTD, q + 1))}
-                disabled={quantidade >= MAX_QTD}
-                aria-label="Aumentar quantidade"
-              >
-                <Plus size={16} />
-              </IconButton>
-            </div>
+          {consultar ? (
+            <a href={linkConsultar} target="_blank" rel="noopener noreferrer" className="block">
+              <Button variant="primary" className="w-full h-11">
+                <MessageCircle size={16} />
+                Consultar preço no WhatsApp
+              </Button>
+            </a>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 border border-border rounded-md p-1">
+                <IconButton
+                  onClick={() => setQuantidade((q) => Math.max(1, q - 1))}
+                  disabled={quantidade <= 1}
+                  aria-label="Diminuir quantidade"
+                >
+                  <Minus size={16} />
+                </IconButton>
+                <span className="font-mono text-sm w-8 text-center tabular" aria-live="polite">
+                  {quantidade}
+                </span>
+                <IconButton
+                  onClick={() => setQuantidade((q) => Math.min(MAX_QTD, q + 1))}
+                  disabled={quantidade >= MAX_QTD}
+                  aria-label="Aumentar quantidade"
+                >
+                  <Plus size={16} />
+                </IconButton>
+              </div>
 
-            <Button
-              variant="primary"
-              className="flex-1"
-              onClick={() => {
-                onAdicionar({
-                  produto_id: selecionada.produto_id,
-                  nome: nomeCompleto,
-                  preco: selecionada.preco,
-                  quantidade,
-                });
-                onClose();
-              }}
-            >
-              <ShoppingCart size={16} />
-              Adicionar {quantidade > 1 ? `· ${formatBRL(selecionada.preco * quantidade)}` : ""}
-            </Button>
-          </div>
+              <Button variant="primary" className="flex-1" onClick={adicionar}>
+                <ShoppingCart size={16} />
+                Adicionar {quantidade > 1 ? `· ${formatBRL(preco * quantidade)}` : ""}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Modal>

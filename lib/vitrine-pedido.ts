@@ -25,12 +25,23 @@ export const MAX_OBSERVACAO = 500;
  */
 export const MAX_URL_WHATSAPP = 3500;
 
+/** Outra variante do mesmo produto que o cliente pode escolher na própria linha do carrinho. */
+export interface OpcaoVariante {
+  produto_id: string;
+  rotulo: string;
+  preco: number;
+}
+
 export interface ItemCarrinhoVitrine {
   produto_id: string;
   /** Nome já com a variante ("Camiseta — Azul P"), como o cliente viu na tela. */
   nome: string;
+  /** Nome sem a variante ("Camiseta"), para remontar o rótulo ao trocar de opção. */
+  nomeBase?: string;
   preco: number;
   quantidade: number;
+  /** Só existe quando o produto tem 2+ variantes com preço. */
+  opcoes?: OpcaoVariante[];
 }
 
 /**
@@ -79,6 +90,35 @@ export const pedidoVitrineSchema = z.object({
   observacao: z.string().trim().max(MAX_OBSERVACAO, "Observação longa demais").nullable(),
   /** Gerado no navegador. Duplo-toque em "Finalizar" ou retry de rede não vira dois pedidos. */
   idempotencia: z.string().uuid(),
+  /** Tudo abaixo é opcional: o pedido sai mesmo sem e-mail e sem endereço. */
+  email: z
+    .string()
+    .trim()
+    .max(200, "E-mail longo demais")
+    .refine((v) => v === "" || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), "E-mail inválido")
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .default(null),
+  cep: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/\D/g, ""))
+    .refine((v) => v === "" || v.length === 8, "CEP inválido")
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .default(null),
+  logradouro: z.string().trim().max(120).nullable().default(null),
+  numero: z.string().trim().max(20).nullable().default(null),
+  bairro: z.string().trim().max(120).nullable().default(null),
+  cidade: z.string().trim().max(120).nullable().default(null),
+  uf: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((v) => v === "" || /^[A-Z]{2}$/.test(v), "UF inválida")
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .default(null),
   itens: z
     .array(
       z.object({
@@ -106,6 +146,8 @@ export function textoPedidoVitrine(d: {
   total: number;
   nomeCliente: string;
   observacao: string | null;
+  /** Endereço já em uma linha, quando o cliente informou. */
+  entrega?: string | null;
 }): string {
   const linhas = [
     `Olá! Fiz um pedido pelo catálogo ${d.nomeCatalogo}.`,

@@ -1,81 +1,87 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { toPng } from "html-to-image";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Download, Printer, Search } from "lucide-react";
+import { PackageSearch, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Chip, ChipRow } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PackageSearch } from "lucide-react";
-import { VitrineView, type ItemVitrine } from "./VitrineView";
+import { VitrineView } from "./VitrineView";
 import { ProdutoPopup } from "./ProdutoPopup";
-import { BarraCarrinho, CarrinhoVitrine } from "./CarrinhoVitrine";
-import { campoBase } from "@/components/ui/Modal";
-import { consolidarCarrinho, MAX_ITENS, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
+import { CarrinhoVitrine } from "./CarrinhoVitrine";
+import { FiltrosVitrine } from "./FiltrosVitrine";
+import { SidebarCategorias } from "./SidebarCategorias";
+import { consolidarCarrinho, quantidadeTotal, MAX_ITENS, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
+import {
+  FILTROS_PADRAO,
+  aplicarFiltros,
+  categoriasComContagem,
+  codificarCarrinho,
+  decodificarCarrinho,
+  limitesDePreco,
+  montarCarrinho,
+  trocarVariante,
+  type FiltrosVitrine as Filtros,
+  type ItemVitrine,
+} from "@/lib/vitrine-catalogo";
 
-const ORDENACOES = [
-  { id: "relevancia", label: "Padrão" },
-  { id: "menor", label: "Menor preço" },
-  { id: "maior", label: "Maior preço" },
-  { id: "nome", label: "A-Z" },
-] as const;
-type Ordenacao = (typeof ORDENACOES)[number]["id"];
+const chaveSalvo = (slug: string) => `sertao:vitrine:${slug}:carrinho`;
 
-/** Controla a vitrine inteira: filtros (categoria, busca, faixa de preço), o pop-up de
- * produto e a exportação — nome, imagem e PDF só do que está filtrado/visível na hora. */
+/** localStorage pode não existir ou lançar (navegação privada, dados de site bloqueados). */
+function lerSalvo(slug: string): string | null {
+  try {
+    return window.localStorage.getItem(chaveSalvo(slug));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Controla a vitrine inteira: filtros, categorias, pop-up de produto e carrinho.
+ *
+ * O carrinho nunca guarda preço confiável: o que fica salvo/compartilhado são só ids e
+ * quantidades (`codificarCarrinho`), e quem reabre reconstrói com o catálogo de hoje.
+ */
 export function VitrineInterativa({
   nome,
   slug,
   itens,
   negocioWhatsapp,
+  carrinhoInicial,
 }: {
   nome: string;
   slug: string;
   itens: ItemVitrine[];
   negocioWhatsapp: string | null;
+  /** Vem do link de "Compartilhar carrinho" (?c=…), já reconstruído no servidor. */
+  carrinhoInicial: ItemCarrinhoVitrine[];
 }) {
-  const [baixando, setBaixando] = useState(false);
-  const [categoria, setCategoria] = useState<string>("Todas");
-  const [busca, setBusca] = useState("");
-  const [precoMax, setPrecoMax] = useState<number | null>(null);
-  const [ordenacao, setOrdenacao] = useState<Ordenacao>("relevancia");
+  const [filtros, setFiltros] = useState<Filtros>(FILTROS_PADRAO);
   const [produtoAberto, setProdutoAberto] = useState<ItemVitrine | null>(null);
-  const [carrinho, setCarrinho] = useState<ItemCarrinhoVitrine[]>([]);
-  const [carrinhoAberto, setCarrinhoAberto] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [carrinho, setCarrinho] = useState<ItemCarrinhoVitrine[]>(carrinhoInicial);
+  const [carrinhoAberto, setCarrinhoAberto] = useState(carrinhoInicial.length > 0);
+  const [salvoCodigo, setSalvoCodigo] = useState<string | null>(null);
 
-  /** Categoria com a contagem ao lado: o chip só ajuda se disser quanto tem dentro. */
-  const categorias = useMemo(() => {
-    const contagem = new Map<string, number>();
-    for (const i of itens) {
-      const c = i.categoria_nome ?? "Outros";
-      contagem.set(c, (contagem.get(c) ?? 0) + 1);
-    }
-    return [
-      { nome: "Todas", total: itens.length },
-      ...[...contagem.entries()]
-        .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
-        .map(([nome, total]) => ({ nome, total })),
-    ];
-  }, [itens]);
+  const categorias = useMemo(() => categoriasComContagem(itens), [itens]);
+  const limites = useMemo(() => limitesDePreco(itens), [itens]);
+  const itensFiltrados = useMemo(() => aplicarFiltros(itens, filtros), [itens, filtros]);
+  const salvoQuantidade = useMemo(
+    () => (salvoCodigo ? montarCarrinho(decodificarCarrinho(salvoCodigo), itens).length : 0),
+    [salvoCodigo, itens],
+  );
+  const pecas = quantidadeTotal(carrinho);
 
-  const precoMaximoDoCatalogo = useMemo(() => Math.max(...itens.map((i) => i.preco), 0), [itens]);
+  function mudarFiltros(parcial: Partial<Filtros>) {
+    setFiltros((prev) => ({ ...prev, ...parcial }));
+  }
 
-  const itensFiltrados = useMemo(() => {
-    const filtrados = itens.filter((item) => {
-      const passaCategoria = categoria === "Todas" || (item.categoria_nome ?? "Outros") === categoria;
-      const passaBusca = busca.trim() === "" || item.produto_nome.toLowerCase().includes(busca.trim().toLowerCase());
-      const passaPreco = precoMax === null || item.preco <= precoMax;
-      return passaCategoria && passaBusca && passaPreco;
-    });
+  function limparFiltros() {
+    setFiltros((prev) => ({ ...FILTROS_PADRAO, ordenacao: prev.ordenacao }));
+  }
 
-    // `relevancia` mantém a ordem do banco, que já vem por categoria e nome (0026:126).
-    if (ordenacao === "menor") return [...filtrados].sort((a, b) => a.preco - b.preco);
-    if (ordenacao === "maior") return [...filtrados].sort((a, b) => b.preco - a.preco);
-    if (ordenacao === "nome") return [...filtrados].sort((a, b) => a.produto_nome.localeCompare(b.produto_nome, "pt-BR"));
-    return filtrados;
-  }, [itens, categoria, busca, precoMax, ordenacao]);
+  function abrirCarrinho() {
+    setSalvoCodigo(lerSalvo(slug));
+    setCarrinhoAberto(true);
+  }
 
   function adicionarAoCarrinho(item: ItemCarrinhoVitrine) {
     setCarrinho((prev) => {
@@ -93,125 +99,125 @@ export function VitrineInterativa({
     setCarrinho((prev) => prev.map((i) => (i.produto_id === produtoId ? { ...i, quantidade } : i)));
   }
 
+  function trocarOpcao(produtoId: string, novoProdutoId: string) {
+    setCarrinho((prev) =>
+      consolidarCarrinho(prev.map((i) => (i.produto_id === produtoId ? trocarVariante(i, novoProdutoId) : i))),
+    );
+  }
+
   function removerDoCarrinho(produtoId: string) {
     setCarrinho((prev) => prev.filter((i) => i.produto_id !== produtoId));
   }
 
-  async function baixarImagem() {
-    if (!ref.current) return;
-    setBaixando(true);
+  function codigoDoCarrinho() {
+    return codificarCarrinho(carrinho.map((i) => ({ produto_id: i.produto_id, quantidade: i.quantidade })));
+  }
+
+  function salvarCarrinho() {
     try {
-      const dataUrl = await toPng(ref.current, { pixelRatio: 2, backgroundColor: "#ffffff" });
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = `${nome.toLowerCase().replace(/\s+/g, "-").slice(0, 40)}.png`;
-      a.click();
+      window.localStorage.setItem(chaveSalvo(slug), codigoDoCarrinho());
+      toast.success("Carrinho salvo neste aparelho");
     } catch {
-      toast.error("Erro ao gerar imagem");
-    } finally {
-      setBaixando(false);
+      toast.error("Não foi possível salvar neste navegador.");
+    }
+  }
+
+  async function compartilharCarrinho() {
+    const url = `${window.location.origin}${window.location.pathname}?c=${codigoDoCarrinho()}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Carrinho — ${nome}`, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success("Link do carrinho copiado");
+    } catch {
+      // Cancelar a folha de compartilhamento também cai aqui; não é erro que mereça aviso.
+    }
+  }
+
+  function restaurarCarrinho() {
+    if (!salvoCodigo) return;
+    const restaurado = montarCarrinho(decodificarCarrinho(salvoCodigo), itens);
+    if (restaurado.length === 0) {
+      toast.error("Os produtos desse carrinho não estão mais disponíveis.");
+      return;
+    }
+    setCarrinho(restaurado);
+    toast.success("Carrinho restaurado com os preços de hoje");
+  }
+
+  function aposEnvio() {
+    setCarrinho([]);
+    try {
+      window.localStorage.removeItem(chaveSalvo(slug));
+    } catch {
+      // sem localStorage não há o que limpar
     }
   }
 
   return (
     <div>
-      {/* Barra de filtros fixa ao rolar: numa vitrine de 200 itens, filtrar exigia voltar
-          ao topo. `print:hidden` porque nada disso faz sentido no PDF. */}
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur-sm print:hidden">
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar produto…"
-              aria-label="Buscar produto"
-              className={`${campoBase} w-full pl-8`}
+      {/* Barra fixa ao rolar: numa vitrine de 200 itens, filtrar exigia voltar ao topo. */}
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur-sm border-b border-border/60">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <FiltrosVitrine
+              filtros={filtros}
+              onMudar={mudarFiltros}
+              onLimpar={limparFiltros}
+              resultados={itensFiltrados.length}
+              limites={limites}
             />
           </div>
-          <select
-            value={ordenacao}
-            onChange={(e) => setOrdenacao(e.target.value as Ordenacao)}
-            aria-label="Ordenar por"
-            className={campoBase}
+          <button
+            onClick={abrirCarrinho}
+            className="relative shrink-0 h-9 w-11 rounded-md border border-border bg-surface-1 text-text-primary hover:border-accent flex items-center justify-center transition-colors"
+            aria-label={`Abrir carrinho${pecas > 0 ? `, ${pecas} ${pecas === 1 ? "item" : "itens"}` : ""}`}
           >
-            {ORDENACOES.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            <ShoppingCart size={18} />
+            {pecas > 0 && (
+              <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-accent text-accent-on text-[11px] font-semibold flex items-center justify-center tabular">
+                {pecas > 99 ? "99+" : pecas}
+              </span>
+            )}
+          </button>
         </div>
+      </div>
 
-        {/* Chips no lugar do <select>: a categoria é a navegação principal de uma loja,
-            e um menu fechado esconde o que a loja tem. A contagem vem junto. */}
-        {categorias.length > 2 && (
-          <ChipRow className="mb-2">
-            {categorias.map((c) => (
-              <Chip key={c.nome} ativo={categoria === c.nome} onClick={() => setCategoria(c.nome)}>
-                {c.nome} <span className="text-text-tertiary">({c.total})</span>
-              </Chip>
-            ))}
-          </ChipRow>
-        )}
+      <div className="lg:flex lg:gap-8">
+        <SidebarCategorias
+          categorias={categorias}
+          ativa={filtros.categoria}
+          onEscolher={(categoria) => mudarFiltros({ categoria })}
+        />
 
-        {precoMaximoDoCatalogo > 0 && (
-          <label className="flex items-center gap-2 text-xs text-text-secondary">
-            Até {precoMax === null ? "qualquer preço" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(precoMax)}
-            <input
-              type="range"
-              min={0}
-              max={precoMaximoDoCatalogo}
-              step={precoMaximoDoCatalogo > 100 ? 10 : 1}
-              value={precoMax ?? precoMaximoDoCatalogo}
-              onChange={(e) => setPrecoMax(Number(e.target.value))}
-              className="w-28 accent-accent"
+        <div className="flex-1 min-w-0">
+          {itensFiltrados.length === 0 ? (
+            <EmptyState
+              icon={PackageSearch}
+              title="Nenhum produto com esses filtros"
+              description="Tente outra categoria ou limpe a busca."
+              action={
+                <Button variant="secondary" onClick={limparFiltros}>
+                  Limpar filtros
+                </Button>
+              }
             />
-          </label>
-        )}
+          ) : (
+            <VitrineView itens={itensFiltrados} onClickItem={setProdutoAberto} />
+          )}
+        </div>
       </div>
 
-      <div className="flex gap-2 mb-6 print:hidden">
-        <Button variant="secondary" onClick={baixarImagem} loading={baixando}>
-          <Download size={14} />
-          Baixar Imagem
-        </Button>
-        <Button variant="secondary" onClick={() => window.print()}>
-          <Printer size={14} />
-          Salvar como PDF
-        </Button>
-      </div>
+      <ProdutoPopup
+        item={produtoAberto}
+        nomeCatalogo={nome}
+        negocioWhatsapp={negocioWhatsapp}
+        onAdicionar={adicionarAoCarrinho}
+        onClose={() => setProdutoAberto(null)}
+      />
 
-      <div ref={ref} className="bg-background">
-        {itensFiltrados.length === 0 ? (
-          <EmptyState
-            icon={PackageSearch}
-            title="Nenhum produto com esses filtros"
-            description="Tente outra categoria ou limpe a busca."
-            action={
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setBusca("");
-                  setCategoria("Todas");
-                  setPrecoMax(null);
-                }}
-              >
-                Limpar filtros
-              </Button>
-            }
-          />
-        ) : (
-          <VitrineView itens={itensFiltrados} onClickItem={setProdutoAberto} />
-        )}
-      </div>
-
-      {/* Espaço para a barra do carrinho não tapar o último produto da lista. */}
-      {carrinho.length > 0 && <div className="h-20 print:hidden" aria-hidden="true" />}
-
-      <ProdutoPopup item={produtoAberto} onAdicionar={adicionarAoCarrinho} onClose={() => setProdutoAberto(null)} />
-
-      <BarraCarrinho itens={carrinho} onAbrir={() => setCarrinhoAberto(true)} />
       <CarrinhoVitrine
         aberto={carrinhoAberto}
         onFechar={() => setCarrinhoAberto(false)}
@@ -220,8 +226,13 @@ export function VitrineInterativa({
         nomeCatalogo={nome}
         negocioWhatsapp={negocioWhatsapp}
         onMudarQuantidade={mudarQuantidade}
+        onTrocarVariante={trocarOpcao}
         onRemover={removerDoCarrinho}
-        onEnviado={() => setCarrinho([])}
+        onEnviado={aposEnvio}
+        onSalvar={salvarCarrinho}
+        onCompartilhar={compartilharCarrinho}
+        salvoQuantidade={salvoQuantidade}
+        onRestaurar={restaurarCarrinho}
       />
     </div>
   );

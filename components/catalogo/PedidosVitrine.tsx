@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "sonner";
 import { useMemo, useState, useTransition } from "react";
 import { Inbox, MessageCircle, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -34,6 +35,9 @@ export interface PedidoVitrine {
   catalogo_nome: string | null;
   cliente_nome: string;
   cliente_whatsapp: string;
+  /** Opcionais: o comprador pode não ter informado. Sempre exibidos como TEXTO. */
+  cliente_email: string | null;
+  entrega: string | null;
   observacao: string | null;
   total: number;
   status: "pendente" | "aceito" | "recusado" | "convertido";
@@ -237,6 +241,18 @@ export function PedidosVitrine({
                   {aberto.cliente_whatsapp}
                 </a>
               </div>
+              {aberto.cliente_email && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-text-secondary">E-mail</span>
+                  <span className="text-text-primary text-right break-all">{aberto.cliente_email}</span>
+                </div>
+              )}
+              {aberto.entrega && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-text-secondary shrink-0">Entrega</span>
+                  <span className="text-text-primary text-right break-words">{aberto.entrega}</span>
+                </div>
+              )}
               {aberto.observacao && (
                 <div className="pt-2">
                   <div className="text-text-secondary mb-1">Observação</div>
@@ -365,6 +381,9 @@ export function PedidosVitrine({
             setSalvando(false);
             if (r.ok) {
               setCheckout(null);
+              if (r.dado.cliente_criado) {
+                toast.success("Comprador cadastrado em Clientes (inativo)");
+              }
             }
           });
         }}

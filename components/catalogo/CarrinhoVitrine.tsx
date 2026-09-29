@@ -2,44 +2,26 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Minus, Plus, ShoppingCart, Trash2, MessageCircle } from "lucide-react";
+import { Minus, Plus, ShoppingCart, Trash2, MessageCircle, Save, Share2, RotateCcw } from "lucide-react";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button, IconButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CamposEndereco, type EnderecoForm } from "@/components/clientes/CamposEndereco";
 import { formatBRL } from "@/lib/format";
+import { buscarCepPublico } from "@/lib/cep-publico";
+import { enderecoEmLinha } from "@/lib/comprovante";
 import {
   MAX_QTD,
   MAX_OBSERVACAO,
   totalCarrinho,
-  quantidadeTotal,
   textoPedidoVitrine,
   linkPedidoWhatsapp,
   type ItemCarrinhoVitrine,
 } from "@/lib/vitrine-pedido";
 
-/**
- * Barra fixa no rodapé da vitrine, que abre o carrinho.
- *
- * Só aparece com item dentro: numa vitrine sendo só olhada, uma barra permanente rouba
- * espaço de tela justo no celular, que é de onde quase todo mundo abre o link.
- */
-export function BarraCarrinho({ itens, onAbrir }: { itens: ItemCarrinhoVitrine[]; onAbrir: () => void }) {
-  if (itens.length === 0) return null;
-  const pecas = quantidadeTotal(itens);
-
-  return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 p-3 bg-surface-1/95 backdrop-blur-sm border-t border-border print:hidden">
-      <div className="max-w-5xl mx-auto">
-        <Button variant="primary" className="w-full h-11" onClick={onAbrir}>
-          <ShoppingCart size={16} />
-          Ver carrinho · {pecas} {pecas === 1 ? "item" : "itens"} · {formatBRL(totalCarrinho(itens))}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 type Etapa = "carrinho" | "dados";
+
+const ENDERECO_VAZIO: EnderecoForm = { cep: null, endereco: null, numero: null, bairro: null, cidade: null, uf: null };
 
 export function CarrinhoVitrine({
   aberto,
@@ -49,8 +31,13 @@ export function CarrinhoVitrine({
   nomeCatalogo,
   negocioWhatsapp,
   onMudarQuantidade,
+  onTrocarVariante,
   onRemover,
   onEnviado,
+  onSalvar,
+  onCompartilhar,
+  salvoQuantidade,
+  onRestaurar,
 }: {
   aberto: boolean;
   onFechar: () => void;
@@ -59,12 +46,20 @@ export function CarrinhoVitrine({
   nomeCatalogo: string;
   negocioWhatsapp: string | null;
   onMudarQuantidade: (produtoId: string, quantidade: number) => void;
+  onTrocarVariante: (produtoId: string, novoProdutoId: string) => void;
   onRemover: (produtoId: string) => void;
   onEnviado: () => void;
+  onSalvar: () => void;
+  onCompartilhar: () => void;
+  /** Quantos itens há no carrinho salvo do navegador (0 = nenhum). */
+  salvoQuantidade: number;
+  onRestaurar: () => void;
 }) {
   const [etapa, setEtapa] = useState<Etapa>("carrinho");
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [email, setEmail] = useState("");
+  const [endereco, setEndereco] = useState<EnderecoForm>(ENDERECO_VAZIO);
   const [observacao, setObservacao] = useState("");
   const [enviando, setEnviando] = useState(false);
   /**
@@ -91,6 +86,13 @@ export function CarrinhoVitrine({
           slug,
           nome,
           whatsapp,
+          email: email.trim(),
+          cep: endereco.cep ?? "",
+          logradouro: endereco.endereco,
+          numero: endereco.numero,
+          bairro: endereco.bairro,
+          cidade: endereco.cidade,
+          uf: endereco.uf ?? "",
           observacao: observacao.trim() || null,
           idempotencia,
           itens: itens.map((i) => ({ produto_id: i.produto_id, quantidade: i.quantidade })),
@@ -126,6 +128,7 @@ export function CarrinhoVitrine({
           total: enviado.total,
           nomeCliente: nome,
           observacao: observacao.trim() || null,
+          entrega: enderecoEmLinha({ ...endereco }),
         }),
         negocioWhatsapp,
       )
@@ -157,38 +160,80 @@ export function CarrinhoVitrine({
       ) : etapa === "carrinho" ? (
         <>
           {itens.length === 0 ? (
-            <EmptyState icon={ShoppingCart} title="Seu carrinho está vazio" description="Toque num produto para adicionar." />
+            <div>
+              <EmptyState icon={ShoppingCart} title="Seu carrinho está vazio" description="Toque num produto para adicionar." />
+              {salvoQuantidade > 0 && (
+                <Button variant="secondary" className="w-full mt-2" onClick={onRestaurar}>
+                  <RotateCcw size={14} />
+                  Restaurar carrinho salvo ({salvoQuantidade} {salvoQuantidade === 1 ? "item" : "itens"})
+                </Button>
+              )}
+              <Button variant="primary" className="w-full mt-2" onClick={onFechar}>
+                Ver produtos
+              </Button>
+            </div>
           ) : (
             <>
-              <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
+              <div className="space-y-2 mb-3 max-h-80 overflow-y-auto">
                 {itens.map((i) => (
-                  <div key={i.produto_id} className="flex items-center gap-3 border border-border rounded-md p-2.5">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm text-text-primary truncate">{i.nome}</div>
-                      <div className="text-xs text-text-tertiary font-mono">{formatBRL(i.preco)} cada</div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <IconButton
-                        onClick={() => onMudarQuantidade(i.produto_id, i.quantidade - 1)}
-                        disabled={i.quantidade <= 1}
-                        aria-label={`Diminuir ${i.nome}`}
-                      >
-                        <Minus size={14} />
-                      </IconButton>
-                      <span className="font-mono text-sm w-7 text-center tabular">{i.quantidade}</span>
-                      <IconButton
-                        onClick={() => onMudarQuantidade(i.produto_id, i.quantidade + 1)}
-                        disabled={i.quantidade >= MAX_QTD}
-                        aria-label={`Aumentar ${i.nome}`}
-                      >
-                        <Plus size={14} />
-                      </IconButton>
+                  <div key={i.produto_id} className="border border-border rounded-md p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-text-primary">{i.nomeBase ?? i.nome}</div>
+                        <div className="text-xs text-text-tertiary font-mono">{formatBRL(i.preco)} cada</div>
+                      </div>
                       <IconButton onClick={() => onRemover(i.produto_id)} aria-label={`Remover ${i.nome}`}>
                         <Trash2 size={14} className="text-negative" />
                       </IconButton>
                     </div>
+                    <div className="flex items-center justify-between gap-2 mt-2">
+                      {i.opcoes && i.opcoes.length > 1 ? (
+                        <select
+                          value={i.produto_id}
+                          onChange={(e) => onTrocarVariante(i.produto_id, e.target.value)}
+                          aria-label={`Opção de ${i.nomeBase ?? i.nome}`}
+                          className={`${inputClass} !h-8 !w-auto max-w-[60%]`}
+                        >
+                          {i.opcoes.map((o) => (
+                            <option key={o.produto_id} value={o.produto_id}>
+                              {o.rotulo} — {formatBRL(o.preco)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span />
+                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <IconButton
+                          onClick={() => onMudarQuantidade(i.produto_id, i.quantidade - 1)}
+                          disabled={i.quantidade <= 1}
+                          aria-label={`Diminuir ${i.nome}`}
+                        >
+                          <Minus size={14} />
+                        </IconButton>
+                        <span className="font-mono text-sm w-7 text-center tabular">{i.quantidade}</span>
+                        <IconButton
+                          onClick={() => onMudarQuantidade(i.produto_id, i.quantidade + 1)}
+                          disabled={i.quantidade >= MAX_QTD}
+                          aria-label={`Aumentar ${i.nome}`}
+                        >
+                          <Plus size={14} />
+                        </IconButton>
+                      </div>
+                    </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="flex gap-2 mb-3">
+                <Button variant="ghost" size="sm" onClick={onSalvar}>
+                  <Save size={14} />
+                  Salvar carrinho
+                </Button>
+                <Button variant="ghost" size="sm" onClick={onCompartilhar}>
+                  <Share2 size={14} />
+                  Compartilhar
+                </Button>
               </div>
 
               <div className="flex items-center justify-between pt-3 border-t border-border mb-4">
@@ -196,9 +241,14 @@ export function CarrinhoVitrine({
                 <span className="font-mono text-lg font-semibold text-text-primary">{formatBRL(total)}</span>
               </div>
 
-              <Button variant="primary" className="w-full h-11" onClick={() => setEtapa("dados")}>
-                Continuar
-              </Button>
+              <div className="flex flex-col-reverse sm:flex-row gap-2">
+                <Button variant="secondary" className="flex-1 h-11" onClick={onFechar}>
+                  Adicionar mais produtos
+                </Button>
+                <Button variant="primary" className="flex-1 h-11" onClick={() => setEtapa("dados")}>
+                  Finalizar compra
+                </Button>
+              </div>
             </>
           )}
         </>
@@ -216,6 +266,34 @@ export function CarrinhoVitrine({
               placeholder="(11) 99999-8888"
             />
           </FormField>
+          <FormField label="E-mail (opcional)">
+            <input
+              className={inputClass}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="voce@email.com"
+            />
+          </FormField>
+
+          <div className="border-t border-border pt-3 mt-1">
+            <div className="text-sm font-medium text-text-primary mb-0.5">Entrega (opcional)</div>
+            <p className="text-xs text-text-tertiary mb-3">
+              Ajuda a loja a calcular o frete. Digite o CEP e o endereço é preenchido sozinho.
+            </p>
+            <FormField label="País">
+              <select className={inputClass} value="BR" disabled aria-label="País">
+                <option value="BR">Brasil</option>
+              </select>
+            </FormField>
+            <CamposEndereco
+              valor={endereco}
+              comComplemento={false}
+              buscar={buscarCepPublico}
+              onChange={(patch) => setEndereco((prev) => ({ ...prev, ...patch }))}
+            />
+          </div>
+
           <FormField label="Observação (opcional)">
             <textarea
               className={`${inputClass} h-20 py-2 resize-none`}

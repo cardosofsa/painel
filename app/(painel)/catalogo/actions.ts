@@ -12,12 +12,14 @@ const PATH = "/catalogo";
 
 export interface CatalogoInput {
   nome: string;
+  tipo_preco: "varejo" | "atacado";
 }
 
 export interface ProdutoPrecoCatalogo {
   produto_id: string;
   produto_nome: string;
-  preco_venda: number;
+  /** Preço do tipo do catálogo (varejo ou atacado). null/0 = "Consultar" se não houver override. */
+  preco_base: number | null;
   preco_override: number | null;
 }
 
@@ -75,16 +77,20 @@ export async function listarPrecosCatalogo(catalogoId: string) {
   return comResultado(async (): Promise<ProdutoPrecoCatalogo[]> => {
     const supabase = await createClient();
 
-    const [produtosRes, overridesRes, gruposRes] = await Promise.all([
+    const [produtosRes, overridesRes, gruposRes, catalogoRes] = await Promise.all([
       supabase
         .from("produtos")
-        .select("id, nome, preco_venda, grupo_id, variante_nome")
+        .select("id, nome, preco_venda, preco_atacado, grupo_id, variante_nome")
         .eq("ativo", true)
         .gt("estoque", 0)
         .order("nome"),
       supabase.from("catalogo_precos").select("produto_id, preco").eq("catalogo_id", catalogoId),
       supabase.from("produto_grupos").select("id, nome"),
+      supabase.from("catalogos").select("tipo_preco").eq("id", catalogoId).maybeSingle(),
     ]);
+    if (catalogoRes.error) lancarErroSupabase(catalogoRes.error);
+    if (!catalogoRes.data) throw new Error("Catálogo não encontrado.");
+    const atacado = catalogoRes.data.tipo_preco === "atacado";
     if (produtosRes.error) lancarErroSupabase(produtosRes.error);
     if (overridesRes.error) lancarErroSupabase(overridesRes.error);
     if (gruposRes.error) lancarErroSupabase(gruposRes.error);
@@ -97,7 +103,7 @@ export async function listarPrecosCatalogo(catalogoId: string) {
     return (produtosRes.data ?? []).map((p) => ({
       produto_id: p.id,
       produto_nome: rotuloProduto({ ...p, grupo_nome: p.grupo_id ? (grupos.get(p.grupo_id) ?? null) : null }),
-      preco_venda: p.preco_venda,
+      preco_base: atacado ? p.preco_atacado : p.preco_venda,
       preco_override: overridePorProduto.get(p.id) ?? null,
     }));
   });

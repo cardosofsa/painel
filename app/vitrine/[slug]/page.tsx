@@ -3,7 +3,7 @@ import { BookOpen } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { VitrineInterativa } from "@/components/catalogo/VitrineInterativa";
-import type { ItemVitrine } from "@/components/catalogo/VitrineView";
+import { agruparLinhas, decodificarCarrinho, montarCarrinho } from "@/lib/vitrine-catalogo";
 import { buscarCatalogoPublico, buscarAparenciaPublica } from "./dados";
 
 /**
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     return { title: "Catálogo não encontrado", robots: { index: false, follow: false } };
   }
 
-  const comProduto = linhas.filter((l) => l.produto_id !== null && l.preco !== null && l.preco > 0);
+  const comProduto = linhas.filter((l) => l.produto_id !== null);
   const capa = comProduto.find((l) => l.imagem_url)?.imagem_url ?? undefined;
   const descricao =
     comProduto.length > 0
@@ -51,8 +51,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-export default async function VitrinePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function VitrinePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ c?: string }>;
+}) {
   const { slug } = await params;
+  const { c } = await searchParams;
   const [linhas, aparencia] = await Promise.all([buscarCatalogoPublico(slug), buscarAparenciaPublica(slug)]);
 
   const nome = linhas[0]?.catalogo_nome;
@@ -62,50 +69,13 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
   const tituloExibido = aparencia?.titulo || nome;
 
   // Quando o catálogo existe mas não tem produto elegível, a função ainda devolve uma
-  // linha (pra distinguir de "slug inválido"), só que com produto_id/preco nulos.
-  //
-  // `preco > 0` também é exigido: um produto sem preço definido no catálogo cai no
-  // `coalesce(cp.preco, p.preco_venda)` da RPC e, se `preco_venda` nunca foi preenchido,
-  // vem como 0 — sem esse filtro ele aparecia vendável por R$ 0,00 (ver
-  // `catalogo_precos`/`obter_catalogo_publico` — não há como distinguir "de graça" de
-  // "esqueceu de precificar" no banco, então tratamos preço zerado como "ainda não
-  // configurado", igual ao catálogo já faz com estoque zerado).
-  const validas = linhas.filter((i) => i.produto_id !== null && i.produto_nome !== null && i.preco !== null && i.preco > 0);
+  // linha (pra distinguir de "slug inválido"), só que com produto_id nulo. Produto sem
+  // preço (preço nulo ou zero) NÃO é filtrado: vira "Consultar" na tela, e a RPC de pedido
+  // recusa esse item no banco.
+  const itens = agruparLinhas(linhas);
 
-  // A RPC devolve uma linha por SKU (pra variante esgotada sumir sozinha pelo filtro
-  // de estoque). Aqui as variantes do mesmo grupo viram UM item, com o menor preço.
-  const porChave = new Map<string, ItemVitrine>();
-  for (const linha of validas) {
-    const chave = linha.grupo_id ?? linha.produto_id!;
-    const variante = {
-      produto_id: linha.produto_id!,
-      variante_nome: linha.variante_nome,
-      preco: linha.preco!,
-      imagem_url: linha.imagem_url,
-      imagens_extra: linha.imagens_extra ?? [],
-    };
-
-    const existente = porChave.get(chave);
-    if (existente) {
-      existente.variantes.push(variante);
-      if (variante.preco < existente.preco) existente.preco = variante.preco;
-      existente.imagem_url = existente.imagem_url ?? variante.imagem_url;
-      continue;
-    }
-
-    porChave.set(chave, {
-      produto_id: chave,
-      produto_nome: linha.produto_nome!,
-      descricao: linha.descricao,
-      imagem_url: linha.imagem_url,
-      categoria_nome: linha.categoria_nome,
-      preco: linha.preco!,
-      imagens_extra: linha.imagens_extra ?? [],
-      variantes: [variante],
-    });
-  }
-
-  const itens: ItemVitrine[] = Array.from(porChave.values());
+  // Carrinho vindo do link "Compartilhar": só ids e quantidades; nome e preço são os de hoje.
+  const carrinhoInicial = montarCarrinho(decodificarCarrinho(c), itens);
 
   return (
     <div className="min-h-screen bg-background">
@@ -138,7 +108,13 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
                 <EmptyState icon={BookOpen} title="Nenhum produto disponível no momento" />
               </div>
             ) : (
-              <VitrineInterativa nome={nome} slug={slug} itens={itens} negocioWhatsapp={negocioWhatsapp} />
+              <VitrineInterativa
+                nome={nome}
+                slug={slug}
+                itens={itens}
+                negocioWhatsapp={negocioWhatsapp}
+                carrinhoInicial={carrinhoInicial}
+              />
             )}
           </>
         )}

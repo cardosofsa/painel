@@ -29,25 +29,32 @@ const NENHUM_TRAVADO = { endereco: false, bairro: false, cidade: false, uf: fals
 export function CamposEndereco({
   valor,
   onChange,
+  buscar,
   comComplemento = true,
 }: {
   valor: EnderecoForm;
   onChange: (patch: Partial<EnderecoForm>) => void;
+  /** Como buscar o CEP: `buscarCepPainel` (com sessão) ou `buscarCepPublico` (vitrine). */
+  buscar: (cep: string) => Promise<EnderecoCep | null>;
   /** Endereço de empresa não usa complemento; cliente sim. */
   comComplemento?: boolean;
 }) {
   const [cepBusca, setCepBusca] = useState("");
   const [travado, setTravado] = useState(NENHUM_TRAVADO);
 
-  const estado = useCep(cepBusca, (e: EnderecoCep) => {
-    onChange({
-      endereco: e.logradouro || valor.endereco,
-      bairro: e.bairro || valor.bairro,
-      cidade: e.cidade,
-      uf: e.uf,
-    });
-    setTravado({ endereco: !!e.logradouro, bairro: !!e.bairro, cidade: true, uf: true });
-  });
+  const estado = useCep(
+    cepBusca,
+    (e: EnderecoCep) => {
+      onChange({
+        endereco: e.logradouro || valor.endereco,
+        bairro: e.bairro || valor.bairro,
+        cidade: e.cidade,
+        uf: e.uf,
+      });
+      setTravado({ endereco: !!e.logradouro, bairro: !!e.bairro, cidade: true, uf: true });
+    },
+    buscar,
+  );
 
   const algumTravado = travado.endereco || travado.bairro || travado.cidade || travado.uf;
 

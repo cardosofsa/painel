@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { BookOpen, Copy, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -11,23 +11,20 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-import { formatBRL } from "@/lib/format";
 import {
   criarCatalogo,
   atualizarCatalogo,
   alternarAtivoCatalogo,
   regenerarLinkCatalogo,
   removerCatalogo,
-  listarPrecosCatalogo,
-  salvarPrecosCatalogo,
   type CatalogoInput,
-  type ProdutoPrecoCatalogo,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/Tabs";
 import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
 import { AparenciaModal } from "@/components/catalogo/AparenciaModal";
+import { PrecosCatalogoModal } from "@/components/catalogo/PrecosCatalogoModal";
 import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
 
 export interface Catalogo {
@@ -35,6 +32,7 @@ export interface Catalogo {
   nome: string;
   slug: string;
   ativo: boolean;
+  tipo_preco: "varejo" | "atacado";
   criado_em: string;
 }
 
@@ -164,8 +162,9 @@ export function CatalogoClient({
         <p className="text-sm text-text-secondary">
           Cada catálogo é uma vitrine pública com um link próprio, pronta pra enviar ao cliente. Os produtos entram
           automaticamente: hoje <strong className="text-text-primary">{totalProdutosElegiveis}</strong> produto(s) ativo(s) e
-          com estoque aparecem nos catálogos. O preço padrão é o preço de venda — use &quot;Editar Preços&quot; pra ajustar um
-          valor diferente só num catálogo específico.
+          com estoque aparecem nos catálogos. Cada catálogo é de <strong className="text-text-primary">varejo</strong> ou de{" "}
+          <strong className="text-text-primary">atacado</strong> e usa o preço correspondente de cada produto; produto sem preço
+          aparece como “Consultar”. Use &quot;Preços&quot; pra ajustar um valor só num catálogo específico.
         </p>
       </Card>
 
@@ -191,6 +190,7 @@ export function CatalogoClient({
                   <div className="flex items-center gap-2 mb-2">
                     <span className="font-medium text-text-primary">{c.nome}</span>
                     <StatusChip label={c.ativo ? "Ativo" : "Inativo"} tone={c.ativo ? "positive" : "neutral"} />
+                    <StatusChip label={c.tipo_preco === "atacado" ? "Atacado" : "Varejo"} tone="neutral" />
                   </div>
                   <div className="flex items-center gap-2">
                     <code className="text-xs bg-surface-2 text-text-secondary rounded px-2 py-1 truncate max-w-xs">
@@ -214,7 +214,7 @@ export function CatalogoClient({
                   actions={[
                     { label: "Editar", onClick: () => setModalCatalogo(c) },
                     { label: "Personalizar Aparência", onClick: () => setAparenciaCatalogo(c) },
-                    { label: "Editar Preços", onClick: () => setPrecosCatalogo(c) },
+                    { label: "Preços", onClick: () => setPrecosCatalogo(c) },
                     { label: c.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivoHandler(c) },
                     { label: "Gerar novo link", onClick: () => regenerarLinkHandler(c) },
                     { label: "Remover", onClick: () => removerCatalogoHandler(c), destructive: true },
@@ -263,108 +263,31 @@ function CatalogoModal({
   onSave: (dados: CatalogoInput) => void;
   salvando: boolean;
 }) {
-  const base = catalogo && catalogo !== "novo" ? catalogo : { nome: "" };
+  const base: CatalogoInput = catalogo && catalogo !== "novo" ? { nome: catalogo.nome, tipo_preco: catalogo.tipo_preco } : { nome: "", tipo_preco: "varejo" };
   const [nome, setNome] = useState(base.nome);
+  const [tipoPreco, setTipoPreco] = useState<CatalogoInput["tipo_preco"]>(base.tipo_preco);
+  const [inicial] = useState(base);
+  const sujo = useFormularioSujo({ nome, tipo_preco: tipoPreco }, inicial);
 
   return (
-    <Modal open={!!catalogo} onClose={onClose} title={catalogo === "novo" ? "Novo Catálogo" : "Editar Catálogo"}>
+    <Modal open={!!catalogo} onClose={onClose} title={catalogo === "novo" ? "Novo Catálogo" : "Editar Catálogo"} sujo={sujo}>
       <FormField label="Nome do Catálogo">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Catálogo Varejo" />
+      </FormField>
+      <FormField
+        label="Tipo de preço"
+        dica="Varejo usa o preço de venda de cada produto; atacado usa o preço de atacado (sem ele, o produto aparece como “Consultar”)."
+      >
+        <select className={inputClass} value={tipoPreco} onChange={(e) => setTipoPreco(e.target.value as CatalogoInput["tipo_preco"])}>
+          <option value="varejo">Varejo</option>
+          <option value="atacado">Atacado</option>
+        </select>
       </FormField>
       <div className="flex gap-2 mt-4">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
         </Button>
-        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome })} loading={salvando}>
-          Salvar
-        </Button>
-      </div>
-    </Modal>
-  );
-}
-
-function PrecosCatalogoModal({ catalogo, onClose }: { catalogo: Catalogo | null; onClose: () => void }) {
-  const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
-  const [itens, setItens] = useState<ProdutoPrecoCatalogo[]>([]);
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
-  const [overridesOriginais, setOverridesOriginais] = useState<Record<string, string>>({});
-  const sujo = useFormularioSujo(overrides, overridesOriginais);
-
-  useEffect(() => {
-    if (!catalogo) return;
-    // O toast de erro sai de dentro de `executarComToast`, com a mensagem traduzida que o
-    // servidor devolveu — o `.catch` que havia aqui trocava tudo por "Erro ao carregar
-    // produtos" e escondia, por exemplo, a conta estar suspensa.
-    executarComToast(listarPrecosCatalogo(catalogo.id), { erro: "Erro ao carregar produtos" })
-      .then((r) => {
-        if (!r.ok) return;
-        setItens(r.dado);
-        const carregados = Object.fromEntries(
-          r.dado.filter((d) => d.preco_override !== null).map((d) => [d.produto_id, String(d.preco_override)]),
-        );
-        setOverrides(carregados);
-        setOverridesOriginais(carregados);
-      })
-      .finally(() => setCarregando(false));
-  }, [catalogo]);
-
-  async function salvar() {
-    if (!catalogo) return;
-    setSalvando(true);
-    const payload = itens.map((item) => {
-      const texto = overrides[item.produto_id]?.trim();
-      const preco = texto ? Number(texto) : null;
-      return { produto_id: item.produto_id, preco: preco !== null && !Number.isNaN(preco) ? preco : null };
-    });
-    const r = await executarComToast(salvarPrecosCatalogo(catalogo.id, payload), {
-      sucesso: "Preços salvos",
-      erro: "Erro ao salvar preços",
-    });
-    setSalvando(false);
-    if (r.ok) onClose();
-  }
-
-  return (
-    <Modal
-      open={!!catalogo}
-      onClose={onClose}
-      title={catalogo ? `Editar Preços — ${catalogo.nome}` : ""}
-      width="max-w-xl"
-      sujo={sujo}
-    >
-      <p className="text-sm text-text-secondary mb-4">
-        Deixe em branco pra usar o preço de venda normal. O valor aqui vale só pra este catálogo.
-      </p>
-      {carregando ? (
-        <p className="text-sm text-text-tertiary py-6 text-center">Carregando…</p>
-      ) : itens.length === 0 ? (
-        <p className="text-sm text-text-tertiary py-6 text-center">Nenhum produto ativo com estoque no momento.</p>
-      ) : (
-        <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
-          {itens.map((item) => (
-            <div key={item.produto_id} className="flex items-center justify-between gap-3 border border-border rounded-md p-2.5">
-              <div className="min-w-0">
-                <div className="text-sm text-text-primary truncate">{item.produto_nome}</div>
-                <div className="text-xs text-text-tertiary">Venda: {formatBRL(item.preco_venda)}</div>
-              </div>
-              <input
-                type="number"
-                step="0.01"
-                placeholder={item.preco_venda.toFixed(2)}
-                className="w-28 h-9 px-2 bg-surface-1 border border-border rounded-md text-sm text-right outline-none focus:border-accent"
-                value={overrides[item.produto_id] ?? ""}
-                onChange={(e) => setOverrides((prev) => ({ ...prev, [item.produto_id]: e.target.value }))}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-2">
-        <Button variant="secondary" className="flex-1" onClick={onClose}>
-          Cancelar
-        </Button>
-        <Button variant="primary" className="flex-1" onClick={salvar} loading={salvando} disabled={carregando}>
+        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome, tipo_preco: tipoPreco })} loading={salvando}>
           Salvar
         </Button>
       </div>

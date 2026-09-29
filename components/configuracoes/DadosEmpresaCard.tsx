@@ -8,6 +8,7 @@ import { FormField, inputClass } from "@/components/ui/Modal";
 import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { CamposEndereco } from "@/components/clientes/CamposEndereco";
+import { buscarCepPainel } from "@/lib/cep-painel";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { executarComToast } from "@/lib/acao-cliente";
 import { salvarDadosEmpresa, type DadosEmpresaInput } from "@/app/(painel)/configuracoes/actions";
@@ -96,7 +97,7 @@ export function DadosEmpresaCard({ inicial }: { inicial: DadosEmpresaInput }) {
         </div>
 
         <div>
-          <CamposEndereco valor={dados} comComplemento={false} onChange={(patch) => setDados((prev) => ({ ...prev, ...patch }))} />
+          <CamposEndereco buscar={buscarCepPainel} valor={dados} comComplemento={false} onChange={(patch) => setDados((prev) => ({ ...prev, ...patch }))} />
         </div>
       </div>
 

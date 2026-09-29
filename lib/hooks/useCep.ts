@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cepCompleto, normalizarCep, type EnderecoCep } from "@/lib/cep";
-import { buscarCep } from "@/app/(painel)/clientes/actions";
 
 export type EstadoCep = "parado" | "buscando" | "achou" | "nao-achou";
 
@@ -13,7 +12,11 @@ export type EstadoCep = "parado" | "buscando" | "achou" | "nao-achou";
  * descarta resposta velha: digitar outro CEP enquanto o anterior ainda volta não pode
  * sobrescrever o campo com o endereço errado.
  */
-export function useCep(cep: string, onEndereco: (e: EnderecoCep) => void) {
+export function useCep(
+  cep: string,
+  onEndereco: (e: EnderecoCep) => void,
+  buscar: (cep: string) => Promise<EnderecoCep | null>,
+) {
   const [estado, setEstado] = useState<EstadoCep>("parado");
   const ultimo = useRef(0);
   const callback = useRef(onEndereco);
@@ -28,11 +31,11 @@ export function useCep(cep: string, onEndereco: (e: EnderecoCep) => void) {
     const digitos = normalizarCep(cep);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- estado da requisição em curso
     setEstado("buscando");
-    buscarCep(digitos)
-      .then((r) => {
+    buscar(digitos)
+      .then((endereco) => {
         if (minha !== ultimo.current) return;
-        if (r.ok && r.dado) {
-          callback.current(r.dado);
+        if (endereco) {
+          callback.current(endereco);
           setEstado("achou");
         } else {
           setEstado("nao-achou");
@@ -41,6 +44,8 @@ export function useCep(cep: string, onEndereco: (e: EnderecoCep) => void) {
       .catch(() => {
         if (minha === ultimo.current) setEstado("nao-achou");
       });
+    // `buscar` é uma função estável do módulo; incluí-la não muda quando a busca dispara.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cep]);
 
   return cepCompleto(cep) ? estado : "parado";

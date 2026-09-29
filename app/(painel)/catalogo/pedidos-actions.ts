@@ -6,6 +6,7 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 import { z } from "zod";
+import { garantirClienteDoPedido } from "./cliente-do-pedido";
 
 /**
  * Ações sobre o pedido que chegou da vitrine.
@@ -166,6 +167,16 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
       throw new Error("Nenhum produto deste pedido existe mais no seu cadastro.");
     }
 
+    // Sem cliente escolhido no checkout, o comprador do pedido vira cliente: o cadastro que já
+    // tem esse WhatsApp, ou um novo INATIVO com os dados que ele informou.
+    let clienteId = v.cliente_id;
+    let clienteCriado = false;
+    if (!clienteId) {
+      const cliente = await garantirClienteDoPedido(supabase, v.pedidoId);
+      clienteId = cliente?.clienteId ?? null;
+      clienteCriado = cliente?.criado ?? false;
+    }
+
     const { data: venda, error } = await supabase
       .rpc("registrar_venda", {
         p_itens: vendaveis.map((i) => ({
@@ -174,7 +185,7 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
           preco_unitario: Number(i.preco_unitario),
         })),
         p_status: v.status,
-        p_cliente_id: v.cliente_id,
+        p_cliente_id: clienteId,
         p_conta_id: v.conta_id,
         p_forma_pagamento: v.forma_pagamento,
         p_desconto: v.desconto,
@@ -204,7 +215,8 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
     revalidatePath("/estoque");
     revalidatePath("/financeiro");
     revalidatePath("/dashboard");
-    return venda;
+    revalidatePath("/clientes");
+    return { ...venda, cliente_criado: clienteCriado };
   });
 }
 

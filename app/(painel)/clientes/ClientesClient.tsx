@@ -23,6 +23,7 @@ import {
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { CamposEndereco } from "@/components/clientes/CamposEndereco";
+import { buscarCepPainel } from "@/lib/cep-painel";
 
 export interface Cliente extends ClienteInput {
   id: string;
@@ -269,7 +270,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
             placeholder="Ex: 11987654321"
           />
         </FormField>
-        <CamposEndereco valor={form} onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))} />
+        <CamposEndereco buscar={buscarCepPainel} valor={form} onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))} />
 
         <button
           type="button"

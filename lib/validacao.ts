@@ -69,6 +69,8 @@ export const produtoSchema = z.object({
   custo_base: dinheiro,
   insumos: z.array(componenteKitSchema).max(200),
   preco_venda: dinheiro,
+  /** null = "A consultar" no catálogo de atacado. */
+  preco_atacado: dinheiro.nullable().optional(),
   descricao: z.string().trim().max(2000).nullable(),
   codigo_barras: textoOpcional,
   imagem_url: urlPublica.nullable(),
@@ -146,6 +148,7 @@ export const formaPagamentoSchema = z.object({
 
 export const catalogoSchema = z.object({
   nome: textoCurto,
+  tipo_preco: z.enum(["varejo", "atacado"]),
 });
 
 export const precoOverrideSchema = z.object({

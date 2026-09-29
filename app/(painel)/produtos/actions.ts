@@ -27,6 +27,8 @@ export interface ProdutoInput {
   custo_base: number;
   insumos: ComponenteKit[];
   preco_venda: number;
+  /** Preço de atacado; null = "A consultar" no catálogo de atacado. */
+  preco_atacado: number | null;
   descricao: string | null;
   codigo_barras: string | null;
   imagem_url: string | null;

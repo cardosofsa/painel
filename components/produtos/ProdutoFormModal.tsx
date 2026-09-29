@@ -254,26 +254,15 @@ export function ProdutoFormModal({
             </div>
           )}
         </FormField>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField label="Valor do Produto (R$)" dica="O que você pagou pelo produto em si, sem embalagem.">
-            <input
-              type="number"
-              step="0.01"
-              className={inputClass}
-              value={form.custo_base}
-              onChange={(e) => setForm({ ...form, custo_base: Number(e.target.value) || 0 })}
-            />
-          </FormField>
-          <FormField label="Preço Venda (R$)">
-            <input
-              type="number"
-              step="0.01"
-              className={inputClass}
-              value={form.preco_venda}
-              onChange={(e) => setForm({ ...form, preco_venda: Number(e.target.value) || 0 })}
-            />
-          </FormField>
-        </div>
+        <FormField label="Valor do Produto (R$)" dica="O que você pagou pelo produto em si, sem embalagem.">
+          <input
+            type="number"
+            step="0.01"
+            className={inputClass}
+            value={form.custo_base}
+            onChange={(e) => setForm({ ...form, custo_base: Number(e.target.value) || 0 })}
+          />
+        </FormField>
         <div className="mb-4">
           <EditorInsumos
             componentes={form.insumos}
@@ -287,6 +276,31 @@ export function ProdutoFormModal({
         <div className="flex items-center justify-between text-sm bg-surface-2 rounded-md px-3 py-2 mb-4">
           <span className="text-text-secondary">Custo (valor do produto + insumos)</span>
           <span className="font-mono text-text-primary font-semibold">{formatBRL(custoComposto(form.custo_base, form.insumos))}</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="Preço Varejo (R$)">
+            <input
+              type="number"
+              step="0.01"
+              className={inputClass}
+              value={form.preco_venda}
+              onChange={(e) => setForm({ ...form, preco_venda: Number(e.target.value) || 0 })}
+            />
+          </FormField>
+          <FormField label="Preço Atacado (R$)" dica="Vazio = aparece como “A consultar” no catálogo de atacado.">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className={inputClass}
+              value={form.preco_atacado ?? ""}
+              placeholder="A consultar"
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setForm({ ...form, preco_atacado: e.target.value === "" || !Number.isFinite(n) || n < 0 ? null : n });
+              }}
+            />
+          </FormField>
         </div>
         <FormField label="Descrição (opcional)">
           <textarea
