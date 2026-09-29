@@ -60,7 +60,7 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
         <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
           <Brain size={14} strokeWidth={2.25} />
         </span>
-        {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">Segundo Cérebro</span>}
+        {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">SERTÃO</span>}
       </div>
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">

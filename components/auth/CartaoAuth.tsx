@@ -25,7 +25,7 @@ export function CartaoAuth({
           <span className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
             <Brain size={16} strokeWidth={2.25} />
           </span>
-          <span className="font-semibold tracking-tight text-text-primary text-lg">Segundo Cérebro</span>
+          <span className="font-semibold tracking-tight text-text-primary text-lg">SERTÃO</span>
         </div>
 
         <div className="bg-surface-1 border border-border rounded-lg shadow-elev-1 p-6">

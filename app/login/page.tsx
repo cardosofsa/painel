@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { LoginClient } from "./LoginClient";
 
 export const metadata: Metadata = {
-  title: "Entrar · Segundo Cérebro",
+  title: "Entrar · SERTÃO",
 };
 
 // `useSearchParams` (usado para ler `?erro=` do callback) exige Suspense no App Router.

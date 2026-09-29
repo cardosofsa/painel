@@ -10,7 +10,7 @@ import { buscarCatalogoPublico, buscarAparenciaPublica } from "./dados";
  * Metadata própria da vitrine.
  *
  * Sem isso a página herdava o metadata raiz, e colar o link no WhatsApp mostrava a prévia
- * "Segundo Cérebro — Sistema local de gestão: precificação, produtos, estoque…" para o
+ * "SERTÃO — Sistema local de gestão: precificação, produtos, estoque…" para o
  * cliente final. Como o WhatsApp *é* o canal de distribuição desta página, a prévia é
  * parte do produto.
  *

@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Segundo Cérebro",
+  title: "SERTÃO",
   description: "Sistema local de gestão — precificação, produtos, estoque, compras e financeiro.",
 };
 

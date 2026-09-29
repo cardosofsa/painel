@@ -52,7 +52,7 @@ export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
         <Menu size={18} />
       </button>
 
-      {/* Sem nome de negócio cadastrado, a saudação não aparece — "Olá, Segundo Cérebro"
+      {/* Sem nome de negócio cadastrado, a saudação não aparece — "Olá, SERTÃO"
           soava como se o sistema estivesse falando o próprio nome de volta pro dono. */}
       {nomeNegocio && (
         <div className="hidden sm:flex items-center gap-1.5 text-sm text-text-secondary truncate">

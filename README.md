@@ -1,4 +1,4 @@
-# Painel — Segundo Cérebro
+# Painel — SERTÃO
 
 Sistema de gestão para operação de e-commerce (Shopee e outros marketplaces): precificação
 com regra de negócio real, catálogo de produtos, estoque, compras, fornecedores e financeiro.
@@ -67,7 +67,7 @@ O código não alcança nada disto, e sem isto o fluxo falha em produção:
 
    *Confirm signup*:
    ```html
-   <p>Confirme seu cadastro no Segundo Cérebro:</p>
+   <p>Confirme seu cadastro no SERTÃO:</p>
    <p><a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=signup">Confirmar minha conta</a></p>
    ```
 

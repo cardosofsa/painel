@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## O projeto
 
-Painel ("Segundo Cérebro") é um sistema de gestão pessoal para operação de e-commerce
+Painel ("SERTÃO") é um sistema de gestão pessoal para operação de e-commerce
 (Shopee e outros marketplaces): precificação com regra de negócio real, catálogo de
 produtos, estoque, compras, fornecedores e financeiro. Uso pessoal, um usuário por conta,
 com isolamento de dados garantido pelo banco (RLS), não pela aplicação. Toda a comunicação

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ResetClient } from "./ResetClient";
 
 export const metadata: Metadata = {
-  title: "Definir nova senha · Segundo Cérebro",
+  title: "Definir nova senha · SERTÃO",
 };
 
 export default async function ResetPage() {
