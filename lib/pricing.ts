@@ -3,6 +3,10 @@ export interface ComponenteKit {
   nome: string;
   quantidade: number;
   custoUnitario: number;
+  /** Preenchido quando o insumo foi escolhido a partir de um produto do estoque (em vez de
+   * digitado à mão) — opcional de propósito, então o JSONB já gravado antes desta coluna
+   * existir continua válido. */
+  produtoId?: string | null;
 }
 
 export interface TaxasPlataforma {
@@ -12,6 +16,38 @@ export interface TaxasPlataforma {
   taxaAdicionalPct: number;
   taxaExtraValor?: number;
   taxaExtraTipo?: "percentual" | "fixo" | null;
+}
+
+/**
+ * Soma dos insumos de um produto (quantidade × custo unitário de cada linha). Espelha em
+ * TypeScript a função SQL `custo_de_insumos` de `supabase/migrations/0029_...sql` — usada
+ * no formulário de Produtos para mostrar o custo antes de salvar, sem esperar o banco.
+ */
+export function custoDeInsumos(insumos: ComponenteKit[]): number {
+  return insumos.reduce((acc, c) => acc + c.quantidade * c.custoUnitario, 0);
+}
+
+/** Custo composto de um produto: valor do produto + insumos. Não inclui imposto — ele é
+ * abatido no preço de venda, não no custo (ver CLAUDE.md, "produtos.custo é derivado"). */
+export function custoComposto(custoBase: number, insumos: ComponenteKit[]): number {
+  return custoBase + custoDeInsumos(insumos);
+}
+
+/**
+ * Custo médio ponderado após uma entrada de estoque por um custo diferente do atual.
+ * Espelha a RPC `registrar_entrada_com_custo` de `0029_...sql`.
+ *
+ * Caso de borda: sem estoque anterior (zero ou negativo, que não deveria acontecer mas o
+ * banco não impede em todo caminho) não há o que ponderar — o custo novo é o da entrada.
+ */
+export function custoMedioPonderado(
+  estoqueAnterior: number,
+  custoAnterior: number,
+  quantidadeEntrada: number,
+  custoEntrada: number,
+): number {
+  if (estoqueAnterior <= 0) return custoEntrada;
+  return (estoqueAnterior * custoAnterior + quantidadeEntrada * custoEntrada) / (estoqueAnterior + quantidadeEntrada);
 }
 
 export type ModoCalculo = "margem" | "lucro" | "preco" | "markup";

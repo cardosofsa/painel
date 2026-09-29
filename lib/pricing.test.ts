@@ -10,8 +10,12 @@ import {
   formatarFaixaLabel,
   zonaMortaDeFaixa,
   pctPorModo,
+  custoDeInsumos,
+  custoComposto,
+  custoMedioPonderado,
   type TaxasPlataforma,
   type FaixaComissao,
+  type ComponenteKit,
 } from "./pricing";
 
 const SEM_TAXAS: TaxasPlataforma = {
@@ -410,5 +414,58 @@ describe("pctPorModo", () => {
     expect(pctPorModo(r, "margem")).toBe(r.margemEfetivaPct);
     expect(pctPorModo(r, "lucro")).toBe(r.margemEfetivaPct);
     expect(pctPorModo(r, "preco")).toBe(r.margemEfetivaPct);
+  });
+});
+
+describe("custoDeInsumos", () => {
+  it("soma quantidade × custo unitário de cada linha", () => {
+    const insumos: ComponenteKit[] = [
+      { id: "1", nome: "Caixa", quantidade: 2, custoUnitario: 1.5 },
+      { id: "2", nome: "Etiqueta", quantidade: 3, custoUnitario: 0.2 },
+    ];
+    expect(custoDeInsumos(insumos)).toBeCloseTo(3.6, 10);
+  });
+
+  it("lista vazia dá zero", () => {
+    expect(custoDeInsumos([])).toBe(0);
+  });
+});
+
+describe("custoComposto", () => {
+  it("soma o valor do produto aos insumos", () => {
+    const insumos: ComponenteKit[] = [{ id: "1", nome: "Embalagem", quantidade: 1, custoUnitario: 1.4 }];
+    expect(custoComposto(6.1, insumos)).toBeCloseTo(7.5, 10);
+  });
+
+  it("sem insumos, o custo é só o valor do produto", () => {
+    expect(custoComposto(10, [])).toBe(10);
+  });
+});
+
+/**
+ * Espelha a RPC `registrar_entrada_com_custo` de `0029_custo_composto_canal_e_imposto.sql`
+ * — os mesmos casos que a migração precisa cobrir no banco.
+ */
+describe("custoMedioPonderado", () => {
+  it("pondera pelo estoque anterior e pela quantidade que entrou", () => {
+    // 10 un a R$4 + 10 un a R$3,50 = 20 un a R$3,75
+    expect(custoMedioPonderado(10, 4, 10, 3.5)).toBeCloseTo(3.75, 10);
+  });
+
+  it("estoque zero: o custo novo é o da entrada, sem dividir por zero", () => {
+    expect(custoMedioPonderado(0, 999, 5, 2)).toBe(2);
+  });
+
+  it("estoque negativo (não deveria acontecer, mas o banco não impede em todo caminho): mesmo tratamento do zero", () => {
+    expect(custoMedioPonderado(-3, 10, 5, 2)).toBe(2);
+  });
+
+  it("entrada de uma unidade só não muda a proporção do estoque grande", () => {
+    // 100 un a R$10 + 1 un a R$50 ≈ ainda perto de R$10
+    expect(custoMedioPonderado(100, 10, 1, 50)).toBeCloseTo((100 * 10 + 1 * 50) / 101, 10);
+  });
+
+  it("NaN não escapa em silêncio: propaga (para o chamador tratar, como o resto do módulo)", () => {
+    expect(custoMedioPonderado(10, 4, 10, NaN)).toBeNaN();
   });
 });
