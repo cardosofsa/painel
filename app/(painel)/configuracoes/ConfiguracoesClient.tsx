@@ -622,30 +622,6 @@ export function ConfiguracoesClient({
           </Card>
 
           <Card className="h-full flex flex-col">
-            <h3 className="font-semibold text-text-primary mb-4">Regime Tributário</h3>
-            <FormField label="Regime">
-              <input className={inputClass} value={regimeTributario} onChange={(e) => setRegimeTributario(e.target.value)} />
-            </FormField>
-            <FormField label="Alíquota Efetiva do DAS (%)">
-              <input
-                type="number"
-                step="0.1"
-                className={inputClass}
-                value={aliquotaDas}
-                onChange={(e) => setAliquotaDas(Number(e.target.value) || 0)}
-              />
-            </FormField>
-            <p className="text-xs text-text-tertiary mb-4">
-              Usada como valor padrão do campo Imposto/DAS na calculadora de Precificação.
-            </p>
-            <div className="mt-auto pt-2">
-              <Button variant="primary" onClick={salvarPerfil} loading={pending}>
-                Salvar Regime
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="h-full flex flex-col">
             <div className="flex items-center gap-2 mb-4">
               <h3 className="font-semibold text-text-primary">PIN de Administração</h3>
               <StatusChip
@@ -672,6 +648,30 @@ export function ConfiguracoesClient({
             <div className="mt-auto pt-2">
               <Button variant="primary" onClick={salvarPin} loading={pending}>
                 {perfil.pin_configurado ? "Trocar PIN" : "Salvar PIN"}
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="h-full flex flex-col">
+            <h3 className="font-semibold text-text-primary mb-4">Regime Tributário</h3>
+            <FormField label="Regime">
+              <input className={inputClass} value={regimeTributario} onChange={(e) => setRegimeTributario(e.target.value)} />
+            </FormField>
+            <FormField label="Alíquota Efetiva do DAS (%)">
+              <input
+                type="number"
+                step="0.1"
+                className={inputClass}
+                value={aliquotaDas}
+                onChange={(e) => setAliquotaDas(Number(e.target.value) || 0)}
+              />
+            </FormField>
+            <p className="text-xs text-text-tertiary mb-4">
+              Usada como valor padrão do campo Imposto/DAS na calculadora de Precificação.
+            </p>
+            <div className="mt-auto pt-2">
+              <Button variant="primary" onClick={salvarPerfil} loading={pending}>
+                Salvar Regime
               </Button>
             </div>
           </Card>
