@@ -210,8 +210,11 @@ export async function removerConta(id: string) {
 }
 
 // ---------- Formas de Pagamento ----------
+export type TipoFormaPagamento = "dinheiro" | "pix" | "cartao_debito" | "cartao_credito" | "fiado" | "outro";
+
 export interface FormaPagamentoInput {
   nome: string;
+  tipo: TipoFormaPagamento;
 }
 
 export async function criarFormaPagamento(dados: FormaPagamentoInput) {
@@ -221,6 +224,8 @@ export async function criarFormaPagamento(dados: FormaPagamentoInput) {
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
     revalidatePath("/compras");
+    revalidatePath("/pdv");
+    revalidatePath("/catalogo");
   });
 }
 
@@ -231,6 +236,8 @@ export async function atualizarFormaPagamento(id: string, dados: FormaPagamentoI
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
     revalidatePath("/compras");
+    revalidatePath("/pdv");
+    revalidatePath("/catalogo");
   });
 }
 

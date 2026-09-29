@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import type { ContaInput, ArmazemInput, FormaPagamentoInput } from "@/app/(painel)/configuracoes/actions";
+import type { ContaInput, ArmazemInput, FormaPagamentoInput, TipoFormaPagamento } from "@/app/(painel)/configuracoes/actions";
 import type { Conta, Armazem, FormaPagamento } from "@/app/(painel)/configuracoes/ConfiguracoesClient";
 
 /** Modais de cadastro simples: conta bancária, forma de pagamento e armazém. */
@@ -46,6 +46,15 @@ export function ContaModal({
   );
 }
 
+export const ROTULO_TIPO_FORMA: Record<TipoFormaPagamento, string> = {
+  dinheiro: "Dinheiro",
+  pix: "Pix",
+  cartao_debito: "Cartão de Débito",
+  cartao_credito: "Cartão de Crédito",
+  fiado: "Fiado",
+  outro: "Outro",
+};
+
 export function FormaPagamentoModal({
   formaPagamento,
   onClose,
@@ -57,8 +66,9 @@ export function FormaPagamentoModal({
   onSave: (dados: FormaPagamentoInput) => void;
   salvando: boolean;
 }) {
-  const base = formaPagamento && formaPagamento !== "novo" ? formaPagamento : { nome: "" };
+  const base = formaPagamento && formaPagamento !== "novo" ? formaPagamento : { nome: "", tipo: "outro" as const };
   const [nome, setNome] = useState(base.nome);
+  const [tipo, setTipo] = useState<TipoFormaPagamento>(base.tipo);
 
   return (
     <Modal
@@ -69,11 +79,23 @@ export function FormaPagamentoModal({
       <FormField label="Nome">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Pix, Cartão Nubank" />
       </FormField>
+      <FormField
+        label="Tipo"
+        dica="Define o comportamento no PDV: dinheiro/pix entram como entrada; cartão de crédito mostra vezes e taxa de maquineta; fiado não aparece na grade de pagamento (é o botão 'Venda Fiado')."
+      >
+        <select className={inputClass} value={tipo} onChange={(e) => setTipo(e.target.value as TipoFormaPagamento)}>
+          {(Object.keys(ROTULO_TIPO_FORMA) as TipoFormaPagamento[]).map((t) => (
+            <option key={t} value={t}>
+              {ROTULO_TIPO_FORMA[t]}
+            </option>
+          ))}
+        </select>
+      </FormField>
       <div className="flex gap-2 mt-5">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
         </Button>
-        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome })} loading={salvando}>
+        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome, tipo })} loading={salvando}>
           Salvar
         </Button>
       </div>

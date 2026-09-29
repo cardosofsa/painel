@@ -138,7 +138,10 @@ export const armazemSchema = z.object({
   lojas_abastecidas: z.array(z.string().trim().max(200)).max(100),
 });
 
-export const formaPagamentoSchema = z.object({ nome: textoCurto });
+export const formaPagamentoSchema = z.object({
+  nome: textoCurto,
+  tipo: z.enum(["dinheiro", "pix", "cartao_debito", "cartao_credito", "fiado", "outro"]),
+});
 
 export const catalogoSchema = z.object({
   nome: textoCurto,

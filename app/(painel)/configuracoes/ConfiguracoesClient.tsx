@@ -45,7 +45,7 @@ import {
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { FaixasModal, CanalModal, LojaModal } from "@/components/configuracoes/ModaisCanal";
-import { ContaModal, FormaPagamentoModal, ArmazemModal } from "@/components/configuracoes/ModaisCadastro";
+import { ContaModal, FormaPagamentoModal, ArmazemModal, ROTULO_TIPO_FORMA } from "@/components/configuracoes/ModaisCadastro";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 
 export interface Categoria {
@@ -573,7 +573,10 @@ export function ConfiguracoesClient({
             <div className="space-y-3">
               {formasPagamento.map((f) => (
                 <div key={f.id} className="flex items-center justify-between border border-border rounded-md p-3">
-                  <div className="text-sm font-medium text-text-primary">{f.nome}</div>
+                  <div>
+                    <div className="text-sm font-medium text-text-primary">{f.nome}</div>
+                    <div className="text-xs text-text-tertiary">{ROTULO_TIPO_FORMA[f.tipo]}</div>
+                  </div>
                   <RowMenu
                     actions={[
                       { label: "Editar", onClick: () => setModalFormaPagamento(f) },

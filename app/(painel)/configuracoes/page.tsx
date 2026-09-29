@@ -47,7 +47,7 @@ export default async function ConfiguracoesPage() {
       supabase.from("faixas_comissao_canal").select("id, canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       supabase.from("armazens").select("id, nome, endereco, lojas_abastecidas").order("nome"),
-      supabase.from("formas_pagamento").select("id, nome").order("nome"),
+      supabase.from("formas_pagamento").select("id, nome, tipo").order("nome"),
       // Contagem por categoria agregada no banco: antes vinha uma linha por produto só
       // para somar em memória.
       supabase.rpc("contagem_produtos_por_categoria"),
