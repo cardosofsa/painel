@@ -164,6 +164,7 @@ export const clienteSchema = z.object({
   uf: z.string().trim().max(2).nullable(),
   observacao: textoOpcional,
   permite_fiado: z.boolean(),
+  limite_fiado: dinheiro,
   status: z.enum(["ativo", "inativo"]),
 });
 

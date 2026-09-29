@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -40,10 +41,12 @@ const FORM_VAZIO: ClienteInput = {
   uf: null,
   observacao: null,
   permite_fiado: false,
+  limite_fiado: 0,
   status: "ativo",
 };
 
 export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalAberto, setModalAberto] = useState(false);
@@ -90,6 +93,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
       uf: c.uf,
       observacao: c.observacao,
       permite_fiado: c.permite_fiado,
+      limite_fiado: c.limite_fiado,
       status: c.status,
     };
     setForm(dados);
@@ -227,6 +231,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
                   <Td align="right">
                     <RowMenu
                       actions={[
+                        { label: "Visualizar Compras", onClick: () => router.push(`/clientes/${c.id}`) },
                         { label: "Editar", onClick: () => abrirEdicao(c) },
                         { label: c.status === "ativo" ? "Desativar" : "Ativar", onClick: () => alternarStatus(c) },
                         { label: "Remover", onClick: () => remover(c), destructive: true },
@@ -343,9 +348,22 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
           />
           Permitir fiado
         </label>
-        <p className="text-xs text-text-tertiary mt-1">
+        <p className="text-xs text-text-tertiary mt-1 mb-3">
           Libera a opção &quot;Venda Fiado&quot; no PDV para este cliente. A venda vira uma conta a receber em vez de entrar no caixa.
         </p>
+        {form.permite_fiado && (
+          <FormField label="Limite de Fiado (R$)" dica="Crédito disponível para este cliente. Some as parcelas em aberto até chegar aqui.">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className={inputClass}
+              value={form.limite_fiado || ""}
+              placeholder="0,00"
+              onChange={(e) => setForm({ ...form, limite_fiado: Math.max(0, Number(e.target.value) || 0) })}
+            />
+          </FormField>
+        )}
 
         <div className="flex gap-2 mt-5">
           <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)}>

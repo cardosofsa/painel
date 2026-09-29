@@ -18,6 +18,7 @@ export interface ClienteInput {
   uf: string | null;
   observacao: string | null;
   permite_fiado: boolean;
+  limite_fiado: number;
   status: "ativo" | "inativo";
 }
 
@@ -52,6 +53,7 @@ export async function criarClienteRapido(nome: string, whatsapp: string | null, 
       uf: null,
       observacao: null,
       permite_fiado: permiteFiado,
+      limite_fiado: 0,
       status: "ativo" as const,
     });
 

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, vendaEdicaoSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
+import { z } from "zod";
 
 export interface VendaEdicaoInput {
   cliente_id: string | null;
@@ -52,6 +53,23 @@ export async function atualizarVenda(vendaId: string, dados: VendaEdicaoInput) {
     if (error) lancarErroSupabase(error);
 
     revalidateTudo();
+  });
+}
+
+const statusEnvioSchema = z.object({
+  vendaId: z.string().uuid(),
+  status: z.enum(["separacao", "enviado", "concluido"]).nullable(),
+});
+
+/** Campo simples, editado à mão — sem integração com transportadora nenhuma (0030). */
+export async function atualizarStatusEnvio(vendaId: string, status: "separacao" | "enviado" | "concluido" | null) {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const v = validar(statusEnvioSchema, { vendaId, status });
+    const { error } = await supabase.from("vendas").update({ status_envio: v.status }).eq("id", v.vendaId);
+    if (error) lancarErroSupabase(error);
+    revalidatePath("/clientes");
+    revalidatePath("/vendas");
   });
 }
 
