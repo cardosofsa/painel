@@ -1,7 +1,22 @@
 "use client";
 
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+import {
+  COR_SERIE,
+  ESTILO_TOOLTIP,
+  ESTILO_ROTULO_TOOLTIP,
+  TICK_EIXO,
+  CURSOR_BARRA,
+  formatarMoedaTooltip,
+} from "./tema";
 
+/**
+ * Uma série só: todas as barras usam a mesma cor.
+ *
+ * Antes havia um `<Cell>` por barra, todos com o mesmo `fill` — um laço que dava trabalho
+ * e não produzia diferença nenhuma. Pintar cada barra de uma cor gastaria o canal de
+ * identidade para recodificar o que o comprimento da barra já mostra.
+ */
 export function CategoryBarChart({ data }: { data: { categoria: string; valor: number }[] }) {
   return (
     <ResponsiveContainer width="100%" height={180}>
@@ -10,30 +25,19 @@ export function CategoryBarChart({ data }: { data: { categoria: string; valor: n
           dataKey="categoria"
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "var(--text-tertiary)" }}
+          tick={TICK_EIXO}
           interval={0}
           angle={-10}
           dy={8}
           height={40}
         />
         <Tooltip
-          cursor={{ fill: "var(--surface-2)" }}
-          contentStyle={{
-            fontSize: 12,
-            borderRadius: 8,
-            background: "var(--surface-1)",
-            border: "1px solid var(--border)",
-            color: "var(--text-primary)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          }}
-          labelStyle={{ color: "var(--text-primary)" }}
-          formatter={(value) => Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          cursor={CURSOR_BARRA}
+          contentStyle={ESTILO_TOOLTIP}
+          labelStyle={ESTILO_ROTULO_TOOLTIP}
+          formatter={formatarMoedaTooltip}
         />
-        <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
-          {data.map((_, i) => (
-            <Cell key={i} fill="#4f46e5" fillOpacity={0.85} />
-          ))}
-        </Bar>
+        <Bar dataKey="valor" radius={[4, 4, 0, 0]} fill={COR_SERIE} fillOpacity={0.9} />
       </BarChart>
     </ResponsiveContainer>
   );

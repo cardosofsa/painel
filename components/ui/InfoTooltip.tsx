@@ -22,7 +22,7 @@ export function InfoTooltip({ text }: { text: string }) {
         <HelpCircle size={12} />
       </button>
       {aberto && (
-        <span className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 rounded-md bg-surface-3 text-text-primary text-xs px-2.5 py-1.5 shadow-lg pointer-events-none">
+        <span className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 rounded-md bg-surface-3 text-text-primary text-xs px-2.5 py-1.5 shadow-elev-2 pointer-events-none">
           {text}
         </span>
       )}

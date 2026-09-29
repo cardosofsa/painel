@@ -1,42 +1,94 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Tokens. A fonte da verdade é este arquivo; DESIGN.md descreve o que está aqui.
+
+   Três coisas mudaram numa revisão de acessibilidade e acabamento, e vale saber o porquê
+   antes de mexer:
+
+   1. A rampa de cinza desceu um degrau. `--text-tertiary` era #a1a1aa, que dá 2,56:1
+      sobre branco e reprova o WCAG AA até para texto grande — e ele pinta cabeçalho de
+      tabela, eyebrow de card e todo estado vazio, ~230 lugares. Agora secondary e
+      tertiary valem 7,7:1 e 4,8:1. `lib/cores.test.ts` trava isso.
+   2. `--border` deixou de ser idêntico a `--surface-3`. Sendo o mesmo valor, o contorno
+      do card praticamente não existia sobre o fundo da página.
+   3. Sombra e movimento viraram token. A sombra do Tailwind é preta translúcida, o que no
+      tema escuro não produz elevação nenhuma — card sobre fundo preto ficava achatado.
+      No escuro a elevação vem da borda, não da sombra.
+   ============================================================ */
+
 :root {
   --background: #fafafa;
   --surface-1: #ffffff;
   --surface-2: #f4f4f5;
   --surface-3: #e4e4e7;
-  --border: #e4e4e7;
+  --border: #d9d9de;
+  --border-forte: #c2c2c9;
 
   --text-primary: #18181b;
-  --text-secondary: #71717a;
-  --text-tertiary: #a1a1aa;
+  --text-secondary: #52525b;
+  /* #71717a passaria sobre branco (4,83), mas cai para 4,40 sobre `--surface-2`, que é o
+     fundo da linha em hover — e é justamente lá que o texto terciário da tabela vive. */
+  --text-tertiary: #6b6b74;
 
   --accent: #3b4d1f;
   --accent-hover: #2c3a17;
   --accent-soft: #e8ede0;
   --accent-on: #ffffff;
 
-  --positive: #16a34a;
+  --positive: #15803d;
   --positive-soft: #f0fdf4;
   --negative: #dc2626;
   --negative-soft: #fef2f2;
 
   --radius: 0.5rem;
+
+  /* Elevação. Nível 1 = card e botão, 2 = popover, 3 = modal. */
+  --sombra-1: 0 1px 2px 0 rgb(24 24 27 / 0.05);
+  --sombra-2: 0 4px 12px -2px rgb(24 24 27 / 0.1), 0 2px 4px -2px rgb(24 24 27 / 0.06);
+  --sombra-3: 0 16px 40px -8px rgb(24 24 27 / 0.18), 0 4px 12px -4px rgb(24 24 27 / 0.1);
+
+  /* Movimento. Antes havia 150ms (padrão do Tailwind), 200ms e 180ms convivendo sem
+     critério; agora são dois valores e uma curva só. */
+  --duracao-rapida: 140ms;
+  --duracao-media: 220ms;
+  --curva: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* ----------------------------------------------------------
+     Gráficos.
+
+     Os seis gráficos pintavam tudo de índigo #4f46e5 — uma cor que não existe em
+     lugar nenhum do sistema. Como eles ocupam a área nobre do Dashboard, de Vendas,
+     do Financeiro e da Precificação, metade das telas abria parecendo outro produto.
+
+     Série única usa o próprio accent. A escala categórica de quatro cores serve à
+     composição de preço (custo, imposto, comissão, lucro) e foi validada por cálculo,
+     não escolhida no olho: faixa de luminosidade, piso de croma, separação sob
+     protanopia e deuteranopia, piso de visão normal e contraste contra a superfície.
+     Os passos do tema escuro são OUTROS valores das mesmas famílias de matiz —
+     clarear os do tema claro reprovaria na faixa de luminosidade.
+     ---------------------------------------------------------- */
+  --grafico-1: #4272b8;
+  --grafico-2: #bf7c00;
+  --grafico-3: #7d5ec4;
+  --grafico-4: #6f9a30;
+  --grafico-grade: #e9e9ec;
 }
 
 :root[data-theme="dark"] {
   --background: #0a0a0c;
   --surface-1: #18181b;
   --surface-2: #232326;
-  --surface-3: #313134;
-  --border: #2c2c30;
+  --surface-3: #2e2e33;
+  --border: #35353c;
+  --border-forte: #47474f;
 
   --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
+  --text-secondary: #b4b4bd;
+  --text-tertiary: #8a8a94;
 
   --accent: #8fae55;
-  --accent-hover: #7b9748;
+  --accent-hover: #a0bf64;
   --accent-soft: #232b18;
   --accent-on: #0a0a0c;
 
@@ -44,6 +96,18 @@
   --positive-soft: #14291d;
   --negative: #f87171;
   --negative-soft: #2d1616;
+
+  /* No escuro a sombra preta some no fundo preto. A elevação vem de um halo claro na
+     borda superior, que é como o olho lê "isto está mais perto". */
+  --sombra-1: 0 1px 2px 0 rgb(0 0 0 / 0.4), inset 0 1px 0 0 rgb(255 255 255 / 0.03);
+  --sombra-2: 0 4px 14px -2px rgb(0 0 0 / 0.55), inset 0 1px 0 0 rgb(255 255 255 / 0.05);
+  --sombra-3: 0 20px 48px -8px rgb(0 0 0 / 0.7), inset 0 1px 0 0 rgb(255 255 255 / 0.06);
+
+  --grafico-1: #4f86cc;
+  --grafico-2: #bd8420;
+  --grafico-3: #9b7fd4;
+  --grafico-4: #7d9c45;
+  --grafico-grade: #2a2a2f;
 }
 
 @theme inline {
@@ -52,6 +116,7 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-border: var(--border);
+  --color-border-forte: var(--border-forte);
 
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
@@ -73,6 +138,10 @@
   --font-mono: var(--font-geist-mono);
 
   --radius-DEFAULT: var(--radius);
+
+  --shadow-elev-1: var(--sombra-1);
+  --shadow-elev-2: var(--sombra-2);
+  --shadow-elev-3: var(--sombra-3);
 }
 
 html {
@@ -100,6 +169,29 @@ body {
   color: var(--accent);
 }
 
+/* ============================================================
+   Foco visível.
+
+   O projeto tinha ZERO `focus-visible` — nenhum botão, aba, link de menu ou célula de
+   calendário mostrava onde o teclado estava. O `Tabs` chega a implementar navegação por
+   setas com roving tabindex e ARIA completo, e quem usava as setas não via nada acontecer.
+
+   A regra é global e usa `:focus-visible` (não `:focus`), então o anel aparece para quem
+   navega por teclado e não pisca a cada clique de mouse.
+   ============================================================ */
+:where(a, button, [role="tab"], [role="menuitem"], summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* Campo de formulário já sinaliza foco pela borda; o anel por fora dela reforça sem
+   competir com o `focus:border-accent`. */
+:where(input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Transição de conteúdo ao trocar de aba (components/ui/Tabs.tsx: TabPanel). */
 @keyframes tab-fade {
   from {
@@ -113,13 +205,67 @@ body {
 }
 
 .animate-tab-fade {
-  animation: tab-fade 180ms ease-out;
+  animation: tab-fade var(--duracao-media) var(--curva);
 }
 
-/* Quem pediu menos movimento ao sistema operacional não recebe a animação — a troca de
-   conteúdo fica instantânea, sem quebrar nada. */
+/* Entrada de modal e de popover. */
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes esmaecer-entrada {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-surgir {
+  animation: surgir var(--duracao-media) var(--curva);
+}
+
+.animate-esmaecer {
+  animation: esmaecer-entrada var(--duracao-rapida) var(--curva);
+}
+
+/* Sombra de rolagem horizontal: avisa que a tabela continua para o lado. Sem isto, no
+   celular o usuário vê 2,5 de 9 colunas e não tem nenhum sinal de que há mais. */
+.rolagem-lateral {
+  background:
+    linear-gradient(to right, var(--surface-1) 30%, transparent),
+    linear-gradient(to left, var(--surface-1) 30%, transparent) 100% 0,
+    radial-gradient(farthest-side at 0 50%, rgb(24 24 27 / 0.12), transparent),
+    radial-gradient(farthest-side at 100% 50%, rgb(24 24 27 / 0.12), transparent) 100% 0;
+  background-repeat: no-repeat;
+  background-size:
+    40px 100%,
+    40px 100%,
+    14px 100%,
+    14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/*
+ * Quem pediu menos movimento ao sistema operacional não recebe animação nenhuma. Antes
+ * esta regra cobria só o `tab-fade`, deixando de fora o pulsar do skeleton e todas as
+ * transições de cor.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .animate-tab-fade {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

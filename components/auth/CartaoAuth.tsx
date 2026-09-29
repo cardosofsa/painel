@@ -28,7 +28,7 @@ export function CartaoAuth({
           <span className="font-semibold tracking-tight text-text-primary text-lg">Segundo Cérebro</span>
         </div>
 
-        <div className="bg-surface-1 border border-border rounded-lg shadow-sm p-6">
+        <div className="bg-surface-1 border border-border rounded-lg shadow-elev-1 p-6">
           <h1 className="text-base font-semibold text-text-primary mb-1">{titulo}</h1>
           {descricao && <p className="text-sm text-text-secondary mb-5">{descricao}</p>}
           {!descricao && <div className="mb-5" />}

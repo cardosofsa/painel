@@ -77,7 +77,7 @@ export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
           {inicial}
         </button>
         {menuAberto && (
-          <div className="absolute right-0 mt-2 w-56 bg-surface-1 border border-border rounded-md shadow-lg py-1 text-sm">
+          <div className="absolute right-0 mt-2 w-56 bg-surface-1 border border-border rounded-md shadow-elev-2 py-1 text-sm">
             <div className="px-3 py-2 border-b border-border">
               <div className="text-text-primary font-medium truncate">{email ?? "Usuário"}</div>
               <div className="text-text-tertiary text-xs">Conta Supabase</div>

@@ -280,7 +280,7 @@ export function ContaDetalheClient({
         </Card>
       </div>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         <div className="px-5 pt-5 pb-3">
           <h2 className="text-base font-semibold text-text-primary">Histórico desta conta</h2>
         </div>

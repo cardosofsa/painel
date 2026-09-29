@@ -33,6 +33,7 @@ import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { executarComToast } from "@/lib/acao-cliente";
 import { rotuloProduto } from "@/lib/produtos";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
+import { Chip } from "@/components/ui/Chip";
 
 export interface ImagemProduto {
   id: string;
@@ -372,34 +373,18 @@ export function ProdutosClient({
         />
         <div className="flex gap-2 flex-wrap">
           {categoriasNomes.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategoriaFiltro(c)}
-              className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                categoriaFiltro === c
-                  ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                  : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-              }`}
-            >
+            <Chip key={c} onClick={() => setCategoriaFiltro(c)} ativo={categoriaFiltro === c}>
               {c}
-            </button>
+            </Chip>
           ))}
         </div>
       </div>
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {STATUS_FILTROS.map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFiltro(s)}
-            className={`h-7 px-2.5 rounded-full text-xs border transition-colors ${
-              statusFiltro === s
-                ? "bg-surface-3 border-border text-text-primary font-medium"
-                : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-            }`}
-          >
+          <Chip key={s} onClick={() => setStatusFiltro(s)} ativo={statusFiltro === s}>
             {s}
-          </button>
+          </Chip>
         ))}
       </div>
 
@@ -420,7 +405,7 @@ export function ProdutosClient({
         </div>
       )}
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         {filtrados.length === 0 ? (
           <EmptyState icon={PackageSearch} title="Nenhum produto encontrado" description="Ajuste a busca ou os filtros para ver resultados." />
         ) : (
@@ -568,7 +553,7 @@ export function ProdutosClient({
           <p className="text-xs text-text-tertiary -mt-1">Salve o produto pra poder adicionar fotos extras.</p>
         )}
         <FormField label="Variante de (opcional)">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <select
               className={inputClass}
               value={form.grupo_id ?? ""}
@@ -603,7 +588,7 @@ export function ProdutosClient({
           </p>
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Categoria">
             <select
               className={inputClass}
@@ -671,7 +656,7 @@ export function ProdutosClient({
             </div>
           )}
         </FormField>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Custo (R$)">
             <input
               type="number"
@@ -725,7 +710,7 @@ export function ProdutosClient({
             onUsar={(texto) => setForm({ ...form, descricao: texto })}
           />
         </FormField>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Estoque Atual">
             <input
               type="number"
@@ -743,7 +728,7 @@ export function ProdutosClient({
             />
           </FormField>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Saída Média Semanal">
             <input
               type="number"

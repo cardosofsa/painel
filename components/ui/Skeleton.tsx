@@ -4,7 +4,7 @@ export function Skeleton({ className = "" }: { className?: string }) {
 
 export function CardSkeleton() {
   return (
-    <div className="rounded-lg bg-surface-1 border border-border shadow-sm p-5">
+    <div className="rounded-lg bg-surface-1 border border-border shadow-elev-1 p-5">
       <Skeleton className="h-3 w-24 mb-3" />
       <Skeleton className="h-8 w-32 mb-2" />
       <Skeleton className="h-3 w-20" />

@@ -86,7 +86,7 @@ export function RowMenu({ actions }: { actions: RowMenuAction[] }) {
             ref={menuRef}
             onClick={(e) => e.stopPropagation()}
             style={{ position: "fixed", top: pos.top, left: pos.left, width: MENU_WIDTH }}
-            className="bg-surface-1 border border-border rounded-md shadow-lg py-1 text-sm z-50"
+            className="bg-surface-1 border border-border rounded-md shadow-elev-2 py-1 text-sm z-50"
           >
             {actions.map((a) => (
               <button

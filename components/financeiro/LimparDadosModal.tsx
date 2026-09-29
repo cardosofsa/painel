@@ -81,7 +81,7 @@ export function LimparDadosModal({
 
   return (
     <Modal open={open} onClose={fechar} title="Limpar Dados do Financeiro">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="De">
           <input
             type="date"

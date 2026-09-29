@@ -1,6 +1,7 @@
 "use client";
 
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { COR_SERIE, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, TICK_EIXO } from "./tema";
 
 /**
  * Mesmo esqueleto de `SalesChart.tsx`, mas para contagem (contas acumuladas), não dinheiro.
@@ -13,24 +14,18 @@ export function GrowthChart({ data }: { data: { dia: string; contas: number }[] 
       <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <defs>
           <linearGradient id="crescimentoGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4f46e5" stopOpacity={0.2} />
-            <stop offset="100%" stopColor="#4f46e5" stopOpacity={0} />
+            <stop offset="0%" stopColor={COR_SERIE} stopOpacity={0.2} />
+            <stop offset="100%" stopColor={COR_SERIE} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <XAxis dataKey="dia" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} dy={4} />
+        <XAxis dataKey="dia" axisLine={false} tickLine={false} tick={TICK_EIXO} dy={4} />
         <Tooltip
-          contentStyle={{
-            fontSize: 12,
-            borderRadius: 8,
-            background: "var(--surface-1)",
-            border: "1px solid var(--border)",
-            color: "var(--text-primary)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          }}
-          labelStyle={{ color: "var(--text-primary)" }}
+          contentStyle={ESTILO_TOOLTIP}
+          labelStyle={ESTILO_ROTULO_TOOLTIP}
+          cursor={{ stroke: "var(--border-forte)", strokeWidth: 1 }}
           formatter={(value) => [`${value} conta(s)`, "Total acumulado"]}
         />
-        <Area type="monotone" dataKey="contas" stroke="#4f46e5" strokeWidth={2} fill="url(#crescimentoGrad)" />
+        <Area type="monotone" dataKey="contas" stroke={COR_SERIE} strokeWidth={2} fill="url(#crescimentoGrad)" />
       </AreaChart>
     </ResponsiveContainer>
   );

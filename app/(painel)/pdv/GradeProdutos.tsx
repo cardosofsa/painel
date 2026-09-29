@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBRL } from "@/lib/format";
 import { montarCards, rotuloProduto, type CardPdv, type ProdutoPdv } from "./tipos";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
+import { Chip } from "@/components/ui/Chip";
 
 /**
  * Grade de produtos do caixa. O markup do card segue o da vitrine
@@ -89,17 +90,9 @@ export function GradeProdutos({
       {categorias.length > 2 && (
         <div className="flex flex-wrap gap-2 mb-4">
           {categorias.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategoria(c)}
-              className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                categoria === c
-                  ? "bg-accent-soft border-accent-soft text-accent"
-                  : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-              }`}
-            >
+            <Chip key={c} onClick={() => setCategoria(c)} ativo={categoria === c}>
               {c}
-            </button>
+            </Chip>
           ))}
         </div>
       )}

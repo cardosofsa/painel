@@ -107,7 +107,7 @@ export function FornecedoresClient({
         </Card>
       </div>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         {fornecedores.length === 0 ? (
           <EmptyState icon={Truck} title="Nenhum fornecedor cadastrado" description="Cadastre seu primeiro fornecedor para começar." />
         ) : (

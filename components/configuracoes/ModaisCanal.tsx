@@ -282,7 +282,7 @@ export function LojaModal({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label={`Comissão (%) — padrão ${canal.comissao_pct_padrao}%`}>
             <input
               type="number"

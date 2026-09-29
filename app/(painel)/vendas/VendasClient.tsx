@@ -18,6 +18,7 @@ import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { cancelarVenda } from "./actions";
 import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
 import { executarComToast } from "@/lib/acao-cliente";
+import { Chip } from "@/components/ui/Chip";
 
 export interface VendaItem {
   produto_nome: string;
@@ -205,21 +206,13 @@ export function VendasClient({
 
       <div className="flex flex-wrap gap-2 mb-5">
         {PERIODOS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => setPeriodo(p.id)}
-            className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-              periodo === p.id
-                ? "bg-accent-soft border-accent-soft text-accent"
-                : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-            }`}
-          >
+          <Chip key={p.id} onClick={() => setPeriodo(p.id)} ativo={periodo === p.id}>
             {p.label}
-          </button>
+          </Chip>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>
           <CardEyebrow>Faturamento</CardEyebrow>
           <HeroMetric value={formatBRL(faturamento)} caption={`${validas.length} venda(s)`} accent />
@@ -269,7 +262,7 @@ export function VendasClient({
         </Card>
       </div>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         {doPeriodo.length === 0 ? (
           <EmptyState
             icon={Receipt}

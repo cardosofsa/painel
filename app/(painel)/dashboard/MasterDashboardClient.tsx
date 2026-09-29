@@ -52,7 +52,7 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
     <>
       <PageHeader eyebrow="Conta master" title="Painel do Administrador" />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card className={pendentes.length > 0 ? "border-accent/40" : ""}>
           <CardEyebrow>Aguardando Aprovação</CardEyebrow>
           <HeroMetric value={String(pendentes.length)} accent={pendentes.length > 0} caption={pendentes.length > 0 ? "Precisa de você" : "Nada pendente"} />
@@ -72,7 +72,7 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Card className="p-0 overflow-hidden">
+        <Card padding="nenhum" className="overflow-hidden">
           <div className="px-5 pt-5 pb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold text-text-primary">Aguardando Aprovação</h2>
             {pendentes.length > 0 && <span className="text-xs text-text-tertiary">{pendentes.length} conta(s)</span>}
@@ -102,7 +102,7 @@ export function MasterDashboardClient({ contas, historico }: { contas: ContaAdmi
           )}
         </Card>
 
-        <Card className="p-0 overflow-hidden">
+        <Card padding="nenhum" className="overflow-hidden">
           <div className="px-5 pt-5 pb-3">
             <h2 className="text-base font-semibold text-text-primary">Atividade Recente</h2>
           </div>

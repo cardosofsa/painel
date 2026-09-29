@@ -21,14 +21,14 @@ export interface LinhaHistorico {
 export function HistoricoAdmin({ linhas }: { linhas: LinhaHistorico[] }) {
   if (linhas.length === 0) {
     return (
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         <EmptyState icon={History} title="Nenhuma ação registrada ainda" description="Aprovações, suspensões e mudanças de acesso aparecem aqui." />
       </Card>
     );
   }
 
   return (
-    <Card className="p-0 overflow-hidden">
+    <Card padding="nenhum" className="overflow-hidden">
       <Table>
         <Thead>
           <tr>

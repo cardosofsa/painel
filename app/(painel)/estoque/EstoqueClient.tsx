@@ -108,7 +108,7 @@ export function EstoqueClient({
             const produtosDoArmazem = produtos.filter((p) => p.armazem_id === a.id);
             const unidades = produtosDoArmazem.reduce((acc, p) => acc + p.estoque, 0);
             return (
-              <Card key={a.id} className="p-0 overflow-hidden">
+              <Card key={a.id} padding="nenhum" className="overflow-hidden">
                 <div className="px-5 pt-5 pb-4 flex items-start justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-text-primary">{a.nome}</h2>
@@ -191,7 +191,7 @@ export function EstoqueClient({
             ))}
           </select>
         </FormField>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Tipo">
             <select className={inputClass} value={movTipo} onChange={(e) => setMovTipo(e.target.value as "entrada" | "saida")}>
               <option value="entrada">Entrada</option>

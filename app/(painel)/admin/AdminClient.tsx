@@ -22,6 +22,7 @@ import { HistoricoAdmin, type LinhaHistorico } from "./HistoricoAdmin";
 import { VisaoGeralAdmin } from "./VisaoGeralAdmin";
 import { executarComToast } from "@/lib/acao-cliente";
 import { campoBase } from "@/components/ui/Modal";
+import { Chip } from "@/components/ui/Chip";
 
 export interface ContaAdmin {
   user_id: string;
@@ -238,7 +239,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
 
       {aba === "contas" && (
         <TabPanel key="contas" tabValue="contas">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
             <Card>
               <CardEyebrow>Contas no Sistema</CardEyebrow>
               <HeroMetric value={String(contas.length)} caption={`${ativas} ativa(s)`} accent />
@@ -270,17 +271,9 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
                   const contagem = f === "todos" ? contas.length : contas.filter((c) => c.status === f).length;
                   const ativo = filtroStatus === f;
                   return (
-                    <button
-                      key={f}
-                      onClick={() => setFiltroStatus(f)}
-                      className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                        ativo
-                          ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                          : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-                      }`}
-                    >
+                    <Chip key={f} onClick={() => setFiltroStatus(f)} ativo={ativo}>
                       {f === "todos" ? "Todos" : ROTULO_STATUS[f].label} <span className="font-mono">({contagem})</span>
-                    </button>
+                    </Chip>
                   );
                 })}
               </div>
@@ -305,7 +298,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
             </div>
           )}
 
-          <Card className="p-0 overflow-hidden">
+          <Card padding="nenhum" className="overflow-hidden">
             {ordenadas.length === 0 ? (
               <EmptyState icon={Users} title="Nenhuma conta encontrada" />
             ) : (

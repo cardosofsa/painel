@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { inputClass } from "@/components/ui/Modal";
 import { formatBRL } from "@/lib/format";
 import type { ItemCarrinho } from "./tipos";
+import { Chip } from "@/components/ui/Chip";
 
 export type DescontoTipo = "valor" | "percentual";
 
@@ -145,36 +146,15 @@ export function Carrinho({
 
       <div className="border-t border-border pt-3 mt-1 space-y-3">
         <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => setMostrarDesconto((v) => !v)}
-            className={`h-7 px-2.5 rounded-md text-xs border transition-colors ${
-              desconto > 0
-                ? "bg-accent-soft border-accent-soft text-accent"
-                : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-            }`}
-          >
+          <Chip onClick={() => setMostrarDesconto((v) => !v)} ativo={desconto > 0}>
             {desconto > 0 ? `Desconto: ${formatBRL(desconto)}` : "Dar desconto"}
-          </button>
-          <button
-            onClick={() => setMostrarEntrega((v) => !v)}
-            className={`h-7 px-2.5 rounded-md text-xs border transition-colors ${
-              estado.valorEntrega > 0
-                ? "bg-accent-soft border-accent-soft text-accent"
-                : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-            }`}
-          >
+          </Chip>
+          <Chip onClick={() => setMostrarEntrega((v) => !v)} ativo={estado.valorEntrega > 0}>
             {estado.valorEntrega > 0 ? `Entrega: ${formatBRL(estado.valorEntrega)}` : "Entrega"}
-          </button>
-          <button
-            onClick={() => setMostrarObservacao((v) => !v)}
-            className={`h-7 px-2.5 rounded-md text-xs border transition-colors ${
-              estado.observacao
-                ? "bg-accent-soft border-accent-soft text-accent"
-                : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-            }`}
-          >
+          </Chip>
+          <Chip onClick={() => setMostrarObservacao((v) => !v)} ativo={estado.observacao.trim() !== ""}>
             Observação
-          </button>
+          </Chip>
           <button
             onClick={onLimpar}
             className="h-7 px-2.5 rounded-md text-xs border border-border text-negative hover:bg-negative-soft flex items-center gap-1 ml-auto transition-colors"

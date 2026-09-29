@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Clock, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -54,6 +54,8 @@ import {
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
 import { executarComToast } from "@/lib/acao-cliente";
+import { Tabs, type TabItem } from "@/components/ui/Tabs";
+import { Chip } from "@/components/ui/Chip";
 
 export interface PrecificacaoHist {
   id: string;
@@ -135,6 +137,13 @@ function proximoIdLocal(prefixo: string): string {
 // Identifica, dentro do JSONB de componentes salvo no histórico, a linha que representa
 // o campo "Custo do Produto" (e não um insumo) — é o que permite recarregar no campo certo.
 const ID_CUSTO_PRODUTO = "custo-produto";
+
+const ABAS_PRECIFICACAO = [
+  { value: "individual", label: "Individual" },
+  { value: "variacoes", label: "Variações" },
+  { value: "massa", label: "Em Massa" },
+  { value: "historico", label: "Histórico" },
+] as const satisfies readonly TabItem<"individual" | "variacoes" | "massa" | "historico">[];
 
 export function PrecificacaoClient({
   historico,
@@ -589,51 +598,10 @@ export function PrecificacaoClient({
     <>
       <PageHeader title="Calculadora de Precificação" />
 
-      <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => setVisao("individual")}
-            className={`h-9 px-4 rounded-md text-sm border transition-colors ${
-              visao === "individual"
-                ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-            }`}
-          >
-            Individual
-          </button>
-          <button
-            onClick={() => setVisao("variacoes")}
-            className={`h-9 px-4 rounded-md text-sm border transition-colors ${
-              visao === "variacoes"
-                ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-            }`}
-          >
-            Variações
-          </button>
-          <button
-            onClick={() => setVisao("massa")}
-            className={`h-9 px-4 rounded-md text-sm border transition-colors ${
-              visao === "massa"
-                ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-            }`}
-          >
-            Em Massa
-          </button>
-        </div>
-        <button
-          onClick={() => setVisao("historico")}
-          className={`h-9 px-4 rounded-md text-sm border transition-colors flex items-center gap-1.5 ${
-            visao === "historico"
-              ? "bg-accent-soft border-accent-soft text-accent font-medium"
-              : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-          }`}
-        >
-          <Clock size={14} />
-          Histórico
-        </button>
-      </div>
+      {/* Estas quatro abas eram <button> cru: sem indicador, sem ARIA e sem teclado —
+          na tela mais importante do produto, enquanto Admin e Configurações já usavam
+          o <Tabs>. Duas telas do mesmo app navegavam de jeitos visualmente diferentes. */}
+      <Tabs tabs={ABAS_PRECIFICACAO} value={visao} onChange={setVisao} className="mb-5" />
 
       {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} setVisao={setVisao} />}
 
@@ -672,7 +640,7 @@ export function PrecificacaoClient({
                 placeholder="Insira aqui Nome do Produto"
               />
               {sugestoesAbertas && sugestoesProdutos.length > 0 && (
-                <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface-1 border border-border rounded-md shadow-lg max-h-48 overflow-auto">
+                <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface-1 border border-border rounded-md shadow-elev-2 max-h-48 overflow-auto">
                   {sugestoesProdutos.map((p) => (
                     <button
                       key={p.id}
@@ -812,26 +780,12 @@ export function PrecificacaoClient({
           <Card>
             <h3 className="text-sm font-medium text-text-primary mb-3">Taxas da Plataforma</h3>
             <div className="flex gap-2 mb-4 flex-wrap">
-              <button
-                onClick={() => setModoTaxas("manual")}
-                className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                  modoTaxas === "manual"
-                    ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                    : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-                }`}
-              >
+              <Chip onClick={() => setModoTaxas("manual")} ativo={modoTaxas === "manual"}>
                 Manual
-              </button>
-              <button
-                onClick={() => setModoTaxas("loja")}
-                className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                  modoTaxas === "loja"
-                    ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                    : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-                }`}
-              >
+              </Chip>
+              <Chip onClick={() => setModoTaxas("loja")} ativo={modoTaxas === "loja"}>
                 Selecionar Loja
-              </button>
+              </Chip>
             </div>
 
             {modoTaxas === "loja" && (
@@ -889,7 +843,7 @@ export function PrecificacaoClient({
             )}
 
             {modoTaxas === "manual" && (
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="text-xs text-text-secondary mb-1.5 block">Taxa Fixa (R$)</label>
                   <input
@@ -913,7 +867,7 @@ export function PrecificacaoClient({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-text-secondary mb-1.5 block">Taxa Adicional (%)</label>
                 <input
@@ -941,17 +895,9 @@ export function PrecificacaoClient({
             <h3 className="text-sm font-medium text-text-primary mb-3">Como calcular o preço</h3>
             <div className="flex gap-2 mb-4 flex-wrap">
               {MODOS.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setModo(m.id)}
-                  className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                    modo === m.id
-                      ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                      : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-                  }`}
-                >
+                <Chip key={m.id} onClick={() => setModo(m.id)} ativo={modo === m.id}>
                   {m.label}
-                </button>
+                </Chip>
               ))}
             </div>
 
@@ -1181,7 +1127,7 @@ export function PrecificacaoClient({
               Defina o menor e o maior preço que você aceitaria vender para ver o lucro mínimo e máximo possível — útil
               pra negociar com o cliente sem perder dinheiro.
             </p>
-            <div className="grid grid-cols-2 gap-4 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
               <div>
                 <label className="text-xs text-text-secondary mb-1.5 block">Preço Mínimo (R$)</label>
                 <input
@@ -1208,7 +1154,7 @@ export function PrecificacaoClient({
               </div>
             </div>
             {(resultadoMin || resultadoMax) && (
-              <div className="grid grid-cols-2 gap-4 text-sm border-t border-border pt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm border-t border-border pt-3">
                 <div>
                   <div className="text-xs text-text-tertiary mb-0.5">Lucro no mínimo</div>
                   {resultadoMin ? (
@@ -1278,7 +1224,7 @@ export function PrecificacaoClient({
                   }
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                 <div>
                   <div className="text-xs text-text-tertiary">Média concorrentes</div>
                   <div className="font-mono text-text-primary">{formatBRL(analiseConcorrencia.precoMedioConcorrentes)}</div>
@@ -1340,31 +1286,17 @@ export function PrecificacaoClient({
       {visao === "historico" && (
         <>
           <div className="flex gap-2 mb-5">
-            <button
-              onClick={() => setSubAbaHistorico("precificacoes")}
-              className={`h-8 px-3 rounded-md text-sm border transition-colors ${
-                subAbaHistorico === "precificacoes"
-                  ? "bg-surface-3 border-border text-text-primary font-medium"
-                  : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-              }`}
-            >
+            <Chip onClick={() => setSubAbaHistorico("precificacoes")} ativo={subAbaHistorico === "precificacoes"}>
               Precificações
-            </button>
-            <button
-              onClick={() => setSubAbaHistorico("produtos")}
-              className={`h-8 px-3 rounded-md text-sm border transition-colors ${
-                subAbaHistorico === "produtos"
-                  ? "bg-surface-3 border-border text-text-primary font-medium"
-                  : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-              }`}
-            >
+            </Chip>
+            <Chip onClick={() => setSubAbaHistorico("produtos")} ativo={subAbaHistorico === "produtos"}>
               Produtos com Variações
-            </button>
+            </Chip>
           </div>
 
           {subAbaHistorico === "precificacoes" && (
             <>
-              <Card className="p-0 overflow-hidden">
+              <Card padding="nenhum" className="overflow-hidden">
                 <div className="px-5 pt-5 pb-4 flex items-center justify-between flex-wrap gap-3">
                   <h2 className="text-base font-semibold text-text-primary">Histórico de Precificações</h2>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1528,7 +1460,7 @@ export function PrecificacaoClient({
           )}
 
           {subAbaHistorico === "produtos" && (
-            <Card className="p-0 overflow-hidden">
+            <Card padding="nenhum" className="overflow-hidden">
               <div className="px-5 pt-5 pb-4 flex items-center justify-between">
                 <h2 className="text-base font-semibold text-text-primary">Produtos com Variações</h2>
                 <button onClick={exportarAnunciosCsv} className="text-xs text-accent hover:underline">

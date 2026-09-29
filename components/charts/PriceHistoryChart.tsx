@@ -1,6 +1,7 @@
 "use client";
 
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { COR_SERIE, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, TICK_EIXO, formatarMoedaTooltip } from "./tema";
 
 export function PriceHistoryChart({ data }: { data: { data: string; preco: number }[] }) {
   const pontos = [...data]
@@ -12,28 +13,31 @@ export function PriceHistoryChart({ data }: { data: { data: string; preco: numbe
   return (
     <ResponsiveContainer width="100%" height={140}>
       <LineChart data={pontos} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="dataLabel" tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--grafico-grade)" vertical={false} />
+        <XAxis dataKey="dataLabel" tick={TICK_EIXO} axisLine={false} tickLine={false} />
         <YAxis
-          tick={{ fontSize: 11, fill: "var(--text-tertiary)" }}
+          tick={TICK_EIXO}
           axisLine={false}
           tickLine={false}
           width={56}
           tickFormatter={(v) => Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
         />
         <Tooltip
-          contentStyle={{
-            fontSize: 12,
-            borderRadius: 8,
-            background: "var(--surface-1)",
-            border: "1px solid var(--border)",
-            color: "var(--text-primary)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          }}
-          formatter={(value) => Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          contentStyle={ESTILO_TOOLTIP}
+          labelStyle={ESTILO_ROTULO_TOOLTIP}
+          cursor={{ stroke: "var(--border-forte)", strokeWidth: 1 }}
+          formatter={formatarMoedaTooltip}
           labelFormatter={(label) => label}
         />
-        <Line type="monotone" dataKey="preco" stroke="#4f46e5" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+        {/* Ponto de 8px: abaixo disso o alvo de toque some no celular. */}
+        <Line
+          type="monotone"
+          dataKey="preco"
+          stroke={COR_SERIE}
+          strokeWidth={2}
+          dot={{ r: 4, fill: "var(--surface-1)", stroke: COR_SERIE, strokeWidth: 2 }}
+          activeDot={{ r: 6 }}
+        />
       </LineChart>
     </ResponsiveContainer>
   );

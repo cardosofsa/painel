@@ -111,6 +111,9 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
 
       <button
         onClick={alternar}
+        aria-label={recolhida ? "Expandir menu" : "Recolher menu"}
+        aria-expanded={!recolhida}
+        title={recolhida ? "Expandir menu" : undefined}
         className={`flex items-center gap-2 px-5 py-3 border-t border-border text-text-tertiary hover:text-text-primary text-xs ${
           recolhida ? "justify-center px-0" : ""
         }`}

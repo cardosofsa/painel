@@ -33,6 +33,7 @@ import {
 import { executarComToast } from "@/lib/acao-cliente";
 import { LimparDadosModal } from "@/components/financeiro/LimparDadosModal";
 import { NovaMovimentacaoModal, NovaDespesaFixaModal, NovaCprModal } from "@/components/financeiro/ModaisFinanceiro";
+import { Chip } from "@/components/ui/Chip";
 
 export interface Conta {
   id: string;
@@ -404,7 +405,7 @@ export function FinanceiroClient({
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden mb-5">
+      <Card padding="nenhum" className="overflow-hidden mb-5">
         <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
           <div>
             <h2 className="text-base font-semibold text-text-primary">Contas a Pagar & Receber</h2>
@@ -416,17 +417,9 @@ export function FinanceiroClient({
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex gap-2 flex-wrap">
               {FILTROS_CPR.map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFiltroCpr(f)}
-                  className={`h-8 px-3 rounded-md text-sm border transition-colors ${
-                    filtroCpr === f
-                      ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                      : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-                  }`}
-                >
+                <Chip key={f} onClick={() => setFiltroCpr(f)} ativo={filtroCpr === f}>
                   {f}
-                </button>
+                </Chip>
               ))}
             </div>
             <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
@@ -484,7 +477,7 @@ export function FinanceiroClient({
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-        <Card ref={lancamentosRef} className="lg:col-span-2 p-0 overflow-hidden">
+        <Card ref={lancamentosRef} padding="nenhum" className="lg:col-span-2 overflow-hidden">
           <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-semibold text-text-primary">Lançamentos Recentes</h2>
@@ -595,7 +588,7 @@ export function FinanceiroClient({
         </Card>
       </div>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <h2 className="text-base font-semibold text-text-primary">Despesas Fixas Recorrentes</h2>
           <div className="text-sm text-text-secondary">

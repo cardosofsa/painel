@@ -147,7 +147,7 @@ export function NovoPedidoModal({
           ))}
         </select>
       </FormField>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Destino">
           <select className={inputClass} value={armazemId} onChange={(e) => setArmazemId(e.target.value)}>
             <option value="">Sem armazém</option>
@@ -162,7 +162,7 @@ export function NovoPedidoModal({
           <input className={inputClass} value={nf} onChange={(e) => setNf(e.target.value)} />
         </FormField>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Data do Pedido">
           <input type="date" className={inputClass} value={dataPedido} onChange={(e) => setDataPedido(e.target.value)} />
         </FormField>
@@ -184,7 +184,7 @@ export function NovoPedidoModal({
           className="text-sm text-text-secondary file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:bg-surface-2 file:text-text-primary file:text-sm hover:file:bg-surface-3 disabled:opacity-50"
         />
       </FormField>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Forma de Pagamento">
           {formasPagamento.length === 0 ? (
             <div className="text-xs text-text-tertiary h-9 flex items-center">
@@ -214,7 +214,7 @@ export function NovoPedidoModal({
           </select>
         </FormField>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Pagamento">
           <div className="flex h-9 rounded-md border border-border overflow-hidden text-sm">
             <button

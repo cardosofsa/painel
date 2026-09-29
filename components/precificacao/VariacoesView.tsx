@@ -29,6 +29,7 @@ import { LIMITE_TITULO } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/app/(painel)/precificacao/PrecificacaoClient";
 import { executarComToast } from "@/lib/acao-cliente";
 import { inputClass } from "@/components/ui/Modal";
+import { Chip } from "@/components/ui/Chip";
 
 export function VariacoesView({
   produtos,
@@ -317,17 +318,9 @@ export function VariacoesView({
           <label className="text-xs text-text-secondary mb-1.5 block">Como calcular o preço (padrão pra variações sem override)</label>
           <div className="flex gap-2 flex-wrap">
             {MODOS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setModo(m.id)}
-                className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                  modo === m.id
-                    ? "bg-accent-soft border-accent-soft text-accent font-medium"
-                    : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-                }`}
-              >
+              <Chip key={m.id} onClick={() => setModo(m.id)} ativo={modo === m.id}>
                 {m.label}
-              </button>
+              </Chip>
             ))}
           </div>
         </div>
@@ -385,26 +378,16 @@ export function VariacoesView({
         </div>
 
         <div className="flex gap-2 mb-3 flex-wrap">
-          <button
-            onClick={() => setModoTaxas("manual")}
-            className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-              modoTaxas === "manual" ? "bg-accent-soft border-accent-soft text-accent font-medium" : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-            }`}
-          >
+          <Chip onClick={() => setModoTaxas("manual")} ativo={modoTaxas === "manual"}>
             Manual
-          </button>
-          <button
-            onClick={() => setModoTaxas("loja")}
-            className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-              modoTaxas === "loja" ? "bg-accent-soft border-accent-soft text-accent font-medium" : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-            }`}
-          >
+          </Chip>
+          <Chip onClick={() => setModoTaxas("loja")} ativo={modoTaxas === "loja"}>
             Selecionar Loja
-          </button>
+          </Chip>
         </div>
 
         {modoTaxas === "manual" ? (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-text-secondary mb-1.5 block">Taxa Fixa (R$)</label>
               <input
@@ -448,7 +431,7 @@ export function VariacoesView({
         )}
       </Card>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         <div className="px-5 pt-5 pb-3 flex items-center justify-between">
           <h3 className="text-sm font-medium text-text-primary">Variações</h3>
           <button onClick={adicionarVariacao} className="text-sm text-accent hover:underline">
@@ -644,7 +627,7 @@ export function VariacoesView({
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         <div className="px-5 pt-5 pb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold text-text-primary">Variações Salvas</h2>
           <div className="flex items-center gap-3">

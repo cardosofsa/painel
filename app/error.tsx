@@ -14,7 +14,7 @@ export default function ErrorBoundary({ error, reset }: { error: Error & { diges
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-surface-1 border border-border rounded-lg shadow-sm p-6 text-center">
+      <div className="max-w-md w-full bg-surface-1 border border-border rounded-lg shadow-elev-1 p-6 text-center">
         <div className="w-10 h-10 rounded-full bg-negative-soft text-negative flex items-center justify-center mx-auto mb-4">
           <AlertTriangle size={20} />
         </div>

@@ -350,25 +350,28 @@ export function ConfiguracoesClient({
             const lojasDoCanal = lojas.filter((l) => l.canal_id === c.id);
             return (
               <Card key={c.id}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
+                {/* `flex-wrap` + `min-w-0`: sem os dois, os dois links e o RowMenu eram
+                    empurrados para fora da tela no celular e a página inteira ganhava
+                    rolagem horizontal — o único vazamento que sobrou nas 8 telas. */}
+                <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
                       className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"
                       style={{ backgroundColor: `${c.cor}1a`, color: c.cor }}
                     >
                       <Icone size={18} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="font-medium text-text-primary text-sm">{c.nome}</div>
                       {c.tipo_taxa === "faixas" && (
                         <div className="text-xs text-text-tertiary">Comissão por faixa de preço (tabela editável)</div>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-3 flex-wrap">
                     {c.tipo_taxa === "faixas" && (
                       <button onClick={() => setModalFaixas(c)} className="text-sm text-accent hover:underline">
-                        Editar Faixas de Comissão
+                        Editar Faixas
                       </button>
                     )}
                     <button onClick={() => setModalLoja({ loja: null, canal: c })} className="text-sm text-accent hover:underline">

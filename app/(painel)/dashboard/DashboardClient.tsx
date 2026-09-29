@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
+import { Button, IconButton } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
@@ -128,7 +128,7 @@ export function DashboardClient({
               <p className="text-xs text-text-tertiary mb-4">
                 Lucro é a margem real das vendas (preço − custo da mercadoria), não o saldo de caixa
               </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="border border-border rounded-md p-4">
                   <div className="text-xs text-text-tertiary mb-1">Faturamento</div>
                   <div className="font-mono text-2xl text-accent">{formatBRL(vendas.mes)}</div>
@@ -148,7 +148,7 @@ export function DashboardClient({
               </div>
             </Card>
 
-            <Card className="p-0 overflow-hidden flex flex-col">
+            <Card padding="nenhum" className="overflow-hidden flex flex-col">
               <div className="px-5 pt-5 pb-3">
                 <h2 className="text-base font-semibold text-text-primary">Estoque Baixo</h2>
                 <p className="text-xs text-text-tertiary">{produtosBaixoEstoque.length} produtos precisam de reposição</p>
@@ -175,7 +175,7 @@ export function DashboardClient({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <Card className="lg:col-span-2 p-0 overflow-hidden">
+            <Card padding="nenhum" className="lg:col-span-2 overflow-hidden">
               <div className="px-5 pt-5 pb-4">
                 <h2 className="text-base font-semibold text-text-primary">Próximos Vencimentos</h2>
                 <p className="text-sm text-text-secondary">Compromissos a pagar e repasses a receber</p>
@@ -308,15 +308,15 @@ function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,260px)_1fr] gap-6">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <button onClick={() => mudarMes(-1)} className="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-2">
+            <IconButton onClick={() => mudarMes(-1)} aria-label="Mês anterior">
               <ChevronLeft size={16} />
-            </button>
+            </IconButton>
             <span className="text-sm font-medium text-text-primary">
               {NOMES_MES[mes]} {ano}
             </span>
-            <button onClick={() => mudarMes(1)} className="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface-2">
+            <IconButton onClick={() => mudarMes(1)} aria-label="Próximo mês">
               <ChevronRight size={16} />
-            </button>
+            </IconButton>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center text-xs text-text-tertiary mb-1">
             {DIAS_SEMANA.map((d, i) => (
@@ -435,7 +435,7 @@ function CompromissoModal({ open, dataPadrao, onClose }: { open: boolean; dataPa
       <FormField label="Título">
         <input className={inputClass} value={titulo} onChange={(e) => setTitulo(e.target.value)} />
       </FormField>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Data">
           <input type="date" className={inputClass} value={data} onChange={(e) => setData(e.target.value)} />
         </FormField>

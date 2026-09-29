@@ -160,7 +160,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
         />
       </div>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         {filtrados.length === 0 ? (
           <EmptyState
             icon={Users}
@@ -265,7 +265,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
 
         {opcionaisAbertos ? (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Data de aniversário">
                 <input
                   type="date"

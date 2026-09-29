@@ -21,6 +21,7 @@ import {
 import { salvarPrecificacoesEmMassa } from "@/app/(painel)/precificacao/actions";
 import type { PrecificacaoHist } from "@/app/(painel)/precificacao/PrecificacaoClient";
 import { executarComToast } from "@/lib/acao-cliente";
+import { Chip } from "@/components/ui/Chip";
 
 interface ProdutoOpcao {
   id: string;
@@ -318,22 +319,14 @@ export function CalculadoraEmMassa({
                 { id: "ok" as const, label: `OK (${itensOk.length})` },
               ]
             ).map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFiltroResultado(f.id)}
-                className={`h-8 px-3 rounded-md text-sm border transition-colors ${
-                  filtroResultado === f.id
-                    ? "bg-surface-3 border-border text-text-primary font-medium"
-                    : "bg-surface-1 border-border text-text-secondary hover:bg-surface-2"
-                }`}
-              >
+              <Chip key={f.id} onClick={() => setFiltroResultado(f.id)} ativo={filtroResultado === f.id}>
                 {f.label}
-              </button>
+              </Chip>
             ))}
           </div>
         </div>
 
-        <Card className="p-0 overflow-hidden">
+        <Card padding="nenhum" className="overflow-hidden">
           <Table>
             <Thead>
               <tr>
@@ -587,7 +580,7 @@ export function CalculadoraEmMassa({
                     placeholder="Nome do produto"
                   />
                   {sugestaoAbertaId === l.id && sugestoesPorNome(l.nome).length > 0 && (
-                    <div className="absolute z-10 top-full left-0 mt-1 w-56 bg-surface-1 border border-border rounded-md shadow-lg py-1 text-sm max-h-48 overflow-y-auto">
+                    <div className="absolute z-10 top-full left-0 mt-1 w-56 bg-surface-1 border border-border rounded-md shadow-elev-2 py-1 text-sm max-h-48 overflow-y-auto">
                       {sugestoesPorNome(l.nome).map((p) => (
                         <button
                           key={p.id}

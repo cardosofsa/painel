@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import type { ItemVitrine, VarianteVitrine } from "./VitrineView";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
+import { Chip } from "@/components/ui/Chip";
 
 /** Monta o link do WhatsApp: com o número do negócio quando cadastrado, ou o mesmo formato
  * sem número já usado em outras partes do sistema (deixa a pessoa escolher o contato). */
@@ -91,17 +92,9 @@ export function ProdutoPopup({
               <div className="text-xs font-medium text-text-secondary mb-1.5">Escolha uma opção</div>
               <div className="flex flex-wrap gap-2">
                 {variantes.map((v) => (
-                  <button
-                    key={v.produto_id}
-                    onClick={() => trocarVariante(v.produto_id)}
-                    className={`h-9 px-3 rounded-md text-sm border transition-colors ${
-                      v.produto_id === selecionada.produto_id
-                        ? "bg-accent-soft border-accent-soft text-accent"
-                        : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
-                    }`}
-                  >
+                  <Chip key={v.produto_id} onClick={() => trocarVariante(v.produto_id)} ativo={v.produto_id === selecionada.produto_id}>
                     {v.variante_nome ?? "Padrão"}
-                  </button>
+                  </Chip>
                 ))}
               </div>
             </div>

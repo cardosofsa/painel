@@ -194,7 +194,7 @@ export function ComprasClient({
         </select>
       </div>
 
-      <Card className="p-0 overflow-hidden">
+      <Card padding="nenhum" className="overflow-hidden">
         {filtrados.length === 0 ? (
           <EmptyState icon={PackageSearch} title="Nenhum pedido encontrado" description="Ajuste os filtros ou crie um novo pedido de compra." />
         ) : (
@@ -252,7 +252,7 @@ export function ComprasClient({
       <Modal open={!!pedidoDetalhe} onClose={() => setPedidoDetalhe(null)} title={`Pedido ${pedidoDetalhe?.numero ?? ""}`}>
         {pedidoDetalhe && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <div className="text-xs text-text-tertiary">Fornecedor</div>
                 <div className="text-text-primary">{pedidoDetalhe.fornecedor_nome}</div>
