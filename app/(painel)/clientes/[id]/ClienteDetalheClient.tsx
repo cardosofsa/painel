@@ -89,18 +89,20 @@ export function ClienteDetalheClient({
   contas,
   fiadoEmUso,
   nomeNegocio,
+  logoUrl,
 }: {
   cliente: ClienteDetalhe;
   vendas: VendaCliente[];
   contas: Conta[];
   fiadoEmUso: number;
   nomeNegocio: string | null;
+  logoUrl: string | null;
 }) {
   const [, startTransition] = useTransition();
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [parcelasVenda, setParcelasVenda] = useState<{ id: string; numero: string } | null>(null);
   const [enviandoResumoId, setEnviandoResumoId] = useState<string | null>(null);
-  const { abrirResumo, modais: modaisResumoFiado } = useResumoFiadoImagem(nomeNegocio);
+  const { abrirResumo, modais: modaisResumoFiado } = useResumoFiadoImagem(nomeNegocio, logoUrl);
   const hoje = hojeIsoLocal();
 
   const validas = useMemo(() => vendas.filter((v) => v.status !== "cancelada"), [vendas]);

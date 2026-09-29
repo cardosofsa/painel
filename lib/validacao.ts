@@ -520,3 +520,17 @@ export function validar<T>(schema: z.ZodType<T>, dados: unknown): T {
   }
   return resultado.data;
 }
+
+/** Dados que aparecem no cabeçalho do comprovante (migração 0032). Tudo opcional. */
+export const dadosEmpresaSchema = z.object({
+  logo_url: urlPublica.nullable(),
+  telefone: z.string().trim().max(30).nullable(),
+  email: z.string().trim().max(200).nullable(),
+  instagram: z.string().trim().max(100).nullable(),
+  cep: z.string().trim().max(16).nullable(),
+  endereco: z.string().trim().max(200).nullable(),
+  numero: z.string().trim().max(20).nullable(),
+  bairro: z.string().trim().max(120).nullable(),
+  cidade: z.string().trim().max(200).nullable(),
+  uf: z.string().trim().max(2).nullable(),
+});

@@ -18,7 +18,7 @@ const ROTULO_STATUS_PARCELA: Record<string, { label: string; cor: string }> = {
  * cabeçalho "profissional" completo (logo definitivo, CNPJ, endereço) fica pra Fase 3 —
  * aqui só o nome do negócio, porque `perfil_negocio` ainda não tem coluna de logo.
  */
-export function useResumoFiadoImagem(nomeNegocio: string | null) {
+export function useResumoFiadoImagem(nomeNegocio: string | null, logoUrl: string | null = null) {
   const [pendente, setPendente] = useState<{ dados: DadosResumoFiado; acao: "copiar" | "baixar" } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -66,7 +66,18 @@ export function useResumoFiadoImagem(nomeNegocio: string | null) {
       <div ref={ref}>
         {pendente && (
           <div style={{ background: "#ffffff", padding: 24, fontFamily: "system-ui, sans-serif", color: "#111827", border: "1px solid #e5e7eb" }}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{nomeNegocio ?? "Resumo de Fiado"}</div>
+            {logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- captura por html-to-image; precisa ser <img> puro
+              <img
+                src={logoUrl}
+                alt=""
+                crossOrigin="anonymous"
+                style={{ display: "block", margin: "0 auto 8px", maxHeight: 56, maxWidth: 160, objectFit: "contain" }}
+              />
+            )}
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2, textAlign: logoUrl ? "center" : "left" }}>
+              {nomeNegocio ?? "Resumo de Fiado"}
+            </div>
             <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 14 }}>
               Venda {pendente.dados.numero} · {formatarDataIso(pendente.dados.data.slice(0, 10))}
             </div>

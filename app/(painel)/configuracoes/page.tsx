@@ -56,7 +56,7 @@ export default async function ConfiguracoesPage() {
       // legível no DOM e no payload RSC, apesar do input `type="password"`.
       supabase
         .from("perfil_negocio")
-        .select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp, pin_admin_hash")
+        .select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp, pin_admin_hash, logo_url, telefone, email, instagram, cep, endereco, numero, bairro, cidade, uf")
         .maybeSingle(),
     ]);
 
@@ -92,6 +92,18 @@ export default async function ConfiguracoesPage() {
     aliquota_das: perfilRes.data?.aliquota_das ?? 6,
     whatsapp: perfilRes.data?.whatsapp ?? "",
     pin_configurado: !!perfilRes.data?.pin_admin_hash,
+    empresa: {
+      logo_url: perfilRes.data?.logo_url ?? null,
+      telefone: perfilRes.data?.telefone ?? null,
+      email: perfilRes.data?.email ?? null,
+      instagram: perfilRes.data?.instagram ?? null,
+      cep: perfilRes.data?.cep ?? null,
+      endereco: perfilRes.data?.endereco ?? null,
+      numero: perfilRes.data?.numero ?? null,
+      bairro: perfilRes.data?.bairro ?? null,
+      cidade: perfilRes.data?.cidade ?? null,
+      uf: perfilRes.data?.uf ?? null,
+    },
   };
 
   const contagemPorCategoria = new Map<string, number>(

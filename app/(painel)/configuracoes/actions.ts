@@ -12,6 +12,7 @@ import {
   armazemSchema,
   formaPagamentoSchema,
   perfilNegocioSchema,
+  dadosEmpresaSchema,
   pinAdminSchema,
   categoriaSchema,
 } from "@/lib/validacao";
@@ -331,5 +332,39 @@ export async function definirPinAdmin(pin: string | null) {
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
     revalidatePath("/vendas");
+  });
+}
+
+// ---------- Dados da empresa (cabeçalho do comprovante) ----------
+export interface DadosEmpresaInput {
+  logo_url: string | null;
+  telefone: string | null;
+  email: string | null;
+  instagram: string | null;
+  cep: string | null;
+  endereco: string | null;
+  numero: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  uf: string | null;
+}
+
+export async function salvarDadosEmpresa(dados: DadosEmpresaInput) {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Sessão expirada, faça login novamente");
+
+    // Upsert só com estas colunas: o resto da linha (nome, PIN, alíquota…) não é tocado.
+    const { error } = await supabase
+      .from("perfil_negocio")
+      .upsert({ user_id: user.id, ...validar(dadosEmpresaSchema, dados), atualizado_em: new Date().toISOString() });
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/vendas");
+    revalidatePath("/pdv");
+    revalidatePath("/clientes");
   });
 }

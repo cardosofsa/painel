@@ -9,7 +9,7 @@ export interface EnderecoForm {
   cep: string | null;
   endereco: string | null;
   numero: string | null;
-  complemento: string | null;
+  complemento?: string | null;
   bairro: string | null;
   cidade: string | null;
   uf: string | null;
@@ -29,9 +29,12 @@ const NENHUM_TRAVADO = { endereco: false, bairro: false, cidade: false, uf: fals
 export function CamposEndereco({
   valor,
   onChange,
+  comComplemento = true,
 }: {
   valor: EnderecoForm;
   onChange: (patch: Partial<EnderecoForm>) => void;
+  /** Endereço de empresa não usa complemento; cliente sim. */
+  comComplemento?: boolean;
 }) {
   const [cepBusca, setCepBusca] = useState("");
   const [travado, setTravado] = useState(NENHUM_TRAVADO);
@@ -83,17 +86,19 @@ export function CamposEndereco({
         />
       </FormField>
 
-      <div className="grid grid-cols-[1fr_2fr] gap-4">
+      <div className={comComplemento ? "grid grid-cols-[1fr_2fr] gap-4" : ""}>
         <FormField label="Número">
           <input className={inputClass} value={valor.numero ?? ""} onChange={(e) => onChange({ numero: e.target.value || null })} />
         </FormField>
-        <FormField label="Complemento">
-          <input
-            className={inputClass}
-            value={valor.complemento ?? ""}
-            onChange={(e) => onChange({ complemento: e.target.value || null })}
-          />
-        </FormField>
+        {comComplemento && (
+          <FormField label="Complemento">
+            <input
+              className={inputClass}
+              value={valor.complemento ?? ""}
+              onChange={(e) => onChange({ complemento: e.target.value || null })}
+            />
+          </FormField>
+        )}
       </div>
 
       <FormField label="Bairro">
