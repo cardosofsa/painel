@@ -22,6 +22,7 @@ import {
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
+import { CamposEndereco } from "@/components/clientes/CamposEndereco";
 
 export interface Cliente extends ClienteInput {
   id: string;
@@ -37,6 +38,9 @@ const FORM_VAZIO: ClienteInput = {
   data_nascimento: null,
   cep: null,
   endereco: null,
+  numero: null,
+  bairro: null,
+  complemento: null,
   cidade: null,
   uf: null,
   observacao: null,
@@ -89,6 +93,9 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
       data_nascimento: c.data_nascimento,
       cep: c.cep,
       endereco: c.endereco,
+      numero: c.numero,
+      bairro: c.bairro,
+      complemento: c.complemento,
       cidade: c.cidade,
       uf: c.uf,
       observacao: c.observacao,
@@ -262,13 +269,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
             placeholder="Ex: 11987654321"
           />
         </FormField>
-        <FormField label="Endereço (opcional)">
-          <input
-            className={inputClass}
-            value={form.endereco ?? ""}
-            onChange={(e) => setForm({ ...form, endereco: e.target.value || null })}
-          />
-        </FormField>
+        <CamposEndereco valor={form} onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))} />
 
         <button
           type="button"
@@ -305,30 +306,6 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
                 onChange={(e) => setForm({ ...form, email: e.target.value || null })}
               />
             </FormField>
-            <div className="grid grid-cols-[1fr_2fr_80px] gap-4">
-              <FormField label="CEP">
-                <input
-                  className={inputClass}
-                  value={form.cep ?? ""}
-                  onChange={(e) => setForm({ ...form, cep: e.target.value || null })}
-                />
-              </FormField>
-              <FormField label="Cidade">
-                <input
-                  className={inputClass}
-                  value={form.cidade ?? ""}
-                  onChange={(e) => setForm({ ...form, cidade: e.target.value || null })}
-                />
-              </FormField>
-              <FormField label="UF">
-                <input
-                  className={inputClass}
-                  maxLength={2}
-                  value={form.uf ?? ""}
-                  onChange={(e) => setForm({ ...form, uf: e.target.value.toUpperCase() || null })}
-                />
-              </FormField>
-            </div>
             <FormField label="Observação">
               <textarea
                 className={`${inputClass} h-20 py-2 resize-none`}

@@ -5,6 +5,19 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, clienteSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
+import { consultarCep } from "@/lib/cep-servidor";
+import type { EnderecoCep } from "@/lib/cep";
+
+/** Preenche o endereço a partir do CEP. `null` = não achou; a tela deixa digitar à mão. */
+export async function buscarCep(cep: string) {
+  return comResultado(async (): Promise<EnderecoCep | null> => {
+    // Exige sessão: sem isso a action viraria um proxy aberto para o ViaCEP.
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return null;
+    return consultarCep(cep);
+  });
+}
 
 export interface ClienteInput {
   nome: string;
@@ -14,6 +27,9 @@ export interface ClienteInput {
   data_nascimento: string | null;
   cep: string | null;
   endereco: string | null;
+  numero: string | null;
+  bairro: string | null;
+  complemento: string | null;
   cidade: string | null;
   uf: string | null;
   observacao: string | null;
@@ -49,6 +65,9 @@ export async function criarClienteRapido(nome: string, whatsapp: string | null, 
       data_nascimento: null,
       cep: null,
       endereco: null,
+      numero: null,
+      bairro: null,
+      complemento: null,
       cidade: null,
       uf: null,
       observacao: null,

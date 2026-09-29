@@ -18,7 +18,7 @@ export default async function ClientesPage() {
     supabase
       .from("clientes")
       .select(
-        "id, nome, whatsapp, email, documento, data_nascimento, cep, endereco, cidade, uf, observacao, permite_fiado, limite_fiado, status",
+        "id, nome, whatsapp, email, documento, data_nascimento, cep, endereco, numero, bairro, complemento, cidade, uf, observacao, permite_fiado, limite_fiado, status",
       )
       .order("nome"),
     supabase.rpc("resumo_vendas_por_cliente"),
