@@ -52,9 +52,13 @@ export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
         <Menu size={18} />
       </button>
 
-      <div className="hidden sm:flex items-center gap-1.5 text-sm text-text-secondary truncate">
-        Olá, {nomeNegocio || "Segundo Cérebro"}
-      </div>
+      {/* Sem nome de negócio cadastrado, a saudação não aparece — "Olá, Segundo Cérebro"
+          soava como se o sistema estivesse falando o próprio nome de volta pro dono. */}
+      {nomeNegocio && (
+        <div className="hidden sm:flex items-center gap-1.5 text-sm text-text-secondary truncate">
+          Olá, {nomeNegocio}
+        </div>
+      )}
 
       <span className="hidden sm:inline text-sm text-text-tertiary">{todayLabel()}</span>
 

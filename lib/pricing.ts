@@ -37,6 +37,18 @@ export interface ResultadoPrecificacao {
   viavel: boolean;
 }
 
+/**
+ * Qual percentual mostrar ao lado do lucro, de acordo com a forma de calcular escolhida.
+ *
+ * `margemEfetivaPct` (lucro/preço) e `markupSobreCustoPct` (lucro/custo) são números
+ * DIFERENTES para o mesmo resultado — 20% de margem não é 20% de markup. Mostrar sempre
+ * margem, mesmo quando o dono calculou por "Markup sobre Custo", exibia uma porcentagem
+ * que não batia com o número que ele acabou de digitar, na Faixa de Venda.
+ */
+export function pctPorModo(r: ResultadoPrecificacao, modo: ModoCalculo): number {
+  return modo === "markup" ? r.markupSobreCustoPct : r.margemEfetivaPct;
+}
+
 function extraFracao(taxas: TaxasPlataforma): number {
   return taxas.taxaExtraTipo === "percentual" ? (taxas.taxaExtraValor ?? 0) / 100 : 0;
 }

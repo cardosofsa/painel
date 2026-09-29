@@ -9,6 +9,7 @@ import {
   analisarConcorrencia,
   formatarFaixaLabel,
   zonaMortaDeFaixa,
+  pctPorModo,
   type TaxasPlataforma,
   type FaixaComissao,
 } from "./pricing";
@@ -389,5 +390,25 @@ describe("zonaMortaDeFaixa", () => {
     expect(zonaMortaDeFaixa(SHOPEE, 0)).toBeNull();
     expect(zonaMortaDeFaixa(SHOPEE, NaN)).toBeNull();
     expect(zonaMortaDeFaixa(SHOPEE, -10)).toBeNull();
+  });
+});
+
+/**
+ * Margem (lucro/preço) e markup (lucro/custo) são números DIFERENTES para o mesmo
+ * resultado. Mostrar sempre margem na Faixa de Venda, mesmo quando o dono calculou por
+ * "Markup sobre Custo", exibia uma % que não batia com o número que ele acabou de digitar.
+ */
+describe("pctPorModo", () => {
+  const r = resultadoParaPreco(100, 60, SEM_TAXAS); // lucro 40; margem 40%; markup 66,7%
+
+  it("modo markup devolve markupSobreCustoPct", () => {
+    expect(pctPorModo(r, "markup")).toBeCloseTo(r.markupSobreCustoPct, 10);
+    expect(pctPorModo(r, "markup")).not.toBeCloseTo(r.margemEfetivaPct, 2);
+  });
+
+  it("qualquer outro modo devolve margemEfetivaPct", () => {
+    expect(pctPorModo(r, "margem")).toBe(r.margemEfetivaPct);
+    expect(pctPorModo(r, "lucro")).toBe(r.margemEfetivaPct);
+    expect(pctPorModo(r, "preco")).toBe(r.margemEfetivaPct);
   });
 });

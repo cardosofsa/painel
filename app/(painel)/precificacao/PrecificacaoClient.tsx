@@ -28,6 +28,7 @@ import {
   type TaxasPlataforma,
   type ResultadoPrecificacao,
   MODOS,
+  pctPorModo,
   zonaMortaDeFaixa,
   type FaixaComissao,
   type ZonaMorta,
@@ -402,17 +403,25 @@ export function PrecificacaoClient({
       impostoPct: impostoPct / 100,
       taxaExtraCalculada: resultado.taxaExtraCalculada,
       lucroLiquido: resultado.lucroLiquido,
+      // O "Lucro líquido" principal continua sempre em margem sobre venda — o pedido era
+      // só a Faixa de Venda seguir a forma de calcular escolhida (abaixo).
       margemEfetivaPct: resultado.margemEfetivaPct,
-      componentes,
+      // O custo do produto era só somado ao Total, nunca listado — o texto mostrava
+      // "Total: R$ 6,60" com uma única linha de insumo de R$ 0,50, sem dizer de onde vinham
+      // os outros R$ 6,10. Mesmo padrão de `componentesSalvos`, usado ao salvar no histórico.
+      componentes:
+        custoProduto > 0
+          ? [{ id: ID_CUSTO_PRODUTO, nome: "Custo do produto", quantidade: 1, custoUnitario: custoProduto }, ...componentes]
+          : componentes,
       faixaVenda:
         resultadoMin && resultadoMax
           ? {
               precoMinimo: resultadoMin.precoVenda,
               precoMaximo: resultadoMax.precoVenda,
               lucroMinimo: resultadoMin.lucroLiquido,
-              margemMinimaPct: resultadoMin.margemEfetivaPct,
+              margemMinimaPct: pctPorModo(resultadoMin, modo),
               lucroMaximo: resultadoMax.lucroLiquido,
-              margemMaximaPct: resultadoMax.margemEfetivaPct,
+              margemMaximaPct: pctPorModo(resultadoMax, modo),
             }
           : null,
     };
@@ -1156,20 +1165,24 @@ export function PrecificacaoClient({
             {(resultadoMin || resultadoMax) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm border-t border-border pt-3">
                 <div>
-                  <div className="text-xs text-text-tertiary mb-0.5">Lucro no mínimo</div>
+                  <div className="text-xs text-text-tertiary mb-0.5">
+                    Lucro no mínimo{modo === "markup" ? " (markup)" : ""}
+                  </div>
                   {resultadoMin ? (
                     <span className={`font-mono ${resultadoMin.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
-                      {formatBRL(resultadoMin.lucroLiquido)} ({(resultadoMin.margemEfetivaPct * 100).toFixed(1)}%)
+                      {formatBRL(resultadoMin.lucroLiquido)} ({(pctPorModo(resultadoMin, modo) * 100).toFixed(1)}%)
                     </span>
                   ) : (
                     <span className="text-text-tertiary">—</span>
                   )}
                 </div>
                 <div>
-                  <div className="text-xs text-text-tertiary mb-0.5">Lucro no máximo</div>
+                  <div className="text-xs text-text-tertiary mb-0.5">
+                    Lucro no máximo{modo === "markup" ? " (markup)" : ""}
+                  </div>
                   {resultadoMax ? (
                     <span className={`font-mono ${resultadoMax.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
-                      {formatBRL(resultadoMax.lucroLiquido)} ({(resultadoMax.margemEfetivaPct * 100).toFixed(1)}%)
+                      {formatBRL(resultadoMax.lucroLiquido)} ({(pctPorModo(resultadoMax, modo) * 100).toFixed(1)}%)
                     </span>
                   ) : (
                     <span className="text-text-tertiary">—</span>
