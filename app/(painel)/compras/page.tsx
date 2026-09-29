@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { hojeIsoLocal } from "@/lib/format";
+import { quantidadeSugeridaCompra } from "@/lib/alertas";
 import { ComprasClient, type Pedido } from "./ComprasClient";
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;
 
-export default async function ComprasPage() {
+export default async function ComprasPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
+  const { novo } = await searchParams;
   const supabase = await createClient();
 
   const inicio = new Date();
@@ -38,7 +40,10 @@ export default async function ComprasPage() {
         .limit(500),
       supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
       supabase.from("fornecedores").select("id, nome, cnpj"),
-      supabase.from("produtos").select("id, nome, custo, grupo_id, variante_nome").order("nome"),
+      supabase
+        .from("produtos")
+        .select("id, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal")
+        .order("nome"),
       supabase.from("armazens").select("id, nome").order("nome"),
       supabase.from("contas").select("id, nome").order("nome"),
       supabase.from("formas_pagamento").select("id, nome").order("nome"),
@@ -94,8 +99,26 @@ export default async function ComprasPage() {
     };
   });
 
+  // Vindo do sino de alertas (?novo=<produto>): abre o pedido de compra já com o produto, a
+  // quantidade sugerida e o fornecedor do cadastro (se ele ainda estiver ativo).
+  const origem = novo ? (produtosRes.data ?? []).find((p) => p.id === novo) : undefined;
+  const rotulado = origem ? produtos.find((p) => p.id === origem.id) : undefined;
+  const pedidoInicial =
+    origem && rotulado
+      ? {
+          fornecedorId: (fornecedoresAtivosRes.data ?? []).some((f) => f.id === origem.fornecedor_id) ? origem.fornecedor_id : null,
+          item: {
+            produto_id: origem.id,
+            produto_nome: rotulado.nome,
+            quantidade: quantidadeSugeridaCompra(origem),
+            custo_unitario: origem.custo,
+          },
+        }
+      : null;
+
   return (
     <ComprasClient
+      pedidoInicial={pedidoInicial}
       pedidos={pedidos}
       fornecedores={fornecedoresAtivosRes.data ?? []}
       produtos={produtos}

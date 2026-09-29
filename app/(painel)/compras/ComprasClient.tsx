@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -11,7 +12,7 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
 import { formatBRL, formatarDataIso, hojeIsoLocal, dataLocal } from "@/lib/format";
-import { marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento } from "./actions";
+import { marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { NovoPedidoModal } from "@/components/compras/NovoPedidoModal";
 
@@ -52,6 +53,7 @@ const PERIODOS = ["Todos", "Últimos 7 dias", "Este mês"] as const;
 const STATUS_OPCOES = ["Todos", "Pendente", "Recebido"] as const;
 
 export function ComprasClient({
+  pedidoInicial,
   pedidos,
   fornecedores,
   produtos,
@@ -59,6 +61,8 @@ export function ComprasClient({
   contas,
   formasPagamento,
 }: {
+  /** Pedido pré-preenchido vindo do alerta de estoque mínimo (?novo=…). */
+  pedidoInicial: { fornecedorId: string | null; item: ItemPedidoInput } | null;
   pedidos: Pedido[];
   fornecedores: Opcao[];
   produtos: (Opcao & { custo: number })[];
@@ -69,7 +73,8 @@ export function ComprasClient({
   const [, startTransition] = useTransition();
   const [pedidoDetalhe, setPedidoDetalhe] = useState<Pedido | null>(null);
   const [notaDetalhe, setNotaDetalhe] = useState<Pedido | null>(null);
-  const [modalNovo, setModalNovo] = useState(false);
+  const router = useRouter();
+  const [modalNovo, setModalNovo] = useState(pedidoInicial !== null);
 
   const [periodo, setPeriodo] = useState<(typeof PERIODOS)[number]>("Todos");
   const [statusFiltro, setStatusFiltro] = useState<(typeof STATUS_OPCOES)[number]>("Todos");
@@ -346,8 +351,14 @@ export function ComprasClient({
       </Modal>
 
       <NovoPedidoModal
+        key={pedidoInicial?.item.produto_id ?? "novo"}
+        pedidoInicial={pedidoInicial}
         open={modalNovo}
-        onClose={() => setModalNovo(false)}
+        onClose={() => {
+          setModalNovo(false);
+          // Tira o ?novo= da URL: senão um F5 reabriria o pedido que o usuário acabou de fechar.
+          if (pedidoInicial) router.replace("/compras");
+        }}
         fornecedores={fornecedores}
         produtos={produtos}
         armazens={armazens}

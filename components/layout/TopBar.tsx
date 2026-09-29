@@ -7,12 +7,13 @@ import Link from "next/link";
 import { useTheme } from "./ThemeContext";
 import { useSidebarMobile } from "./SidebarMobileContext";
 import { createClient } from "@/lib/supabase/client";
+import { AlertasSino, type AlertaSino } from "./AlertasSino";
 
 function todayLabel() {
   return new Date().toLocaleDateString("pt-BR");
 }
 
-export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
+export function TopBar({ nomeNegocio, alertas }: { nomeNegocio: string | null; alertas: AlertaSino[] }) {
   const { theme, toggleTheme } = useTheme();
   const { alternar: alternarSidebar } = useSidebarMobile();
   const router = useRouter();
@@ -63,6 +64,8 @@ export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
       <span className="hidden sm:inline text-sm text-text-tertiary">{todayLabel()}</span>
 
       <div className="flex-1" />
+
+      <AlertasSino alertas={alertas} />
 
       <button
         onClick={toggleTheme}

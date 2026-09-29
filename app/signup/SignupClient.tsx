@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { CartaoAuth, ErroAuth } from "@/components/auth/CartaoAuth";
+import { BotaoGoogle, DivisorOu } from "@/components/auth/BotaoGoogle";
 import { traduzirErroAuth } from "@/lib/erros";
 import { SENHA_MIN, senhaSchema } from "@/lib/validacao";
 
@@ -150,6 +151,9 @@ export function SignupClient() {
           Criar conta
         </Button>
       </form>
+
+      <DivisorOu />
+      <BotaoGoogle rotulo="Cadastrar com Google" />
     </CartaoAuth>
   );
 }

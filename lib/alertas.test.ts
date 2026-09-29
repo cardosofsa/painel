@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcularErosaoMargem, calcularPrevisaoRuptura } from "./alertas";
+import { calcularErosaoMargem, calcularPrevisaoRuptura, quantidadeSugeridaCompra } from "./alertas";
 
 describe("calcularErosaoMargem", () => {
   it("alerta quando o custo da compra recente subiu acima da tolerância", () => {
@@ -94,5 +94,20 @@ describe("calcularPrevisaoRuptura", () => {
       ]),
     );
     expect(alertas.map((a) => a.produtoNome)).toEqual(["Urgente", "Folga"]);
+  });
+});
+
+describe("quantidadeSugeridaCompra", () => {
+  it("com saída média, repõe 4 semanas de venda", () => {
+    expect(quantidadeSugeridaCompra({ estoque: 3, estoque_minimo: 10, saida_media_semanal: 5 })).toBe(17);
+  });
+
+  it("sem saída média, dobra o mínimo", () => {
+    expect(quantidadeSugeridaCompra({ estoque: 4, estoque_minimo: 10, saida_media_semanal: 0 })).toBe(16);
+  });
+
+  it("nunca sugere menos que 1, mesmo com estoque alto", () => {
+    expect(quantidadeSugeridaCompra({ estoque: 50, estoque_minimo: 10, saida_media_semanal: 1 })).toBe(1);
+    expect(quantidadeSugeridaCompra({ estoque: 0, estoque_minimo: 0, saida_media_semanal: 0 })).toBe(1);
   });
 });

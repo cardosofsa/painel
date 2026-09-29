@@ -19,6 +19,7 @@ import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
  * compartilha estado nenhum com a listagem.
  */
 export function NovoPedidoModal({
+  pedidoInicial = null,
   open,
   onClose,
   fornecedores,
@@ -27,6 +28,8 @@ export function NovoPedidoModal({
   contas,
   formasPagamento,
 }: {
+  /** Fornecedor e item já escolhidos (vindo do alerta de estoque mínimo). */
+  pedidoInicial?: { fornecedorId: string | null; item: ItemPedidoInput } | null;
   open: boolean;
   onClose: () => void;
   fornecedores: Opcao[];
@@ -36,7 +39,8 @@ export function NovoPedidoModal({
   formasPagamento: Opcao[];
 }) {
   const [pending, startTransition] = useTransition();
-  const [fornecedorId, setFornecedorId] = useState(fornecedores[0]?.id ?? "");
+  const fornecedorPadrao = pedidoInicial?.fornecedorId ?? fornecedores[0]?.id ?? "";
+  const [fornecedorId, setFornecedorId] = useState(fornecedorPadrao);
   const [armazemId, setArmazemId] = useState(armazens[0]?.id ?? "");
   const [nf, setNf] = useState("");
   const [nfArquivo, setNfArquivo] = useState<File | null>(null);
@@ -48,14 +52,14 @@ export function NovoPedidoModal({
   const [parcelado, setParcelado] = useState(false);
   const [parcelas, setParcelas] = useState(2);
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => hojeIsoLocal());
-  const [itens, setItens] = useState<ItemPedidoInput[]>([]);
+  const [itens, setItens] = useState<ItemPedidoInput[]>(pedidoInicial ? [pedidoInicial.item] : []);
   // `fechar()` já devolve todos esses campos ao padrão ao fechar (confirmado ou não), então
   // basta comparar contra os valores de abertura pra saber se há algo pra perder — não
   // precisa de um `formOriginal` capturado por efeito.
   const sujo = useFormularioSujo(
     { fornecedorId, armazemId, nf, temNfArquivo: !!nfArquivo, dataEntregaPrevista, formaPagamento, contaId, parcelado, parcelas, itens },
     {
-      fornecedorId: fornecedores[0]?.id ?? "",
+      fornecedorId: fornecedorPadrao,
       armazemId: armazens[0]?.id ?? "",
       nf: "",
       temNfArquivo: false,
@@ -64,7 +68,7 @@ export function NovoPedidoModal({
       contaId: contas[0]?.id ?? "",
       parcelado: false,
       parcelas: 2,
-      itens: [] as ItemPedidoInput[],
+      itens: (pedidoInicial ? [pedidoInicial.item] : []) as ItemPedidoInput[],
     },
   );
 

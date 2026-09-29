@@ -63,3 +63,19 @@ export function calcularPrevisaoRuptura(
   }
   return alertas.sort((a, b) => a.diasRestantes - b.diasRestantes);
 }
+
+/**
+ * Quantidade sugerida ao abrir um pedido de compra a partir do alerta de estoque mínimo.
+ *
+ * Se o produto tem saída média conhecida, repõe 4 semanas de venda (mesma conta do resumo
+ * do produto); senão, o suficiente para dobrar o mínimo. Nunca menos que 1.
+ */
+export function quantidadeSugeridaCompra(p: {
+  estoque: number;
+  estoque_minimo: number;
+  saida_media_semanal: number;
+}): number {
+  const porVenda = Math.ceil(p.saida_media_semanal * 4) - p.estoque;
+  const porMinimo = p.estoque_minimo * 2 - p.estoque;
+  return Math.max(1, porVenda > 0 ? porVenda : porMinimo);
+}

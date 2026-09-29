@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { CartaoAuth, ErroAuth } from "@/components/auth/CartaoAuth";
+import { BotaoGoogle, DivisorOu } from "@/components/auth/BotaoGoogle";
 import { traduzirErroAuth, ERROS_LINK } from "@/lib/erros";
 import { reenviarConfirmacao } from "@/app/auth/actions";
 
@@ -128,6 +129,9 @@ export function LoginClient() {
           </Link>
         </p>
       </form>
+
+      <DivisorOu />
+      <BotaoGoogle />
     </CartaoAuth>
   );
 }

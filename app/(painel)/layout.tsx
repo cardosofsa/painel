@@ -24,10 +24,18 @@ export default async function PainelLayout({ children }: { children: React.React
   // round-trip inteiro ao Supabase ANTES de qualquer `page.tsx` começar a renderizar —
   // em 100% das navegações do painel. A função em si já ignora chamadas seguidas, mas
   // isso só evita a escrita, não a ida até o banco.
-  const [perfilNegocioRes, acessoRes] = await Promise.all([
+  const [perfilNegocioRes, acessoRes, alertasRes] = await Promise.all([
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
     supabase.from("perfis_acesso").select("papel, abas").eq("user_id", user?.id ?? "").maybeSingle(),
     supabase.rpc("tocar_ultimo_acesso"),
+    // Alertas pendentes (estoque mínimo). Se a tabela ainda não existir (migração 0034 não
+    // aplicada), o erro é ignorado e o sino aparece vazio — não derruba o painel.
+    supabase
+      .from("alertas")
+      .select("id, mensagem, produto_id, criado_em")
+      .eq("status", "novo")
+      .order("criado_em", { ascending: false })
+      .limit(30),
   ]);
 
   return (
@@ -36,7 +44,7 @@ export default async function PainelLayout({ children }: { children: React.React
       <div className="flex min-h-screen bg-background">
         <Sidebar abas={acessoRes.data?.abas ?? ABAS_OBRIGATORIAS} ehMaster={acessoRes.data?.papel === "master"} />
         <div className="flex-1 flex flex-col min-w-0">
-          <TopBar nomeNegocio={perfilNegocioRes.data?.nome_negocio ?? null} />
+          <TopBar nomeNegocio={perfilNegocioRes.data?.nome_negocio ?? null} alertas={alertasRes.data ?? []} />
           <main className="flex-1 p-4 sm:p-6 print:p-0 max-w-[1700px] w-full mx-auto">{children}</main>
         </div>
       </div>
