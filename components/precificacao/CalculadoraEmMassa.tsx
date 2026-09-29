@@ -19,7 +19,7 @@ import {
   SimuladorPreco,
 } from "@/components/precificacao/resultado-compartilhado";
 import { salvarPrecificacoesEmMassa } from "@/app/(painel)/precificacao/actions";
-import type { PrecificacaoHist } from "@/app/(painel)/precificacao/PrecificacaoClient";
+import type { PrecificacaoHist } from "@/lib/precificacao-estado";
 import { executarComToast } from "@/lib/acao-cliente";
 import { Chip } from "@/components/ui/Chip";
 

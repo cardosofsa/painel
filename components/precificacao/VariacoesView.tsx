@@ -26,7 +26,7 @@ import {
 import { criarAnuncio, removerAnuncio, gerarTituloAnuncioIA, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
-import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/app/(painel)/precificacao/PrecificacaoClient";
+import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/lib/precificacao-estado";
 import { executarComToast } from "@/lib/acao-cliente";
 import { inputClass } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";

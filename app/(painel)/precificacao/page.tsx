@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
-import { PrecificacaoClient, type LojaOpcao, type AnuncioSalvo } from "./PrecificacaoClient";
+import { PrecificacaoClient } from "./PrecificacaoClient";
+import type { LojaOpcao, AnuncioSalvo } from "@/lib/precificacao-estado";
 import type { Concorrente } from "@/lib/pricing";
 
 export default async function PrecificacaoPage() {
