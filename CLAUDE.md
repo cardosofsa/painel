@@ -208,6 +208,14 @@ salvar rebaixava a conta.
   quebra de linha.
 - **Somas de dinheiro** de listas grandes vão no banco (`numeric` é exato). Somar em JS o
   array que a página carregou dá o total só do que foi carregado.
+- **`produtos.custo` é derivado, não escreva nele direto.** Desde a `0029`, um trigger
+  (`recalcular_custo_produto`) sempre recalcula `custo := custo_base + custo_de_insumos(insumos)`
+  a cada INSERT/UPDATE de `produtos` — os campos editáveis são `custo_base` ("valor do
+  produto") e `insumos` (jsonb, mesma forma de `ComponenteKit`). Um `update produtos set
+  custo = 123` grava, mas o trigger sobrescreve antes de persistir; a coluna existe pra
+  leitura (PDV, vendas, catálogo) e pros joins antigos, não pra escrita. Imposto **não**
+  entra no custo — ele já é abatido no preço de venda pela alíquota do regime tributário
+  (`perfil_negocio.aliquota_das`), e entrar nos dois lugares cobraria duas vezes.
 
 ## Design
 
