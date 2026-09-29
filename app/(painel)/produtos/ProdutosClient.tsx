@@ -32,6 +32,7 @@ import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { executarComToast } from "@/lib/acao-cliente";
 import { rotuloProduto } from "@/lib/produtos";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { Chip } from "@/components/ui/Chip";
 
@@ -123,6 +124,8 @@ export function ProdutosClient({
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Produto | null>(null);
   const [form, setForm] = useState<ProdutoInput>(formVazio(armazens[0]?.id ?? null));
+  const [formOriginal, setFormOriginal] = useState<ProdutoInput>(formVazio(armazens[0]?.id ?? null));
+  const sujo = useFormularioSujo(form, formOriginal);
   const [detalheId, setDetalheId] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [novoGrupoAberto, setNovoGrupoAberto] = useState(false);
@@ -173,13 +176,15 @@ export function ProdutosClient({
 
   function abrirNovo() {
     setEditando(null);
-    setForm(formVazio(armazens[0]?.id ?? null));
+    const vazio = formVazio(armazens[0]?.id ?? null);
+    setForm(vazio);
+    setFormOriginal(vazio);
     setModalAberto(true);
   }
 
   function abrirEdicao(p: Produto) {
     setEditando(p);
-    setForm({
+    const dados: ProdutoInput = {
       sku: p.sku,
       nome: p.nome,
       categoria_id: p.categoria_id,
@@ -197,7 +202,9 @@ export function ProdutosClient({
       grupo_id: p.grupo_id,
       variante_nome: p.variante_nome,
       loja_ids: p.loja_ids,
-    });
+    };
+    setForm(dados);
+    setFormOriginal(dados);
     setModalAberto(true);
   }
 
@@ -482,7 +489,12 @@ export function ProdutosClient({
         )}
       </Card>
 
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title={editando ? "Editar Produto" : "Cadastrar Produto"}>
+      <Modal
+        open={modalAberto}
+        onClose={() => setModalAberto(false)}
+        title={editando ? "Editar Produto" : "Cadastrar Produto"}
+        sujo={sujo}
+      >
         <FormField label="SKU">
           <input
             className={inputClass}

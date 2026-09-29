@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { derivarTokens } from "@/lib/cores";
 import { FONTES_VITRINE, type FonteVitrine } from "@/lib/ia/prompts";
 import {
@@ -55,6 +56,7 @@ export function AparenciaModal({
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [dados, setDados] = useState<AparenciaCatalogo>(PADRAO);
+  const [dadosOriginais, setDadosOriginais] = useState<AparenciaCatalogo>(PADRAO);
 
   const [descricaoLoja, setDescricaoLoja] = useState("");
   const [instrucaoExtra, setInstrucaoExtra] = useState("");
@@ -71,10 +73,17 @@ export function AparenciaModal({
     if (!catalogo) return;
     executarComToast(obterAparenciaCatalogo(catalogo.id), { erro: "Erro ao carregar aparência" })
       .then((r) => {
-        if (r.ok) setDados(r.dado);
+        if (r.ok) {
+          setDados(r.dado);
+          setDadosOriginais(r.dado);
+        }
       })
       .finally(() => setCarregando(false));
   }, [catalogo]);
+
+  // Sugestão da IA ainda não aplicada também conta como "sujo": fechar sem querer descarta
+  // uma geração que pode ter custado cota.
+  const sujo = useFormularioSujo(dados, dadosOriginais) || sugestao !== null;
 
   async function gerarComIA() {
     if (!descricaoLoja.trim()) {
@@ -132,7 +141,13 @@ export function AparenciaModal({
   });
 
   return (
-    <Modal open={!!catalogo} onClose={onClose} title={catalogo ? `Aparência — ${catalogo.nome}` : ""} width="max-w-xl">
+    <Modal
+      open={!!catalogo}
+      onClose={onClose}
+      title={catalogo ? `Aparência — ${catalogo.nome}` : ""}
+      width="max-w-xl"
+      sujo={sujo}
+    >
       {carregando ? (
         <p className="text-sm text-text-tertiary py-6 text-center">Carregando…</p>
       ) : (

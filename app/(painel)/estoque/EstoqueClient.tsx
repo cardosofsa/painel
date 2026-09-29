@@ -10,6 +10,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
 import { registrarMovimentacaoEstoque } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
 export interface ProdutoEstoque {
   id: string;
@@ -51,6 +52,10 @@ export function EstoqueClient({
   const [movTipo, setMovTipo] = useState<"entrada" | "saida">("entrada");
   const [movQtd, setMovQtd] = useState(1);
   const [movMotivo, setMovMotivo] = useState("");
+  const sujo = useFormularioSujo(
+    { movProdutoId, movTipo, movQtd, movMotivo },
+    { movProdutoId: produtos[0]?.id ?? "", movTipo: "entrada", movQtd: 1, movMotivo: "" },
+  );
 
   const totalUnidades = produtos.reduce((acc, p) => acc + p.estoque, 0);
   const criticos = produtos.filter((p) => p.estoque <= p.estoque_minimo).length;
@@ -181,7 +186,7 @@ export function EstoqueClient({
         </Card>
       </div>
 
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Registrar Movimentação">
+      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Registrar Movimentação" sujo={sujo}>
         <FormField label="Produto">
           <select className={inputClass} value={movProdutoId} onChange={(e) => setMovProdutoId(e.target.value)}>
             {produtos.map((p) => (

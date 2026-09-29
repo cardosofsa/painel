@@ -20,6 +20,7 @@ import {
   type ClienteInput,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
 export interface Cliente extends ClienteInput {
   id: string;
@@ -48,8 +49,10 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
   const [form, setForm] = useState<ClienteInput>(FORM_VAZIO);
+  const [formOriginal, setFormOriginal] = useState<ClienteInput>(FORM_VAZIO);
   const [opcionaisAbertos, setOpcionaisAbertos] = useState(false);
   const [busca, setBusca] = useState("");
+  const sujo = useFormularioSujo(form, formOriginal);
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -68,13 +71,14 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
   function abrirNovo() {
     setEditando(null);
     setForm(FORM_VAZIO);
+    setFormOriginal(FORM_VAZIO);
     setOpcionaisAbertos(false);
     setModalAberto(true);
   }
 
   function abrirEdicao(c: Cliente) {
     setEditando(c);
-    setForm({
+    const dados: ClienteInput = {
       nome: c.nome,
       whatsapp: c.whatsapp,
       email: c.email,
@@ -87,7 +91,9 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
       observacao: c.observacao,
       permite_fiado: c.permite_fiado,
       status: c.status,
-    });
+    };
+    setForm(dados);
+    setFormOriginal(dados);
     setOpcionaisAbertos(false);
     setModalAberto(true);
   }
@@ -234,7 +240,12 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
         )}
       </Card>
 
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title={editando ? "Editar Cliente" : "Cadastrar Cliente"}>
+      <Modal
+        open={modalAberto}
+        onClose={() => setModalAberto(false)}
+        title={editando ? "Editar Cliente" : "Cadastrar Cliente"}
+        sujo={sujo}
+      >
         <FormField label="Nome">
           <input className={inputClass} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
         </FormField>

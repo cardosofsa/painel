@@ -9,6 +9,7 @@ import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { executarComToast } from "@/lib/acao-cliente";
 import { criarPedidoCompra, type FormaPagamento, type ItemPedidoInput } from "@/app/(painel)/compras/actions";
 import type { Opcao } from "@/app/(painel)/compras/ComprasClient";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
 /**
  * Formulário de pedido de compra.
@@ -48,6 +49,24 @@ export function NovoPedidoModal({
   const [parcelas, setParcelas] = useState(2);
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => hojeIsoLocal());
   const [itens, setItens] = useState<ItemPedidoInput[]>([]);
+  // `fechar()` já devolve todos esses campos ao padrão ao fechar (confirmado ou não), então
+  // basta comparar contra os valores de abertura pra saber se há algo pra perder — não
+  // precisa de um `formOriginal` capturado por efeito.
+  const sujo = useFormularioSujo(
+    { fornecedorId, armazemId, nf, temNfArquivo: !!nfArquivo, dataEntregaPrevista, formaPagamento, contaId, parcelado, parcelas, itens },
+    {
+      fornecedorId: fornecedores[0]?.id ?? "",
+      armazemId: armazens[0]?.id ?? "",
+      nf: "",
+      temNfArquivo: false,
+      dataEntregaPrevista: "",
+      formaPagamento: formasPagamento[0]?.nome ?? "",
+      contaId: contas[0]?.id ?? "",
+      parcelado: false,
+      parcelas: 2,
+      itens: [] as ItemPedidoInput[],
+    },
+  );
 
   const valorTotal = itens.reduce((acc, it) => acc + it.quantidade * it.custo_unitario, 0);
 
@@ -137,7 +156,7 @@ export function NovoPedidoModal({
   }
 
   return (
-    <Modal open={open} onClose={fechar} title="Novo Pedido de Compra" width="max-w-lg">
+    <Modal open={open} onClose={fechar} title="Novo Pedido de Compra" width="max-w-lg" sujo={sujo}>
       <FormField label="Fornecedor">
         <select className={inputClass} value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
           {fornecedores.map((f) => (

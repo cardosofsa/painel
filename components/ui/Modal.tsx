@@ -1,8 +1,8 @@
 "use client";
 
-import { ReactNode, useEffect, useId, useRef } from "react";
+import { ReactNode, useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { IconButton } from "./Button";
+import { IconButton, Button } from "./Button";
 
 /**
  * Diálogo modal.
@@ -26,16 +26,60 @@ export function Modal({
   title,
   children,
   width = "max-w-md",
+  sujo = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   width?: string;
+  /**
+   * Quando `true`, fechar pelo backdrop, pelo ESC ou pelo X pede confirmação ("Voltar" /
+   * "Sair sem salvar") em vez de fechar direto. O botão "Cancelar" que cada formulário
+   * desenha explicitamente continua chamando `onClose` sem passar por aqui — ali a
+   * intenção de descartar já foi declarada, não precisa perguntar de novo.
+   */
+  sujo?: boolean;
 }) {
   const tituloId = useId();
   const painelRef = useRef<HTMLDivElement>(null);
   const focoAnterior = useRef<HTMLElement | null>(null);
+  const [confirmandoSaida, setConfirmandoSaida] = useState(false);
+
+  // Reseta o aviso de saída sem salvar toda vez que o modal reabre — durante a
+  // renderização, não num `useEffect`, seguindo o padrão que o React recomenda pra "ajustar
+  // estado quando uma prop muda" (evita o alerta de `set-state-in-effect` do lint, e não
+  // pisca: o React refaz o render antes de pintar a tela).
+  const [abertoAnterior, setAbertoAnterior] = useState(open);
+  if (open !== abertoAnterior) {
+    setAbertoAnterior(open);
+    if (open && confirmandoSaida) setConfirmandoSaida(false);
+  }
+
+  // `onClose` é uma arrow inline em ~34 pontos de chamada (`onClose={() => setX(false)}`),
+  // recriada a cada render do componente pai — inclusive a cada tecla digitada num campo
+  // do formulário. Antes esse efeito dependia de `[open, onClose]`, então cada tecla
+  // desmontava e remontava a trava de foco: a limpeza devolvia o foco pro elemento
+  // anterior e a montagem seguinte focava o painel de novo, roubando o foco do campo no
+  // meio da digitação. Guardar numa ref e depender só de `[open]` resolve sem precisar
+  // tocar em nenhum dos pontos de chamada.
+  const aoFecharRef = useRef(onClose);
+  useEffect(() => {
+    aoFecharRef.current = onClose;
+  });
+
+  const sujoRef = useRef(sujo);
+  useEffect(() => {
+    sujoRef.current = sujo;
+  });
+
+  function pedirFechar() {
+    if (sujoRef.current) {
+      setConfirmandoSaida(true);
+    } else {
+      aoFecharRef.current();
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -58,7 +102,7 @@ export function Modal({
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose();
+        pedirFechar();
         return;
       }
       if (e.key !== "Tab") return;
@@ -87,13 +131,13 @@ export function Modal({
       document.body.style.overflow = overflowAnterior;
       focoAnterior.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
-      <div className="absolute inset-0 bg-text-primary/40 animate-esmaecer" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-text-primary/40 animate-esmaecer" onClick={pedirFechar} aria-hidden="true" />
       <div
         ref={painelRef}
         role="dialog"
@@ -108,11 +152,31 @@ export function Modal({
           <h2 id={tituloId} className="text-base font-semibold text-text-primary tracking-tight">
             {title}
           </h2>
-          <IconButton onClick={onClose} aria-label="Fechar">
+          <IconButton onClick={pedirFechar} aria-label="Fechar">
             <X size={18} />
           </IconButton>
         </div>
         <div className="p-5">{children}</div>
+
+        {/* Camada interna, não um segundo `Modal` empilhado: dois `fixed inset-0 z-50`
+            disputariam a trava de foco entre si. Fica por cima do conteúdo do formulário,
+            que permanece intacto por baixo — "Voltar" só some o aviso. */}
+        {confirmandoSaida && (
+          <div className="absolute inset-0 z-20 flex items-end sm:items-center justify-center bg-text-primary/40 rounded-t-xl sm:rounded-lg p-0 sm:p-4">
+            <div className="w-full sm:max-w-sm bg-surface-1 rounded-t-xl sm:rounded-lg border border-border shadow-elev-3 p-5">
+              <p className="text-sm font-medium text-text-primary mb-1">Sair sem salvar?</p>
+              <p className="text-sm text-text-secondary mb-5">As alterações feitas neste formulário serão perdidas.</p>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1" onClick={() => setConfirmandoSaida(false)}>
+                  Voltar
+                </Button>
+                <Button variant="destructive" className="flex-1" onClick={() => aoFecharRef.current()}>
+                  Sair sem salvar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ import {
   type ProdutoPrecoCatalogo,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/Tabs";
 import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
 import { AparenciaModal } from "@/components/catalogo/AparenciaModal";
@@ -287,6 +288,8 @@ function PrecosCatalogoModal({ catalogo, onClose }: { catalogo: Catalogo | null;
   const [salvando, setSalvando] = useState(false);
   const [itens, setItens] = useState<ProdutoPrecoCatalogo[]>([]);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [overridesOriginais, setOverridesOriginais] = useState<Record<string, string>>({});
+  const sujo = useFormularioSujo(overrides, overridesOriginais);
 
   useEffect(() => {
     if (!catalogo) return;
@@ -297,11 +300,11 @@ function PrecosCatalogoModal({ catalogo, onClose }: { catalogo: Catalogo | null;
       .then((r) => {
         if (!r.ok) return;
         setItens(r.dado);
-        setOverrides(
-          Object.fromEntries(
-            r.dado.filter((d) => d.preco_override !== null).map((d) => [d.produto_id, String(d.preco_override)]),
-          ),
+        const carregados = Object.fromEntries(
+          r.dado.filter((d) => d.preco_override !== null).map((d) => [d.produto_id, String(d.preco_override)]),
         );
+        setOverrides(carregados);
+        setOverridesOriginais(carregados);
       })
       .finally(() => setCarregando(false));
   }, [catalogo]);
@@ -323,7 +326,13 @@ function PrecosCatalogoModal({ catalogo, onClose }: { catalogo: Catalogo | null;
   }
 
   return (
-    <Modal open={!!catalogo} onClose={onClose} title={catalogo ? `Editar Preços — ${catalogo.nome}` : ""} width="max-w-xl">
+    <Modal
+      open={!!catalogo}
+      onClose={onClose}
+      title={catalogo ? `Editar Preços — ${catalogo.nome}` : ""}
+      width="max-w-xl"
+      sujo={sujo}
+    >
       <p className="text-sm text-text-secondary mb-4">
         Deixe em branco pra usar o preço de venda normal. O valor aqui vale só pra este catálogo.
       </p>
