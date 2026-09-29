@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CatalogoClient, type Catalogo } from "./CatalogoClient";
 import type { PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
 import { enderecoEmLinha } from "@/lib/comprovante";
+import { formatarCep } from "@/lib/cep";
 
 /** Formato cru do join de pedidos, antes de virar `PedidoVitrine`. */
 interface LinhaPedido {
@@ -70,7 +71,7 @@ export default async function CatalogoPage() {
       bairro: p.entrega_bairro,
       cidade: p.entrega_cidade,
       uf: p.entrega_uf,
-      cep: p.entrega_cep,
+      cep: p.entrega_cep ? formatarCep(p.entrega_cep) : null,
     }),
     observacao: p.observacao,
     total: Number(p.total),
