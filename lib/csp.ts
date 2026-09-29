@@ -10,9 +10,32 @@
  * carregamento. É a única defesa que sobra depois que o dado já entrou no HTML.
  */
 
-const ORIGEM_SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL
-  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
-  : "";
+/**
+ * Este `new URL(...)` roda no `import` do módulo, e o módulo é importado pelo `proxy.ts` —
+ * ou seja, roda em TODA requisição, antes mesmo do middleware começar a executar. Uma env
+ * ausente na Vercel é `undefined` (cai no `""` acima); mas uma env **presente e malformada**
+ * (espaço, aspas coladas, falta o `https://`) faz `new URL()` lançar de forma síncrona no
+ * carregamento do módulo — e como não há nenhum request em andamento ainda para capturar o
+ * erro, o runtime Edge derruba a função inteira. Toda rota que passa pelo proxy (ou seja,
+ * quase todas, pelo matcher abaixo) vira "Internal Server Error" em texto puro, sem
+ * exceção — foi exatamente isso que aconteceu em produção.
+ *
+ * O `try/catch` é o que impede uma env mal configurada de tirar o site do ar inteiro: na
+ * pior hipótese, a CSP fica sem a origem do Supabase liberada (upload de imagem e chamada
+ * à API quebram, com aviso no console), mas a aplicação continua respondendo.
+ */
+export function origemSupabaseSegura(): string {
+  const bruto = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!bruto) return "";
+  try {
+    return new URL(bruto).origin;
+  } catch {
+    console.error("[csp] NEXT_PUBLIC_SUPABASE_URL inválida:", JSON.stringify(bruto));
+    return "";
+  }
+}
+
+const ORIGEM_SUPABASE = origemSupabaseSegura();
 
 /** Rota que recebe as violações. Pública — o navegador a chama sem sessão. */
 export const ROTA_RELATORIO = "/api/csp-report";

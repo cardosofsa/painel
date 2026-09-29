@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { gerarNonce, montarCsp, cabecalhoRelatorio, ROTA_RELATORIO } from "./csp";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { gerarNonce, montarCsp, cabecalhoRelatorio, ROTA_RELATORIO, origemSupabaseSegura } from "./csp";
 
 const SUPABASE = "https://abc123.supabase.co";
 
@@ -89,5 +89,44 @@ describe("relatório de violações", () => {
 
   it("o relatório não vira diretiva com espaço duplo nem quebra o parsing", () => {
     expect(montarCsp("n", { dev: false })).not.toContain("  ");
+  });
+});
+
+/**
+ * `origemSupabaseSegura` roda no carregamento do módulo, que o `proxy.ts` importa — ou
+ * seja, roda em TODA requisição do site. Uma `NEXT_PUBLIC_SUPABASE_URL` malformada (espaço,
+ * aspas coladas ao copiar do .env, falta o "https://") fazia `new URL()` lançar de forma
+ * SÍNCRONA nesse carregamento — sem nenhum request em andamento para capturar o erro, o
+ * runtime Edge derrubava a função inteira e toda rota virava "Internal Server Error" em
+ * texto puro. Foi exatamente isso que tirou o site do ar em produção.
+ */
+describe("origemSupabaseSegura", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("URL válida devolve só o origin", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://abc123.supabase.co/algum/caminho");
+    expect(origemSupabaseSegura()).toBe("https://abc123.supabase.co");
+  });
+
+  it("variável ausente devolve string vazia, não lança", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    expect(() => origemSupabaseSegura()).not.toThrow();
+    expect(origemSupabaseSegura()).toBe("");
+  });
+
+  it("variável colada com aspas (erro comum ao copiar de um .env) não derruba o app", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", '"https://abc123.supabase.co"');
+    expect(() => origemSupabaseSegura()).not.toThrow();
+    expect(origemSupabaseSegura()).toBe("");
+  });
+
+  it("variável sem protocolo não derruba o app", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "abc123.supabase.co");
+    expect(() => origemSupabaseSegura()).not.toThrow();
+  });
+
+  it("variável com espaço nas pontas não derruba o app", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "  https://abc123.supabase.co  ");
+    expect(() => origemSupabaseSegura()).not.toThrow();
   });
 });
