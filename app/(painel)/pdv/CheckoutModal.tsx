@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Banknote, ChevronLeft, CreditCard, Link2, MoreHorizontal, Smartphone, UserPlus, Wallet } from "lucide-react";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import { criarClienteRapido } from "../clientes/actions";
-import type { ClientePdv, ContaPdv } from "./tipos";
+import { obterFiadoEmUsoCliente } from "./actions";
+import { dividirEmParcelas, calcularRestante, calcularTaxaMaquineta } from "@/lib/pdv";
+import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 import { executarComToast } from "@/lib/acao-cliente";
 
 /** Ícone por forma de pagamento conhecida; o resto cai no genérico. */
@@ -20,6 +22,21 @@ const ICONES: { padrao: RegExp; icone: typeof Banknote }[] = [
 
 function iconeDaForma(nome: string) {
   return ICONES.find((i) => i.padrao.test(nome))?.icone ?? MoreHorizontal;
+}
+
+export interface DadosCheckout {
+  status: "paga" | "fiado";
+  cliente_id: string | null;
+  conta_id: string | null;
+  forma_pagamento: string | null;
+  data_vencimento: string | null;
+  entrada_valor: number;
+  entrada_forma: "dinheiro" | "pix" | null;
+  forma_pagamento_2: string | null;
+  parcelas_cartao: number | null;
+  taxa_maquineta_pct: number;
+  parcelas_fiado: number;
+  dias_entre_parcelas: number;
 }
 
 export function CheckoutModal({
@@ -38,19 +55,12 @@ export function CheckoutModal({
   onVoltar: () => void;
   total: number;
   clientes: ClientePdv[];
-  formasPagamento: string[];
+  formasPagamento: FormaPagamentoPdv[];
   contas: ContaPdv[];
   salvando: boolean;
-  onConfirmar: (dados: {
-    status: "paga" | "fiado";
-    cliente_id: string | null;
-    conta_id: string | null;
-    forma_pagamento: string | null;
-    data_vencimento: string | null;
-  }) => void;
+  onConfirmar: (dados: DadosCheckout) => void;
 }) {
   const [clienteId, setClienteId] = useState<string | null>(null);
-  const [formaPagamento, setFormaPagamento] = useState<string | null>(formasPagamento[0] ?? null);
   const [contaId, setContaId] = useState<string | null>(contas[0]?.id ?? null);
   const [vencimento, setVencimento] = useState("");
   const [cadastroAberto, setCadastroAberto] = useState(false);
@@ -60,8 +70,45 @@ export function CheckoutModal({
   const [criandoCliente, setCriandoCliente] = useState(false);
   const [clientesLocais, setClientesLocais] = useState<ClientePdv[]>(clientes);
 
+  // Formas que não são "fiado": fiado é decidido pelo botão "Venda Fiado", não escolhido
+  // aqui — "Fiado" na lista de formas de pagamento existe só pra classificar linhas antigas
+  // (0030), não pra aparecer como opção de tender no grid.
+  const formasTender = formasPagamento.filter((f) => f.tipo !== "fiado");
+  const [formaPagamento, setFormaPagamento] = useState<string | null>(formasTender[0]?.nome ?? null);
+  const formaSelecionada = formasTender.find((f) => f.nome === formaPagamento) ?? null;
+
+  const [entradaValor, setEntradaValor] = useState(0);
+  const [entradaForma, setEntradaForma] = useState<"dinheiro" | "pix" | null>(null);
+  const [parcelasCartao, setParcelasCartao] = useState(1);
+  const [taxaMaquinetaPct, setTaxaMaquinetaPct] = useState(0);
+
+  const [parcelarFiado, setParcelarFiado] = useState(false);
+  const [parcelasFiado, setParcelasFiado] = useState(2);
+  const [diasEntreParcelas, setDiasEntreParcelas] = useState(30);
+
+  const [fiadoEmUso, setFiadoEmUso] = useState<number | null>(null);
+
   const cliente = clientesLocais.find((c) => c.id === clienteId) ?? null;
   const podeFiado = !!cliente?.permite_fiado;
+  const restante = calcularRestante(total, entradaValor);
+  const taxaMaquinetaValor = calcularTaxaMaquineta(restante, taxaMaquinetaPct);
+
+  // Só pra avisar antes de tentar — a trava de verdade é no banco (RPC registrar_venda).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reseta o aviso ao trocar de cliente, antes de buscar o novo valor
+    setFiadoEmUso(null);
+    if (!cliente?.permite_fiado) return;
+    let cancelado = false;
+    obterFiadoEmUsoCliente(cliente.id).then((r) => {
+      if (!cancelado && r.ok) setFiadoEmUso(r.dado);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [cliente?.id, cliente?.permite_fiado]);
+
+  const limiteDisponivel = cliente ? cliente.limite_fiado - (fiadoEmUso ?? 0) : null;
+  const estouraLimite = podeFiado && limiteDisponivel !== null && restante > limiteDisponivel;
 
   async function cadastrarCliente() {
     if (!novoNome.trim()) return;
@@ -72,13 +119,33 @@ export function CheckoutModal({
     );
     setCriandoCliente(false);
     if (r.ok) {
-      setClientesLocais((prev) => [...prev, { ...r.dado, whatsapp: novoWhatsapp.trim() || null }]);
+      setClientesLocais((prev) => [...prev, { ...r.dado, whatsapp: novoWhatsapp.trim() || null, limite_fiado: 0 }]);
       setClienteId(r.dado.id);
       setCadastroAberto(false);
       setNovoNome("");
       setNovoWhatsapp("");
       setNovoFiado(false);
     }
+  }
+
+  function montarDados(status: "paga" | "fiado"): DadosCheckout {
+    // `forma_pagamento` é sempre a forma do "tender" principal — a RPC só usa
+    // `forma_pagamento_2` pra compor o rótulo quando há entrada (ver 0030); mandar os dois
+    // com o mesmo valor deixa a RPC decidir qual usar, sem o cliente precisar saber a regra.
+    return {
+      status,
+      cliente_id: clienteId,
+      conta_id: contaId,
+      forma_pagamento: formaPagamento,
+      data_vencimento: status === "fiado" ? vencimento || null : null,
+      entrada_valor: entradaValor,
+      entrada_forma: entradaValor > 0 ? entradaForma : null,
+      forma_pagamento_2: entradaValor > 0 ? formaPagamento : null,
+      parcelas_cartao: formaSelecionada?.tipo === "cartao_credito" && parcelasCartao > 1 ? parcelasCartao : null,
+      taxa_maquineta_pct: formaSelecionada?.tipo === "cartao_credito" ? taxaMaquinetaPct : 0,
+      parcelas_fiado: status === "fiado" && parcelarFiado ? parcelasFiado : 1,
+      dias_entre_parcelas: diasEntreParcelas,
+    };
   }
 
   return (
@@ -145,20 +212,55 @@ export function CheckoutModal({
         </div>
       )}
 
-      <FormField label="Forma de pagamento">
-        {formasPagamento.length === 0 ? (
+      <FormField label="Entrada (opcional)" dica="Dinheiro ou Pix recebido agora, abatido do total antes do restante.">
+        <div className="flex gap-2">
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max={total}
+            value={entradaValor || ""}
+            onChange={(e) => {
+              const v = Math.max(0, Number(e.target.value) || 0);
+              setEntradaValor(v);
+              if (v <= 0) setEntradaForma(null);
+              else if (!entradaForma) setEntradaForma("dinheiro");
+            }}
+            placeholder="0,00"
+            className={`${inputClass} flex-1`}
+          />
+          <div className="flex rounded-md border border-border overflow-hidden shrink-0">
+            {(["dinheiro", "pix"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                disabled={entradaValor <= 0}
+                onClick={() => setEntradaForma(f)}
+                className={`h-9 px-3 text-sm capitalize transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  entradaForma === f ? "bg-accent-soft text-accent" : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+      </FormField>
+
+      <FormField label={entradaValor > 0 ? `Forma de pagamento do restante (${formatBRL(restante)})` : "Forma de pagamento"}>
+        {formasTender.length === 0 ? (
           <p className="text-sm text-text-tertiary">
             Nenhuma forma de pagamento cadastrada. Cadastre em Configurações — a venda pode seguir sem isso.
           </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {formasPagamento.map((f) => {
-              const Icone = iconeDaForma(f);
-              const ativo = formaPagamento === f;
+            {formasTender.map((f) => {
+              const Icone = iconeDaForma(f.nome);
+              const ativo = formaPagamento === f.nome;
               return (
                 <button
-                  key={f}
-                  onClick={() => setFormaPagamento(f)}
+                  key={f.nome}
+                  onClick={() => setFormaPagamento(f.nome)}
                   className={`h-16 rounded-md border flex flex-col items-center justify-center gap-1 text-sm transition-colors ${
                     ativo
                       ? "bg-accent-soft border-accent-soft text-accent"
@@ -166,13 +268,46 @@ export function CheckoutModal({
                   }`}
                 >
                   <Icone size={18} />
-                  {f}
+                  {f.nome}
                 </button>
               );
             })}
           </div>
         )}
       </FormField>
+
+      {formaSelecionada?.tipo === "cartao_credito" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="Vezes">
+            <select
+              className={inputClass}
+              value={parcelasCartao}
+              onChange={(e) => setParcelasCartao(Number(e.target.value) || 1)}
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n}x
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Taxa da maquineta (%, opcional)" dica="Abate do lucro, não do valor recebido.">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              value={taxaMaquinetaPct || ""}
+              onChange={(e) => setTaxaMaquinetaPct(Math.max(0, Number(e.target.value) || 0))}
+              placeholder="0,0"
+              className={inputClass}
+            />
+            {taxaMaquinetaValor > 0 && (
+              <p className="text-xs text-text-tertiary mt-1">Desconta {formatBRL(taxaMaquinetaValor)} do lucro.</p>
+            )}
+          </FormField>
+        </div>
+      )}
 
       <FormField label="Conta que recebe">
         <select className={inputClass} value={contaId ?? ""} onChange={(e) => setContaId(e.target.value || null)}>
@@ -186,9 +321,62 @@ export function CheckoutModal({
       </FormField>
 
       {podeFiado && (
-        <FormField label="Vencimento do fiado (opcional — padrão 30 dias)">
-          <input type="date" className={inputClass} value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
-        </FormField>
+        <>
+          <FormField label="Vencimento do fiado (opcional — padrão 30 dias)">
+            <input type="date" className={inputClass} value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
+          </FormField>
+
+          <label className="flex items-center gap-2 text-sm text-text-primary cursor-pointer mb-3">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-accent"
+              checked={parcelarFiado}
+              onChange={(e) => setParcelarFiado(e.target.checked)}
+            />
+            Parcelar o fiado
+          </label>
+
+          {parcelarFiado && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+              <FormField label="Número de parcelas">
+                <input
+                  type="number"
+                  min={2}
+                  max={24}
+                  className={inputClass}
+                  value={parcelasFiado}
+                  onChange={(e) => setParcelasFiado(Math.min(24, Math.max(2, Number(e.target.value) || 2)))}
+                />
+              </FormField>
+              <FormField label="Dias entre parcelas">
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  className={inputClass}
+                  value={diasEntreParcelas}
+                  onChange={(e) => setDiasEntreParcelas(Math.min(90, Math.max(1, Number(e.target.value) || 30)))}
+                />
+              </FormField>
+              <div className="sm:col-span-2 text-xs text-text-tertiary border border-border rounded-md p-2 space-y-0.5">
+                {dividirEmParcelas(restante, parcelasFiado).map((p) => (
+                  <div key={p.numero} className="flex justify-between">
+                    <span>Parcela {p.numero}</span>
+                    <span className="font-mono">{formatBRL(p.valor)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {estouraLimite && (
+            <p className="text-xs text-negative mb-3">
+              Este fiado ({formatBRL(restante)}) passa do crédito disponível de {cliente?.nome}
+              {limiteDisponivel !== null && ` (${formatBRL(Math.max(0, limiteDisponivel))} livre)`} — o sistema pode
+              recusar ao confirmar.
+            </p>
+          )}
+        </>
       )}
 
       <div className="flex flex-col sm:flex-row gap-2 mt-5">
@@ -198,33 +386,12 @@ export function CheckoutModal({
             className="flex-1"
             disabled={!podeFiado || salvando}
             title={podeFiado ? undefined : `${cliente.nome} não tem fiado liberado`}
-            onClick={() =>
-              onConfirmar({
-                status: "fiado",
-                cliente_id: clienteId,
-                conta_id: contaId,
-                forma_pagamento: formaPagamento,
-                data_vencimento: vencimento || null,
-              })
-            }
+            onClick={() => onConfirmar(montarDados("fiado"))}
           >
             Venda Fiado
           </Button>
         )}
-        <Button
-          variant="primary"
-          className="flex-1"
-          loading={salvando}
-          onClick={() =>
-            onConfirmar({
-              status: "paga",
-              cliente_id: clienteId,
-              conta_id: contaId,
-              forma_pagamento: formaPagamento,
-              data_vencimento: null,
-            })
-          }
-        >
+        <Button variant="primary" className="flex-1" loading={salvando} onClick={() => onConfirmar(montarDados("paga"))}>
           Finalizar Venda
         </Button>
       </div>

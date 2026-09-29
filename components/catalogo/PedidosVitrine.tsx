@@ -12,7 +12,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
 import { executarComToast } from "@/lib/acao-cliente";
 import { CheckoutModal } from "@/app/(painel)/pdv/CheckoutModal";
-import type { ClientePdv, ContaPdv } from "@/app/(painel)/pdv/tipos";
+import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
 import {
   atualizarStatusPedido,
   converterPedidoEmVenda,
@@ -80,7 +80,7 @@ export function PedidosVitrine({
   pedidos: PedidoVitrine[];
   clientes: ClientePdv[];
   contas: ContaPdv[];
-  formasPagamento: string[];
+  formasPagamento: FormaPagamentoPdv[];
 }) {
   const [, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -352,6 +352,13 @@ export function PedidosVitrine({
                 desconto: 0,
                 valor_entrega: 0,
                 data_vencimento: dados.data_vencimento,
+                entrada_valor: dados.entrada_valor,
+                entrada_forma: dados.entrada_forma,
+                forma_pagamento_2: dados.forma_pagamento_2,
+                parcelas_cartao: dados.parcelas_cartao,
+                taxa_maquineta_pct: dados.taxa_maquineta_pct,
+                parcelas_fiado: dados.parcelas_fiado,
+                dias_entre_parcelas: dados.dias_entre_parcelas,
               }),
               { erro: "Erro ao fechar a venda" },
             );

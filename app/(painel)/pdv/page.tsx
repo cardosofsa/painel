@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PdvClient } from "./PdvClient";
-import type { ProdutoPdv, ClientePdv, ContaPdv } from "./tipos";
+import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 
 export default async function PdvPage() {
   const supabase = await createClient();
@@ -13,8 +13,8 @@ export default async function PdvPage() {
       .order("nome"),
     supabase.from("produto_grupos").select("id, nome, imagem_url, categoria_id"),
     supabase.from("categorias").select("id, nome"),
-    supabase.from("clientes").select("id, nome, whatsapp, permite_fiado").eq("status", "ativo").order("nome"),
-    supabase.from("formas_pagamento").select("id, nome").order("nome"),
+    supabase.from("clientes").select("id, nome, whatsapp, permite_fiado, limite_fiado").eq("status", "ativo").order("nome"),
+    supabase.from("formas_pagamento").select("nome, tipo").order("nome"),
     supabase.from("contas").select("id, nome").order("nome"),
   ]);
 
@@ -50,7 +50,7 @@ export default async function PdvPage() {
     <PdvClient
       produtos={produtos}
       clientes={(clientesRes.data ?? []) as ClientePdv[]}
-      formasPagamento={(formasRes.data ?? []).map((f) => f.nome)}
+      formasPagamento={(formasRes.data ?? []) as FormaPagamentoPdv[]}
       contas={(contasRes.data ?? []) as ContaPdv[]}
     />
   );

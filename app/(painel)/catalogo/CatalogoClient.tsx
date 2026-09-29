@@ -28,7 +28,7 @@ import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/Tabs";
 import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
 import { AparenciaModal } from "@/components/catalogo/AparenciaModal";
-import type { ClientePdv, ContaPdv } from "@/app/(painel)/pdv/tipos";
+import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
 
 export interface Catalogo {
   id: string;
@@ -57,7 +57,7 @@ export function CatalogoClient({
   pedidos: PedidoVitrine[];
   clientes: ClientePdv[];
   contas: ContaPdv[];
-  formasPagamento: string[];
+  formasPagamento: FormaPagamentoPdv[];
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
   iaDisponivel: boolean;
 }) {

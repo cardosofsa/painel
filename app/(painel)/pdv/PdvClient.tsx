@@ -10,10 +10,17 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL } from "@/lib/format";
 import { GradeProdutos } from "./GradeProdutos";
 import { Carrinho, calcularDesconto, calcularSubtotal, type EstadoCarrinho } from "./Carrinho";
-import { CheckoutModal } from "./CheckoutModal";
+import { CheckoutModal, type DadosCheckout } from "./CheckoutModal";
 import { ReciboModal } from "./ReciboModal";
 import { registrarVenda } from "./actions";
-import { rotuloProduto, type ClientePdv, type ContaPdv, type ItemCarrinho, type ProdutoPdv } from "./tipos";
+import {
+  rotuloProduto,
+  type ClientePdv,
+  type ContaPdv,
+  type FormaPagamentoPdv,
+  type ItemCarrinho,
+  type ProdutoPdv,
+} from "./tipos";
 import type { DadosComprovante } from "@/lib/comprovante";
 import { executarComToast } from "@/lib/acao-cliente";
 
@@ -33,7 +40,7 @@ export function PdvClient({
 }: {
   produtos: ProdutoPdv[];
   clientes: ClientePdv[];
-  formasPagamento: string[];
+  formasPagamento: FormaPagamentoPdv[];
   contas: ContaPdv[];
 }) {
   const [pending, startTransition] = useTransition();
@@ -142,13 +149,7 @@ export function PdvClient({
     setCheckoutAberto(true);
   }
 
-  function confirmarVenda(dados: {
-    status: "paga" | "fiado";
-    cliente_id: string | null;
-    conta_id: string | null;
-    forma_pagamento: string | null;
-    data_vencimento: string | null;
-  }) {
+  function confirmarVenda(dados: DadosCheckout) {
     startTransition(async () => {
       const r = await executarComToast(
         registrarVenda({
@@ -165,6 +166,13 @@ export function PdvClient({
           valor_entrega: estado.valorEntrega,
           observacao: estado.observacao.trim() || null,
           data_vencimento: dados.data_vencimento,
+          entrada_valor: dados.entrada_valor,
+          entrada_forma: dados.entrada_forma,
+          forma_pagamento_2: dados.forma_pagamento_2,
+          parcelas_cartao: dados.parcelas_cartao,
+          taxa_maquineta_pct: dados.taxa_maquineta_pct,
+          parcelas_fiado: dados.parcelas_fiado,
+          dias_entre_parcelas: dados.dias_entre_parcelas,
         }),
         // Sem `sucesso` aqui: o toast precisa do número e do lucro que só vêm na resposta.
         { erro: "Erro ao registrar a venda" },
@@ -172,6 +180,13 @@ export function PdvClient({
       if (r.ok) {
         const venda = r.dado;
         const cliente = clientes.find((c) => c.id === dados.cliente_id) ?? null;
+        // Rótulo pro comprovante local — a RPC compõe o rótulo completo em
+        // `vendas.forma_pagamento`, mas não devolve na resposta; monta de novo aqui com a
+        // mesma regra (ver 0030) só pra exibição imediata.
+        const formaExibida =
+          dados.entrada_valor > 0
+            ? `${dados.entrada_forma} (entrada) + ${dados.forma_pagamento_2 ?? ""}`.trim()
+            : dados.forma_pagamento;
         setRecibo({
           numero: venda.venda_numero,
           itens: estado.itens.map((i) => ({ nome: i.nome, quantidade: i.quantidade, preco_unitario: i.preco_unitario })),
@@ -179,7 +194,7 @@ export function PdvClient({
           desconto,
           valorEntrega: estado.valorEntrega,
           total: venda.venda_total,
-          formaPagamento: dados.forma_pagamento,
+          formaPagamento: formaExibida,
           clienteNome: cliente?.nome ?? null,
         });
         setWhatsappRecibo(cliente?.whatsapp ?? null);

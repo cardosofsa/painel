@@ -249,6 +249,16 @@ export const vendaSchema = z.object({
   valor_entrega: dinheiro,
   observacao: textoOpcional,
   data_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+  entrada_valor: dinheiro,
+  entrada_forma: z.enum(["dinheiro", "pix"]).nullable(),
+  forma_pagamento_2: z.string().trim().max(100).nullable(),
+  parcelas_cartao: z.number().int().min(1).max(24).nullable(),
+  taxa_maquineta_pct: percentual,
+  // Teto de 24, mesmo raciocínio do `pedidoCompraSchema.parcelas` (compras): sem ele, um
+  // número absurdo vindo do cliente vira um `for` de milhares de linhas na RPC antes mesmo
+  // dela conferir o limite de fiado.
+  parcelas_fiado: z.number().int("Número de parcelas inválido").min(1).max(24, "Máximo de 24 parcelas"),
+  dias_entre_parcelas: z.number().int().min(1).max(90),
 });
 
 export const perfilNegocioSchema = z.object({

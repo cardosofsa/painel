@@ -78,3 +78,44 @@ export function montarCards(produtos: ProdutoPdv[]): CardPdv[] {
 
   return Array.from(cards.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
+
+/** Centavos. Sem isso, a divisão de parcelas vaza dízima pra tela. */
+function arredondar(valor: number): number {
+  return Math.round(valor * 100) / 100;
+}
+
+export interface Parcela {
+  numero: number;
+  valor: number;
+}
+
+/**
+ * Divide um valor em N parcelas — mesmo algoritmo que
+ * `app/(painel)/compras/actions.ts` já usa pra parcelar pedido de compra, generalizado
+ * aqui pra ser reaproveitado também no fiado parcelado do PDV, com teste isolado.
+ *
+ * O resto do arredondamento (centavos que não dividem exato) vai pra ÚLTIMA parcela, não
+ * pra primeira — é o que a RPC `registrar_venda` (0030) faz no banco, e é o que este
+ * espelha, pra tela mostrar o mesmo número antes de enviar.
+ */
+export function dividirEmParcelas(valorTotal: number, numParcelas: number): Parcela[] {
+  const n = Math.max(1, Math.floor(numParcelas) || 1);
+  const valorParcela = arredondar(valorTotal / n);
+  return Array.from({ length: n }, (_, i) => {
+    const numero = i + 1;
+    const ultima = numero === n;
+    const valor = ultima ? arredondar(valorTotal - valorParcela * (n - 1)) : valorParcela;
+    return { numero, valor };
+  });
+}
+
+/** O que falta pagar depois da entrada — nunca fica negativo. */
+export function calcularRestante(total: number, entrada: number): number {
+  return Math.max(0, arredondar(total - (entrada || 0)));
+}
+
+/** Valor da taxa de maquineta sobre o que ficou pra pagar no cartão. */
+export function calcularTaxaMaquineta(valor: number, taxaPct: number): number {
+  if (!taxaPct || taxaPct <= 0) return 0;
+  return arredondar(valor * (taxaPct / 100));
+}

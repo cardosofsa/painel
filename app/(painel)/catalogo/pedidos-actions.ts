@@ -128,6 +128,13 @@ const converterSchema = z.object({
   desconto: z.number().finite().min(0).max(10_000_000),
   valor_entrega: z.number().finite().min(0).max(10_000_000),
   data_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  entrada_valor: z.number().finite().min(0).max(10_000_000),
+  entrada_forma: z.enum(["dinheiro", "pix"]).nullable(),
+  forma_pagamento_2: z.string().trim().max(200).nullable(),
+  parcelas_cartao: z.number().int().min(1).max(24).nullable(),
+  taxa_maquineta_pct: z.number().finite().min(0).max(100),
+  parcelas_fiado: z.number().int().min(1).max(24),
+  dias_entre_parcelas: z.number().int().min(1).max(90),
 });
 
 /**
@@ -174,6 +181,13 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
         p_valor_entrega: v.valor_entrega,
         p_observacao: `Pedido da vitrine`,
         p_data_vencimento: v.data_vencimento,
+        p_entrada_valor: v.entrada_valor,
+        p_entrada_forma: v.entrada_forma,
+        p_forma_pagamento_2: v.forma_pagamento_2,
+        p_parcelas_cartao: v.parcelas_cartao,
+        p_taxa_maquineta_pct: v.taxa_maquineta_pct,
+        p_parcelas_fiado: v.parcelas_fiado,
+        p_dias_entre_parcelas: v.dias_entre_parcelas,
       })
       .maybeSingle<{ venda_id: string; venda_numero: string; venda_total: number; venda_lucro: number }>();
     if (error) lancarErroSupabase(error);

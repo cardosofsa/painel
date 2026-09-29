@@ -38,9 +38,9 @@ export default async function CatalogoPage() {
       .order("criado_em", { ascending: false })
       .limit(200),
     // As três abaixo alimentam o CheckoutModal do PDV, reaproveitado para fechar a venda.
-    supabase.from("clientes").select("id, nome, whatsapp, permite_fiado").eq("status", "ativo").order("nome"),
+    supabase.from("clientes").select("id, nome, whatsapp, permite_fiado, limite_fiado").eq("status", "ativo").order("nome"),
     supabase.from("contas").select("id, nome").order("nome"),
-    supabase.from("formas_pagamento").select("nome").order("nome"),
+    supabase.from("formas_pagamento").select("nome, tipo").order("nome"),
   ]);
 
   if (catalogosRes.error) throw new Error(catalogosRes.error.message);
@@ -70,7 +70,7 @@ export default async function CatalogoPage() {
       pedidos={pedidos}
       clientes={clientesRes.data ?? []}
       contas={contasRes.data ?? []}
-      formasPagamento={(formasRes.data ?? []).map((f) => f.nome)}
+      formasPagamento={formasRes.data ?? []}
       // Lido no servidor de propósito: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no
       // cliente ela sempre voltaria `undefined` — só um booleano atravessa.
       iaDisponivel={Boolean(process.env.GEMINI_API_KEY)}

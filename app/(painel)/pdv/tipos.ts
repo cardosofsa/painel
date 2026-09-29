@@ -7,7 +7,15 @@
  */
 
 export { rotuloProduto } from "@/lib/produtos";
-export { montarCards, type ProdutoPdv, type CardPdv } from "@/lib/pdv";
+export {
+  montarCards,
+  dividirEmParcelas,
+  calcularRestante,
+  calcularTaxaMaquineta,
+  type ProdutoPdv,
+  type CardPdv,
+  type Parcela,
+} from "@/lib/pdv";
 
 export interface ItemCarrinho {
   produto_id: string;
@@ -24,9 +32,17 @@ export interface ClientePdv {
   nome: string;
   whatsapp: string | null;
   permite_fiado: boolean;
+  limite_fiado: number;
 }
 
 export interface ContaPdv {
   id: string;
   nome: string;
+}
+
+export type TipoFormaPagamento = "dinheiro" | "pix" | "cartao_debito" | "cartao_credito" | "fiado" | "outro";
+
+export interface FormaPagamentoPdv {
+  nome: string;
+  tipo: TipoFormaPagamento;
 }

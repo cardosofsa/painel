@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { montarCards, type ProdutoPdv } from "./pdv";
+import {
+  montarCards,
+  dividirEmParcelas,
+  calcularRestante,
+  calcularTaxaMaquineta,
+  type ProdutoPdv,
+} from "./pdv";
 
 function produto(p: Partial<ProdutoPdv> & { id: string }): ProdutoPdv {
   return {
@@ -92,5 +98,58 @@ describe("montarCards", () => {
   it("usa o nome do produto quando o grupo não tem nome", () => {
     const [card] = montarCards([produto({ id: "a", nome: "Avulso", grupo_id: null, grupo_nome: null })]);
     expect(card.nome).toBe("Avulso");
+  });
+});
+
+describe("dividirEmParcelas", () => {
+  it("divide igual quando dá exato", () => {
+    expect(dividirEmParcelas(300, 3)).toEqual([
+      { numero: 1, valor: 100 },
+      { numero: 2, valor: 100 },
+      { numero: 3, valor: 100 },
+    ]);
+  });
+
+  it("resto do arredondamento vai pra última parcela", () => {
+    // 100 / 3 = 33,33... — duas de 33,33 e a última fecha a conta em 33,34.
+    const parcelas = dividirEmParcelas(100, 3);
+    expect(parcelas.map((p) => p.valor)).toEqual([33.33, 33.33, 33.34]);
+    expect(parcelas.reduce((acc, p) => acc + p.valor, 0)).toBeCloseTo(100, 10);
+  });
+
+  it("1 parcela devolve o valor cheio numa lista de um item", () => {
+    expect(dividirEmParcelas(150, 1)).toEqual([{ numero: 1, valor: 150 }]);
+  });
+
+  it("número de parcelas menor que 1 vira 1, não quebra", () => {
+    expect(dividirEmParcelas(150, 0)).toEqual([{ numero: 1, valor: 150 }]);
+  });
+});
+
+describe("calcularRestante", () => {
+  it("subtrai a entrada do total", () => {
+    expect(calcularRestante(100, 30)).toBe(70);
+  });
+
+  it("nunca fica negativo — entrada maior que o total trava em zero", () => {
+    expect(calcularRestante(100, 150)).toBe(0);
+  });
+
+  it("sem entrada, o restante é o total inteiro", () => {
+    expect(calcularRestante(100, 0)).toBe(100);
+  });
+});
+
+describe("calcularTaxaMaquineta", () => {
+  it("calcula o percentual sobre o valor", () => {
+    expect(calcularTaxaMaquineta(200, 4)).toBe(8);
+  });
+
+  it("taxa zero ou ausente não gera valor", () => {
+    expect(calcularTaxaMaquineta(200, 0)).toBe(0);
+  });
+
+  it("taxa negativa é tratada como zero, não gera valor negativo", () => {
+    expect(calcularTaxaMaquineta(200, -5)).toBe(0);
   });
 });
