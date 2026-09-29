@@ -22,6 +22,7 @@ export interface ProdutoPdv {
   imagem_url: string | null;
   categoria_nome: string | null;
   codigo_barras: string | null;
+  garantia_dias: number | null;
 }
 
 /**

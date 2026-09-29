@@ -33,6 +33,8 @@ export interface ProdutoInput {
   estoque: number;
   estoque_minimo: number;
   saida_media_semanal: number;
+  /** Garantia padrão em dias; null = sem garantia. Vai para o carrinho do PDV (editável). */
+  garantia_dias: number | null;
   ativo: boolean;
   grupo_id: string | null;
   variante_nome: string | null;

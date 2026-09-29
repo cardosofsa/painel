@@ -7,7 +7,7 @@ import { validar, vendaSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 
 export interface VendaInput {
-  itens: { produto_id: string; quantidade: number; preco_unitario: number }[];
+  itens: { produto_id: string; quantidade: number; preco_unitario: number; garantia_dias?: number | null }[];
   status: "paga" | "fiado";
   cliente_id: string | null;
   conta_id: string | null;

@@ -8,7 +8,7 @@ export default async function PdvPage() {
   const [produtosRes, gruposRes, categoriasRes, clientesRes, formasRes, contasRes, perfilRes] = await Promise.all([
     supabase
       .from("produtos")
-      .select("id, sku, nome, grupo_id, variante_nome, preco_venda, custo, estoque, imagem_url, categoria_id, codigo_barras")
+      .select("id, sku, nome, grupo_id, variante_nome, preco_venda, custo, estoque, imagem_url, categoria_id, codigo_barras, garantia_dias")
       .eq("ativo", true)
       .order("nome"),
     supabase.from("produto_grupos").select("id, nome, imagem_url, categoria_id"),
@@ -44,6 +44,7 @@ export default async function PdvPage() {
       imagem_url: p.imagem_url ?? grupo?.imagem_url ?? null,
       categoria_nome: categoriaPorId.get(p.categoria_id ?? grupo?.categoria_id ?? "") ?? null,
       codigo_barras: p.codigo_barras,
+      garantia_dias: p.garantia_dias,
     };
   });
 

@@ -75,6 +75,7 @@ export const produtoSchema = z.object({
   estoque: inteiroNaoNegativo,
   estoque_minimo: inteiroNaoNegativo,
   saida_media_semanal: z.number().finite().min(0).max(1_000_000),
+  garantia_dias: z.number().int("Garantia em dias inteiros").min(1).max(3650).nullable(),
   ativo: z.boolean(),
   grupo_id: uuidOpcional,
   variante_nome: z.string().trim().max(100).nullable(),
@@ -244,6 +245,7 @@ export const vendaSchema = z.object({
         produto_id: uuid,
         quantidade: z.number().int("Quantidade precisa ser inteira").min(1, "Quantidade mínima é 1").max(100_000),
         preco_unitario: dinheiro,
+        garantia_dias: z.number().int().min(1).max(3650).nullable().optional(),
       }),
     )
     .min(1, "A venda precisa ter pelo menos um item")

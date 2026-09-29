@@ -105,6 +105,7 @@ export function PdvClient({
         quantidade: 1,
         estoque_disponivel: produto.estoque,
         imagem_url: produto.imagem_url,
+        garantia_dias: produto.garantia_dias,
       };
       return { ...prev, itens: [...prev.itens, novo] };
     });
@@ -127,6 +128,13 @@ export function PdvClient({
     setEstado((prev) => ({
       ...prev,
       itens: prev.itens.map((i) => (i.produto_id === produtoId ? { ...i, preco_unitario: Math.max(preco, 0) } : i)),
+    }));
+  }
+
+  function alterarGarantia(produtoId: string, dias: number | null) {
+    setEstado((prev) => ({
+      ...prev,
+      itens: prev.itens.map((i) => (i.produto_id === produtoId ? { ...i, garantia_dias: dias } : i)),
     }));
   }
 
@@ -159,6 +167,7 @@ export function PdvClient({
             produto_id: i.produto_id,
             quantidade: i.quantidade,
             preco_unitario: i.preco_unitario,
+            garantia_dias: i.garantia_dias,
           })),
           status: dados.status,
           cliente_id: dados.cliente_id,
@@ -215,6 +224,7 @@ export function PdvClient({
       onEstado={atualizar}
       onAlterarQuantidade={alterarQuantidade}
       onAlterarPreco={alterarPreco}
+      onAlterarGarantia={alterarGarantia}
       onRemover={removerItem}
       onLimpar={limpar}
       onFinalizar={abrirCheckout}

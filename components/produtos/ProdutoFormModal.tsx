@@ -358,6 +358,23 @@ export function ProdutoFormModal({
             />
           </FormField>
         </div>
+        <FormField
+          label="Garantia (dias, opcional)"
+          dica="Vem preenchida no carrinho do PDV (dá pra ajustar por venda) e só aparece no comprovante se houver."
+        >
+          <input
+            type="number"
+            min="1"
+            max="3650"
+            className={inputClass}
+            value={form.garantia_dias ?? ""}
+            placeholder="Sem garantia"
+            onChange={(e) => {
+              const n = Math.floor(Number(e.target.value));
+              setForm({ ...form, garantia_dias: n >= 1 ? Math.min(n, 3650) : null });
+            }}
+          />
+        </FormField>
 
         <div className="flex gap-2 mt-5">
           <Button variant="secondary" className="flex-1" onClick={onClose}>

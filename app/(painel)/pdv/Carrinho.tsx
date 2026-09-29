@@ -35,6 +35,7 @@ export function Carrinho({
   onEstado,
   onAlterarQuantidade,
   onAlterarPreco,
+  onAlterarGarantia,
   onRemover,
   onLimpar,
   onFinalizar,
@@ -43,6 +44,7 @@ export function Carrinho({
   onEstado: (parcial: Partial<EstadoCarrinho>) => void;
   onAlterarQuantidade: (produtoId: string, quantidade: number) => void;
   onAlterarPreco: (produtoId: string, preco: number) => void;
+  onAlterarGarantia: (produtoId: string, dias: number | null) => void;
   onRemover: (produtoId: string) => void;
   onLimpar: () => void;
   onFinalizar: () => void;
@@ -132,6 +134,43 @@ export function Carrinho({
                     {formatBRL(item.preco_unitario * item.quantidade)}
                   </span>
                 </div>
+              </div>
+
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                {item.garantia_dias == null ? (
+                  <button
+                    type="button"
+                    onClick={() => onAlterarGarantia(item.produto_id, 90)}
+                    className="text-text-tertiary hover:text-accent"
+                  >
+                    + Garantia
+                  </button>
+                ) : (
+                  <>
+                    <span className="text-text-secondary">Garantia</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="3650"
+                      value={item.garantia_dias}
+                      onChange={(e) => {
+                        const n = Math.floor(Number(e.target.value));
+                        onAlterarGarantia(item.produto_id, n >= 1 ? Math.min(n, 3650) : 1);
+                      }}
+                      className="w-14 h-6 px-1.5 bg-surface-1 border border-border rounded-md text-right font-mono text-text-primary outline-none focus:border-accent"
+                      aria-label="Garantia em dias"
+                    />
+                    <span className="text-text-tertiary">dias</span>
+                    <button
+                      type="button"
+                      onClick={() => onAlterarGarantia(item.produto_id, null)}
+                      className="text-text-tertiary hover:text-negative"
+                      aria-label="Remover garantia"
+                    >
+                      <X size={12} />
+                    </button>
+                  </>
+                )}
               </div>
 
               {excedeu && (

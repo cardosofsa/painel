@@ -20,6 +20,7 @@ function produto(p: Partial<ProdutoPdv> & { id: string }): ProdutoPdv {
     imagem_url: null,
     categoria_nome: null,
     codigo_barras: null,
+    garantia_dias: null,
     ...p,
   };
 }

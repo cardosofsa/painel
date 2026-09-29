@@ -25,6 +25,8 @@ export interface ItemCarrinho {
   quantidade: number;
   estoque_disponivel: number;
   imagem_url: string | null;
+  /** Herdada do produto; editável na linha do carrinho. null = sem garantia. */
+  garantia_dias: number | null;
 }
 
 export interface ClientePdv {

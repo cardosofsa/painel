@@ -13,6 +13,7 @@ import {
   concorrenteSchema,
   acaoEmMassaProdutosSchema,
   produtoSchema,
+  vendaSchema,
   SENHA_MIN,
   SENHA_MAX,
 } from "./validacao";
@@ -270,5 +271,39 @@ describe("acaoEmMassaProdutosSchema", () => {
 
   it("recusa ação fora da lista", () => {
     expect(() => validar(acaoEmMassaProdutosSchema, { ids: [id], acao: "apagar_tudo" })).toThrow();
+  });
+});
+
+describe("vendaSchema — garantia por item", () => {
+  const base = {
+    itens: [{ produto_id: "8f1b7a52-3d4e-4c1a-9b7e-1a2b3c4d5e6f", quantidade: 1, preco_unitario: 10 }],
+    status: "paga" as const,
+    cliente_id: null,
+    conta_id: null,
+    forma_pagamento: "Pix",
+    desconto: 0,
+    valor_entrega: 0,
+    observacao: null,
+    data_vencimento: null,
+    entrada_valor: 0,
+    entrada_forma: null,
+    forma_pagamento_2: null,
+    parcelas_cartao: null,
+    taxa_maquineta_pct: 0,
+    parcelas_fiado: 1,
+    dias_entre_parcelas: 30,
+  };
+  const comGarantia = (garantia_dias: unknown) => ({ ...base, itens: [{ ...base.itens[0], garantia_dias }] });
+
+  it("aceita item sem o campo, com null e com dias válidos", () => {
+    expect(vendaSchema.safeParse(base).success).toBe(true);
+    expect(vendaSchema.safeParse(comGarantia(null)).success).toBe(true);
+    expect(vendaSchema.safeParse(comGarantia(90)).success).toBe(true);
+  });
+
+  it("recusa zero, negativo, fracionário e acima de 10 anos", () => {
+    for (const ruim of [0, -5, 1.5, 3651]) {
+      expect(vendaSchema.safeParse(comGarantia(ruim)).success).toBe(false);
+    }
   });
 });
