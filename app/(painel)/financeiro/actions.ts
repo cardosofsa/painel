@@ -134,6 +134,42 @@ export async function criarContaPagarReceber(dados: ContaPagarReceberInput) {
   });
 }
 
+// ---------- Parcelas de fiado (0030) ----------
+export interface ParcelaVenda {
+  id: string;
+  numero: number;
+  total_parcelas: number;
+  valor: number;
+  data_vencimento: string;
+  status: "pendente" | "paga";
+  data_pagamento: string | null;
+  valor_pago: number | null;
+}
+
+export async function obterParcelasVenda(vendaId: string) {
+  return comResultado(async (): Promise<ParcelaVenda[]> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("parcelas_da_venda", { p_venda_id: vendaId });
+    if (error) lancarErroSupabase(error);
+    return (data ?? []) as ParcelaVenda[];
+  });
+}
+
+export async function marcarParcelaPaga(parcelaId: string, valorPago: number, dataPagamento: string, contaId: string) {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("marcar_parcela_paga", {
+      p_parcela_id: parcelaId,
+      p_valor_pago: valorPago,
+      p_data_pagamento: dataPagamento,
+      p_conta_id: contaId,
+    });
+    if (error) lancarErroSupabase(error);
+    revalidateTudo();
+    revalidatePath("/clientes");
+  });
+}
+
 // ---------- Limpar dados por período ----------
 export interface EscopoLimpeza {
   lancamentos: boolean;

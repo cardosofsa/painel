@@ -11,6 +11,19 @@ interface CustoRecente {
   custo_precificacao: number;
 }
 
+/** Formato cru do join com `vendas`, antes de virar `ContaPagarReceber`. */
+interface LinhaCpr {
+  id: string;
+  tipo: "pagar" | "receber";
+  descricao: string;
+  valor: number;
+  data_vencimento: string;
+  status: "pendente" | "pago" | "recebido";
+  conta_id: string | null;
+  referencia_venda_id: string | null;
+  vendas: { numero: string; total_parcelas_fiado: number | null } | null;
+}
+
 /** Totais agregados no banco — ver `resumo_financeiro` na migração 0022. */
 export interface ResumoFinanceiro {
   total_entradas: number;
@@ -63,7 +76,10 @@ export default async function FinanceiroPage() {
     supabase.from("despesas_fixas").select("id, nome, metodo, valor, dia_vencimento, conta_id").order("dia_vencimento"),
     supabase
       .from("contas_a_pagar_receber")
-      .select("id, tipo, descricao, valor, data_vencimento, status, conta_id")
+      .select(
+        "id, tipo, descricao, valor, data_vencimento, status, conta_id, referencia_venda_id, " +
+          "vendas(numero, total_parcelas_fiado)",
+      )
       .order("data_vencimento"),
     supabase
       .from("movimentacoes_financeiras")
@@ -149,7 +165,7 @@ export default async function FinanceiroPage() {
     referencia_despesa_fixa_id: m.referencia_despesa_fixa_id,
   }));
 
-  const contasPagarReceber: ContaPagarReceber[] = (cprRes.data ?? []).map((c) => ({
+  const contasPagarReceber: ContaPagarReceber[] = ((cprRes.data ?? []) as unknown as LinhaCpr[]).map((c) => ({
     id: c.id,
     tipo: c.tipo,
     descricao: c.descricao,
@@ -158,6 +174,9 @@ export default async function FinanceiroPage() {
     status: c.status,
     conta_id: c.conta_id,
     conta_nome: (c.conta_id && contasPorId.get(c.conta_id)) ?? null,
+    venda_id: c.referencia_venda_id,
+    venda_numero: c.vendas?.numero ?? null,
+    total_parcelas_fiado: c.vendas?.total_parcelas_fiado ?? null,
   }));
 
   // Erosão de margem: cruza a compra recebida mais recente de cada produto com o custo da

@@ -33,6 +33,7 @@ import {
 import { executarComToast } from "@/lib/acao-cliente";
 import { LimparDadosModal } from "@/components/financeiro/LimparDadosModal";
 import { NovaMovimentacaoModal, NovaDespesaFixaModal, NovaCprModal } from "@/components/financeiro/ModaisFinanceiro";
+import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
 import { Chip } from "@/components/ui/Chip";
 
 export interface Conta {
@@ -73,9 +74,14 @@ export interface ContaPagarReceber {
   status: "pendente" | "pago" | "recebido";
   conta_id: string | null;
   conta_nome: string | null;
+  /** As três só existem quando a linha vem de uma venda (0030) — `null` pra CPR avulsa. */
+  venda_id: string | null;
+  venda_numero: string | null;
+  total_parcelas_fiado: number | null;
 }
 
-const FILTROS_CPR = ["Todos", "A Pagar", "A Receber", "Vencidos"] as const;
+const FILTROS_PAGAR = ["Todos", "Vencidos", "Próximos 7 dias"] as const;
+const FILTROS_RECEBER = ["Todos", "Vencidos", "Fiado", "Próximos 7 dias"] as const;
 
 export function FinanceiroClient({
   contas,
@@ -100,13 +106,15 @@ export function FinanceiroClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [filtroCpr, setFiltroCpr] = useState<(typeof FILTROS_CPR)[number]>("Todos");
+  const [filtroPagar, setFiltroPagar] = useState<(typeof FILTROS_PAGAR)[number]>("Todos");
+  const [filtroReceber, setFiltroReceber] = useState<(typeof FILTROS_RECEBER)[number]>("Todos");
   const [modalMovimentacao, setModalMovimentacao] = useState(false);
   const [modalDespesa, setModalDespesa] = useState(false);
   const [modalCpr, setModalCpr] = useState(false);
   const [modalLimpar, setModalLimpar] = useState(false);
   const [incluirFluxoNoLucro, setIncluirFluxoNoLucro] = useState(false);
   const [filtroContaId, setFiltroContaId] = useState<string | null>(null);
+  const [parcelasAbertas, setParcelasAbertas] = useState<{ vendaId: string; numero: string } | null>(null);
   const lancamentosRef = useRef<HTMLDivElement>(null);
 
   function verMovimentacoesDaConta(contaId: string) {
@@ -153,15 +161,6 @@ export function FinanceiroClient({
   const resultadoMensal = receitaMensal - despesasMensais;
   const margemLiquidaPct = receitaMensal > 0 ? (resultadoMensal / receitaMensal) * 100 : 0;
 
-  const cprFiltrado = contasPagarReceber.filter((c) => {
-    if (filtroCpr === "A Pagar") return c.tipo === "pagar";
-    if (filtroCpr === "A Receber") return c.tipo === "receber";
-    // Vencido é pendente E com vencimento no passado; antes devolvia todos os pendentes,
-    // inclusive os que vencem daqui a meses.
-    if (filtroCpr === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIsoLocal();
-    return true;
-  });
-
   const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + c.valor, 0);
   const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente").reduce((a, c) => a + c.valor, 0);
 
@@ -175,6 +174,24 @@ export function FinanceiroClient({
   const hojeIso = hojeIsoLocal(hoje);
   const em7DiasIso = hojeIsoLocal(em7Dias);
   const em30DiasIso = hojeIsoLocal(em30Dias);
+
+  // Separadas de verdade — duas listas, dois filtros, cada um com as opções que fazem
+  // sentido pro tipo (Fiado só existe do lado de A Receber).
+  const contasPagar = contasPagarReceber.filter((c) => c.tipo === "pagar");
+  const contasReceber = contasPagarReceber.filter((c) => c.tipo === "receber");
+
+  const pagarFiltrado = contasPagar.filter((c) => {
+    if (filtroPagar === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
+    if (filtroPagar === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
+    return true;
+  });
+
+  const receberFiltrado = contasReceber.filter((c) => {
+    if (filtroReceber === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
+    if (filtroReceber === "Fiado") return c.venda_id !== null;
+    if (filtroReceber === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
+    return true;
+  });
 
   const vencimentosProximos = contasPagarReceber.filter(
     (c) => c.status === "pendente" && c.data_vencimento <= em7DiasIso,
@@ -405,76 +422,133 @@ export function FinanceiroClient({
         </div>
       </Card>
 
-      <Card padding="nenhum" className="overflow-hidden mb-5">
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-text-primary">Contas a Pagar & Receber</h2>
-            <p className="text-sm text-text-secondary">
-              <span className="text-negative">{formatBRL(totalAPagar)} a pagar</span> ·{" "}
-              <span className="text-positive">{formatBRL(totalAReceber)} a receber</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex gap-2 flex-wrap">
-              {FILTROS_CPR.map((f) => (
-                <Chip key={f} onClick={() => setFiltroCpr(f)} ativo={filtroCpr === f}>
-                  {f}
-                </Chip>
-              ))}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+        <Card padding="nenhum" className="overflow-hidden">
+          <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-text-primary">Contas a Pagar</h2>
+              <p className="text-sm text-negative">{formatBRL(totalAPagar)} pendente</p>
             </div>
             <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
               + Novo
             </button>
           </div>
-        </div>
-        {cprFiltrado.length === 0 ? (
-          <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhum lançamento encontrado para esse filtro." />
-        ) : (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Descrição</Th>
-                <Th>Tipo</Th>
-                <Th>Conta</Th>
-                <Th align="right">Valor</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
-                <Th align="right"></Th>
-              </tr>
-            </Thead>
-            <tbody>
-              {cprFiltrado.map((c) => (
-                <Tr key={c.id}>
-                  <Td>{c.descricao}</Td>
-                  <Td>
-                    <StatusChip label={c.tipo === "pagar" ? "A Pagar" : "A Receber"} tone={c.tipo === "pagar" ? "negative" : "positive"} />
-                  </Td>
-                  <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
-                  <Td align="right" mono className={c.tipo === "pagar" ? "text-negative" : "text-positive"}>
-                    {formatBRL(c.valor)}
-                  </Td>
-                  <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
-                  <Td>
-                    <StatusChip
-                      label={c.status === "pendente" ? "Pendente" : c.status === "pago" ? "Pago" : "Recebido"}
-                      tone={c.status === "pendente" ? "neutral" : "positive"}
-                    />
-                  </Td>
-                  <Td align="right">
-                    {c.status === "pendente" && (
-                      <RowMenu
-                        actions={[
-                          { label: c.tipo === "pagar" ? "Marcar pago" : "Marcar recebido", onClick: () => quitar(c) },
-                        ]}
-                      />
-                    )}
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+          <div className="flex gap-2 flex-wrap px-5 pb-4">
+            {FILTROS_PAGAR.map((f) => (
+              <Chip key={f} onClick={() => setFiltroPagar(f)} ativo={filtroPagar === f}>
+                {f}
+              </Chip>
+            ))}
+          </div>
+          {pagarFiltrado.length === 0 ? (
+            <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a pagar encontrada para esse filtro." />
+          ) : (
+            <Table>
+              <Thead>
+                <tr>
+                  <Th>Descrição</Th>
+                  <Th>Conta</Th>
+                  <Th align="right">Valor</Th>
+                  <Th>Vencimento</Th>
+                  <Th>Status</Th>
+                  <Th align="right"></Th>
+                </tr>
+              </Thead>
+              <tbody>
+                {pagarFiltrado.map((c) => (
+                  <Tr key={c.id}>
+                    <Td>{c.descricao}</Td>
+                    <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
+                    <Td align="right" mono className="text-negative">
+                      {formatBRL(c.valor)}
+                    </Td>
+                    <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
+                    <Td>
+                      <StatusChip label={c.status === "pendente" ? "Pendente" : "Pago"} tone={c.status === "pendente" ? "neutral" : "positive"} />
+                    </Td>
+                    <Td align="right">
+                      {c.status === "pendente" && (
+                        <RowMenu actions={[{ label: "Marcar pago", onClick: () => quitar(c) }]} />
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
+
+        <Card padding="nenhum" className="overflow-hidden">
+          <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-text-primary">Contas a Receber</h2>
+              <p className="text-sm text-positive">{formatBRL(totalAReceber)} pendente</p>
+            </div>
+            <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
+              + Novo
+            </button>
+          </div>
+          <div className="flex gap-2 flex-wrap px-5 pb-4">
+            {FILTROS_RECEBER.map((f) => (
+              <Chip key={f} onClick={() => setFiltroReceber(f)} ativo={filtroReceber === f}>
+                {f}
+              </Chip>
+            ))}
+          </div>
+          {receberFiltrado.length === 0 ? (
+            <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a receber encontrada para esse filtro." />
+          ) : (
+            <Table>
+              <Thead>
+                <tr>
+                  <Th>Descrição</Th>
+                  <Th>Conta</Th>
+                  <Th align="right">Valor</Th>
+                  <Th>Vencimento</Th>
+                  <Th>Status</Th>
+                  <Th align="right"></Th>
+                </tr>
+              </Thead>
+              <tbody>
+                {receberFiltrado.map((c) => {
+                  // Fiado parcelado (0030): a "verdade" está nas parcelas, não num clique
+                  // único — o status do registro "pai" muda sozinho quando a última é paga.
+                  const parcelado = c.venda_id !== null && (c.total_parcelas_fiado ?? 1) > 1;
+                  return (
+                    <Tr key={c.id}>
+                      <Td>{c.descricao}</Td>
+                      <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
+                      <Td align="right" mono className="text-positive">
+                        {formatBRL(c.valor)}
+                      </Td>
+                      <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
+                      <Td>
+                        <StatusChip label={c.status === "pendente" ? "Pendente" : "Recebido"} tone={c.status === "pendente" ? "neutral" : "positive"} />
+                      </Td>
+                      <Td align="right">
+                        {parcelado ? (
+                          <RowMenu
+                            actions={[
+                              {
+                                label: "Visualizar parcelas",
+                                onClick: () => setParcelasAbertas({ vendaId: c.venda_id!, numero: c.venda_numero ?? "" }),
+                              },
+                            ]}
+                          />
+                        ) : (
+                          c.status === "pendente" && (
+                            <RowMenu actions={[{ label: "Marcar recebido", onClick: () => quitar(c) }]} />
+                          )
+                        )}
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          )}
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card ref={lancamentosRef} padding="nenhum" className="lg:col-span-2 overflow-hidden">
@@ -650,6 +724,13 @@ export function FinanceiroClient({
       <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />
       <NovaCprModal key={`cpr-${modalCpr}`} open={modalCpr} onClose={() => setModalCpr(false)} contas={contas} onSave={adicionarCpr} salvando={pending} />
       <LimparDadosModal open={modalLimpar} onClose={() => setModalLimpar(false)} confirm={confirm} />
+      <ParcelasVendaModal
+        key={`parcelas-${parcelasAbertas?.vendaId ?? "fechado"}`}
+        vendaId={parcelasAbertas?.vendaId ?? null}
+        vendaNumero={parcelasAbertas?.numero ?? null}
+        contas={contas}
+        onClose={() => setParcelasAbertas(null)}
+      />
       {ConfirmDialog}
     </>
   );
