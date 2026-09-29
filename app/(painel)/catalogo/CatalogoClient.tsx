@@ -24,6 +24,9 @@ import {
   type ProdutoPrecoCatalogo,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { Tabs, TabPanel, type TabItem } from "@/components/ui/Tabs";
+import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
+import type { ClientePdv, ContaPdv } from "@/app/(painel)/pdv/tipos";
 
 export interface Catalogo {
   id: string;
@@ -33,17 +36,35 @@ export interface Catalogo {
   criado_em: string;
 }
 
+const ABAS_CATALOGO = [
+  { value: "catalogos", label: "Catálogos" },
+  { value: "pedidos", label: "Pedidos" },
+] as const satisfies readonly TabItem<"catalogos" | "pedidos">[];
+
 export function CatalogoClient({
   catalogos,
   totalProdutosElegiveis,
+  pedidos,
+  clientes,
+  contas,
+  formasPagamento,
 }: {
   catalogos: Catalogo[];
   totalProdutosElegiveis: number;
+  pedidos: PedidoVitrine[];
+  clientes: ClientePdv[];
+  contas: ContaPdv[];
+  formasPagamento: string[];
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalCatalogo, setModalCatalogo] = useState<Catalogo | "novo" | null>(null);
   const [precosCatalogo, setPrecosCatalogo] = useState<Catalogo | null>(null);
+  // Abre direto nos pedidos quando há algo esperando: é o que o dono veio fazer.
+  const [aba, setAba] = useState<"catalogos" | "pedidos">(
+    pedidos.some((p) => p.status === "pendente") ? "pedidos" : "catalogos",
+  );
+  const pendentes = pedidos.filter((p) => p.status === "pendente").length;
 
   function linkPublico(slug: string) {
     return `${window.location.origin}/vitrine/${slug}`;
@@ -103,8 +124,36 @@ export function CatalogoClient({
 
   return (
     <>
-      <PageHeader title="Catálogo" actions={<Button variant="primary" onClick={() => setModalCatalogo("novo")}>+ Novo Catálogo</Button>} />
+      <PageHeader
+        title="Catálogo"
+        actions={
+          aba === "catalogos" ? (
+            <Button variant="primary" onClick={() => setModalCatalogo("novo")}>
+              + Novo Catálogo
+            </Button>
+          ) : undefined
+        }
+      />
 
+      {/* Pedidos ficam AQUI dentro, não numa aba nova do sistema: uma aba nova em
+          `lib/acesso.ts` vira um id que nenhuma conta existente tem em
+          `perfis_acesso.abas`, e o recurso não apareceria para ninguém até o master
+          liberar conta por conta. */}
+      <Tabs
+        tabs={[
+          ABAS_CATALOGO[0],
+          { ...ABAS_CATALOGO[1], label: pendentes > 0 ? `Pedidos (${pendentes})` : ABAS_CATALOGO[1].label },
+        ]}
+        value={aba}
+        onChange={setAba}
+        className="mb-5"
+      />
+
+      <TabPanel key={aba} tabValue={aba}>
+      {aba === "pedidos" ? (
+        <PedidosVitrine pedidos={pedidos} clientes={clientes} contas={contas} formasPagamento={formasPagamento} />
+      ) : (
+      <>
       <Card className="mb-5">
         <p className="text-sm text-text-secondary">
           Cada catálogo é uma vitrine pública com um link próprio, pronta pra enviar ao cliente. Os produtos entram
@@ -183,6 +232,9 @@ export function CatalogoClient({
         onClose={() => setPrecosCatalogo(null)}
       />
       {ConfirmDialog}
+      </>
+      )}
+      </TabPanel>
     </>
   );
 }

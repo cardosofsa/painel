@@ -124,7 +124,7 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
                 <EmptyState icon={BookOpen} title="Nenhum produto disponível no momento" />
               </div>
             ) : (
-              <VitrineInterativa nome={nome} itens={itens} negocioWhatsapp={negocioWhatsapp} />
+              <VitrineInterativa nome={nome} slug={slug} itens={itens} negocioWhatsapp={negocioWhatsapp} />
             )}
           </>
         )}

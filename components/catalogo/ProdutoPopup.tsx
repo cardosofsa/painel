@@ -1,38 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { ImageIcon, MessageCircle } from "lucide-react";
+import { ImageIcon, Minus, Plus, ShoppingCart } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
+import { Button, IconButton } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import type { ItemVitrine, VarianteVitrine } from "./VitrineView";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { Chip } from "@/components/ui/Chip";
-
-/** Monta o link do WhatsApp: com o número do negócio quando cadastrado, ou o mesmo formato
- * sem número já usado em outras partes do sistema (deixa a pessoa escolher o contato). */
-function linkComprarAgora(nomeProduto: string, preco: number, whatsapp: string | null) {
-  const mensagem = `Olá! Tenho interesse no produto "${nomeProduto}" (${formatBRL(preco)}).`;
-  const texto = encodeURIComponent(mensagem);
-  const digitos = whatsapp?.replace(/\D/g, "");
-  if (digitos) {
-    const numero = digitos.startsWith("55") ? digitos : `55${digitos}`;
-    return `https://wa.me/${numero}?text=${texto}`;
-  }
-  return `https://wa.me/?text=${texto}`;
-}
+import { MAX_QTD, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
 
 export function ProdutoPopup({
   item,
-  negocioWhatsapp,
+  onAdicionar,
   onClose,
 }: {
   item: ItemVitrine | null;
-  negocioWhatsapp: string | null;
+  /** Manda o item escolhido para o carrinho, que vive em `VitrineInterativa`. */
+  onAdicionar: (item: ItemCarrinhoVitrine) => void;
   onClose: () => void;
 }) {
   const [varianteId, setVarianteId] = useState<string | null>(null);
   const [imagemAtiva, setImagemAtiva] = useState(0);
+  const [quantidade, setQuantidade] = useState(1);
 
   const variantes: VarianteVitrine[] = item?.variantes ?? [];
   const temVariantes = variantes.length > 1;
@@ -104,17 +94,44 @@ export function ProdutoPopup({
 
           {item.descricao && <p className="text-sm text-text-secondary mb-4 whitespace-pre-wrap">{item.descricao}</p>}
 
-          <a
-            href={linkComprarAgora(nomeCompleto, selecionada.preco, negocioWhatsapp)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block"
-          >
-            <Button variant="primary" className="w-full">
-              <MessageCircle size={16} />
-              Comprar Agora
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 border border-border rounded-md p-1">
+              <IconButton
+                onClick={() => setQuantidade((q) => Math.max(1, q - 1))}
+                disabled={quantidade <= 1}
+                aria-label="Diminuir quantidade"
+              >
+                <Minus size={16} />
+              </IconButton>
+              <span className="font-mono text-sm w-8 text-center tabular" aria-live="polite">
+                {quantidade}
+              </span>
+              <IconButton
+                onClick={() => setQuantidade((q) => Math.min(MAX_QTD, q + 1))}
+                disabled={quantidade >= MAX_QTD}
+                aria-label="Aumentar quantidade"
+              >
+                <Plus size={16} />
+              </IconButton>
+            </div>
+
+            <Button
+              variant="primary"
+              className="flex-1"
+              onClick={() => {
+                onAdicionar({
+                  produto_id: selecionada.produto_id,
+                  nome: nomeCompleto,
+                  preco: selecionada.preco,
+                  quantidade,
+                });
+                onClose();
+              }}
+            >
+              <ShoppingCart size={16} />
+              Adicionar {quantidade > 1 ? `· ${formatBRL(selecionada.preco * quantidade)}` : ""}
             </Button>
-          </a>
+          </div>
         </div>
       )}
     </Modal>

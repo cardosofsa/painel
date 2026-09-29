@@ -67,3 +67,45 @@ describe("matrizParaCsv", () => {
     expect(matrizParaCsv([["Kit 2, azul", 5]])).toBe('"Kit 2, azul",5');
   });
 });
+
+/**
+ * Excel e Google Sheets executam campo que começa com `=`, `+`, `-` ou `@` como fórmula.
+ * Passou a importar com o pedido da vitrine: nome e observação vêm de visitante anônimo,
+ * aparecem na tela do dono e podem ir para o CSV.
+ */
+describe("escaparCampo — injeção de fórmula", () => {
+  it("neutraliza = no início", () => {
+    expect(escaparCampo('=HYPERLINK("http://mal/","clique")')).toBe(
+      `"'=HYPERLINK(""http://mal/"",""clique"")"`,
+    );
+  });
+
+  it("neutraliza +, @ e tab no início", () => {
+    expect(escaparCampo("+1+1")).toBe("'+1+1");
+    expect(escaparCampo("@SUM(A1)")).toBe("'@SUM(A1)");
+    expect(escaparCampo("\tcmd")).toBe("'\tcmd");
+  });
+
+  // O regressão que eu quase introduzi: o sistema exporta lucro negativo.
+  it("NÃO mexe em número negativo — lucro negativo é dado, não fórmula", () => {
+    expect(escaparCampo(-10.5)).toBe("-10.5");
+    expect(escaparCampo("-10.50")).toBe("-10.50");
+    // Com vírgula, as aspas vêm do escape de CSV de sempre — mas sem o apóstrofo na frente.
+    expect(escaparCampo("-1234,56")).toBe(`"-1234,56"`);
+    expect(escaparCampo("+7")).toBe("+7");
+  });
+
+  it("não mexe em texto comum nem em número positivo", () => {
+    expect(escaparCampo("Camiseta Azul")).toBe("Camiseta Azul");
+    expect(escaparCampo(19.9)).toBe("19.9");
+    expect(escaparCampo("2026-03-01")).toBe("2026-03-01");
+  });
+
+  it("um hífen solto no meio não é fórmula", () => {
+    expect(escaparCampo("Kit 3-em-1")).toBe("Kit 3-em-1");
+  });
+
+  it("neutraliza mesmo quando também precisa de aspas", () => {
+    expect(escaparCampo("=1,2")).toBe(`"'=1,2"`);
+  });
+});

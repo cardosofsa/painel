@@ -90,6 +90,9 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     "/auth/callback",
     "/auth/reset",
     "/vitrine",
+    // Quem faz o pedido é o cliente final, que nunca teve login. Sem esta linha o POST
+    // viraria um redirect para /login e o carrinho nunca enviaria.
+    "/api/vitrine",
     // O navegador reporta violação de CSP sem sessão. Sem esta linha o relatório viraria
     // um redirect para /login e a violação nunca chegaria ao log.
     "/api/csp-report",
