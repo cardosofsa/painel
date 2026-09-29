@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import type { ContaInput, ArmazemInput, FormaPagamentoInput, TipoFormaPagamento } from "@/app/(painel)/configuracoes/actions";
 import type { Conta, Armazem, FormaPagamento } from "@/app/(painel)/configuracoes/ConfiguracoesClient";
 
@@ -22,9 +23,11 @@ export function ContaModal({
   const [nome, setNome] = useState(base.nome);
   const [saldo, setSaldo] = useState(base.saldo);
   const [detalhe, setDetalhe] = useState(base.detalhe);
+  const [inicial] = useState({ nome: base.nome, saldo: base.saldo, detalhe: base.detalhe });
+  const sujo = useFormularioSujo({ nome, saldo, detalhe }, inicial);
 
   return (
-    <Modal open={!!conta} onClose={onClose} title={conta === "novo" ? "Adicionar Conta" : "Editar Conta"}>
+    <Modal open={!!conta} onClose={onClose} title={conta === "novo" ? "Adicionar Conta" : "Editar Conta"} sujo={sujo}>
       <FormField label="Nome da Conta">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} />
       </FormField>
@@ -69,12 +72,15 @@ export function FormaPagamentoModal({
   const base = formaPagamento && formaPagamento !== "novo" ? formaPagamento : { nome: "", tipo: "outro" as const };
   const [nome, setNome] = useState(base.nome);
   const [tipo, setTipo] = useState<TipoFormaPagamento>(base.tipo);
+  const [inicial] = useState({ nome: base.nome, tipo: base.tipo });
+  const sujo = useFormularioSujo({ nome, tipo }, inicial);
 
   return (
     <Modal
       open={!!formaPagamento}
       onClose={onClose}
       title={formaPagamento === "novo" ? "Adicionar Forma de Pagamento" : "Editar Forma de Pagamento"}
+      sujo={sujo}
     >
       <FormField label="Nome">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Pix, Cartão Nubank" />
@@ -118,9 +124,11 @@ export function ArmazemModal({
   const [nome, setNome] = useState(base.nome);
   const [endereco, setEndereco] = useState(base.endereco);
   const [lojas, setLojas] = useState(base.lojas_abastecidas.join(", "));
+  const [inicial] = useState({ nome: base.nome, endereco: base.endereco, lojas: base.lojas_abastecidas.join(", ") });
+  const sujo = useFormularioSujo({ nome, endereco, lojas }, inicial);
 
   return (
-    <Modal open={!!armazem} onClose={onClose} title={armazem === "novo" ? "Adicionar Armazém" : "Editar Armazém"}>
+    <Modal open={!!armazem} onClose={onClose} title={armazem === "novo" ? "Adicionar Armazém" : "Editar Armazém"} sujo={sujo}>
       <FormField label="Nome">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Galpão Central" />
       </FormField>

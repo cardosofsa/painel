@@ -14,6 +14,7 @@ import { Truck } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
 export interface Fornecedor extends FornecedorInput {
   id: string;
@@ -41,18 +42,23 @@ export function FornecedoresClient({
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Fornecedor | null>(null);
   const [form, setForm] = useState<FornecedorInput>(FORM_VAZIO);
+  const [formOriginal, setFormOriginal] = useState<FornecedorInput>(FORM_VAZIO);
+  const sujo = useFormularioSujo(form, formOriginal);
 
   const ativos = fornecedores.filter((f) => f.status === "ativo").length;
 
   function abrirNovo() {
     setEditando(null);
     setForm(FORM_VAZIO);
+    setFormOriginal(FORM_VAZIO);
     setModalAberto(true);
   }
 
   function abrirEdicao(f: Fornecedor) {
     setEditando(f);
-    setForm({ nome: f.nome, cnpj: f.cnpj, contato: f.contato, telefone: f.telefone, cidade: f.cidade, prazo: f.prazo, status: f.status });
+    const dados = { nome: f.nome, cnpj: f.cnpj, contato: f.contato, telefone: f.telefone, cidade: f.cidade, prazo: f.prazo, status: f.status };
+    setForm(dados);
+    setFormOriginal(dados);
     setModalAberto(true);
   }
 
@@ -163,6 +169,7 @@ export function FornecedoresClient({
         open={modalAberto}
         onClose={() => setModalAberto(false)}
         title={editando ? "Editar Fornecedor" : "Cadastrar Fornecedor"}
+        sujo={sujo}
       >
         <FormField label="Razão Social">
           <input className={inputClass} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />

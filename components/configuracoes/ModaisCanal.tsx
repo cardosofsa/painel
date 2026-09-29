@@ -4,9 +4,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
+import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { formatBRL } from "@/lib/format";
 import { formatarFaixaLabel } from "@/lib/pricing";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import type { CanalInput, LojaInput, FaixaComissaoInput } from "@/app/(painel)/configuracoes/actions";
 import { ICONES_CANAL, type Canal, type Loja } from "@/app/(painel)/configuracoes/ConfiguracoesClient";
 
@@ -31,6 +33,8 @@ export function FaixasModal({
   const [faixas, setFaixas] = useState<FaixaComissaoInput[]>(
     () => canal?.faixas.map((f) => ({ preco_min: f.preco_min, preco_max: f.preco_max, comissao_pct: f.comissao_pct, tarifa_fixa: f.tarifa_fixa })) ?? [],
   );
+  const [faixasIniciais] = useState(faixas);
+  const sujo = useFormularioSujo(faixas, faixasIniciais);
 
   function atualizar(i: number, campo: keyof FaixaComissaoInput, valor: string) {
     setFaixas((prev) =>
@@ -49,7 +53,7 @@ export function FaixasModal({
   }
 
   return (
-    <Modal open={!!canal} onClose={onClose} title={canal ? `Faixas de Comissão (${canal.nome})` : ""} width="max-w-xl">
+    <Modal open={!!canal} onClose={onClose} title={canal ? `Faixas de Comissão (${canal.nome})` : ""} width="max-w-xl" sujo={sujo}>
       <p className="text-sm text-text-secondary mb-4">
         Vale para todas as lojas deste canal. Ajuste se a plataforma mudar a tabela oficial.
       </p>
@@ -148,6 +152,10 @@ export function CanalModal({
   const [tipoTaxa, setTipoTaxa] = useState<"fixo" | "faixas">("fixo");
   const [icone, setIcone] = useState("Store");
   const [cor, setCor] = useState("#64748b");
+  const sujo = useFormularioSujo(
+    { nome, tipoTaxa, icone, cor },
+    { nome: "", tipoTaxa: "fixo", icone: "Store", cor: "#64748b" },
+  );
 
   function salvar() {
     if (!nome.trim()) return;
@@ -159,7 +167,7 @@ export function CanalModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Adicionar Canal" width="max-w-md">
+    <Modal open={open} onClose={onClose} title="Adicionar Canal" width="max-w-md" sujo={sujo}>
       <FormField label="Nome do Canal">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: TikTok Shop" />
       </FormField>
@@ -220,6 +228,13 @@ export function LojaModal({
   const [taxaExtraValorStr, setTaxaExtraValorStr] = useState(loja?.taxa_extra_valor != null ? String(loja.taxa_extra_valor) : "");
   const [taxaExtraTipo, setTaxaExtraTipo] = useState<"percentual" | "fixo">(loja?.taxa_extra_tipo ?? "percentual");
   const { enviar: enviarLogoArquivo, enviando: enviandoLogo } = useSupabaseUpload("canais-logos");
+  const [inicial] = useState({
+    nome, link, logoPath, comissaoPctStr, taxaFixaStr, taxaExtraValorStr, taxaExtraTipo,
+  });
+  const sujo = useFormularioSujo(
+    { nome, link, logoPath, comissaoPctStr, taxaFixaStr, taxaExtraValorStr, taxaExtraTipo },
+    inicial,
+  );
 
   async function enviarLogo(file: File) {
     const resultado = await enviarLogoArquivo(file, { maxSizeMb: 3, tiposAceitos: ["image/"], prefixo: "loja" });
@@ -232,7 +247,7 @@ export function LojaModal({
   if (!canal) return null;
 
   return (
-    <Modal open={!!modalLoja} onClose={onClose} title={loja ? `Editar Loja — ${canal.nome}` : `Adicionar Loja — ${canal.nome}`}>
+    <Modal open={!!modalLoja} onClose={onClose} title={loja ? `Editar Loja — ${canal.nome}` : `Adicionar Loja — ${canal.nome}`} sujo={sujo}>
       <FormField label="Nome da Loja">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Minha Loja Oficial" />
       </FormField>
@@ -243,17 +258,7 @@ export function LojaModal({
           ) : (
             <div className="w-10 h-10 rounded-md bg-surface-2 border border-border" />
           )}
-          <input
-            type="file"
-            accept="image/*"
-            disabled={enviandoLogo}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) enviarLogo(file);
-              e.target.value = "";
-            }}
-            className="text-sm text-text-secondary file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:bg-surface-2 file:text-text-primary file:text-sm hover:file:bg-surface-3 disabled:opacity-50"
-          />
+          <CampoArquivo onArquivo={enviarLogo} disabled={enviandoLogo} />
         </div>
       </FormField>
       <FormField label="Link da Loja (opcional)">

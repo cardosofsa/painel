@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { hojeIsoLocal } from "@/lib/format";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import type { Conta } from "@/app/(painel)/financeiro/FinanceiroClient";
 import type {
   MovimentacaoInput,
@@ -32,6 +33,8 @@ export function NovaMovimentacaoModal({
   const [contaId, setContaId] = useState(contas[0]?.id ?? "");
   const [valor, setValor] = useState(0);
   const [afetaLucro, setAfetaLucro] = useState(true);
+  const [inicial] = useState({ tipo, descricao, categoria, contaId, valor, afetaLucro });
+  const sujo = useFormularioSujo({ tipo, descricao, categoria, contaId, valor, afetaLucro }, inicial);
 
   function salvar() {
     if (!descricao.trim()) return toast.error("Descreva o lançamento.");
@@ -50,7 +53,7 @@ export function NovaMovimentacaoModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nova Entrada / Saída">
+    <Modal open={open} onClose={onClose} title="Nova Entrada / Saída" sujo={sujo}>
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setTipo("entrada")}
@@ -117,6 +120,8 @@ export function NovaDespesaFixaModal({
   const [valor, setValor] = useState(0);
   const [dia, setDia] = useState(5);
   const [contaId, setContaId] = useState(contas[0]?.id ?? "");
+  const [inicial] = useState({ nome, metodo, valor, dia, contaId });
+  const sujo = useFormularioSujo({ nome, metodo, valor, dia, contaId }, inicial);
 
   function salvar() {
     if (!nome.trim()) return toast.error("Dê um nome para a despesa fixa.");
@@ -125,7 +130,7 @@ export function NovaDespesaFixaModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nova Despesa Fixa">
+    <Modal open={open} onClose={onClose} title="Nova Despesa Fixa" sujo={sujo}>
       <FormField label="Identificador">
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Aluguel, Internet…" />
       </FormField>
@@ -186,6 +191,8 @@ export function NovaCprModal({
   const [valor, setValor] = useState(0);
   const [vencimento, setVencimento] = useState(() => hojeIsoLocal());
   const [contaId, setContaId] = useState(contas[0]?.id ?? "");
+  const [inicial] = useState({ tipo, descricao, valor, vencimento, contaId });
+  const sujo = useFormularioSujo({ tipo, descricao, valor, vencimento, contaId }, inicial);
 
   function salvar() {
     if (!descricao.trim()) return toast.error("Descreva a conta a pagar ou receber.");
@@ -194,7 +201,7 @@ export function NovaCprModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nova Conta a Pagar/Receber">
+    <Modal open={open} onClose={onClose} title="Nova Conta a Pagar/Receber" sujo={sujo}>
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setTipo("pagar")}

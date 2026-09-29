@@ -6,6 +6,7 @@ import { Sparkles, Upload } from "lucide-react";
 import { Modal, FormField, inputClass, campoBase } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
+import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
@@ -263,17 +264,7 @@ export function AparenciaModal({
                   <Upload size={16} />
                 </div>
               )}
-              <input
-                type="file"
-                accept="image/*"
-                disabled={enviandoLogo}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) enviarLogoArquivo(file);
-                  e.target.value = "";
-                }}
-                className="text-sm text-text-secondary file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:bg-surface-2 file:text-text-primary file:text-sm hover:file:bg-surface-3 disabled:opacity-50"
-              />
+              <CampoArquivo onArquivo={enviarLogoArquivo} disabled={enviandoLogo} />
             </div>
           </FormField>
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { atualizarVenda } from "./actions";
 import type { Venda } from "./VendasClient";
 import { executarComToast } from "@/lib/acao-cliente";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
 export interface ClienteOpcao {
   id: string;
@@ -37,6 +38,8 @@ export function EditarVendaModal({
   const [desconto, setDesconto] = useState(venda?.desconto ?? 0);
   const [valorEntrega, setValorEntrega] = useState(venda?.valor_entrega ?? 0);
   const [pin, setPin] = useState("");
+  const [inicial] = useState({ clienteId, formaPagamento, observacao, desconto, valorEntrega });
+  const sujo = useFormularioSujo({ clienteId, formaPagamento, observacao, desconto, valorEntrega }, inicial);
 
   async function salvar() {
     if (!venda) return;
@@ -57,7 +60,7 @@ export function EditarVendaModal({
   }
 
   return (
-    <Modal open={!!venda} onClose={onClose} title={venda ? `Editar Venda ${venda.numero}` : ""}>
+    <Modal open={!!venda} onClose={onClose} title={venda ? `Editar Venda ${venda.numero}` : ""} sujo={sujo}>
       <FormField label="Cliente">
         <select className={inputClass} value={clienteId ?? ""} onChange={(e) => setClienteId(e.target.value || null)}>
           <option value="">Sem cliente identificado</option>
