@@ -38,3 +38,17 @@ export const NAV_ITEMS: { id: AbaId; href: string; label: string; icon: LucideIc
   label: aba.label,
   icon: ICONES[aba.id],
 }));
+
+/**
+ * Agrupamento visual da barra lateral, por segmento do negócio — puramente de
+ * apresentação, não mexe em controle de acesso (isso continua em `lib/acesso.ts`, decidido
+ * pela conta master). `dashboard` fica de fora: o acesso a ele passou a ser pelo logo, não
+ * por um item de menu. `configuracoes` também fica de fora: é renderizado à parte, sempre
+ * por último, igual já era o link de Administração do master.
+ */
+export const GRUPOS_NAV: { label: string; itens: AbaId[] }[] = [
+  { label: "Vendas", itens: ["pdv", "vendas", "catalogo"] },
+  { label: "Produtos & Estoque", itens: ["precificacao", "produtos", "estoque"] },
+  { label: "Compras", itens: ["compras", "fornecedores"] },
+  { label: "Clientes & Financeiro", itens: ["clientes", "financeiro"] },
+];

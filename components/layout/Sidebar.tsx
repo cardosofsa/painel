@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brain, ChevronsLeft, ChevronsRight, ShieldCheck } from "lucide-react";
-import { NAV_ITEMS } from "./navigation";
+import { ChevronsLeft, ChevronsRight, Settings, ShieldCheck } from "lucide-react";
+import { IconeCacto } from "@/components/ui/IconeCacto";
+import { NAV_ITEMS, GRUPOS_NAV } from "./navigation";
 import { normalizarAbas } from "@/lib/acesso";
 import { useSidebarMobile } from "./SidebarMobileContext";
 
@@ -19,9 +20,16 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
   // conta/senha — ver MasterConfiguracoesClient.tsx), porque toda conta precisa de um jeito
   // de trocar a própria senha. Quem barra de verdade rota por URL é o middleware.
   const liberadas = normalizarAbas(abas);
-  const itens = ehMaster
-    ? NAV_ITEMS.filter((item) => item.id === "configuracoes")
-    : NAV_ITEMS.filter((item) => liberadas.includes(item.id));
+
+  // Os grupos são só apresentação (ver comentário em `navigation.ts`): cada um filtra pelas
+  // abas liberadas e some da tela quando fica vazio, em vez de aparecer com um título sem
+  // nada embaixo.
+  const grupos = ehMaster
+    ? []
+    : GRUPOS_NAV.map((grupo) => ({
+        label: grupo.label,
+        itens: NAV_ITEMS.filter((item) => grupo.itens.includes(item.id) && liberadas.includes(item.id)),
+      })).filter((grupo) => grupo.itens.length > 0);
 
   // Lido do localStorage após montar (evita mismatch de hidratação SSR vs cliente).
   useEffect(() => {
@@ -57,35 +65,73 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
         } ${aberta ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       >
       <div className={`h-14 flex items-center gap-2 min-w-0 ${recolhida ? "justify-center px-2" : "px-5"}`}>
-        <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
-          <Brain size={14} strokeWidth={2.25} />
-        </span>
+        {/* Dashboard não é mais um item de menu: é pra cá que o logo leva. Master não roda
+            loja por esta conta (ver comentário acima), então pra ele o logo fica estático. */}
+        {ehMaster ? (
+          <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
+            <IconeCacto size={14} strokeWidth={2.25} />
+          </span>
+        ) : (
+          <Link
+            href="/dashboard"
+            onClick={fechar}
+            title={recolhida ? "Dashboard" : undefined}
+            className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0 hover:opacity-90 transition-opacity"
+          >
+            <IconeCacto size={14} strokeWidth={2.25} />
+          </Link>
+        )}
         {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">SERTÃO</span>}
       </div>
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">
-        {itens.map((item) => {
-          const active = pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={fechar}
-              title={recolhida ? item.label : undefined}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-                recolhida ? "justify-center px-0" : ""
-              } ${
-                active
-                  ? "bg-accent-soft text-accent font-medium"
-                  : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-              }`}
-            >
-              <Icon size={16} strokeWidth={2} className="shrink-0" />
-              {!recolhida && item.label}
-            </Link>
-          );
-        })}
+        {grupos.map((grupo) => (
+          <div key={grupo.label}>
+            {!recolhida && (
+              <div className="px-3 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-text-tertiary truncate">
+                {grupo.label}
+              </div>
+            )}
+            {grupo.itens.map((item) => {
+              const active = pathname.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={fechar}
+                  title={recolhida ? item.label : undefined}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                    recolhida ? "justify-center px-0" : ""
+                  } ${
+                    active
+                      ? "bg-accent-soft text-accent font-medium"
+                      : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+                  }`}
+                >
+                  <Icon size={16} strokeWidth={2} className="shrink-0" />
+                  {!recolhida && item.label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
+
+        <Link
+          href="/configuracoes"
+          onClick={fechar}
+          title={recolhida ? "Configurações" : undefined}
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors mt-2 border-t border-border pt-3 ${
+            recolhida ? "justify-center px-0" : ""
+          } ${
+            pathname.startsWith("/configuracoes")
+              ? "bg-accent-soft text-accent font-medium"
+              : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+          }`}
+        >
+          <Settings size={16} strokeWidth={2} className="shrink-0" />
+          {!recolhida && "Configurações"}
+        </Link>
 
         {ehMaster && (
           <Link
@@ -93,11 +139,8 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
             onClick={fechar}
             title={recolhida ? "Administração" : undefined}
             className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-              // A borda de separação só faz sentido depois de uma lista de itens acima.
-              // Master tem só "Configurações" em `itens` (ver acima), então ainda há um
-              // item antes — a borda aparece normalmente, separando-o de "Administração".
-              itens.length > 0 ? "mt-2 border-t border-border pt-3" : ""
-            } ${recolhida ? "justify-center px-0" : ""} ${
+              recolhida ? "justify-center px-0" : ""
+            } ${
               pathname.startsWith("/admin")
                 ? "bg-accent-soft text-accent font-medium"
                 : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
