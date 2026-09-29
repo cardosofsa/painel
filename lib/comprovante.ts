@@ -34,6 +34,26 @@ export function textoComprovante(d: DadosComprovante): string {
   return linhas.join("\n");
 }
 
+/** Uma parcela (ou, no fiado não parcelado, a dívida inteira como uma "parcela" só). */
+export interface ParcelaResumoFiado {
+  numero: number;
+  totalParcelas: number;
+  valor: number;
+  status: "pendente" | "paga" | "atrasada";
+  dataVencimento: string;
+}
+
+/** Dados para a imagem do "Enviar resumo" do box Fiado (0030 — sub-etapa 2.6). */
+export interface DadosResumoFiado {
+  numero: string;
+  clienteNome: string;
+  data: string;
+  valorTotal: number;
+  valorPago: number;
+  valorRestante: number;
+  parcelas: ParcelaResumoFiado[];
+}
+
 /** Mesmo padrão de link usado no Catálogo: com o número do cliente quando disponível,
  * ou o formato sem número (deixa a pessoa escolher o contato na hora de enviar). */
 export function linkComprovanteWhatsapp(d: DadosComprovante, whatsappCliente: string | null): string {

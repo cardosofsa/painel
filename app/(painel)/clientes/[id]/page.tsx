@@ -24,6 +24,7 @@ interface CprBruta {
   referencia_venda_id: string;
   status: "pendente" | "pago" | "recebido";
   data_vencimento: string;
+  valor: number;
 }
 
 interface ParcelaBruta {
@@ -36,7 +37,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
   const { id } = await params;
   const supabase = await createClient();
 
-  const [clienteRes, vendasRes, contasRes, fiadoEmUsoRes] = await Promise.all([
+  const [clienteRes, vendasRes, contasRes, fiadoEmUsoRes, perfilRes] = await Promise.all([
     supabase
       .from("clientes")
       .select("id, nome, whatsapp, email, permite_fiado, limite_fiado, status")
@@ -51,6 +52,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       .order("data_venda", { ascending: false }),
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase.rpc("fiado_em_uso_cliente", { p_cliente_id: id }),
+    supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
   ]);
 
   if (clienteRes.error) lancarErroSupabase(clienteRes.error);
@@ -67,7 +69,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
     vendaIds.length > 0
       ? supabase
           .from("contas_a_pagar_receber")
-          .select("referencia_venda_id, status, data_vencimento")
+          .select("referencia_venda_id, status, data_vencimento, valor")
           .in("referencia_venda_id", vendaIds)
       : Promise.resolve({ data: [] as CprBruta[], error: null }),
     vendaIdsParcelados.length > 0
@@ -78,9 +80,9 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
   if (cprRes.error) lancarErroSupabase(cprRes.error);
   if (parcelasRes.error) lancarErroSupabase(parcelasRes.error);
 
-  const cprPorVenda = new Map<string, { status: string; data_vencimento: string }>();
+  const cprPorVenda = new Map<string, { status: string; data_vencimento: string; valor: number }>();
   for (const c of (cprRes.data ?? []) as CprBruta[]) {
-    cprPorVenda.set(c.referencia_venda_id, { status: c.status, data_vencimento: c.data_vencimento });
+    cprPorVenda.set(c.referencia_venda_id, { status: c.status, data_vencimento: c.data_vencimento, valor: c.valor });
   }
 
   const parcelasPorVenda = new Map<string, ParcelaBruta[]>();
@@ -110,6 +112,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       venda_itens: v.venda_itens,
       cpr_status: cpr?.status ?? null,
       cpr_data_vencimento: cpr?.data_vencimento ?? null,
+      cpr_valor: cpr?.valor ?? null,
       parcelas_pagas_datas: parcelas ? parcelas.filter((p) => p.status === "paga").map((p) => p.data_pagamento!) : null,
       parcelas_pendentes: parcelas ? parcelas.some((p) => p.status === "pendente") : null,
     };
@@ -123,6 +126,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       vendas={vendas}
       contas={contasRes.data ?? []}
       fiadoEmUso={Number(fiadoEmUsoRes.data ?? 0)}
+      nomeNegocio={perfilRes.data?.nome_negocio ?? null}
     />
   );
 }

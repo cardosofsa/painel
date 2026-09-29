@@ -17,6 +17,8 @@ import { atualizarStatusEnvio } from "@/app/(painel)/vendas/actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
 import type { Conta } from "@/app/(painel)/financeiro/FinanceiroClient";
+import { obterParcelasVenda } from "@/app/(painel)/financeiro/actions";
+import { useResumoFiadoImagem } from "@/components/clientes/ResumoFiadoImagem";
 
 export interface ClienteDetalhe {
   id: string;
@@ -46,6 +48,7 @@ export interface VendaCliente {
   /** Linha "pai" em contas_a_pagar_receber — null quando a venda não é fiado. */
   cpr_status: string | null;
   cpr_data_vencimento: string | null;
+  cpr_valor: number | null;
   /** Só preenchido quando `total_parcelas_fiado > 1`. */
   parcelas_pagas_datas: string[] | null;
   parcelas_pendentes: boolean | null;
@@ -85,15 +88,19 @@ export function ClienteDetalheClient({
   vendas,
   contas,
   fiadoEmUso,
+  nomeNegocio,
 }: {
   cliente: ClienteDetalhe;
   vendas: VendaCliente[];
   contas: Conta[];
   fiadoEmUso: number;
+  nomeNegocio: string | null;
 }) {
   const [, startTransition] = useTransition();
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [parcelasVenda, setParcelasVenda] = useState<{ id: string; numero: string } | null>(null);
+  const [enviandoResumoId, setEnviandoResumoId] = useState<string | null>(null);
+  const { abrirResumo, modais: modaisResumoFiado } = useResumoFiadoImagem(nomeNegocio);
   const hoje = hojeIsoLocal();
 
   const validas = useMemo(() => vendas.filter((v) => v.status !== "cancelada"), [vendas]);
@@ -132,6 +139,70 @@ export function ClienteDetalheClient({
     startTransition(async () => {
       await executarComToast(atualizarStatusEnvio(vendaId, status), { erro: "Erro ao atualizar status de envio" });
     });
+  }
+
+  /**
+   * Monta os dados do resumo e captura a imagem. Fiado parcelado busca as parcelas de
+   * verdade (0030); fiado sem parcelamento vira uma "parcela" única com o valor da conta a
+   * receber — não há granularidade menor porque o dinheiro nunca foi dividido.
+   */
+  async function enviarResumo(v: VendaCliente) {
+    const parcelado = !!v.total_parcelas_fiado && v.total_parcelas_fiado > 1;
+    setEnviandoResumoId(v.id);
+    try {
+      if (parcelado) {
+        const r = await executarComToast(obterParcelasVenda(v.id), { erro: "Erro ao carregar parcelas" });
+        if (!r.ok) return;
+        const valorPendente = r.dado.filter((p) => p.status === "pendente").reduce((acc, p) => acc + p.valor, 0);
+        abrirResumo(
+          {
+            numero: v.numero,
+            clienteNome: cliente.nome,
+            data: v.data_venda,
+            valorTotal: v.total,
+            valorPago: v.total - valorPendente,
+            valorRestante: valorPendente,
+            parcelas: r.dado.map((p) => ({
+              numero: p.numero,
+              totalParcelas: p.total_parcelas,
+              valor: p.valor,
+              status: p.status === "paga" ? "paga" : p.data_vencimento < hoje ? "atrasada" : "pendente",
+              dataVencimento: p.data_vencimento,
+            })),
+          },
+          "copiar",
+        );
+      } else {
+        const restante = v.cpr_status === "recebido" ? 0 : (v.cpr_valor ?? 0);
+        abrirResumo(
+          {
+            numero: v.numero,
+            clienteNome: cliente.nome,
+            data: v.data_venda,
+            valorTotal: v.total,
+            valorPago: v.total - restante,
+            valorRestante: restante,
+            parcelas: [
+              {
+                numero: 1,
+                totalParcelas: 1,
+                valor: v.cpr_valor ?? v.total,
+                status:
+                  v.cpr_status === "recebido"
+                    ? "paga"
+                    : v.cpr_data_vencimento && v.cpr_data_vencimento < hoje
+                      ? "atrasada"
+                      : "pendente",
+                dataVencimento: v.cpr_data_vencimento ?? v.data_venda,
+              },
+            ],
+          },
+          "copiar",
+        );
+      }
+    } finally {
+      setEnviandoResumoId(null);
+    }
   }
 
   function exportarSelecao() {
@@ -259,16 +330,17 @@ export function ClienteDetalheClient({
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-mono text-text-primary">{formatBRL(v.total)}</span>
                         {pagamento && <StatusChip label={pagamento.label} tone={pagamento.tone} />}
-                        {parcelado && (
-                          <RowMenu
-                            actions={[
-                              {
-                                label: "Ver Histórico",
-                                onClick: () => setParcelasVenda({ id: v.id, numero: v.numero }),
-                              },
-                            ]}
-                          />
-                        )}
+                        <RowMenu
+                          actions={[
+                            ...(parcelado
+                              ? [{ label: "Ver Histórico", onClick: () => setParcelasVenda({ id: v.id, numero: v.numero }) }]
+                              : []),
+                            {
+                              label: enviandoResumoId === v.id ? "Gerando…" : "Enviar resumo",
+                              onClick: () => enviarResumo(v),
+                            },
+                          ]}
+                        />
                       </div>
                     </div>
                   );
@@ -372,6 +444,7 @@ export function ClienteDetalheClient({
         contas={contas}
         onClose={() => setParcelasVenda(null)}
       />
+      {modaisResumoFiado}
     </>
   );
 }
