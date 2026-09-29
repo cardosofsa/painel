@@ -37,11 +37,13 @@ export function PdvClient({
   clientes,
   formasPagamento,
   contas,
+  nomeNegocio,
 }: {
   produtos: ProdutoPdv[];
   clientes: ClientePdv[];
   formasPagamento: FormaPagamentoPdv[];
   contas: ContaPdv[];
+  nomeNegocio: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -263,6 +265,7 @@ export function PdvClient({
       <ReciboModal
         recibo={recibo}
         whatsappCliente={whatsappRecibo}
+        nomeNegocio={nomeNegocio}
         onClose={() => setRecibo(null)}
         onNovaVenda={() => setRecibo(null)}
       />
