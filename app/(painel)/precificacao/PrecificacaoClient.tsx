@@ -2,9 +2,9 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, History } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
+import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
@@ -1270,9 +1270,9 @@ export function PrecificacaoClient({
             <button onClick={exportarHistoricoCsv} className="text-xs text-accent hover:underline">
               Exportar CSV
             </button>
-            <button onClick={() => setVisao("historico")} className="text-xs text-accent hover:underline">
-              Ver histórico completo →
-            </button>
+            <IconButton onClick={() => setVisao("historico")} aria-label="Ver histórico completo" title="Ver histórico completo">
+              <History size={14} />
+            </IconButton>
           </div>
         </div>
         <div className="space-y-2">
