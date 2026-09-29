@@ -325,9 +325,7 @@ export function analisarConcorrencia(
   };
 }
 
-// ============================================================
-// Zona morta de faixa de comissão
-// ============================================================
+// ---------- Zona morta de faixa de comissão ----------
 
 export interface ZonaMorta {
   /** Primeiro preço da faixa nova — onde o líquido despenca. */

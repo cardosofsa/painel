@@ -141,7 +141,7 @@ export function montarCorpo(prompt: string, o: OpcoesGeracao, modelo: string) {
       temperature: o.temperatura,
       max_output_tokens: o.maxTokens,
       // A economia principal do desenho: o raciocínio é cobrado como token de saída e
-      // não ajuda a escrever título de anúncio. Ver "Economia" no README.
+      // não ajuda a escrever título de anúncio. Ver "Cota e custo" no README.
       thinking_level: nivelRaciocinio(modelo),
     },
     response_format: { type: "text", mime_type: "application/json", schema: o.esquema },

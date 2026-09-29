@@ -24,7 +24,7 @@ export default async function ComprasPage() {
     titulosRes,
     gruposRes,
   ] = await Promise.all([
-      // Janela de 90 dias, igual ao que /vendas já faz. Sem ela esta consulta trazia TODO
+      // Janela de 90 dias, igual ao que /vendas já faz. Sem ela esta consulta trazia todo
       // pedido de compra já feito com os itens aninhados — o payload mais pesado do app —
       // e os filtros "Últimos 7 dias / Este mês" eram aplicados no cliente depois de
       // baixar tudo. Pedido pendente antigo entra na janela de qualquer jeito (ver abaixo).

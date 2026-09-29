@@ -89,6 +89,18 @@ sessão do usuário. Toda trava que importa tem que estar no banco.
 | Conta master | `e_master()` dentro de cada RPC `admin_*` (`0020`) |
 | PIN de edição de venda | hash bcrypt conferido dentro de `editar_venda` (`0021`) |
 | Liberação por aba | middleware — é roteamento, **não** isolamento de dados |
+| Tipo e tamanho de upload | `storage.buckets.file_size_limit`/`allowed_mime_types` (`0026`) |
+| Vitrine de conta suspensa | `conta_ativa_de(dono)` dentro de `obter_catalogo_publico` (`0026`) |
+| FK apontando para outra conta | trigger `validar_vinculo_do_dono` (`0026`) |
+
+> ⚠️ **`perfis_acesso` não tem policy de escrita, e é isso que segura o controle de acesso
+> inteiro.** A policy dela é só de SELECT (`auth.uid() = user_id OR e_master()`); toda
+> escrita passa por RPC `security definer` que confere `e_master()`.
+>
+> "Padronizar" essa tabela acrescentando `for all using (auth.uid() = user_id)` — que é o
+> padrão de todas as outras — faz qualquer usuário conseguir `update perfis_acesso set papel
+> = 'master'` pelo console. **Escalada de privilégio imediata.** Se algum dia parecer que
+> falta uma policy ali, é porque está certo.
 
 Autenticação tem tradutor próprio: `traduzirErroAuth()` em `lib/erros.ts`. Os códigos da
 GoTrue (`invalid_credentials`, `email_not_confirmed`, `otp_expired`…) não são SQLSTATE e não
@@ -199,7 +211,23 @@ salvar rebaixava a conta.
 
 ## Design
 
-`DESIGN.md` define a paleta, tipografia (Inter para interface, Space Mono para números/SKU/
-datas) e os componentes visuais (botões, cards, tabelas, chips) — consulte antes de criar
-qualquer componente novo de UI para manter consistência com o "cockpit operacional" que o
-sistema busca (denso, sem decoração, sem glow/gradiente/sombra).
+`DESIGN.md` é a referência; `app/globals.css` é a fonte da verdade dos tokens. Leia antes de
+criar qualquer componente de UI.
+
+O essencial para não errar:
+
+- **Nada de cor solta em `className`.** Use as utilitárias de token (`bg-surface-1`,
+  `text-text-secondary`, `text-accent`). O projeto não tem um `text-gray-500` sequer —
+  mantenha assim.
+- **Sombra é `shadow-elev-1/2/3`**, não `shadow-sm`/`shadow-lg`. A do Tailwind é preta
+  translúcida e some no tema escuro.
+- **Contraste tem teste.** `lib/cores.test.ts` lê o `globals.css` e falha se um token de
+  texto cair abaixo de 4,5:1 em qualquer superfície. Não relaxe o teste; escolha outra cor.
+- **Não remova o `focus-visible` global.** O projeto passou muito tempo sem nenhum foco
+  visível, com navegação por teclado praticamente impossível.
+- **Grade começa em `grid-cols-1`** e só então ganha `sm:`/`lg:`. Exceção: grade de cartão
+  pequeno, onde 2 colunas no celular é melhor.
+- **Gráfico usa `components/charts/tema.ts`.** Tudo é `var(--token)`, o que faz o gráfico
+  seguir a troca de tema sozinho. Cor nova de série passa pelo validador de paleta antes.
+- **Ação de servidor no cliente vai por `executarComToast`** (`lib/acao-cliente.ts`).
+  Chamar a action solta engole o erro em silêncio e o TypeScript não reclama.

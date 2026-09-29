@@ -413,7 +413,7 @@ export const anuncioSchema = z.object({
  * Aqui o teto de cada campo não é só higiene de dado: é o **freio de custo**. Tudo que
  * entra vira token pago em toda geração, e o contexto chega do navegador — sem limite,
  * um cliente adulterado mandaria 500 concorrentes e um texto de 1 MB na conta do sistema.
- * Ver a seção "Economia de IA" no README.
+ * Ver a seção "Cota e custo" no README.
  */
 export const iaContextoSchema = z.object({
   produtoNome: z.string().trim().min(1, "Informe o nome do produto").max(300),

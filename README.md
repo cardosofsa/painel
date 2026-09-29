@@ -91,8 +91,19 @@ O código não alcança nada disto, e sem isto o fluxo falha em produção:
 ## Banco de dados
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql` → `0022_indices_e_agregacoes.sql`). **Elas são aplicadas manualmente**: abra
-o SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem numérica.
+(`0001_init.sql` → `0026_endurecimento_storage_vitrine_fks.sql`). **Elas são aplicadas
+manualmente**: abra o SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem
+numérica.
+
+> ⚠️ **As migrações 0001-0020 não são replayáveis num banco novo sem edição.** Catorze delas
+> não são idempotentes, e duas *duplicam dados* se rodarem duas vezes: `0004` insere 4 canais
+> por usuário de novo, `0005` insere 5 faixas por canal de novo. Num banco em produção isso
+> nunca aconteceu porque cada uma rodou uma vez só — o problema aparece no dia em que você
+> precisar recriar o ambiente do zero. A disciplina mudou a partir da `0021`; da 0021 em
+> diante todas são idempotentes e podem ser re-executadas à vontade.
+
+> `0012_limpar_dados_teste.sql` não é migração: é um script destrutivo pontual que apaga
+> dados da conta de teste. Não execute num banco de produção.
 
 Convenções ao criar uma migração nova:
 
@@ -115,6 +126,12 @@ vê todos os cadastros em `/admin`, aprova quem entra e decide quais abas cada c
   (migração `0021`), então uma conta pendente, suspensa ou vencida não lê nem escreve nada
   — nem pelo navegador, nem chamando o PostgREST direto com a chave anônima. Antes da 0021
   a barreira existia só no middleware e suspender uma conta apenas escondia o menu.
+- **A suspensão derruba a vitrine junto** (migração `0026`). `obter_catalogo_publico` é
+  `security definer` e ignora RLS por natureza, então até a 0026 suspender alguém tirava o
+  painel mas deixava o link do WhatsApp servindo produtos, preços e o telefone do negócio.
+  Agora ela consulta `conta_ativa_de(dono)` e responde como se o link não existisse.
+- **Conta suspensa também não sobe nem apaga arquivo** — as policies de Storage passaram a
+  exigir `conta_ativa()` na mesma migração.
 - A liberação **por aba** continua sendo enforcement de rota, no middleware
   (`lib/supabase/middleware.ts`), não no menu — esconder o link não impediria ninguém de
   digitar a URL. Ela é controle de navegação e de licenciamento, não de isolamento de
@@ -182,6 +199,20 @@ Cinco decisões de economia, que valem lembrar antes de mexer:
 - O que sai para o Google: nome, SKU, categoria, fornecedor, custo e preço do produto.
   **Nenhum dado de cliente final** — nunca inclua `clientes` nem `vendas` no contexto.
 
+## Storage
+
+Três buckets: `produtos` e `canais-logos` (públicos, servem a vitrine) e `notas-fiscais`
+(privado). O caminho sempre começa com o `user_id`, e é isso que as policies conferem.
+
+Tipo e tamanho são limitados **no servidor**, em `storage.buckets` (migração 0026): 5 MB e
+3 MB para imagem, 10 MB para NF. A validação de `lib/hooks/useSupabaseUpload.ts` é conforto
+de interface, não barreira — ela roda no navegador e o upload vai direto para o Supabase,
+então dá para contorná-la pelo console.
+
+**SVG não está na lista de tipos aceitos, de propósito.** SVG é imagem e carrega script;
+num bucket público ele responderia no domínio do projeto e o script rodaria com aquela
+origem. Não acrescente `image/svg+xml` sem pensar nisso.
+
 ## Cabeçalhos de segurança
 
 Os cabeçalhos fixos (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, HSTS,
@@ -224,7 +255,9 @@ O app é um Next.js comum; o banco continua sendo o Supabase que já existe.
    ligada, para não entrar conta com e-mail inventado.
 4. Aplique todas as migrações pendentes no SQL Editor, em ordem.
 
-Antes de abrir para terceiros, confira no SQL Editor que nenhuma tabela ficou sem RLS:
+Antes de abrir para terceiros, rode as duas conferências abaixo no SQL Editor.
+
+**1. Nenhuma tabela sem RLS** — uma tabela sem RLS é acessível por qualquer conta logada:
 
 ```sql
 select tablename from pg_tables
@@ -234,7 +267,17 @@ select tablename from pg_tables
                          where c.relrowsecurity and t.schemaname = 'public');
 ```
 
-A consulta tem que voltar vazia. Uma tabela sem RLS é acessível por qualquer conta logada.
+**2. Ninguém pode criar objeto no schema `public`** — as 16 funções `security definer` usam
+`set search_path = public`, o que é seguro **enquanto** `authenticated` e `anon` não puderem
+criar tabela lá. Se puderem, alguém planta uma `perfis_acesso` sombra e sequestra o
+`e_master()`:
+
+```sql
+select has_schema_privilege('authenticated','public','CREATE') as auth_cria,
+       has_schema_privilege('anon','public','CREATE')          as anon_cria;
+```
+
+As duas consultas precisam voltar vazia e `false, false`, respectivamente.
 
 ## Estrutura
 
@@ -245,16 +288,23 @@ app/
   login/ signup/     autenticação
   auth/callback/     troca o código do e-mail de confirmação pela sessão
 components/
-  ui/                blocos reutilizáveis (Card, Modal, Table, RowMenu...)
+  ui/                blocos reutilizáveis (Card, Modal, Table, Chip, RowMenu...)
   precificacao/      calculadora em massa e o card de resultado compartilhado
-  charts/            gráficos (Recharts)
+  configuracoes/     modais de canal, loja, faixa, conta, forma de pagamento e armazém
+  financeiro/        modais de lançamento, despesa, título e limpeza por período
+  compras/           formulário de pedido de compra
+  charts/            gráficos (Recharts) — `tema.ts` centraliza cor, tooltip e eixo
 lib/
   pricing.ts         o coração do sistema: resolve preço por margem, lucro, markup ou preço
                      fixo, incluindo faixas de comissão por preço (Shopee)
+  acao.ts            contrato `Resultado` das Server Actions (servidor)
+  acao-cliente.ts    `executarComToast` — como o cliente chama qualquer action
   alertas.ts         erosão de margem e previsão de ruptura de estoque
   acesso.ts          catálogo de abas e regras de quem enxerga o quê (usado pelo middleware)
   format.ts          moeda, datas e parsing de número — ver aviso de fuso abaixo
+  cores.ts           contraste WCAG, usado pelo teste que guarda os tokens
   csv.ts             exportação com escape correto de vírgula, aspas e quebra de linha
+  pdv.ts / produtos.ts  agrupamento de SKU em card e rótulo de variante
   supabase/          clients de browser, server e middleware de sessão
 proxy.ts             middleware de sessão do Next 16 (protege as rotas)
 supabase/migrations/ schema versionado
@@ -262,6 +312,12 @@ supabase/migrations/ schema versionado
 
 Padrão de dados: a `page.tsx` busca tudo em paralelo com `Promise.all` e passa por props;
 as mutações vivem em `actions.ts` e terminam com `revalidatePath`.
+
+**Toda action devolve `Resultado`, nunca lança.** O Next redige exceção de Server Action em
+produção: o servidor loga a mensagem real e o navegador recebe um genérico, então toda a
+tradução de `lib/erros.ts` ficava invisível justamente onde importa. O servidor embrulha com
+`comResultado`; o cliente chama com `executarComToast(acao(...), { sucesso, erro })`, que
+mostra o toast certo e devolve o `Resultado` para quem chamou decidir o resto.
 
 ## Scripts
 

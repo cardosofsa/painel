@@ -275,7 +275,7 @@ export function interpretarSugestao(bruto: string, limite: number): SugestaoIA {
  * roda igual em qualquer runtime — `crypto.createHash` não existe no edge, e o
  * `crypto.subtle` é assíncrono, o que contaminaria a assinatura de tudo que chama isto.
  *
- * TODO campo que muda a resposta precisa entrar aqui. `instrucaoExtra` em especial: fora
+ * Qualquer campo que mude a resposta precisa entrar aqui. `instrucaoExtra` em especial: fora
  * do hash, pedir "foque em público fitness" devolveria a sugestão genérica do cache.
  */
 export function hashContexto(ctx: ContextoIA, tipo: "titulo" | "descricao"): string {
