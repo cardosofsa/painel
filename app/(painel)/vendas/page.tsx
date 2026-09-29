@@ -14,7 +14,7 @@ export default async function VendasPage() {
     supabase
       .from("vendas")
       .select(
-        "id, numero, data_venda, cliente_id, cliente_nome, forma_pagamento, status, subtotal, desconto, valor_entrega, total, custo_total, lucro, observacao, venda_itens(produto_nome, produto_sku, quantidade, preco_unitario, custo_unitario)",
+        "id, numero, data_venda, cliente_id, cliente_nome, forma_pagamento, status, subtotal, desconto, valor_entrega, total, custo_total, lucro, observacao, venda_itens(produto_nome, produto_sku, quantidade, preco_unitario, custo_unitario, garantia_dias)",
       )
       .gte("data_venda", inicio.toISOString())
       .order("data_venda", { ascending: false }),

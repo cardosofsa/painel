@@ -58,9 +58,9 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
 
   return (
     <>
-      {aberta && <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={fechar} />}
+      {aberta && <div className="fixed inset-0 bg-black/40 z-30 md:hidden print:hidden" onClick={fechar} />}
       <aside
-        className={`shrink-0 bg-surface-1 border-r border-border flex flex-col h-screen fixed md:sticky top-0 left-0 z-40 md:z-auto transition-transform md:transition-[width] duration-200 w-[232px] ${
+        className={`print:hidden shrink-0 bg-surface-1 border-r border-border flex flex-col h-screen fixed md:sticky top-0 left-0 z-40 md:z-auto transition-transform md:transition-[width] duration-200 w-[232px] ${
           recolhida ? "md:w-16" : "md:w-[232px]"
         } ${aberta ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       >

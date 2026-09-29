@@ -37,7 +37,7 @@ export default async function PainelLayout({ children }: { children: React.React
         <Sidebar abas={acessoRes.data?.abas ?? ABAS_OBRIGATORIAS} ehMaster={acessoRes.data?.papel === "master"} />
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar nomeNegocio={perfilNegocioRes.data?.nome_negocio ?? null} />
-          <main className="flex-1 p-4 sm:p-6 max-w-[1700px] w-full mx-auto">{children}</main>
+          <main className="flex-1 p-4 sm:p-6 print:p-0 max-w-[1700px] w-full mx-auto">{children}</main>
         </div>
       </div>
     </SidebarMobileProvider>

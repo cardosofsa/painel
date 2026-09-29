@@ -5,7 +5,7 @@ import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipo
 export default async function PdvPage() {
   const supabase = await createClient();
 
-  const [produtosRes, gruposRes, categoriasRes, clientesRes, formasRes, contasRes, perfilRes] = await Promise.all([
+  const [produtosRes, gruposRes, categoriasRes, clientesRes, formasRes, contasRes] = await Promise.all([
     supabase
       .from("produtos")
       .select("id, sku, nome, grupo_id, variante_nome, preco_venda, custo, estoque, imagem_url, categoria_id, codigo_barras, garantia_dias")
@@ -16,7 +16,6 @@ export default async function PdvPage() {
     supabase.from("clientes").select("id, nome, whatsapp, permite_fiado, limite_fiado").eq("status", "ativo").order("nome"),
     supabase.from("formas_pagamento").select("nome, tipo").order("nome"),
     supabase.from("contas").select("id, nome").order("nome"),
-    supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
   ]);
 
   if (produtosRes.error) throw new Error(produtosRes.error.message);
@@ -54,7 +53,6 @@ export default async function PdvPage() {
       clientes={(clientesRes.data ?? []) as ClientePdv[]}
       formasPagamento={(formasRes.data ?? []) as FormaPagamentoPdv[]}
       contas={(contasRes.data ?? []) as ContaPdv[]}
-      nomeNegocio={perfilRes.data?.nome_negocio ?? null}
     />
   );
 }

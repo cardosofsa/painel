@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBRL, formatarDataIso, hojeIsoLocal, dataLocal } from "@/lib/format";
 import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
+import { obterComprovante } from "@/app/(painel)/vendas/comprovante-actions";
+import { useComprovanteImagem } from "@/components/comprovante/useComprovanteImagem";
 import { atualizarStatusEnvio } from "@/app/(painel)/vendas/actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
@@ -44,7 +46,7 @@ export interface VendaCliente {
   lucro: number;
   status_envio: "separacao" | "enviado" | "concluido" | null;
   total_parcelas_fiado: number | null;
-  venda_itens: { produto_nome: string; quantidade: number; preco_unitario: number; custo_unitario: number }[];
+  venda_itens: { produto_nome: string; quantidade: number; preco_unitario: number; custo_unitario: number; garantia_dias: number | null }[];
   /** Linha "pai" em contas_a_pagar_receber — null quando a venda não é fiado. */
   cpr_status: string | null;
   cpr_data_vencimento: string | null;
@@ -103,6 +105,7 @@ export function ClienteDetalheClient({
   const [parcelasVenda, setParcelasVenda] = useState<{ id: string; numero: string } | null>(null);
   const [enviandoResumoId, setEnviandoResumoId] = useState<string | null>(null);
   const { abrirResumo, modais: modaisResumoFiado } = useResumoFiadoImagem(nomeNegocio, logoUrl);
+  const { gerar: gerarComprovante, oculto: comprovanteOculto } = useComprovanteImagem();
   const hoje = hojeIsoLocal();
 
   const validas = useMemo(() => vendas.filter((v) => v.status !== "cancelada"), [vendas]);
@@ -127,6 +130,11 @@ export function ClienteDetalheClient({
       .sort((a, b) => b.quantidade - a.quantidade)
       .slice(0, 6);
   }, [validas]);
+
+  async function baixarComprovante(vendaId: string) {
+    const r = await executarComToast(obterComprovante(vendaId), { erro: "Erro ao carregar o comprovante" });
+    if (r.ok) gerarComprovante(r.dado, "baixar");
+  }
 
   function alternarSelecao(id: string) {
     setSelecionadas((prev) => {
@@ -378,7 +386,12 @@ export function ClienteDetalheClient({
                 const link = linkComprovanteWhatsapp(
                   {
                     numero: v.numero,
-                    itens: v.venda_itens.map((i) => ({ nome: i.produto_nome, quantidade: i.quantidade, preco_unitario: i.preco_unitario })),
+                    itens: v.venda_itens.map((i) => ({
+                      nome: i.produto_nome,
+                      quantidade: i.quantidade,
+                      preco_unitario: i.preco_unitario,
+                      garantia_dias: i.garantia_dias,
+                    })),
                     subtotal: v.subtotal,
                     desconto: v.desconto,
                     valorEntrega: v.valor_entrega,
@@ -428,9 +441,13 @@ export function ClienteDetalheClient({
                     <Td>{pagamento ? <StatusChip label={pagamento.label} tone={pagamento.tone} /> : "—"}</Td>
                     <Td secundaria>{tempoParaQuitar(v)}</Td>
                     <Td align="right">
-                      <a href={link} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline">
-                        Enviar
-                      </a>
+                      <RowMenu
+                        actions={[
+                          { label: "Enviar por WhatsApp", onClick: () => window.open(link, "_blank") },
+                          { label: "Baixar imagem", onClick: () => baixarComprovante(v.id) },
+                          { label: "PDF / Imprimir", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
+                        ]}
+                      />
                     </Td>
                   </Tr>
                 );
@@ -447,6 +464,7 @@ export function ClienteDetalheClient({
         onClose={() => setParcelasVenda(null)}
       />
       {modaisResumoFiado}
+      {comprovanteOculto}
     </>
   );
 }

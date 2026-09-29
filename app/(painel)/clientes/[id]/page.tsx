@@ -17,7 +17,7 @@ interface VendaBruta {
   lucro: number;
   status_envio: "separacao" | "enviado" | "concluido" | null;
   total_parcelas_fiado: number | null;
-  venda_itens: { produto_nome: string; quantidade: number; preco_unitario: number; custo_unitario: number }[];
+  venda_itens: { produto_nome: string; quantidade: number; preco_unitario: number; custo_unitario: number; garantia_dias: number | null }[];
 }
 
 interface CprBruta {
@@ -46,7 +46,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
     supabase
       .from("vendas")
       .select(
-        "id, numero, data_venda, forma_pagamento, status, subtotal, desconto, valor_entrega, total, custo_total, lucro, status_envio, total_parcelas_fiado, venda_itens(produto_nome, quantidade, preco_unitario, custo_unitario)",
+        "id, numero, data_venda, forma_pagamento, status, subtotal, desconto, valor_entrega, total, custo_total, lucro, status_envio, total_parcelas_fiado, venda_itens(produto_nome, quantidade, preco_unitario, custo_unitario, garantia_dias)",
       )
       .eq("cliente_id", id)
       .order("data_venda", { ascending: false }),

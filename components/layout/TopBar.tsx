@@ -43,7 +43,7 @@ export function TopBar({ nomeNegocio }: { nomeNegocio: string | null }) {
   const inicial = email ? email[0].toUpperCase() : "U";
 
   return (
-    <header className="h-14 shrink-0 border-b border-border bg-surface-1/80 backdrop-blur-sm flex items-center gap-4 px-4 sm:px-6 sticky top-0 z-10">
+    <header className="print:hidden h-14 shrink-0 border-b border-border bg-surface-1/80 backdrop-blur-sm flex items-center gap-4 px-4 sm:px-6 sticky top-0 z-10">
       <button
         onClick={alternarSidebar}
         aria-label="Abrir menu"

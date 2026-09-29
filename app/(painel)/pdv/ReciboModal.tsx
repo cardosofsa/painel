@@ -1,69 +1,56 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Copy, MessageCircle, ImageDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Copy, FileText, ImageDown, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
-import { toPng } from "html-to-image";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
+import { formatBRL } from "@/lib/format";
 import { linkComprovanteWhatsapp, textoComprovante, type DadosComprovante } from "@/lib/comprovante";
+import { obterComprovante } from "@/app/(painel)/vendas/comprovante-actions";
+import { useComprovanteImagem } from "@/components/comprovante/useComprovanteImagem";
 
 export function ReciboModal({
   recibo,
+  vendaId,
   whatsappCliente,
-  nomeNegocio,
   onClose,
   onNovaVenda,
 }: {
   recibo: DadosComprovante | null;
+  vendaId: string | null;
   whatsappCliente: string | null;
-  nomeNegocio: string | null;
   onClose: () => void;
   onNovaVenda: () => void;
 }) {
-  const [gerandoImagem, setGerandoImagem] = useState<"copiar" | "baixar" | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
+  // O `recibo` local é o que o caixa tinha na tela; os dados completos (empresa, endereço do
+  // cliente, garantia gravada, taxa, parcelas) vêm do banco logo depois do modal abrir.
+  const [completo, setCompleto] = useState<DadosComprovante | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  const { gerar, gerando, oculto } = useComprovanteImagem();
 
   useEffect(() => {
-    if (!gerandoImagem || !ref.current) return;
-    const node = ref.current;
-    const acao = gerandoImagem;
-    (async () => {
-      try {
-        const dataUrl = await toPng(node, { pixelRatio: 2 });
-        const nomeArquivo = `comprovante-${recibo?.numero ?? "venda"}.png`;
-        if (acao === "copiar") {
-          try {
-            const blob = await (await fetch(dataUrl)).blob();
-            await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-            toast.success("Imagem copiada — cole na conversa do WhatsApp");
-          } catch {
-            const a = document.createElement("a");
-            a.href = dataUrl;
-            a.download = nomeArquivo;
-            a.click();
-            toast.error("Não foi possível copiar — baixando a imagem em vez disso");
-          }
-        } else {
-          const a = document.createElement("a");
-          a.href = dataUrl;
-          a.download = nomeArquivo;
-          a.click();
-          toast.success("Imagem baixada");
-        }
-      } catch {
-        toast.error("Erro ao gerar imagem do comprovante");
-      } finally {
-        setGerandoImagem(null);
-      }
-    })();
-  }, [gerandoImagem, recibo]);
+    if (!vendaId) return;
+    let vivo = true;
+    obterComprovante(vendaId)
+      .then((r) => {
+        if (!vivo) return;
+        if (r.ok) setCompleto(r.dado);
+        else setFalhou(true);
+      })
+      .catch(() => vivo && setFalhou(true));
+    return () => {
+      vivo = false;
+    };
+  }, [vendaId]);
 
-  async function copiar() {
-    if (!recibo) return;
+  const dados = completo && recibo && completo.numero === recibo.numero ? completo : recibo;
+  const pronto = dados === completo || falhou;
+
+  async function copiarTexto() {
+    if (!dados) return;
     try {
-      await navigator.clipboard.writeText(textoComprovante(recibo));
+      await navigator.clipboard.writeText(textoComprovante(dados));
       toast.success("Comprovante copiado");
     } catch {
       toast.error("Não foi possível copiar");
@@ -72,15 +59,15 @@ export function ReciboModal({
 
   return (
     <Modal open={!!recibo} onClose={onClose} title={recibo ? `Venda ${recibo.numero} registrada` : ""} width="max-w-sm">
-      {recibo && (
+      {recibo && dados && (
         <div>
           <div className="text-center mb-4">
-            <div className="font-mono text-3xl font-semibold text-positive">{formatBRL(recibo.total)}</div>
-            {recibo.clienteNome && <div className="text-sm text-text-secondary mt-1">{recibo.clienteNome}</div>}
+            <div className="font-mono text-3xl font-semibold text-positive">{formatBRL(dados.total)}</div>
+            {dados.clienteNome && <div className="text-sm text-text-secondary mt-1">{dados.clienteNome}</div>}
           </div>
 
           <div className="divide-y divide-border border-y border-border mb-4">
-            {recibo.itens.map((item, i) => (
+            {dados.itens.map((item, i) => (
               <div key={i} className="py-2 flex justify-between gap-3 text-sm">
                 <span className="text-text-secondary">
                   {item.quantidade}× {item.nome}
@@ -92,7 +79,7 @@ export function ReciboModal({
 
           <div className="flex flex-col gap-2 mb-3">
             <a
-              href={linkComprovanteWhatsapp(recibo, whatsappCliente)}
+              href={linkComprovanteWhatsapp(dados, whatsappCliente)}
               target="_blank"
               rel="noopener noreferrer"
               className="block"
@@ -102,21 +89,32 @@ export function ReciboModal({
                 {whatsappCliente ? "Enviar comprovante ao cliente" : "Enviar comprovante por WhatsApp"}
               </Button>
             </a>
-            <div className="flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={copiar}>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={copiarTexto}>
                 <Copy size={14} />
                 Copiar texto
               </Button>
               <Button
                 variant="secondary"
-                className="flex-1"
-                onClick={() => setGerandoImagem("copiar")}
-                loading={gerandoImagem === "copiar"}
-                disabled={gerandoImagem !== null}
+                onClick={() => gerar(dados, "copiar")}
+                disabled={!pronto || gerando}
+                loading={gerando}
               >
                 <ImageDown size={14} />
                 Copiar imagem
               </Button>
+              <Button variant="secondary" onClick={() => gerar(dados, "baixar")} disabled={!pronto || gerando}>
+                <ImageDown size={14} />
+                Baixar imagem
+              </Button>
+              {vendaId ? (
+                <a href={`/vendas/${vendaId}/comprovante`} target="_blank" rel="noopener noreferrer" className="block">
+                  <Button variant="secondary" className="w-full">
+                    <FileText size={14} />
+                    PDF / Imprimir
+                  </Button>
+                </a>
+              ) : null}
             </div>
           </div>
 
@@ -125,72 +123,7 @@ export function ReciboModal({
           </Button>
         </div>
       )}
-
-      {/* Card oculto capturado como PNG — mesmo padrão de `resultado-compartilhado.tsx` e
-          `ResumoFiadoImagem.tsx` (html-to-image, sem dependência nova). */}
-      <div style={{ position: "fixed", left: -9999, top: 0, width: 360, pointerEvents: "none" }} aria-hidden>
-        <div ref={ref}>
-          {recibo && (
-            <div style={{ background: "#ffffff", padding: 24, fontFamily: "system-ui, sans-serif", color: "#111827", border: "1px solid #e5e7eb" }}>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{nomeNegocio ?? "Comprovante"}</div>
-              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 14 }}>
-                Venda {recibo.numero} · {formatarDataIso(hojeIsoLocal())}
-              </div>
-              {recibo.clienteNome && <div style={{ fontSize: 13, color: "#374151", marginBottom: 10 }}>Cliente: {recibo.clienteNome}</div>}
-
-              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10 }}>
-                {recibo.itens.map((item, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4, color: "#374151" }}>
-                    <span>
-                      {item.quantidade}× {item.nome}
-                    </span>
-                    <span>{formatBRL(item.preco_unitario * item.quantidade)}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ borderTop: "1px solid #e5e7eb", marginTop: 8, paddingTop: 8, fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                  <span>Subtotal</span>
-                  <span>{formatBRL(recibo.subtotal)}</span>
-                </div>
-                {recibo.desconto > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                    <span>Desconto</span>
-                    <span>-{formatBRL(recibo.desconto)}</span>
-                  </div>
-                )}
-                {recibo.valorEntrega > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                    <span>Entrega</span>
-                    <span>{formatBRL(recibo.valorEntrega)}</span>
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontWeight: 700,
-                  fontSize: 15,
-                  borderTop: "1px solid #e5e7eb",
-                  paddingTop: 8,
-                  marginTop: 4,
-                  color: "#16a34a",
-                }}
-              >
-                <span>Total</span>
-                <span>{formatBRL(recibo.total)}</span>
-              </div>
-
-              {recibo.formaPagamento && (
-                <div style={{ fontSize: 11, color: "#6b7280", marginTop: 10 }}>Pagamento: {recibo.formaPagamento}</div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      {oculto}
     </Modal>
   );
 }

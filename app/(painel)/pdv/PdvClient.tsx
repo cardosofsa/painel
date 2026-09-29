@@ -37,13 +37,11 @@ export function PdvClient({
   clientes,
   formasPagamento,
   contas,
-  nomeNegocio,
 }: {
   produtos: ProdutoPdv[];
   clientes: ClientePdv[];
   formasPagamento: FormaPagamentoPdv[];
   contas: ContaPdv[];
-  nomeNegocio: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -52,6 +50,7 @@ export function PdvClient({
   const [checkoutAberto, setCheckoutAberto] = useState(false);
   const [recibo, setRecibo] = useState<DadosComprovante | null>(null);
   const [whatsappRecibo, setWhatsappRecibo] = useState<string | null>(null);
+  const [vendaIdRecibo, setVendaIdRecibo] = useState<string | null>(null);
   /**
    * Contador de venda, usado só como `key` do checkout. O `CheckoutModal` guarda cliente,
    * forma de pagamento e vencimento em estado próprio; sem remontar, a venda seguinte abria
@@ -200,7 +199,12 @@ export function PdvClient({
             : dados.forma_pagamento;
         setRecibo({
           numero: venda.venda_numero,
-          itens: estado.itens.map((i) => ({ nome: i.nome, quantidade: i.quantidade, preco_unitario: i.preco_unitario })),
+          itens: estado.itens.map((i) => ({
+            nome: i.nome,
+            quantidade: i.quantidade,
+            preco_unitario: i.preco_unitario,
+            garantia_dias: i.garantia_dias,
+          })),
           subtotal,
           desconto,
           valorEntrega: estado.valorEntrega,
@@ -209,6 +213,7 @@ export function PdvClient({
           clienteNome: cliente?.nome ?? null,
         });
         setWhatsappRecibo(cliente?.whatsapp ?? null);
+        setVendaIdRecibo(venda.venda_id);
 
         toast.success(`${venda.venda_numero} registrada — lucro ${formatBRL(venda.venda_lucro)}`);
         setEstado(CARRINHO_VAZIO);
@@ -274,8 +279,8 @@ export function PdvClient({
       />
       <ReciboModal
         recibo={recibo}
+        vendaId={vendaIdRecibo}
         whatsappCliente={whatsappRecibo}
-        nomeNegocio={nomeNegocio}
         onClose={() => setRecibo(null)}
         onNovaVenda={() => setRecibo(null)}
       />

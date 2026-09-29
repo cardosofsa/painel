@@ -15,6 +15,8 @@ import { SalesChart } from "@/components/charts/SalesChart";
 import { formatBRL, formatarDataCurta, hojeIsoLocal, dataLocal } from "@/lib/format";
 import { paraCsv, baixarArquivo } from "@/lib/csv";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
+import { obterComprovante } from "./comprovante-actions";
+import { useComprovanteImagem } from "@/components/comprovante/useComprovanteImagem";
 import { cancelarVenda } from "./actions";
 import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
 import { executarComToast } from "@/lib/acao-cliente";
@@ -26,6 +28,7 @@ export interface VendaItem {
   quantidade: number;
   preco_unitario: number;
   custo_unitario: number;
+  garantia_dias: number | null;
 }
 
 export interface Venda {
@@ -85,6 +88,7 @@ export function VendasClient({
   const [periodo, setPeriodo] = useState<PeriodoId>("30");
   const [detalhe, setDetalhe] = useState<Venda | null>(null);
   const [editando, setEditando] = useState<Venda | null>(null);
+  const { gerar: gerarImagem, oculto: comprovanteOculto } = useComprovanteImagem();
 
   const doPeriodo = useMemo(() => {
     const inicio = inicioDoPeriodo(periodo);
@@ -164,6 +168,7 @@ export function VendasClient({
           nome: i.produto_nome,
           quantidade: i.quantidade,
           preco_unitario: i.preco_unitario,
+          garantia_dias: i.garantia_dias,
         })),
         subtotal: v.subtotal,
         desconto: v.desconto,
@@ -174,6 +179,11 @@ export function VendasClient({
       },
       cliente?.whatsapp ?? null,
     );
+  }
+
+  async function comprovanteEmImagem(v: Venda, acao: "copiar" | "baixar") {
+    const r = await executarComToast(obterComprovante(v.id), { erro: "Erro ao carregar o comprovante" });
+    if (r.ok) gerarImagem(r.dado, acao);
   }
 
   async function cancelar(v: Venda) {
@@ -307,6 +317,8 @@ export function VendasClient({
                           ? []
                           : [
                               { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
+                              { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v, "baixar") },
+                              { label: "Comprovante em PDF", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
                               { label: "Editar", onClick: () => setEditando(v) },
                               { label: "Cancelar venda", onClick: () => cancelar(v), destructive: true },
                             ]),
@@ -400,6 +412,18 @@ export function VendasClient({
                   Enviar comprovante
                 </Button>
                 <div className="flex gap-2">
+                  <Button variant="secondary" className="flex-1" onClick={() => comprovanteEmImagem(detalhe, "baixar")}>
+                    Imagem
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => window.open(`/vendas/${detalhe.id}/comprovante`, "_blank")}
+                  >
+                    PDF
+                  </Button>
+                </div>
+                <div className="flex gap-2">
                   <Button variant="secondary" className="flex-1" onClick={() => setEditando(detalhe)}>
                     Editar
                   </Button>
@@ -430,6 +454,7 @@ export function VendasClient({
         }}
       />
       {ConfirmDialog}
+      {comprovanteOculto}
     </>
   );
 }
