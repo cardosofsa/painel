@@ -18,6 +18,12 @@ export interface TaxasPlataforma {
   taxaExtraTipo?: "percentual" | "fixo" | null;
 }
 
+// Identifica, dentro do JSONB `componentes`/`insumos` salvo no banco, a linha que
+// representa o "Custo do Produto" (valor do produto) e não um insumo comum — usada tanto
+// no cliente (lib/precificacao-estado.ts) quanto em Server Actions
+// (app/(painel)/precificacao/actions.ts), por isso mora aqui e não num módulo "use client".
+export const ID_CUSTO_PRODUTO = "custo-produto";
+
 /**
  * Soma dos insumos de um produto (quantidade × custo unitário de cada linha). Espelha em
  * TypeScript a função SQL `custo_de_insumos` de `supabase/migrations/0029_...sql` — usada

@@ -19,6 +19,7 @@ import {
   type ResultadoPrecificacao,
   pctPorModo,
   zonaMortaDeFaixa,
+  ID_CUSTO_PRODUTO,
   type FaixaComissao,
 } from "@/lib/pricing";
 import { type ResumoExport, useExportarPrecificacao } from "@/components/precificacao/resultado-compartilhado";
@@ -29,12 +30,16 @@ import {
   removerAnuncio,
   criarConcorrente,
   removerConcorrenteSalvo,
+  vincularProdutoPrecificacao,
+  criarProdutoDePrecificacao,
+  criarProdutosDeAnuncio,
 } from "@/app/(painel)/precificacao/actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 
 export interface PrecificacaoHist {
   id: string;
+  produto_id: string | null;
   produto_nome: string;
   canal: string | null;
   titulo_anuncio: string | null;
@@ -109,10 +114,6 @@ function proximoIdLocal(prefixo: string): string {
   sequenciaLocal += 1;
   return `${prefixo}-${Date.now().toString(36)}-${sequenciaLocal}`;
 }
-
-// Identifica, dentro do JSONB de componentes salvo no histórico, a linha que representa
-// o campo "Custo do Produto" (e não um insumo) — é o que permite recarregar no campo certo.
-export const ID_CUSTO_PRODUTO = "custo-produto";
 
 export type VisaoPrecificacao = "individual" | "variacoes" | "massa" | "historico";
 
@@ -518,6 +519,55 @@ export function usePrecificacao({
     });
   }
 
+  // ---------- Ligar precificação/histórico a um produto ----------
+
+  /** Precificação sendo vinculada agora — abre o `ModalVincularProduto` em PrecificacaoClient. */
+  const [vinculandoId, setVinculandoId] = useState<string | null>(null);
+
+  function abrirVincular(h: PrecificacaoHist) {
+    setVinculandoId(h.id);
+  }
+
+  function confirmarVinculo(produtoId: string) {
+    if (!vinculandoId) return;
+    const id = vinculandoId;
+    setVinculandoId(null);
+    startTransition(async () => {
+      await executarComToast(vincularProdutoPrecificacao(id, produtoId), {
+        sucesso: "Precificação vinculada ao produto",
+        erro: "Erro ao vincular produto",
+      });
+    });
+  }
+
+  function aplicarPrecoDoHistorico(h: PrecificacaoHist) {
+    if (!h.produto_id) return;
+    startTransition(async () => {
+      await executarComToast(atualizarPrecoProduto(h.produto_id!, h.preco_calculado), {
+        sucesso: "Preço do produto atualizado",
+        erro: "Erro ao atualizar o preço do produto",
+      });
+    });
+  }
+
+  function criarProdutoDoHistorico(h: PrecificacaoHist) {
+    startTransition(async () => {
+      await executarComToast(criarProdutoDePrecificacao(h.id), {
+        sucesso: "Produto criado a partir da precificação",
+        erro: "Erro ao criar produto",
+      });
+    });
+  }
+
+  function criarProdutosDaVariacao(a: AnuncioSalvo) {
+    startTransition(async () => {
+      await executarComToast(criarProdutosDeAnuncio(a.id), {
+        sucesso: "Produtos criados a partir das variações",
+        erro: "Erro ao criar produtos",
+      });
+    });
+  }
+
   function exportarAnunciosCsv() {
     const linhas = anuncios.flatMap((a) =>
       a.variacoes.map((v) => ({
@@ -542,6 +592,13 @@ export function usePrecificacao({
       toast.error("Preencha o nome do produto e garanta um resultado viável antes de salvar");
       return;
     }
+    // No modo manual, o canal não vem de "Selecionar Loja" — precisa ser escolhido
+    // explicitamente no seletor ao lado de "Salvar Anúncio", senão o preço não aparece
+    // no resumo por canal do produto.
+    if (modoTaxas === "manual" && !lojaId) {
+      toast.error("Escolha o canal de venda antes de salvar.");
+      return;
+    }
     const componentesSalvos: ComponenteKit[] =
       custoProduto > 0
         ? [{ id: ID_CUSTO_PRODUTO, nome: "Custo do produto", quantidade: 1, custoUnitario: custoProduto }, ...componentes]
@@ -553,7 +610,7 @@ export function usePrecificacao({
           produto_nome: nomeProduto,
           canal: lojaSelecionada ? `${lojaSelecionada.canalNome} — ${lojaSelecionada.nome}` : null,
           titulo_anuncio: nomeAnuncio.trim() || null,
-          loja_id: modoTaxas === "loja" ? lojaId : null,
+          loja_id: lojaId,
           componentes: componentesSalvos,
           taxa_extra_valor: taxaExtraValorEfetivo,
           taxa_extra_tipo: taxaExtraTipoEfetivo,
@@ -705,6 +762,15 @@ export function usePrecificacao({
     // histórico — produtos com variações
     excluirAnuncioHistorico,
     exportarAnunciosCsv,
+    criarProdutosDaVariacao,
+
+    // ligar precificação/histórico a um produto
+    vinculandoId,
+    abrirVincular,
+    fecharVincular: () => setVinculandoId(null),
+    confirmarVinculo,
+    aplicarPrecoDoHistorico,
+    criarProdutoDoHistorico,
 
     // infraestrutura compartilhada
     modaisExportacao,

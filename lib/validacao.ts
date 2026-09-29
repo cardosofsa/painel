@@ -377,6 +377,11 @@ export const entradaEstoqueComCustoSchema = z.object({
   motivo: z.string().trim().max(200).nullable(),
 });
 
+export const vincularProdutoPrecificacaoSchema = z.object({
+  precificacao_id: uuid,
+  produto_id: uuid,
+});
+
 export const categoriaSchema = z.object({ nome: textoCurto });
 
 export const pedidoCompraSchema = z.object({

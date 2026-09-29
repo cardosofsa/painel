@@ -8,13 +8,24 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { Chip } from "@/components/ui/Chip";
 import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
 import { DetalhamentoPrecificacao } from "@/components/precificacao/resultado-compartilhado";
-import type { EstadoPrecificacao, AnuncioSalvo } from "@/lib/precificacao-estado";
+import type { EstadoPrecificacao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
+import type { RowMenuAction } from "@/components/ui/RowMenu";
 
 /**
  * A aba "Histórico" inteira: sub-abas Precificações / Produtos com Variações. Extraído de
  * `PrecificacaoClient.tsx` — ver comentário em `PainelEntradas.tsx`.
  */
-export function HistoricoPrecificacoes({ estado, anuncios }: { estado: EstadoPrecificacao; anuncios: AnuncioSalvo[] }) {
+export function HistoricoPrecificacoes({
+  estado,
+  anuncios,
+  acoesLigarProduto,
+}: {
+  estado: EstadoPrecificacao;
+  anuncios: AnuncioSalvo[];
+  /** Vincular / aplicar preço / criar produto — definidas uma vez em PrecificacaoClient
+   * pra não duplicar a lógica entre o card "Precificações Salvas" e esta tabela. */
+  acoesLigarProduto: (h: PrecificacaoHist) => RowMenuAction[];
+}) {
   const {
     subAbaHistorico,
     setSubAbaHistorico,
@@ -39,6 +50,7 @@ export function HistoricoPrecificacoes({ estado, anuncios }: { estado: EstadoPre
     setAnuncioExpandidoHistorico,
     excluirAnuncioHistorico,
     exportarAnunciosCsv,
+    criarProdutosDaVariacao,
   } = estado;
 
   return (
@@ -117,6 +129,7 @@ export function HistoricoPrecificacoes({ estado, anuncios }: { estado: EstadoPre
                         actions={[
                           { label: "Ver", onClick: () => { setHistoricoDetalhe(h); setMostrarDetalheHistorico(false); } },
                           { label: "Duplicar", onClick: () => duplicarHistorico(h) },
+                          ...acoesLigarProduto(h),
                           { label: "Remover", onClick: () => removerHistorico(h), destructive: true },
                         ]}
                       />
@@ -244,6 +257,7 @@ export function HistoricoPrecificacoes({ estado, anuncios }: { estado: EstadoPre
                         label: anuncioExpandidoHistorico === a.id ? "Ver menos" : "Ver mais",
                         onClick: () => setAnuncioExpandidoHistorico((v) => (v === a.id ? null : a.id)),
                       },
+                      { label: "Criar produtos a partir das variações", onClick: () => criarProdutosDaVariacao(a) },
                       { label: "Remover", onClick: () => excluirAnuncioHistorico(a), destructive: true },
                     ]}
                   />

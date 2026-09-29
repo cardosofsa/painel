@@ -3,8 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, precificacaoSchema, anuncioSchema, precoProdutoSchema, concorrenteSchema } from "@/lib/validacao";
-import type { ComponenteKit } from "@/lib/pricing";
+import {
+  validar,
+  precificacaoSchema,
+  anuncioSchema,
+  precoProdutoSchema,
+  concorrenteSchema,
+  vincularProdutoPrecificacaoSchema,
+} from "@/lib/validacao";
+import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
 import { gerarComIA } from "@/lib/ia/gerar";
 import { comResultado } from "@/lib/acao";
 
@@ -81,6 +88,125 @@ export async function atualizarPrecoProduto(produtoId: string, precoVenda: numbe
     revalidatePath("/produtos");
     revalidatePath("/precificacao");
     revalidatePath("/dashboard");
+  });
+}
+
+// ---------- Ligar precificação a um produto ----------
+
+function gerarSkuAPartirDePrecificacao(): string {
+  return `PREC-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
+}
+
+export async function vincularProdutoPrecificacao(precificacaoId: string, produtoId: string) {
+  return comResultado(async () => {
+    const v = validar(vincularProdutoPrecificacaoSchema, { precificacao_id: precificacaoId, produto_id: produtoId });
+    const supabase = await createClient();
+    const { error } = await supabase.from("precificacoes").update({ produto_id: v.produto_id }).eq("id", v.precificacao_id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath("/precificacao");
+    revalidatePath("/produtos");
+  });
+}
+
+/**
+ * Cria um produto a partir de uma precificação já salva: separa o JSONB `componentes` em
+ * `custo_base` (a linha sentinela `ID_CUSTO_PRODUTO`) e `insumos` (o resto), e vincula a
+ * precificação ao produto recém-criado — pra ela continuar aparecendo no resumo por canal.
+ */
+export async function criarProdutoDePrecificacao(precificacaoId: string) {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { data: h, error: erroBusca } = await supabase
+      .from("precificacoes")
+      .select("produto_nome, componentes, preco_calculado")
+      .eq("id", precificacaoId)
+      .single();
+    if (erroBusca || !h) lancarErroSupabase(erroBusca ?? { message: "Precificação não encontrada." });
+
+    const componentes = (h!.componentes ?? []) as ComponenteKit[];
+    const doProduto = componentes.find((c) => c.id === ID_CUSTO_PRODUTO);
+    const insumos = componentes.filter((c) => c.id !== ID_CUSTO_PRODUTO);
+
+    const { data: produto, error: erroProduto } = await supabase
+      .from("produtos")
+      .insert({
+        sku: gerarSkuAPartirDePrecificacao(),
+        nome: h!.produto_nome,
+        custo_base: doProduto?.custoUnitario ?? 0,
+        insumos,
+        preco_venda: h!.preco_calculado,
+        estoque: 0,
+        estoque_minimo: 10,
+        saida_media_semanal: 0,
+        ativo: true,
+      })
+      .select("id")
+      .single();
+    if (erroProduto) lancarErroSupabase(erroProduto);
+    if (!produto) throw new Error("Erro ao criar produto.");
+
+    const { error: erroVinculo } = await supabase
+      .from("precificacoes")
+      .update({ produto_id: produto.id })
+      .eq("id", precificacaoId);
+    if (erroVinculo) lancarErroSupabase(erroVinculo);
+
+    revalidatePath("/precificacao");
+    revalidatePath("/produtos");
+    return { produtoId: produto.id };
+  });
+}
+
+/**
+ * Cria um grupo de variantes e um produto por variação, a partir de um "Produto com
+ * Variações" salvo. Cada variação vira uma linha em `produtos`, com `grupo_id` e
+ * `variante_nome` — o mesmo formato que PDV e catálogo já sabem agrupar.
+ *
+ * `custo_base` recebe o custo TOTAL já calculado da variação (não decompõe em insumos):
+ * decompor errado deixaria o custo composto divergir do que a precificação calculou, e
+ * aqui o que importa é o produto nascer com o número certo — ajustar em insumos depois é
+ * uma edição manual, se o dono quiser o detalhamento.
+ */
+export async function criarProdutosDeAnuncio(anuncioId: string) {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { data: anuncio, error: erroAnuncio } = await supabase
+      .from("anuncios")
+      .select("nome_anuncio, anuncio_variacoes(nome_variacao, custo, preco_calculado)")
+      .eq("id", anuncioId)
+      .single();
+    if (erroAnuncio || !anuncio) lancarErroSupabase(erroAnuncio ?? { message: "Produto com variações não encontrado." });
+
+    const variacoes = anuncio!.anuncio_variacoes ?? [];
+    if (variacoes.length === 0) throw new Error("Este anúncio não tem variações salvas.");
+
+    const { data: grupo, error: erroGrupo } = await supabase
+      .from("produto_grupos")
+      .insert({ nome: anuncio!.nome_anuncio })
+      .select("id")
+      .single();
+    if (erroGrupo) lancarErroSupabase(erroGrupo);
+    if (!grupo) throw new Error("Erro ao criar grupo de variantes.");
+
+    const linhas = variacoes.map((v) => ({
+      sku: gerarSkuAPartirDePrecificacao(),
+      nome: anuncio!.nome_anuncio,
+      grupo_id: grupo.id,
+      variante_nome: v.nome_variacao,
+      custo_base: v.custo,
+      insumos: [],
+      preco_venda: v.preco_calculado,
+      estoque: 0,
+      estoque_minimo: 10,
+      saida_media_semanal: 0,
+      ativo: true,
+    }));
+    const { error: erroProdutos } = await supabase.from("produtos").insert(linhas);
+    if (erroProdutos) lancarErroSupabase(erroProdutos);
+
+    revalidatePath("/precificacao");
+    revalidatePath("/produtos");
+    return { grupoId: grupo.id };
   });
 }
 

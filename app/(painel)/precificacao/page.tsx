@@ -11,7 +11,7 @@ export default async function PrecificacaoPage() {
     supabase
       .from("precificacoes")
       .select(
-        "id, produto_nome, canal, titulo_anuncio, loja_id, componentes, taxa_extra_valor, taxa_extra_tipo, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, margem_pct, preco_calculado, lucro, criado_em, origem",
+        "id, produto_id, produto_nome, canal, titulo_anuncio, loja_id, componentes, taxa_extra_valor, taxa_extra_tipo, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, margem_pct, preco_calculado, lucro, criado_em, origem",
       )
       .order("criado_em", { ascending: false })
       .limit(50),

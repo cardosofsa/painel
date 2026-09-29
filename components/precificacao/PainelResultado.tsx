@@ -8,14 +8,22 @@ import { formatBRL } from "@/lib/format";
 import { pctPorModo } from "@/lib/pricing";
 import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";
 import { precoPsicologico, DetalhamentoPrecificacao, SimuladorPreco } from "@/components/precificacao/resultado-compartilhado";
-import type { EstadoPrecificacao, ProdutoOpcao } from "@/lib/precificacao-estado";
+import type { EstadoPrecificacao, ProdutoOpcao, LojaOpcao } from "@/lib/precificacao-estado";
 
 /**
  * Resultado calculado, Faixa de Venda, gráfico de Composição do Preço e Estratégia
  * Sugerida (comparação com concorrentes). Extraído de `PrecificacaoClient.tsx` — ver
  * comentário em `PainelEntradas.tsx`.
  */
-export function PainelResultado({ estado, produtoVinculado }: { estado: EstadoPrecificacao; produtoVinculado: ProdutoOpcao | null }) {
+export function PainelResultado({
+  estado,
+  produtoVinculado,
+  lojas,
+}: {
+  estado: EstadoPrecificacao;
+  produtoVinculado: ProdutoOpcao | null;
+  lojas: LojaOpcao[];
+}) {
   const {
     modo,
     setModo,
@@ -43,6 +51,9 @@ export function PainelResultado({ estado, produtoVinculado }: { estado: EstadoPr
     pending,
     nomeProduto,
     analiseConcorrencia,
+    lojaId,
+    setLojaId,
+    modoTaxas,
   } = estado;
 
   return (
@@ -134,6 +145,29 @@ export function PainelResultado({ estado, produtoVinculado }: { estado: EstadoPr
         <Button variant="secondary" className="w-full mt-2" onClick={() => setPendenteImagem(resumoAtual())}>
           Imagem
         </Button>
+
+        {lojas.length > 0 && (
+          <div className="mt-3">
+            <label className="text-xs text-text-secondary mb-1.5 block">
+              Canal de venda {modoTaxas === "manual" && <span className="text-negative">*</span>}
+            </label>
+            <select value={lojaId ?? ""} onChange={(e) => setLojaId(e.target.value || null)} className={inputClass}>
+              <option value="">{modoTaxas === "manual" ? "Escolha o canal…" : "Nenhum (não aparece no resumo por canal)"}</option>
+              {lojas.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.canalNome} — {l.nome}
+                </option>
+              ))}
+            </select>
+            {modoTaxas === "manual" && (
+              <p className="text-xs text-text-tertiary mt-1">
+                Não muda a taxa calculada (essa continua manual) — só marca pra qual canal este preço vale, pra
+                aparecer no resumo do produto.
+              </p>
+            )}
+          </div>
+        )}
+
         <Button
           variant="primary"
           className="w-full mt-2"

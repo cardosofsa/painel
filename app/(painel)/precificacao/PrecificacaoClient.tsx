@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Modal, inputClass } from "@/components/ui/Modal";
+import { RowMenu } from "@/components/ui/RowMenu";
 import { History } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { CalculadoraEmMassa } from "@/components/precificacao/CalculadoraEmMassa";
@@ -60,6 +63,14 @@ export function PrecificacaoClient({
   const estado = usePrecificacao({ historico, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto });
   const { visao, setVisao } = estado;
 
+  function acoesLigarProduto(h: PrecificacaoHist) {
+    return [
+      { label: "Vincular a um produto", onClick: () => estado.abrirVincular(h) },
+      ...(h.produto_id ? [{ label: "Aplicar preço ao produto", onClick: () => estado.aplicarPrecoDoHistorico(h) }] : []),
+      { label: "Criar produto a partir desta precificação", onClick: () => estado.criarProdutoDoHistorico(h) },
+    ];
+  }
+
   return (
     <>
       <PageHeader title="Calculadora de Precificação" />
@@ -95,7 +106,7 @@ export function PrecificacaoClient({
             </div>
 
             <div className="space-y-5">
-              <PainelResultado estado={estado} produtoVinculado={estado.produtoVinculado} />
+              <PainelResultado estado={estado} produtoVinculado={estado.produtoVinculado} lojas={lojas} />
             </div>
           </div>
 
@@ -121,7 +132,10 @@ export function PrecificacaoClient({
                       <div className="text-text-primary">{h.produto_nome}</div>
                       <div className="text-xs text-text-tertiary">{new Date(h.criado_em).toLocaleDateString("pt-BR")}</div>
                     </div>
-                    <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
+                      <RowMenu actions={acoesLigarProduto(h)} />
+                    </div>
                   </div>
                 ))}
               {historico.filter((h) => h.origem === "individual").length === 0 && (
@@ -132,10 +146,58 @@ export function PrecificacaoClient({
         </>
       )}
 
-      {visao === "historico" && <HistoricoPrecificacoes estado={estado} anuncios={anuncios} />}
+      {visao === "historico" && (
+        <HistoricoPrecificacoes estado={estado} anuncios={anuncios} acoesLigarProduto={acoesLigarProduto} />
+      )}
 
+      <ModalVincularProduto
+        aberto={!!estado.vinculandoId}
+        produtos={produtos}
+        onFechar={estado.fecharVincular}
+        onEscolher={estado.confirmarVinculo}
+      />
       {estado.modaisExportacao}
       {estado.ConfirmDialog}
     </>
+  );
+}
+
+/** Escolher a qual produto cadastrado uma precificação salva passa a se referir. */
+function ModalVincularProduto({
+  aberto,
+  produtos,
+  onFechar,
+  onEscolher,
+}: {
+  aberto: boolean;
+  produtos: ProdutoOpcao[];
+  onFechar: () => void;
+  onEscolher: (produtoId: string) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const filtrados = produtos.filter((p) => p.nome.toLowerCase().includes(busca.trim().toLowerCase()));
+
+  return (
+    <Modal open={aberto} onClose={onFechar} title="Vincular a um produto">
+      <input
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder="Buscar produto…"
+        className={`${inputClass} mb-3`}
+        autoFocus
+      />
+      <div className="max-h-72 overflow-y-auto border border-border rounded-md divide-y divide-border">
+        {filtrados.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => onEscolher(p.id)}
+            className="w-full text-left px-3 py-2 text-sm hover:bg-surface-2 text-text-primary"
+          >
+            <span className="font-mono text-xs text-text-tertiary">{p.sku}</span> — {p.nome}
+          </button>
+        ))}
+        {filtrados.length === 0 && <p className="text-sm text-text-tertiary text-center py-4">Nenhum produto encontrado.</p>}
+      </div>
+    </Modal>
   );
 }
