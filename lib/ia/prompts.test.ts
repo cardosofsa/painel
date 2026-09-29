@@ -8,7 +8,13 @@ import {
   esquemaSugestao,
   LIMITE_TITULO,
   LIMITE_DESCRICAO,
+  montarPromptTema,
+  esquemaTema,
+  interpretarTema,
+  hashContextoTema,
+  FONTES_VITRINE,
   type ContextoIA,
+  type ContextoTema,
 } from "./prompts";
 
 function ctx(over: Partial<ContextoIA> = {}): ContextoIA {
@@ -234,5 +240,113 @@ describe("esquemaSugestao", () => {
     expect(com.required).toEqual(["texto", "palavras_chave"]);
 
     expect(esquemaSugestao(false).properties).not.toHaveProperty("posicionamento");
+  });
+});
+
+function ctxTema(over: Partial<ContextoTema> = {}): ContextoTema {
+  return { descricaoLoja: "Perfumaria feminina, elegante e delicada", ...over };
+}
+
+describe("montarPromptTema", () => {
+  it("pede as quatro cores, a fonte e os dois textos, com a lista de fontes exata", () => {
+    const p = montarPromptTema(ctxTema());
+    expect(p).toContain("cor_primaria");
+    expect(p).toContain("cor_fundo");
+    expect(p).toContain("cor_superficie");
+    expect(p).toContain("cor_texto");
+    expect(p).toContain(FONTES_VITRINE.join(", "));
+  });
+
+  it("nunca pede preço, desconto ou concorrente — tema não é a IA de precificação", () => {
+    const p = montarPromptTema(ctxTema());
+    expect(p.toLowerCase()).toContain("nunca cite preço");
+  });
+
+  it("campo nulo não vira linha no prompt", () => {
+    const p = montarPromptTema(ctxTema({ nomeNegocio: null, instrucaoExtra: undefined }));
+    expect(p).not.toContain("Nome do negócio:");
+    expect(p).not.toContain("Instrução extra:");
+  });
+
+  it("inclui a descrição e o nome quando presentes", () => {
+    const p = montarPromptTema(ctxTema({ nomeNegocio: "Loja da Ana" }));
+    expect(p).toContain("Loja da Ana");
+    expect(p).toContain("Perfumaria feminina");
+  });
+});
+
+describe("esquemaTema", () => {
+  it("exige as quatro cores e a fonte; título e mensagem são opcionais", () => {
+    const s = esquemaTema();
+    expect(s.required).toEqual(["cor_primaria", "cor_fundo", "cor_superficie", "cor_texto", "fonte"]);
+    expect(s.properties.fonte.enum).toEqual([...FONTES_VITRINE]);
+  });
+});
+
+describe("interpretarTema", () => {
+  const respostaValida = JSON.stringify({
+    cor_primaria: "#3B4D1F",
+    cor_fundo: "#FAFAFA",
+    cor_superficie: "#FFFFFF",
+    cor_texto: "#18181B",
+    fonte: "lora",
+    titulo: "Essências da Ana",
+    mensagem_boas_vindas: "Seja bem-vinda à nossa loja!",
+  });
+
+  it("lê JSON válido e normaliza hex para minúsculo", () => {
+    const t = interpretarTema(respostaValida);
+    expect(t.corPrimaria).toBe("#3b4d1f");
+    expect(t.fonte).toBe("lora");
+    expect(t.titulo).toBe("Essências da Ana");
+  });
+
+  it("lê JSON dentro de cerca markdown", () => {
+    const t = interpretarTema("```json\n" + respostaValida + "\n```");
+    expect(t.corPrimaria).toBe("#3b4d1f");
+  });
+
+  // O cinto de segurança: nunca lança, e nunca deixa passar um valor fora do formato.
+  it("cor fora do formato hex cai na cor de reserva, não lança", () => {
+    const t = interpretarTema(JSON.stringify({ cor_primaria: "azul-marinho", fonte: "lora" }));
+    expect(t.corPrimaria).toBe("#3b4d1f");
+  });
+
+  it("fonte fora da lista fechada cai em 'geist'", () => {
+    const t = interpretarTema(JSON.stringify({ fonte: "Comic Sans" }));
+    expect(t.fonte).toBe("geist");
+  });
+
+  it("JSON quebrado não lança — devolve os padrões inteiros", () => {
+    expect(() => interpretarTema("isto não é json{{{")).not.toThrow();
+    const t = interpretarTema("isto não é json{{{");
+    expect(t.fonte).toBe("geist");
+    expect(t.titulo).toBeNull();
+  });
+
+  it("título e mensagem ausentes viram null, não string vazia", () => {
+    const t = interpretarTema(JSON.stringify({ cor_primaria: "#111111" }));
+    expect(t.titulo).toBeNull();
+    expect(t.mensagemBoasVindas).toBeNull();
+  });
+
+  it("título longo demais é truncado em fronteira de palavra", () => {
+    const longo = "Palavra ".repeat(20).trim();
+    const t = interpretarTema(JSON.stringify({ titulo: longo }));
+    expect(t.titulo!.length).toBeLessThanOrEqual(60);
+  });
+});
+
+describe("hashContextoTema", () => {
+  it("é estável para o mesmo contexto", () => {
+    expect(hashContextoTema(ctxTema())).toBe(hashContextoTema(ctxTema()));
+  });
+
+  it("muda se a descrição da loja mudar", () => {
+    expect(hashContextoTema(ctxTema())).not.toBe(hashContextoTema(ctxTema({ descricaoLoja: "Outra coisa" })));
+  });
+
+  it("muda se a instrução extra mudar — senão o cache devolveria o tema errado", () => {
+    expect(hashContextoTema(ctxTema())).not.toBe(hashContextoTema(ctxTema({ instrucaoExtra: "mais escuro" })));
   });
 });

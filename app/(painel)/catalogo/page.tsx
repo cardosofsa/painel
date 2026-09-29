@@ -71,6 +71,9 @@ export default async function CatalogoPage() {
       clientes={clientesRes.data ?? []}
       contas={contasRes.data ?? []}
       formasPagamento={(formasRes.data ?? []).map((f) => f.nome)}
+      // Lido no servidor de propósito: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no
+      // cliente ela sempre voltaria `undefined` — só um booleano atravessa.
+      iaDisponivel={Boolean(process.env.GEMINI_API_KEY)}
     />
   );
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { contraste, luminancia, tokensDoBloco } from "./cores";
+import { contraste, luminancia, tokensDoBloco, ajustarParaContraste, misturar, derivarTokens } from "./cores";
 
 /**
  * Este teste lê `app/globals.css` de verdade, não uma cópia dos valores.
@@ -126,5 +126,109 @@ describe("elevação", () => {
 
   it("no escuro a elevação não é só sombra preta — ela some no fundo preto", () => {
     expect(escuro["--sombra-2"]).toContain("inset");
+  });
+});
+
+describe("ajustarParaContraste", () => {
+  it("não mexe numa cor que já passa", () => {
+    expect(ajustarParaContraste("#18181b", "#ffffff", 4.5)).toBe("#18181b");
+  });
+
+  // O caso real que motivou a função: a IA sugere um tema e um dos tons de cinza claro
+  // vira texto sobre fundo branco. Isso tem que ser corrigido, não publicado.
+  it("escurece texto claro demais sobre fundo claro", () => {
+    const corrigida = ajustarParaContraste("#d4d4d8", "#ffffff", 4.5);
+    expect(contraste(corrigida, "#ffffff")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("clareia texto escuro demais sobre fundo escuro", () => {
+    const corrigida = ajustarParaContraste("#3f3f46", "#0a0a0c", 4.5);
+    expect(contraste(corrigida, "#0a0a0c")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("preserva o matiz — só a luminosidade muda", () => {
+    // Ajustar uma cor MUITO saturada não deve devolver cinza puro nem inverter para o
+    // lado oposto do círculo de cores.
+    const ajustada = ajustarParaContraste("#ff0000", "#ffffff", 4.5);
+    const [r, g, b] = [
+      Number.parseInt(ajustada.slice(1, 3), 16),
+      Number.parseInt(ajustada.slice(3, 5), 16),
+      Number.parseInt(ajustada.slice(5, 7), 16),
+    ];
+    expect(r).toBeGreaterThan(g); // continua "avermelhado", não virou verde/azul
+    expect(r).toBeGreaterThan(b);
+  });
+
+  it("nunca lança, mesmo pedindo um alvo impossível", () => {
+    expect(() => ajustarParaContraste("#808080", "#808080", 21)).not.toThrow();
+  });
+});
+
+describe("misturar", () => {
+  it("fração 0 devolve a primeira cor, fração 1 devolve a segunda", () => {
+    expect(misturar("#000000", "#ffffff", 0)).toBe("#000000");
+    expect(misturar("#000000", "#ffffff", 1)).toBe("#ffffff");
+  });
+
+  it("meio a meio entre preto e branco é cinza médio", () => {
+    expect(misturar("#000000", "#ffffff", 0.5)).toBe("#808080");
+  });
+
+  it("fração fora de [0,1] é grampeada", () => {
+    expect(misturar("#000000", "#ffffff", -1)).toBe("#000000");
+    expect(misturar("#000000", "#ffffff", 2)).toBe("#ffffff");
+  });
+});
+
+/**
+ * `derivarTokens` é o que transforma as 4 cores que o dono escolhe (ou a IA sugere) na
+ * paleta inteira que a vitrine usa. Todo token que pode aparecer como TEXTO precisa passar
+ * no mesmo piso de contraste que `app/globals.css` já exige.
+ */
+describe("derivarTokens", () => {
+  const AA = 4.5;
+
+  it("tema claro comum: todo texto passa contraste contra a superfície", () => {
+    const t = derivarTokens({ corPrimaria: "#3b4d1f", corFundo: "#fafafa", corSuperficie: "#ffffff", corTexto: "#18181b" });
+    expect(contraste(t.textPrimary, t.surface1)).toBeGreaterThanOrEqual(AA);
+    expect(contraste(t.textSecondary, t.surface1)).toBeGreaterThanOrEqual(AA);
+    expect(contraste(t.textTertiary, t.surface1)).toBeGreaterThanOrEqual(AA);
+    expect(contraste(t.accent, t.surface1)).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("o botão primário (accent-on sobre accent) é sempre legível", () => {
+    const t = derivarTokens({ corPrimaria: "#8fae55", corFundo: "#0a0a0c", corSuperficie: "#18181b", corTexto: "#f4f4f5" });
+    expect(contraste(t.accentOn, t.accent)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // O caso adversarial: a IA (ou um dono decidido) escolhe uma cor de marca clara demais
+  // para servir de texto. derivarTokens tem que corrigir, não repassar.
+  it("cor primária clara demais sobre fundo claro ainda sai legível", () => {
+    const t = derivarTokens({ corPrimaria: "#fef08a", corFundo: "#fafafa", corSuperficie: "#ffffff", corTexto: "#18181b" });
+    expect(contraste(t.accent, t.surface1)).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("tema escuro: todo texto passa contraste contra a superfície escura", () => {
+    const t = derivarTokens({ corPrimaria: "#8fae55", corFundo: "#0a0a0c", corSuperficie: "#18181b", corTexto: "#f4f4f5" });
+    expect(contraste(t.textPrimary, t.surface1)).toBeGreaterThanOrEqual(AA);
+    expect(contraste(t.textSecondary, t.surface1)).toBeGreaterThanOrEqual(AA);
+    expect(contraste(t.textTertiary, t.surface1)).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("a rampa de texto tem degraus distintos, não três cópias da mesma cor", () => {
+    const t = derivarTokens({ corPrimaria: "#3b4d1f", corFundo: "#fafafa", corSuperficie: "#ffffff", corTexto: "#18181b" });
+    expect(t.textPrimary).not.toBe(t.textSecondary);
+    expect(t.textSecondary).not.toBe(t.textTertiary);
+  });
+
+  it("a borda se distingue da superfície", () => {
+    const t = derivarTokens({ corPrimaria: "#3b4d1f", corFundo: "#fafafa", corSuperficie: "#ffffff", corTexto: "#18181b" });
+    expect(t.border).not.toBe(t.surface1);
+  });
+
+  it("background e surface1 vêm direto da base, sem ajuste — eles não carregam texto", () => {
+    const t = derivarTokens({ corPrimaria: "#3b4d1f", corFundo: "#eeeeee", corSuperficie: "#dddddd", corTexto: "#18181b" });
+    expect(t.background).toBe("#eeeeee");
+    expect(t.surface1).toBe("#dddddd");
   });
 });

@@ -157,6 +157,31 @@ export const clienteSchema = z.object({
   status: z.enum(["ativo", "inativo"]),
 });
 
+const corHex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Cor inválida");
+
+/**
+ * Aparência da vitrine (migração 0028). Mesma disciplina de `canalSchema.cor`: hex de 6
+ * dígitos é o que torna seguro aplicar o valor direto em `style={{ }}` no servidor, sem
+ * sanitizar HTML. `fonte` é a mesma lista fechada de `FONTES_VITRINE` em
+ * `lib/ia/prompts.ts` — repetida aqui porque este arquivo não importa de `lib/ia`.
+ */
+export const catalogoAparenciaSchema = z.object({
+  cor_primaria: corHex,
+  cor_fundo: corHex,
+  cor_superficie: corHex,
+  cor_texto: corHex,
+  fonte: z.enum(["geist", "inter", "lora", "poppins"]),
+  logo_url: urlPublica.nullable(),
+  titulo: z.string().trim().max(60).nullable(),
+  mensagem_boas_vindas: z.string().trim().max(160).nullable(),
+});
+
+export const gerarTemaSchema = z.object({
+  descricaoLoja: z.string().trim().min(1, "Descreva a loja em uma frase").max(500),
+  nomeNegocio: z.string().trim().max(120).nullable(),
+  instrucaoExtra: z.string().trim().max(300).nullable(),
+});
+
 export const grupoProdutoSchema = z.object({
   nome: textoCurto,
   descricao: z.string().trim().max(2000).nullable(),

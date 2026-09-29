@@ -26,6 +26,7 @@ import {
 import { executarComToast } from "@/lib/acao-cliente";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/Tabs";
 import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
+import { AparenciaModal } from "@/components/catalogo/AparenciaModal";
 import type { ClientePdv, ContaPdv } from "@/app/(painel)/pdv/tipos";
 
 export interface Catalogo {
@@ -48,6 +49,7 @@ export function CatalogoClient({
   clientes,
   contas,
   formasPagamento,
+  iaDisponivel,
 }: {
   catalogos: Catalogo[];
   totalProdutosElegiveis: number;
@@ -55,11 +57,14 @@ export function CatalogoClient({
   clientes: ClientePdv[];
   contas: ContaPdv[];
   formasPagamento: string[];
+  /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
+  iaDisponivel: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalCatalogo, setModalCatalogo] = useState<Catalogo | "novo" | null>(null);
   const [precosCatalogo, setPrecosCatalogo] = useState<Catalogo | null>(null);
+  const [aparenciaCatalogo, setAparenciaCatalogo] = useState<Catalogo | null>(null);
   // Abre direto nos pedidos quando há algo esperando: é o que o dono veio fazer.
   const [aba, setAba] = useState<"catalogos" | "pedidos">(
     pedidos.some((p) => p.status === "pendente") ? "pedidos" : "catalogos",
@@ -207,6 +212,7 @@ export function CatalogoClient({
                 <RowMenu
                   actions={[
                     { label: "Editar", onClick: () => setModalCatalogo(c) },
+                    { label: "Personalizar Aparência", onClick: () => setAparenciaCatalogo(c) },
                     { label: "Editar Preços", onClick: () => setPrecosCatalogo(c) },
                     { label: c.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivoHandler(c) },
                     { label: "Gerar novo link", onClick: () => regenerarLinkHandler(c) },
@@ -230,6 +236,12 @@ export function CatalogoClient({
         key={`precos-${precosCatalogo?.id ?? "fechado"}`}
         catalogo={precosCatalogo}
         onClose={() => setPrecosCatalogo(null)}
+      />
+      <AparenciaModal
+        key={`aparencia-${aparenciaCatalogo?.id ?? "fechado"}`}
+        catalogo={aparenciaCatalogo}
+        iaDisponivel={iaDisponivel}
+        onClose={() => setAparenciaCatalogo(null)}
       />
       {ConfirmDialog}
       </>

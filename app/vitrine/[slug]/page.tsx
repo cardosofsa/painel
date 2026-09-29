@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { BookOpen } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import { lancarErroSupabase } from "@/lib/erros";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { VitrineInterativa } from "@/components/catalogo/VitrineInterativa";
-import type { LinhaCatalogoPublico, ItemVitrine } from "@/components/catalogo/VitrineView";
+import type { ItemVitrine } from "@/components/catalogo/VitrineView";
+import { buscarCatalogoPublico, buscarAparenciaPublica } from "./dados";
 
 /**
  * Metadata própria da vitrine.
@@ -19,10 +19,7 @@ import type { LinhaCatalogoPublico, ItemVitrine } from "@/components/catalogo/Vi
  */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const supabase = await createClient();
-  const { data } = await supabase.rpc("obter_catalogo_publico", { p_slug: slug });
-
-  const linhas = (data ?? []) as LinhaCatalogoPublico[];
+  const linhas = await buscarCatalogoPublico(slug);
   const nome = linhas[0]?.catalogo_nome;
   if (!nome) {
     return { title: "Catálogo não encontrado", robots: { index: false, follow: false } };
@@ -56,15 +53,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function VitrinePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("obter_catalogo_publico", { p_slug: slug });
+  const [linhas, aparencia] = await Promise.all([buscarCatalogoPublico(slug), buscarAparenciaPublica(slug)]);
 
-  // Página anônima: a mensagem crua do Postgres não pode chegar ao cliente final.
-  if (error) lancarErroSupabase(error);
-
-  const linhas = (data ?? []) as LinhaCatalogoPublico[];
   const nome = linhas[0]?.catalogo_nome;
   const negocioWhatsapp = linhas[0]?.negocio_whatsapp ?? null;
+  // Título e mensagem personalizados substituem o nome cru do catálogo; sem eles, o
+  // comportamento é o de sempre.
+  const tituloExibido = aparencia?.titulo || nome;
 
   // Quando o catálogo existe mas não tem produto elegível, a função ainda devolve uma
   // linha (pra distinguir de "slug inválido"), só que com produto_id/preco nulos.
@@ -118,7 +113,19 @@ export default async function VitrinePage({ params }: { params: Promise<{ slug: 
           </div>
         ) : (
           <>
-            <h1 className="text-2xl font-semibold text-text-primary mb-6">{nome}</h1>
+            <div className={aparencia?.mensagem_boas_vindas ? "mb-2" : "mb-6"}>
+              <div className="flex items-center gap-3">
+                {aparencia?.logo_url && (
+                  <div className="w-12 h-12 rounded-md overflow-hidden shrink-0 border border-border">
+                    <ImagemStorage src={aparencia.logo_url} alt="" prioridade className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <h1 className="text-2xl font-semibold text-text-primary">{tituloExibido}</h1>
+              </div>
+              {aparencia?.mensagem_boas_vindas && (
+                <p className="text-sm text-text-secondary mt-2">{aparencia.mensagem_boas_vindas}</p>
+              )}
+            </div>
             {itens.length === 0 ? (
               <div className="bg-surface-1 border border-border rounded-lg">
                 <EmptyState icon={BookOpen} title="Nenhum produto disponível no momento" />

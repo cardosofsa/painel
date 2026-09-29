@@ -20,10 +20,20 @@ import {
   concorrentesRelevantes,
   LIMITE_TITULO,
   LIMITE_DESCRICAO,
+  montarPromptTema,
+  esquemaTema,
+  interpretarTema,
+  hashContextoTema,
   type ContextoIA,
+  type ContextoTema,
+  type TemaSugerido,
 } from "./prompts";
 
-export type TipoGeracao = "titulo" | "descricao";
+/** Os dois tipos de texto — título de anúncio e descrição de produto. */
+export type TipoGeracaoTexto = "titulo" | "descricao";
+
+/** Todo tipo de geração, incluindo "tema" (que não é texto — ver `gerarTemaVitrineIA`). */
+export type TipoGeracao = TipoGeracaoTexto | "tema";
 
 export interface SugestaoGerada {
   texto: string;
@@ -48,6 +58,10 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number; 
   // Título é curto, mas vem com palavras-chave e posicionamento na mesma resposta.
   titulo: { maxTokens: 700, temperatura: 0.9, limite: LIMITE_TITULO },
   descricao: { maxTokens: 1600, temperatura: 0.7, limite: LIMITE_DESCRICAO },
+  // Sete campos curtos (4 cores, 1 fonte, título, mensagem) — cabe folgado em 500 tokens.
+  // `limite` aqui não é usado (tema não passa por `truncarEmPalavra` de um texto único),
+  // mas o tipo exige o campo; mantém o shape uniforme entre os três.
+  tema: { maxTokens: 500, temperatura: 0.8, limite: 0 },
 };
 
 /** Falha de infraestrutura: o usuário não fez nada errado, então a cota volta. */
@@ -60,7 +74,7 @@ const ESTORNAVEIS = new Set(["chave_invalida", "sem_credito", "servidor", "rede"
  */
 export async function gerarComIA(
   supabase: SupabaseClient,
-  tipo: TipoGeracao,
+  tipo: TipoGeracaoTexto,
   contexto: unknown,
 ): Promise<Resultado<SugestaoGerada>> {
   return comResultado(() => executar(supabase, tipo, contexto));
@@ -68,7 +82,7 @@ export async function gerarComIA(
 
 async function executar(
   supabase: SupabaseClient,
-  tipo: TipoGeracao,
+  tipo: TipoGeracaoTexto,
   contexto: unknown,
 ): Promise<SugestaoGerada> {
   // 1. Valida. É o freio de custo de token, antes de qualquer coisa que gaste.
@@ -144,6 +158,83 @@ async function executar(
   if (erroGuardar) console.error("[ia] falha ao gravar cache:", erroGuardar.message);
 
   return { ...sugestao, usadas, limite: limiteDiario, doCache: false };
+}
+
+export interface SugestaoTema {
+  tema: TemaSugerido;
+  usadas: number;
+  limite: number;
+  doCache: boolean;
+}
+
+/**
+ * Gera o tema da vitrine. Função irmã de `executar()`, não uma variante dela: um tema não
+ * é "um texto" (a saída de `interpretarTema` é um objeto de cores + fonte), então forçá-lo
+ * dentro do shape de `SugestaoGerada` criaria campos que não fazem sentido nos dois
+ * sentidos. O que É compartilhado — `ia_buscar_sugestao`/`ia_consumir`/`ia_guardar_sugestao`,
+ * a ordem dos passos, o estorno — é reaproveitado por inteiro; só o schema, o prompt e o
+ * interpretador são próprios.
+ *
+ * O tema fica guardado como JSON serializado dentro da coluna `texto` de `ia_sugestoes` —
+ * mesma tabela dos outros dois tipos, sem coluna nova, porque `palavras_chave` e
+ * `posicionamento` simplesmente ficam vazios para este tipo.
+ */
+export async function gerarTemaVitrineIA(
+  supabase: SupabaseClient,
+  contexto: ContextoTema,
+): Promise<Resultado<SugestaoTema>> {
+  return comResultado(() => executarTema(supabase, contexto));
+}
+
+async function executarTema(supabase: SupabaseClient, contexto: ContextoTema): Promise<SugestaoTema> {
+  if (!contexto.descricaoLoja?.trim()) throw new Error("Descreva a loja em uma frase para a IA sugerir um tema.");
+  if (contexto.descricaoLoja.length > 500) throw new Error("Descrição da loja longa demais.");
+  if (!process.env.GEMINI_API_KEY) throw new ErroIA("sem_chave");
+
+  const { maxTokens, temperatura } = PARAMETROS.tema;
+  const hash = hashContextoTema(contexto);
+
+  const { data: cache, error: erroCache } = await supabase
+    .rpc("ia_buscar_sugestao", { p_tipo: "tema", p_hash: hash })
+    .maybeSingle<{ texto: string }>();
+  if (erroCache) lancarErroSupabase(erroCache);
+
+  if (cache) {
+    const saldo = await lerSaldo(supabase);
+    return { tema: interpretarTema(cache.texto), ...saldo, doCache: true };
+  }
+
+  const { data: cota, error: erroCota } = await supabase
+    .rpc("ia_consumir", { p_tipo: "tema" })
+    .maybeSingle<{ usadas: number; limite: number }>();
+  if (erroCota) lancarErroSupabase(erroCota);
+
+  const usadas = cota?.usadas ?? 0;
+  const limiteDiario = cota?.limite ?? 0;
+
+  let bruto: string;
+  try {
+    bruto = await chamarGemini(montarPromptTema(contexto), { maxTokens, temperatura, esquema: esquemaTema() });
+  } catch (e) {
+    if (e instanceof ErroIA && ESTORNAVEIS.has(e.codigo)) {
+      const { error } = await supabase.rpc("ia_estornar");
+      if (error) console.error("[ia] falha ao estornar cota:", error.message);
+    }
+    throw e;
+  }
+
+  const tema = interpretarTema(bruto);
+
+  const { error: erroGuardar } = await supabase.rpc("ia_guardar_sugestao", {
+    p_tipo: "tema",
+    p_hash: hash,
+    p_texto: JSON.stringify(tema),
+    p_palavras_chave: [],
+    p_posicionamento: null,
+  });
+  if (erroGuardar) console.error("[ia] falha ao gravar cache de tema:", erroGuardar.message);
+
+  return { tema, usadas, limite: limiteDiario, doCache: false };
 }
 
 /**
