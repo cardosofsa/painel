@@ -1,6 +1,7 @@
 "use client";
 
 import { Card } from "@/components/ui/Card";
+import { inputClass } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";
 import { MODOS } from "@/lib/pricing";
 import type { EstadoPrecificacao } from "@/lib/precificacao-estado";
@@ -30,7 +31,7 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
             step="0.1"
             value={margemPct}
             onChange={(e) => setMargemPct(Number(e.target.value) || 0)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           />
         </div>
       )}
@@ -42,7 +43,7 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
             step="0.1"
             value={markupPct}
             onChange={(e) => setMarkupPct(Number(e.target.value) || 0)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           />
           <p className="text-xs text-text-tertiary mt-1.5">
             Diferente da margem: markup é o lucro sobre o custo (ex.: 50% de markup num custo de R$ 10 dá R$ 5 de
@@ -58,7 +59,7 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
             step="0.01"
             value={lucroDesejado}
             onChange={(e) => setLucroDesejado(Number(e.target.value) || 0)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           />
         </div>
       )}
@@ -70,7 +71,7 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
             step="0.01"
             value={precoFixo}
             onChange={(e) => setPrecoFixo(Number(e.target.value) || 0)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           />
         </div>
       )}

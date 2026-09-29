@@ -83,7 +83,7 @@ export function PainelTaxas({ estado, lojas }: { estado: EstadoPrecificacao; loj
               step="0.01"
               value={taxaFixa}
               onChange={(e) => setTaxaFixa(Number(e.target.value) || 0)}
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+              className={inputClass}
             />
           </div>
           <div>
@@ -93,7 +93,7 @@ export function PainelTaxas({ estado, lojas }: { estado: EstadoPrecificacao; loj
               step="0.1"
               value={taxaVariavelPct}
               onChange={(e) => setTaxaVariavelPct(Number(e.target.value) || 0)}
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+              className={inputClass}
             />
           </div>
         </div>
@@ -107,7 +107,7 @@ export function PainelTaxas({ estado, lojas }: { estado: EstadoPrecificacao; loj
             step="0.1"
             value={taxaAdicionalPct}
             onChange={(e) => setTaxaAdicionalPct(Number(e.target.value) || 0)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           />
         </div>
         <div>
@@ -117,7 +117,7 @@ export function PainelTaxas({ estado, lojas }: { estado: EstadoPrecificacao; loj
             step="0.1"
             value={impostoPct}
             onChange={(e) => setImpostoPct(Number(e.target.value) || 0)}
-            className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+            className={inputClass}
           />
         </div>
       </div>

@@ -48,7 +48,7 @@ export function PainelConcorrentes({ estado }: { estado: EstadoPrecificacao }) {
           value={novoConcorrentePreco}
           onChange={(e) => setNovoConcorrentePreco(e.target.value === "" ? "" : Number(e.target.value))}
           placeholder="Preço"
-          className="w-28 h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-sm text-text-primary outline-none focus:border-accent"
+          className={`${campoBase} w-28 tabular`}
         />
         <Button variant="secondary" onClick={adicionarConcorrente}>
           Adicionar

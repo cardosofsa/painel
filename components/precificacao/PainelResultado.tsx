@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Badge";
+import { inputClass } from "@/components/ui/Modal";
 import { formatBRL } from "@/lib/format";
 import { pctPorModo } from "@/lib/pricing";
 import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";
@@ -160,7 +161,7 @@ export function PainelResultado({ estado, produtoVinculado }: { estado: EstadoPr
               value={precoMinimo}
               onChange={(e) => setPrecoMinimo(e.target.value === "" ? "" : Number(e.target.value))}
               placeholder="Ex: 79,90"
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+              className={inputClass}
             />
           </div>
           <div>
@@ -172,7 +173,7 @@ export function PainelResultado({ estado, produtoVinculado }: { estado: EstadoPr
               value={precoMaximo}
               onChange={(e) => setPrecoMaximo(e.target.value === "" ? "" : Number(e.target.value))}
               placeholder="Ex: 129,90"
-              className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent"
+              className={inputClass}
             />
           </div>
         </div>
