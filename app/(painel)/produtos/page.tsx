@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { ProdutosClient, type Produto } from "./ProdutosClient";
+import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient";
 
 export default async function ProdutosPage() {
   const supabase = await createClient();
@@ -15,11 +15,12 @@ export default async function ProdutosPage() {
     produtoLojasRes,
     produtoImagensRes,
     gruposRes,
+    precosCanalRes,
   ] = await Promise.all([
     supabase
       .from("produtos")
       .select(
-        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, preco_venda, descricao, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo, grupo_id, variante_nome",
+        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, custo_base, insumos, preco_venda, descricao, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, ativo, grupo_id, variante_nome",
       )
       .order("nome"),
     supabase.from("categorias").select("id, nome").order("nome"),
@@ -39,6 +40,9 @@ export default async function ProdutosPage() {
     supabase.from("produto_lojas").select("produto_id, loja_id"),
     supabase.from("produto_imagens").select("id, produto_id, url").order("ordem"),
     supabase.from("produto_grupos").select("id, nome").order("nome"),
+    // Migração 0029: se ainda não foi aplicada, a RPC não existe — falha vira uma lista
+    // vazia (tratado abaixo, não interrompe a página) em vez de derrubar /produtos.
+    supabase.rpc("precos_canal_por_produto"),
   ]);
 
   if (produtosRes.error) throw new Error(produtosRes.error.message);
@@ -51,6 +55,9 @@ export default async function ProdutosPage() {
   if (precificacoesRes.error) throw new Error(precificacoesRes.error.message);
   if (produtoImagensRes.error) throw new Error(produtoImagensRes.error.message);
   if (gruposRes.error) throw new Error(gruposRes.error.message);
+  // Não derruba a página: quem ainda não aplicou a migração 0029 continua usando
+  // Produtos normalmente, só sem margem/markup por canal na lista e no resumo.
+  if (precosCanalRes.error) console.error("[produtos] precos_canal_por_produto:", precosCanalRes.error.message);
 
   const categoriasPorId = new Map((categoriasRes.data ?? []).map((c) => [c.id, c.nome]));
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
@@ -79,6 +86,8 @@ export default async function ProdutosPage() {
     fornecedor_id: p.fornecedor_id,
     armazem_id: p.armazem_id,
     custo: p.custo,
+    custo_base: p.custo_base,
+    insumos: p.insumos ?? [],
     preco_venda: p.preco_venda,
     descricao: p.descricao,
     codigo_barras: p.codigo_barras,
@@ -97,6 +106,15 @@ export default async function ProdutosPage() {
     armazem_nome: (p.armazem_id && armazensPorId.get(p.armazem_id)) ?? null,
   }));
 
+  const precosCanal: PrecoCanal[] = ((precosCanalRes.data ?? []) as PrecoCanal[]).map((r) => ({
+    produto_id: r.produto_id,
+    loja_id: r.loja_id,
+    canal_nome: r.canal_nome,
+    preco: r.preco,
+    margem_pct: r.margem_pct,
+    markup_pct: r.markup_pct,
+  }));
+
   return (
     <ProdutosClient
       produtos={produtos}
@@ -105,6 +123,7 @@ export default async function ProdutosPage() {
       armazens={armazensRes.data ?? []}
       movimentacoes={movimentacoesRes.data ?? []}
       precificacoes={precificacoesRes.data ?? []}
+      precosCanal={precosCanal}
       lojas={lojasRes.data ?? []}
       grupos={gruposRes.data ?? []}
       // Lido no servidor de propósito: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no

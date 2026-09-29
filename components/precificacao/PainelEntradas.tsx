@@ -2,11 +2,11 @@
 
 import { inputClass } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
-import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { formatBRL } from "@/lib/format";
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { LIMITE_TITULO } from "@/lib/ia/prompts";
 import { gerarTituloAnuncioIA } from "@/app/(painel)/precificacao/actions";
+import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import type { EstadoPrecificacao, ProdutoOpcao } from "@/lib/precificacao-estado";
 
 /**
@@ -45,6 +45,7 @@ export function PainelEntradas({
     custoInsumos,
     atualizarComponente,
     adicionarComponente,
+    adicionarComponenteDoProduto,
     removerComponente,
   } = estado;
 
@@ -132,63 +133,14 @@ export function PainelEntradas({
       </Card>
 
       <Card>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-text-primary">Composição de Insumos e Embalagem</h3>
-          <button onClick={adicionarComponente} className="text-sm text-accent hover:underline">
-            + Adicionar Insumo
-          </button>
-        </div>
-        <Table>
-          <Thead>
-            <tr>
-              <Th>Componente</Th>
-              <Th align="right">Qtd</Th>
-              <Th align="right">Custo Unit.</Th>
-              <Th align="right">Subtotal</Th>
-              <Th></Th>
-            </tr>
-          </Thead>
-          <tbody>
-            {componentes.map((c) => (
-              <Tr key={c.id}>
-                <Td>
-                  <input
-                    value={c.nome}
-                    onChange={(e) => atualizarComponente(c.id, "nome", e.target.value)}
-                    className="w-full bg-transparent text-text-primary outline-none"
-                  />
-                </Td>
-                <Td align="right">
-                  <input
-                    type="number"
-                    min={0}
-                    value={c.quantidade}
-                    onChange={(e) => atualizarComponente(c.id, "quantidade", e.target.value)}
-                    className="w-14 bg-transparent text-text-primary text-right outline-none tabular"
-                  />
-                </Td>
-                <Td align="right">
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={c.custoUnitario}
-                    onChange={(e) => atualizarComponente(c.id, "custoUnitario", e.target.value)}
-                    className="w-20 bg-transparent text-text-primary text-right outline-none tabular"
-                  />
-                </Td>
-                <Td align="right" mono>
-                  {formatBRL(c.quantidade * c.custoUnitario)}
-                </Td>
-                <Td align="right">
-                  <button onClick={() => removerComponente(c.id)} className="text-text-tertiary hover:text-negative">
-                    ×
-                  </button>
-                </Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Table>
+        <EditorInsumos
+          componentes={componentes}
+          produtos={produtos}
+          atualizarComponente={atualizarComponente}
+          adicionarComponente={adicionarComponente}
+          adicionarComponenteDoProduto={adicionarComponenteDoProduto}
+          removerComponente={removerComponente}
+        />
         <div className="mt-3 pt-3 border-t border-border space-y-1.5">
           <div className="flex items-center justify-between text-sm text-text-secondary">
             <span>Custo do produto</span>

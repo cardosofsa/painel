@@ -44,13 +44,30 @@ const urlPublica = z
   .max(1000, "URL longa demais")
   .refine((u) => /^https?:\/\//i.test(u), "A URL precisa começar com http:// ou https://");
 
+/**
+ * Uma linha de insumo/componente — mesma forma de `ComponenteKit` em `lib/pricing.ts`.
+ * Compartilhado entre `produtoSchema.insumos` e `precificacaoSchema.componentes` (que já
+ * existia; só passou a reaproveitar este schema em vez de repetir o objeto).
+ */
+export const componenteKitSchema = z.object({
+  id: z.string().max(100),
+  nome: z.string().trim().max(200),
+  quantidade: z.number().finite().min(0).max(100_000),
+  custoUnitario: dinheiro,
+  produtoId: uuidOpcional.optional(),
+});
+
 export const produtoSchema = z.object({
   sku: textoCurto,
   nome: textoCurto,
   categoria_id: uuidOpcional,
   fornecedor_id: uuidOpcional,
   armazem_id: uuidOpcional,
-  custo: dinheiro,
+  // `custo` NÃO entra aqui: desde a 0029 é derivado por trigger a partir de
+  // `custo_base` + `insumos`, e escrever nele direto não tem efeito nenhum (ver
+  // CLAUDE.md, "produtos.custo é derivado"). O formulário manda os dois campos-fonte.
+  custo_base: dinheiro,
+  insumos: z.array(componenteKitSchema).max(200),
   preco_venda: dinheiro,
   descricao: z.string().trim().max(2000).nullable(),
   codigo_barras: textoOpcional,
@@ -70,17 +87,7 @@ export const precificacaoSchema = z.object({
   canal: z.string().trim().max(200).nullable(),
   titulo_anuncio: z.string().trim().max(200).nullable(),
   loja_id: uuidOpcional,
-  componentes: z
-    .array(
-      z.object({
-        id: z.string().max(100),
-        nome: z.string().trim().max(200),
-        quantidade: z.number().finite().min(0).max(100_000),
-        custoUnitario: dinheiro,
-      }),
-    )
-    .max(200)
-    .nullable(),
+  componentes: z.array(componenteKitSchema).max(200).nullable(),
   taxa_extra_valor: z.number().finite().min(0).max(1_000_000).nullable(),
   taxa_extra_tipo: z.enum(["percentual", "fixo"]).nullable(),
   custo: dinheiro,
@@ -358,6 +365,16 @@ export const movimentacaoEstoqueSchema = z.object({
   // negativa numa "saída" vira entrada e o estoque SOBE registrando uma baixa.
   quantidade: z.number().int("Quantidade precisa ser inteira").min(1, "Quantidade mínima é 1").max(1_000_000),
   motivo: z.string().trim().max(200),
+});
+
+/** Entrada de estoque com custo — só pra `tipo: "entrada"`; a média ponderada é
+ * calculada no banco (`registrar_entrada_com_custo`, 0029). Saída continua no schema
+ * acima, sem custo — não há o que ponderar numa baixa. */
+export const entradaEstoqueComCustoSchema = z.object({
+  produtoId: uuid,
+  quantidade: z.number().int("Quantidade precisa ser inteira").min(1, "Quantidade mínima é 1").max(1_000_000),
+  custoUnitario: dinheiro,
+  motivo: z.string().trim().max(200).nullable(),
 });
 
 export const categoriaSchema = z.object({ nome: textoCurto });

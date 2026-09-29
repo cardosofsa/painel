@@ -8,7 +8,7 @@ import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
-import { registrarMovimentacaoEstoque } from "./actions";
+import { registrarMovimentacaoEstoque, registrarEntradaComCusto } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
@@ -52,9 +52,10 @@ export function EstoqueClient({
   const [movTipo, setMovTipo] = useState<"entrada" | "saida">("entrada");
   const [movQtd, setMovQtd] = useState(1);
   const [movMotivo, setMovMotivo] = useState("");
+  const [movCustoUnitario, setMovCustoUnitario] = useState(0);
   const sujo = useFormularioSujo(
-    { movProdutoId, movTipo, movQtd, movMotivo },
-    { movProdutoId: produtos[0]?.id ?? "", movTipo: "entrada", movQtd: 1, movMotivo: "" },
+    { movProdutoId, movTipo, movQtd, movMotivo, movCustoUnitario },
+    { movProdutoId: produtos[0]?.id ?? "", movTipo: "entrada", movQtd: 1, movMotivo: "", movCustoUnitario: 0 },
   );
 
   const totalUnidades = produtos.reduce((acc, p) => acc + p.estoque, 0);
@@ -70,12 +71,38 @@ export function EstoqueClient({
       toast.error("A quantidade precisa ser maior que zero.");
       return;
     }
+    if (movTipo === "entrada" && movCustoUnitario < 0) {
+      toast.error("O custo unitário não pode ser negativo.");
+      return;
+    }
     startTransition(async () => {
-      const r = await executarComToast(registrarMovimentacaoEstoque({ produtoId: movProdutoId, tipo: movTipo, quantidade: movQtd, motivo: movMotivo || (movTipo === "entrada" ? "Entrada manual" : "Saída manual") }), { erro: "Erro ao registrar movimentação" });
+      // Entrada leva custo (média ponderada, calculada no banco); saída continua no
+      // caminho antigo — não há custo pra ponderar numa baixa de estoque.
+      const r =
+        movTipo === "entrada"
+          ? await executarComToast(
+              registrarEntradaComCusto({
+                produtoId: movProdutoId,
+                quantidade: movQtd,
+                custoUnitario: movCustoUnitario,
+                motivo: movMotivo || null,
+              }),
+              { erro: "Erro ao registrar entrada" },
+            )
+          : await executarComToast(
+              registrarMovimentacaoEstoque({
+                produtoId: movProdutoId,
+                tipo: movTipo,
+                quantidade: movQtd,
+                motivo: movMotivo || "Saída manual",
+              }),
+              { erro: "Erro ao registrar movimentação" },
+            );
       if (r.ok) {
         setModalAberto(false);
         setMovQtd(1);
         setMovMotivo("");
+        setMovCustoUnitario(0);
         toast.success("Movimentação registrada");
       }
     });
@@ -213,6 +240,22 @@ export function EstoqueClient({
             />
           </FormField>
         </div>
+        {movTipo === "entrada" && (
+          <FormField
+            label="Custo unitário desta entrada (R$)"
+            dica="O custo do produto vira a média ponderada entre o que já tinha em estoque e esta entrada."
+          >
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className={inputClass}
+              value={movCustoUnitario || ""}
+              placeholder="0,00"
+              onChange={(e) => setMovCustoUnitario(Number(e.target.value) || 0)}
+            />
+          </FormField>
+        )}
         <FormField label="Motivo">
           <input className={inputClass} value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} placeholder="Ex: ajuste, venda, avaria" />
         </FormField>

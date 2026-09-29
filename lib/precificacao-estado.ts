@@ -287,6 +287,17 @@ export function usePrecificacao({
     setComponentes((prev) => [...prev, { id: proximoIdLocal("novo"), nome: "Novo insumo", quantidade: 1, custoUnitario: 0 }]);
   }
 
+  /** "Insumo puxado do estoque": pré-preenche nome e custo a partir de um produto
+   * cadastrado. `produtoId` fica gravado na linha, mas continua editável depois. */
+  function adicionarComponenteDoProduto(produtoId: string) {
+    const produto = produtos.find((p) => p.id === produtoId);
+    if (!produto) return;
+    setComponentes((prev) => [
+      ...prev,
+      { id: proximoIdLocal("estoque"), nome: produto.nome, quantidade: 1, custoUnitario: produto.custo, produtoId: produto.id },
+    ]);
+  }
+
   function removerComponente(id: string) {
     setComponentes((prev) => prev.filter((c) => c.id !== id));
   }
@@ -608,6 +619,7 @@ export function usePrecificacao({
     custoTotal,
     atualizarComponente,
     adicionarComponente,
+    adicionarComponenteDoProduto,
     removerComponente,
 
     // taxas da plataforma

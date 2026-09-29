@@ -35,6 +35,8 @@ import { rotuloProduto } from "@/lib/produtos";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { Chip } from "@/components/ui/Chip";
+import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
+import { custoComposto, type ComponenteKit } from "@/lib/pricing";
 
 export interface ImagemProduto {
   id: string;
@@ -43,11 +45,24 @@ export interface ImagemProduto {
 
 export interface Produto extends ProdutoInput {
   id: string;
+  /** Derivado por trigger no banco (`custo_base` + insumos, ver `0029_...sql`) — só
+   * leitura, nunca vai no payload de criar/atualizar produto. */
+  custo: number;
   categoria_nome: string | null;
   fornecedor_nome: string | null;
   armazem_nome: string | null;
   grupo_nome: string | null;
   imagens: ImagemProduto[];
+}
+
+/** Preço mais recente por canal, de `precos_canal_por_produto()` (0029). */
+export interface PrecoCanal {
+  produto_id: string;
+  loja_id: string | null;
+  canal_nome: string | null;
+  preco: number;
+  margem_pct: number;
+  markup_pct: number;
 }
 
 export interface MovimentacaoEstoque {
@@ -72,6 +87,18 @@ interface Opcao {
 
 const STATUS_FILTROS = ["Todos", "Em estoque", "Estoque baixo", "Sem estoque"] as const;
 
+/**
+ * Margem e markup "simples" — sem taxa de plataforma, porque a linha da lista (e o preço
+ * de venda do produto) não sabe de qual canal é. A margem de verdade, com comissão e
+ * tarifa, é a de `precos_canal_por_produto()`, mostrada por canal no resumo do produto.
+ */
+function margemMarkupSimples(precoVenda: number, custo: number) {
+  return {
+    margemPct: precoVenda > 0 ? ((precoVenda - custo) / precoVenda) * 100 : 0,
+    markupPct: custo > 0 ? ((precoVenda - custo) / custo) * 100 : 0,
+  };
+}
+
 function formVazio(armazemPadrao: string | null): ProdutoInput {
   return {
     sku: "",
@@ -79,7 +106,8 @@ function formVazio(armazemPadrao: string | null): ProdutoInput {
     categoria_id: null,
     fornecedor_id: null,
     armazem_id: armazemPadrao,
-    custo: 0,
+    custo_base: 0,
+    insumos: [],
     preco_venda: 0,
     descricao: null,
     codigo_barras: null,
@@ -101,6 +129,7 @@ export function ProdutosClient({
   armazens,
   movimentacoes,
   precificacoes,
+  precosCanal,
   lojas,
   grupos,
   iaDisponivel,
@@ -111,6 +140,7 @@ export function ProdutosClient({
   armazens: Opcao[];
   movimentacoes: MovimentacaoEstoque[];
   precificacoes: PrecificacaoHist[];
+  precosCanal: PrecoCanal[];
   lojas: Opcao[];
   grupos: Opcao[];
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
@@ -131,6 +161,53 @@ export function ProdutosClient({
   const [novoGrupoAberto, setNovoGrupoAberto] = useState(false);
   const [novoGrupoNome, setNovoGrupoNome] = useState("");
   const { enviar: enviarImagemArquivo, enviando: enviandoImagem } = useSupabaseUpload("produtos");
+
+  const canaisPorProduto = useMemo(() => {
+    const mapa = new Map<string, PrecoCanal[]>();
+    for (const pc of precosCanal) {
+      const lista = mapa.get(pc.produto_id) ?? [];
+      lista.push(pc);
+      mapa.set(pc.produto_id, lista);
+    }
+    return mapa;
+  }, [precosCanal]);
+
+  // Pro seletor "+ Do estoque" do editor de insumos: qualquer outro produto pode virar
+  // insumo de um kit. Exclui o próprio produto em edição, pra não deixar ele se referenciar.
+  const produtosParaInsumo = useMemo(
+    () => produtos.filter((p) => p.id !== editando?.id).map((p) => ({ id: p.id, nome: p.nome, custo: p.custo })),
+    [produtos, editando],
+  );
+
+  function atualizarInsumoProduto(id: string, campo: keyof ComponenteKit, valor: string) {
+    setForm((prev) => ({
+      ...prev,
+      insumos: prev.insumos.map((c) => (c.id === id ? { ...c, [campo]: campo === "nome" ? valor : Number(valor) || 0 } : c)),
+    }));
+  }
+
+  function adicionarInsumoProduto() {
+    setForm((prev) => ({
+      ...prev,
+      insumos: [...prev.insumos, { id: crypto.randomUUID(), nome: "Novo insumo", quantidade: 1, custoUnitario: 0 }],
+    }));
+  }
+
+  function adicionarInsumoProdutoDoEstoque(produtoId: string) {
+    const outro = produtosParaInsumo.find((p) => p.id === produtoId);
+    if (!outro) return;
+    setForm((prev) => ({
+      ...prev,
+      insumos: [
+        ...prev.insumos,
+        { id: crypto.randomUUID(), nome: outro.nome, quantidade: 1, custoUnitario: outro.custo, produtoId: outro.id },
+      ],
+    }));
+  }
+
+  function removerInsumoProduto(id: string) {
+    setForm((prev) => ({ ...prev, insumos: prev.insumos.filter((c) => c.id !== id) }));
+  }
 
   const filtrados = useMemo(() => {
     return produtos
@@ -190,7 +267,8 @@ export function ProdutosClient({
       categoria_id: p.categoria_id,
       fornecedor_id: p.fornecedor_id,
       armazem_id: p.armazem_id,
-      custo: p.custo,
+      custo_base: p.custo_base,
+      insumos: p.insumos,
       preco_venda: p.preco_venda,
       descricao: p.descricao,
       codigo_barras: p.codigo_barras,
@@ -463,8 +541,15 @@ export function ProdutosClient({
                   <Td align="right" mono>
                     {formatBRL(p.custo)}
                   </Td>
-                  <Td align="right" mono className="text-accent">
-                    {formatBRL(p.preco_venda)}
+                  <Td align="right">
+                    {(canaisPorProduto.get(p.id)?.length ?? 0) > 1 && (
+                      <div className="text-[10px] text-accent">Valor de Outros Canais Disponíveis</div>
+                    )}
+                    <span className="font-mono text-accent">{formatBRL(p.preco_venda)}</span>
+                    <div className="text-[10px] text-text-tertiary">
+                      {margemMarkupSimples(p.preco_venda, p.custo).margemPct.toFixed(1)}% marg. ·{" "}
+                      {margemMarkupSimples(p.preco_venda, p.custo).markupPct.toFixed(1)}% markup
+                    </div>
                   </Td>
                   <Td align="right" mono>
                     {p.estoque}
@@ -669,13 +754,13 @@ export function ProdutosClient({
           )}
         </FormField>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField label="Custo (R$)">
+          <FormField label="Valor do Produto (R$)" dica="O que você pagou pelo produto em si, sem embalagem.">
             <input
               type="number"
               step="0.01"
               className={inputClass}
-              value={form.custo}
-              onChange={(e) => setForm({ ...form, custo: Number(e.target.value) || 0 })}
+              value={form.custo_base}
+              onChange={(e) => setForm({ ...form, custo_base: Number(e.target.value) || 0 })}
             />
           </FormField>
           <FormField label="Preço Venda (R$)">
@@ -687,6 +772,20 @@ export function ProdutosClient({
               onChange={(e) => setForm({ ...form, preco_venda: Number(e.target.value) || 0 })}
             />
           </FormField>
+        </div>
+        <div className="mb-4">
+          <EditorInsumos
+            componentes={form.insumos}
+            produtos={produtosParaInsumo}
+            atualizarComponente={atualizarInsumoProduto}
+            adicionarComponente={adicionarInsumoProduto}
+            adicionarComponenteDoProduto={adicionarInsumoProdutoDoEstoque}
+            removerComponente={removerInsumoProduto}
+          />
+        </div>
+        <div className="flex items-center justify-between text-sm bg-surface-2 rounded-md px-3 py-2 mb-4">
+          <span className="text-text-secondary">Custo (valor do produto + insumos)</span>
+          <span className="font-mono text-text-primary font-semibold">{formatBRL(custoComposto(form.custo_base, form.insumos))}</span>
         </div>
         <FormField label="Descrição (opcional)">
           <textarea
@@ -714,7 +813,7 @@ export function ProdutosClient({
                 variante: form.variante_nome,
                 descricaoAtual: form.descricao,
                 codigoBarras: form.codigo_barras,
-                custo: form.custo,
+                custo: custoComposto(form.custo_base, form.insumos),
                 precoVenda: form.preco_venda,
                 instrucaoExtra,
               })
@@ -771,7 +870,12 @@ export function ProdutosClient({
 
       <Modal open={!!produtoDetalhe} onClose={() => setDetalheId(null)} title={produtoDetalhe?.nome ?? ""} width="max-w-2xl">
         {produtoDetalhe && (
-          <ProdutoResumo produto={produtoDetalhe} movimentacoes={movimentacoes} precificacoes={precificacoes} />
+          <ProdutoResumo
+            produto={produtoDetalhe}
+            movimentacoes={movimentacoes}
+            precificacoes={precificacoes}
+            canais={canaisPorProduto.get(produtoDetalhe.id) ?? []}
+          />
         )}
       </Modal>
       <Modal open={novoGrupoAberto} onClose={() => setNovoGrupoAberto(false)} title="Novo grupo de variantes">
@@ -807,17 +911,18 @@ function ProdutoResumo({
   produto,
   movimentacoes,
   precificacoes,
+  canais,
 }: {
   produto: Produto;
   movimentacoes: MovimentacaoEstoque[];
   precificacoes: PrecificacaoHist[];
+  canais: PrecoCanal[];
 }) {
   const valorEstoque = produto.custo * produto.estoque;
   const movs = movimentacoes.filter((m) => m.produto_id === produto.id).slice(0, 10);
   const precs = precificacoes.filter((h) => h.produto_id === produto.id).slice(0, 10);
   const abaixoDoMinimo = produto.estoque <= produto.estoque_minimo;
   const sugestaoCompra = Math.max(0, Math.ceil(produto.saida_media_semanal * 4) - produto.estoque);
-  const margemPct = produto.preco_venda > 0 ? ((produto.preco_venda - produto.custo) / produto.preco_venda) * 100 : 0;
 
   return (
     <div className="space-y-5">
@@ -831,26 +936,44 @@ function ProdutoResumo({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div className="border border-border rounded-md p-3">
           <div className="text-xs text-text-tertiary mb-1">Estoque Atual</div>
           <div className="font-mono text-lg text-text-primary">{produto.estoque} un.</div>
         </div>
         <div className="border border-border rounded-md p-3">
+          <div className="text-xs text-text-tertiary mb-1">Custo</div>
+          <div className="font-mono text-lg text-text-primary">{formatBRL(produto.custo)}</div>
+        </div>
+        <div className="border border-border rounded-md p-3">
           <div className="text-xs text-text-tertiary mb-1">Valor em Estoque</div>
           <div className="font-mono text-lg text-text-primary">{formatBRL(valorEstoque)}</div>
         </div>
-        <div className="border border-border rounded-md p-3">
-          <div className="text-xs text-text-tertiary mb-1">Preço Venda</div>
-          <div className="font-mono text-lg text-accent">{formatBRL(produto.preco_venda)}</div>
-        </div>
-        <div className="border border-border rounded-md p-3">
-          <div className="text-xs text-text-tertiary mb-1">Margem</div>
-          <div className={`font-mono text-lg ${classeValor(margemPct)}`}>
-            {margemPct >= 0 ? "+" : "−"}
-            {Math.abs(margemPct).toFixed(1).replace(".", ",")}%
+      </div>
+
+      <div>
+        <h4 className="text-sm font-medium text-text-primary mb-2">Preço por Canal</h4>
+        {canais.length === 0 ? (
+          <div className="border border-border rounded-md p-4 text-center">
+            <p className="text-sm text-text-tertiary mb-2">Nenhuma precificação salva para este produto ainda.</p>
+            <a href="/precificacao" className="text-sm text-accent hover:underline">
+              Ir para Precificação →
+            </a>
           </div>
-        </div>
+        ) : (
+          <div className="border border-border rounded-md divide-y divide-border">
+            {canais.map((c, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+                <span className="text-text-primary">{c.canal_nome ?? "Manual"}</span>
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="font-mono text-accent">{formatBRL(c.preco)}</span>
+                  <span className={`font-mono ${classeValor(c.margem_pct)}`}>{(c.margem_pct * 100).toFixed(1)}% marg.</span>
+                  <span className={`font-mono ${classeValor(c.markup_pct)}`}>{(c.markup_pct * 100).toFixed(1)}% markup</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {abaixoDoMinimo && (

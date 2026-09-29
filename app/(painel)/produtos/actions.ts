@@ -12,6 +12,7 @@ import {
 } from "@/lib/validacao";
 import { gerarComIA } from "@/lib/ia/gerar";
 import { comResultado } from "@/lib/acao";
+import type { ComponenteKit } from "@/lib/pricing";
 
 const PATH = "/produtos";
 
@@ -21,7 +22,10 @@ export interface ProdutoInput {
   categoria_id: string | null;
   fornecedor_id: string | null;
   armazem_id: string | null;
-  custo: number;
+  /** Valor do produto — junto com `insumos`, compõe `produtos.custo` (derivado por
+   * trigger desde a 0029; nunca é mandado direto pro banco). */
+  custo_base: number;
+  insumos: ComponenteKit[];
   preco_venda: number;
   descricao: string | null;
   codigo_barras: string | null;
