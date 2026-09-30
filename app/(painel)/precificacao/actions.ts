@@ -13,6 +13,8 @@ import {
 } from "@/lib/validacao";
 import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
 import { gerarComIA } from "@/lib/ia/gerar";
+import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
+import { truncarEmPalavra } from "@/lib/ia/texto";
 import { comResultado } from "@/lib/acao";
 
 export interface PrecificacaoInput {
@@ -20,6 +22,7 @@ export interface PrecificacaoInput {
   produto_nome: string;
   canal: string | null;
   titulo_anuncio: string | null;
+  descricao_anuncio?: string | null;
   loja_id: string | null;
   componentes: ComponenteKit[] | null;
   taxa_extra_valor: number | null;
@@ -118,7 +121,7 @@ export async function criarProdutoDePrecificacao(precificacaoId: string) {
     const supabase = await createClient();
     const { data: h, error: erroBusca } = await supabase
       .from("precificacoes")
-      .select("produto_nome, componentes, preco_calculado")
+      .select("produto_nome, componentes, preco_calculado, descricao_anuncio")
       .eq("id", precificacaoId)
       .single();
     if (erroBusca || !h) lancarErroSupabase(erroBusca ?? { message: "Precificação não encontrada." });
@@ -132,6 +135,8 @@ export async function criarProdutoDePrecificacao(precificacaoId: string) {
       .insert({
         sku: gerarSkuAPartirDePrecificacao(),
         nome: h!.produto_nome,
+        // A descrição da vitrine vai até 2000; a do anúncio, até 5000. Corta sem partir palavra.
+        descricao: h!.descricao_anuncio ? truncarEmPalavra(h!.descricao_anuncio, LIMITE_DESCRICAO) : null,
         custo_base: doProduto?.custoUnitario ?? 0,
         insumos,
         preco_venda: h!.preco_calculado,
@@ -172,7 +177,7 @@ export async function criarProdutosDeAnuncio(anuncioId: string) {
     const supabase = await createClient();
     const { data: anuncio, error: erroAnuncio } = await supabase
       .from("anuncios")
-      .select("nome_anuncio, anuncio_variacoes(nome_variacao, custo, preco_calculado)")
+      .select("nome_anuncio, descricao, anuncio_variacoes(nome_variacao, custo, preco_calculado)")
       .eq("id", anuncioId)
       .single();
     if (erroAnuncio || !anuncio) lancarErroSupabase(erroAnuncio ?? { message: "Produto com variações não encontrado." });
@@ -193,6 +198,7 @@ export async function criarProdutosDeAnuncio(anuncioId: string) {
       nome: anuncio!.nome_anuncio,
       grupo_id: grupo.id,
       variante_nome: v.nome_variacao,
+      descricao: anuncio!.descricao ? truncarEmPalavra(anuncio!.descricao, LIMITE_DESCRICAO) : null,
       custo_base: v.custo,
       insumos: [],
       preco_venda: v.preco_calculado,
@@ -231,6 +237,7 @@ export interface AnuncioInput {
   loja_id: string | null;
   nome_anuncio: string;
   titulo_anuncio: string | null;
+  descricao?: string | null;
   componentes_base: ComponenteKit[] | null;
   variacoes: VariacaoInput[];
 }
@@ -248,6 +255,7 @@ export async function criarAnuncio(dados: AnuncioInput) {
         loja_id: v.loja_id,
         nome_anuncio: v.nome_anuncio,
         titulo_anuncio: v.titulo_anuncio,
+        descricao: v.descricao ?? null,
         componentes_base: v.componentes_base,
       })
       .select("id")
@@ -312,6 +320,12 @@ export async function removerConcorrenteSalvo(id: string) {
  * formulário refetcharia a página inteira por causa de um contador. A trava de acesso é
  * a de sempre — mora nas RPCs (`auth.uid()` + `conta_ativa()`), não neste arquivo.
  */
+/** Descrição do anúncio (precificação), com o limite do canal. */
+export async function gerarDescricaoAnuncioIA(contexto: unknown) {
+  const supabase = await createClient();
+  return gerarComIA(supabase, "descricao", contexto);
+}
+
 export async function gerarTituloAnuncioIA(contexto: unknown) {
   const supabase = await createClient();
   return gerarComIA(supabase, "titulo", contexto);

@@ -12,11 +12,11 @@ export default async function PrecificacaoPage() {
     supabase
       .from("precificacoes")
       .select(
-        "id, produto_id, produto_nome, canal, titulo_anuncio, loja_id, componentes, taxa_extra_valor, taxa_extra_tipo, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, margem_pct, preco_calculado, lucro, criado_em, origem",
+        "id, produto_id, produto_nome, canal, titulo_anuncio, descricao_anuncio, loja_id, componentes, taxa_extra_valor, taxa_extra_tipo, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, margem_pct, preco_calculado, lucro, criado_em, origem",
       )
       .order("criado_em", { ascending: false })
       .limit(50),
-    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome").order("nome"),
+    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave").order("nome"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     supabase
       .from("canais")
@@ -29,7 +29,7 @@ export default async function PrecificacaoPage() {
     supabase
       .from("anuncios")
       .select(
-        "id, nome_anuncio, titulo_anuncio, criado_em, anuncio_variacoes(id, nome_variacao, multiplicador, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, taxa_extra_valor, taxa_extra_tipo, margem_pct, preco_calculado, lucro)",
+        "id, nome_anuncio, titulo_anuncio, descricao, criado_em, anuncio_variacoes(id, nome_variacao, multiplicador, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, taxa_extra_valor, taxa_extra_tipo, margem_pct, preco_calculado, lucro)",
       )
       .order("criado_em", { ascending: false })
       .limit(30),
@@ -82,6 +82,7 @@ export default async function PrecificacaoPage() {
     id: a.id,
     nome_anuncio: a.nome_anuncio,
     titulo_anuncio: a.titulo_anuncio,
+    descricao: a.descricao,
     criado_em: a.criado_em,
     variacoes: a.anuncio_variacoes ?? [],
   }));

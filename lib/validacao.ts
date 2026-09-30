@@ -78,6 +78,8 @@ export const produtoSchema = z.object({
   estoque_minimo: inteiroNaoNegativo,
   saida_media_semanal: z.number().finite().min(0).max(1_000_000),
   garantia_dias: z.number().int("Garantia em dias inteiros").min(1).max(3650).nullable(),
+  // Guardadas pela IA para reaproveitar no próximo título (0037).
+  palavras_chave: z.array(z.string().trim().min(1).max(40)).max(20).nullable().optional(),
   ativo: z.boolean(),
   grupo_id: uuidOpcional,
   variante_nome: z.string().trim().max(100).nullable(),
@@ -89,6 +91,8 @@ export const precificacaoSchema = z.object({
   produto_nome: textoCurto,
   canal: z.string().trim().max(200).nullable(),
   titulo_anuncio: z.string().trim().max(200).nullable(),
+  // Opcional: a calculadora em massa não tem descrição (0037).
+  descricao_anuncio: z.string().trim().max(5000, "Descrição do anúncio: máximo 5.000 caracteres").nullable().optional(),
   loja_id: uuidOpcional,
   componentes: z.array(componenteKitSchema).max(200).nullable(),
   taxa_extra_valor: z.number().finite().min(0).max(1_000_000).nullable(),
@@ -457,6 +461,7 @@ export const anuncioSchema = z.object({
   loja_id: uuidOpcional,
   nome_anuncio: textoCurto,
   titulo_anuncio: z.string().trim().max(200).nullable(),
+  descricao: z.string().trim().max(5000, "Descrição do anúncio: máximo 5.000 caracteres").nullable().optional(),
   componentes_base: z
     .array(
       z.object({

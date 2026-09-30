@@ -21,7 +21,7 @@ export default async function ProdutosPage() {
     supabase
       .from("produtos")
       .select(
-        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, custo_base, insumos, preco_venda, preco_atacado, descricao, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, garantia_dias, ativo, grupo_id, variante_nome",
+        "id, sku, nome, categoria_id, fornecedor_id, armazem_id, custo, custo_base, insumos, preco_venda, preco_atacado, descricao, codigo_barras, imagem_url, estoque, estoque_minimo, saida_media_semanal, garantia_dias, palavras_chave, ativo, grupo_id, variante_nome",
       )
       .order("nome"),
     supabase.from("categorias").select("id, nome").order("nome"),
@@ -98,6 +98,7 @@ export default async function ProdutosPage() {
     estoque_minimo: p.estoque_minimo,
     saida_media_semanal: p.saida_media_semanal,
     garantia_dias: p.garantia_dias,
+    palavras_chave: p.palavras_chave ?? null,
     ativo: p.ativo,
     grupo_id: p.grupo_id,
     variante_nome: p.variante_nome,

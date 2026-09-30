@@ -37,6 +37,8 @@ export interface ProdutoInput {
   saida_media_semanal: number;
   /** Garantia padrão em dias; null = sem garantia. Vai para o carrinho do PDV (editável). */
   garantia_dias: number | null;
+  /** Palavras-chave da IA (0037). Ausente = não mexe na coluna. */
+  palavras_chave?: string[] | null;
   ativo: boolean;
   grupo_id: string | null;
   variante_nome: string | null;

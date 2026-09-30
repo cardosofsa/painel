@@ -4,8 +4,8 @@ import { inputClass } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
 import { formatBRL } from "@/lib/format";
 import { GeradorIA } from "@/components/ia/GeradorIA";
-import { limiteEfetivo } from "@/lib/ia/prompts";
-import { gerarTituloAnuncioIA } from "@/app/(painel)/precificacao/actions";
+import { limiteEfetivo, LIMITE_DESCRICAO_ANUNCIO } from "@/lib/ia/prompts";
+import { gerarDescricaoAnuncioIA, gerarTituloAnuncioIA } from "@/app/(painel)/precificacao/actions";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import type { EstadoPrecificacao, ProdutoOpcao } from "@/lib/precificacao-estado";
 
@@ -35,6 +35,8 @@ export function PainelEntradas({
     selecionarSugestao,
     nomeAnuncio,
     setNomeAnuncio,
+    descricaoAnuncio,
+    setDescricaoAnuncio,
     lojaSelecionada,
     custoTotal,
     resultado,
@@ -48,6 +50,9 @@ export function PainelEntradas({
     adicionarComponenteDoProduto,
     removerComponente,
   } = estado;
+
+  const produtoVinculado = produtos.find((p) => p.id === produtoId);
+  const limiteDescricao = limiteEfetivo("descricao", lojaSelecionada?.limiteDescricao ?? LIMITE_DESCRICAO_ANUNCIO);
 
   return (
     <>
@@ -106,9 +111,10 @@ export function PainelEntradas({
             gerar={(instrucaoExtra, tom) =>
               gerarTituloAnuncioIA({
                 produtoNome: nomeProduto,
-                sku: produtos.find((p) => p.id === produtoId)?.sku ?? null,
+                sku: produtoVinculado?.sku ?? null,
                 canal: lojaSelecionada?.canalNome ?? null,
                 loja: lojaSelecionada?.nome ?? null,
+                palavrasChave: produtoVinculado?.palavras_chave ?? undefined,
                 custo: custoTotal,
                 precoCalculado: resultado.viavel ? resultado.precoVenda : null,
                 componentes: componentes.map((c) => ({ nome: c.nome, quantidade: c.quantidade })),
@@ -120,6 +126,41 @@ export function PainelEntradas({
               })
             }
             onUsar={setNomeAnuncio}
+          />
+        </div>
+        <label className="block text-xs font-medium text-text-secondary mb-1.5">Descrição do Anúncio (opcional)</label>
+        <textarea
+          value={descricaoAnuncio}
+          onChange={(e) => setDescricaoAnuncio(e.target.value)}
+          className={`${inputClass} h-24 py-2 resize-y`}
+          maxLength={limiteDescricao}
+          placeholder="Vai junto quando esta precificação virar produto"
+        />
+        <div className="mb-3">
+          <GeradorIA
+            key={`ia-desc-${produtoId ?? nomeProduto}`}
+            rotulo="Gerar descrição com IA"
+            tipo="descricao"
+            limite={limiteDescricao}
+            valorAtual={descricaoAnuncio}
+            disponivel={iaDisponivel}
+            desabilitado={!nomeProduto.trim()}
+            motivoDesabilitado={!nomeProduto.trim() ? "Informe o nome do produto primeiro." : undefined}
+            gerar={(instrucaoExtra, tom) =>
+              gerarDescricaoAnuncioIA({
+                produtoNome: nomeAnuncio.trim() || nomeProduto,
+                sku: produtoVinculado?.sku ?? null,
+                canal: lojaSelecionada?.canalNome ?? null,
+                loja: lojaSelecionada?.nome ?? null,
+                descricaoAtual: descricaoAnuncio || null,
+                componentes: componentes.map((c) => ({ nome: c.nome, quantidade: c.quantidade })),
+                palavrasChave: produtoVinculado?.palavras_chave ?? undefined,
+                limite: limiteDescricao,
+                tom,
+                instrucaoExtra,
+              })
+            }
+            onUsar={setDescricaoAnuncio}
           />
         </div>
         <label className="block text-xs font-medium text-text-secondary mb-1.5">

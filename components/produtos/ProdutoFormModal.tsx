@@ -332,13 +332,38 @@ export function ProdutoFormModal({
                 custo: custoComposto(form.custo_base, form.insumos),
                 precoVenda: form.preco_venda,
                 garantiaDias: form.garantia_dias ?? null,
+                palavrasChave: form.palavras_chave ?? undefined,
                 limite: LIMITE_DESCRICAO,
                 tom,
                 instrucaoExtra,
               })
             }
-            onUsar={(texto) => setForm({ ...form, descricao: texto })}
+            // Funcional: onUsar e onPalavrasChave rodam em sequência, e `{ ...form }` na
+            // segunda apagaria o que a primeira acabou de pôr.
+            onUsar={(texto) => setForm((f) => ({ ...f, descricao: texto }))}
+            onPalavrasChave={(termos) => setForm((f) => ({ ...f, palavras_chave: termos.slice(0, 20) }))}
           />
+          {!!form.palavras_chave?.length && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-text-tertiary">Palavras-chave guardadas (usadas no próximo título)</span>
+                <button
+                  type="button"
+                  className="text-xs text-accent hover:underline"
+                  onClick={() => setForm((f) => ({ ...f, palavras_chave: null }))}
+                >
+                  Limpar
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {form.palavras_chave.map((termo) => (
+                  <span key={termo} className="px-2 py-0.5 rounded bg-accent-soft text-accent text-xs">
+                    {termo}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </FormField>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Estoque Atual">

@@ -16,6 +16,7 @@ import {
   vendaSchema,
   iaChaveSchema,
   iaCadastroSchema,
+  canalLimitesSchema,
   SENHA_MIN,
   SENHA_MAX,
 } from "./validacao";
@@ -330,5 +331,29 @@ describe("schemas de cadastro de IA", () => {
     expect(iaCadastroSchema.safeParse({ ...base, modelo: "modelo com espaço" }).success).toBe(false);
     expect(iaCadastroSchema.safeParse({ ...base, modelo: "https://evil.example/x" }).success).toBe(false);
     expect(iaCadastroSchema.safeParse({ ...base, modelo: "" }).success).toBe(false);
+  });
+});
+
+describe("7.4: limites do canal, tom e palavras-chave", () => {
+  it("limites do canal seguem o check do banco; vazio = sem limite próprio", () => {
+    expect(validar(canalLimitesSchema, { limite_titulo: 60, limite_descricao: 10000 })).toEqual({
+      limite_titulo: 60,
+      limite_descricao: 10000,
+    });
+    expect(validar(canalLimitesSchema, { limite_titulo: null, limite_descricao: null }).limite_titulo).toBeNull();
+    expect(() => validar(canalLimitesSchema, { limite_titulo: 10, limite_descricao: null })).toThrow(/mínimo 20/);
+    expect(() => validar(canalLimitesSchema, { limite_titulo: null, limite_descricao: 20000 })).toThrow(/10.000/);
+  });
+
+  it("contexto da IA aceita tom conhecido e recusa inventado", () => {
+    expect(validar(iaContextoSchema, { produtoNome: "X", tom: "premium", limite: 60 }).tom).toBe("premium");
+    expect(() => validar(iaContextoSchema, { produtoNome: "X", tom: "agressivo" })).toThrow(/tom/);
+  });
+
+  it("produto guarda no máximo 20 palavras-chave", () => {
+    const r = produtoSchema.shape.palavras_chave.safeParse(Array.from({ length: 21 }, (_, i) => `t${i}`));
+    expect(r.success).toBe(false);
+    expect(produtoSchema.shape.palavras_chave.safeParse(["camiseta", "dry fit"]).success).toBe(true);
+    expect(produtoSchema.shape.palavras_chave.safeParse(undefined).success).toBe(true);
   });
 });

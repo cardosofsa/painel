@@ -35,76 +35,24 @@ import {
   criarProdutosDeAnuncio,
 } from "@/app/(painel)/precificacao/actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import type {
+  PrecificacaoHist,
+  VisaoPrecificacao,
+  AnuncioSalvo,
+  ProdutoOpcao,
+  PrecificacaoProps,
+} from "@/lib/precificacao-tipos";
+
+export type {
+  PrecificacaoHist,
+  LojaOpcao,
+  VariacaoSalva,
+  AnuncioSalvo,
+  ProdutoOpcao,
+  VisaoPrecificacao,
+  PrecificacaoProps,
+} from "@/lib/precificacao-tipos";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-
-export interface PrecificacaoHist {
-  id: string;
-  produto_id: string | null;
-  produto_nome: string;
-  canal: string | null;
-  titulo_anuncio: string | null;
-  loja_id: string | null;
-  componentes: ComponenteKit[] | null;
-  taxa_extra_valor: number | null;
-  taxa_extra_tipo: "percentual" | "fixo" | null;
-  custo: number;
-  taxa_variavel_pct: number;
-  taxa_fixa: number;
-  taxa_adicional_pct: number;
-  imposto_pct: number;
-  margem_pct: number | null;
-  preco_calculado: number;
-  lucro: number;
-  criado_em: string;
-  origem: "individual" | "em_massa";
-}
-
-export interface LojaOpcao {
-  id: string;
-  nome: string;
-  canalNome: string;
-  tipoTaxa: "faixas" | "fixo";
-  comissaoPct: number;
-  taxaFixa: number;
-  taxaExtraValor: number | null;
-  taxaExtraTipo: "percentual" | "fixo" | null;
-  faixas: FaixaComissao[];
-  /** Limites de texto do canal (0037). null = vale o teto do sistema. */
-  limiteTitulo: number | null;
-  limiteDescricao: number | null;
-}
-
-export interface VariacaoSalva {
-  id: string;
-  nome_variacao: string;
-  multiplicador: number;
-  custo: number;
-  taxa_variavel_pct: number;
-  taxa_fixa: number;
-  taxa_adicional_pct: number;
-  imposto_pct: number;
-  taxa_extra_valor: number | null;
-  taxa_extra_tipo: "percentual" | "fixo" | null;
-  margem_pct: number | null;
-  preco_calculado: number;
-  lucro: number;
-}
-
-export interface AnuncioSalvo {
-  id: string;
-  nome_anuncio: string;
-  titulo_anuncio: string | null;
-  criado_em: string;
-  variacoes: VariacaoSalva[];
-}
-
-export interface ProdutoOpcao {
-  id: string;
-  sku: string;
-  nome: string;
-  custo: number;
-  preco_venda: number;
-}
 
 /**
  * Chave de lista para item ainda não salvo (insumo do kit, concorrente sem produto
@@ -116,17 +64,6 @@ let sequenciaLocal = 0;
 function proximoIdLocal(prefixo: string): string {
   sequenciaLocal += 1;
   return `${prefixo}-${Date.now().toString(36)}-${sequenciaLocal}`;
-}
-
-export type VisaoPrecificacao = "individual" | "variacoes" | "massa" | "historico";
-
-export interface PrecificacaoProps {
-  historico: PrecificacaoHist[];
-  produtos: ProdutoOpcao[];
-  aliquotaDasPadrao: number;
-  lojas: LojaOpcao[];
-  anuncios: AnuncioSalvo[];
-  concorrentesPorProduto: Record<string, Concorrente[]>;
 }
 
 /**
@@ -151,6 +88,7 @@ export function usePrecificacao({
   const [produtoId, setProdutoId] = useState<string | null>(null);
   const [nomeProduto, setNomeProduto] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
+  const [descricaoAnuncio, setDescricaoAnuncio] = useState("");
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
   const [historicoDetalhe, setHistoricoDetalhe] = useState<PrecificacaoHist | null>(null);
   const [mostrarDetalheHistorico, setMostrarDetalheHistorico] = useState(false);
@@ -466,6 +404,7 @@ export function usePrecificacao({
   function duplicarHistorico(h: PrecificacaoHist) {
     setNomeProduto(h.produto_nome);
     setNomeAnuncio(h.titulo_anuncio ?? "");
+    setDescricaoAnuncio(h.descricao_anuncio ?? "");
     setProdutoId(null);
     if (h.loja_id && lojas.some((l) => l.id === h.loja_id)) {
       setModoTaxas("loja");
@@ -613,6 +552,7 @@ export function usePrecificacao({
           produto_nome: nomeProduto,
           canal: lojaSelecionada ? `${lojaSelecionada.canalNome} — ${lojaSelecionada.nome}` : null,
           titulo_anuncio: nomeAnuncio.trim() || null,
+          descricao_anuncio: descricaoAnuncio.trim() || null,
           loja_id: lojaId,
           componentes: componentesSalvos,
           taxa_extra_valor: taxaExtraValorEfetivo,
@@ -665,6 +605,8 @@ export function usePrecificacao({
     setNomeProduto,
     nomeAnuncio,
     setNomeAnuncio,
+    descricaoAnuncio,
+    setDescricaoAnuncio,
     sugestoesAbertas,
     setSugestoesAbertas,
     sugestoesProdutos,
