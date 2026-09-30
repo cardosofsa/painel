@@ -7,7 +7,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { validar, iaContextoSchema } from "@/lib/validacao";
+import { validar, iaContextoSchema, iaPrecoSchema } from "@/lib/validacao";
 import { lancarErroSupabase } from "@/lib/erros";
 import { comResultado, type Resultado } from "@/lib/acao";
 import { ErroIA } from "./erro";
@@ -31,12 +31,20 @@ import {
   type ContextoTema,
   type TemaSugerido,
 } from "./prompts";
+import {
+  montarPromptPreco,
+  esquemaPreco,
+  interpretarPreco,
+  hashContextoPreco,
+  type ContextoPrecoIA,
+  type DiagnosticoPreco,
+} from "./prompts-preco";
 
 /** Os dois tipos de texto — título de anúncio e descrição de produto. */
 export type TipoGeracaoTexto = "titulo" | "descricao";
 
 /** Todo tipo de geração, incluindo "tema" (que não é texto — ver `gerarTemaVitrineIA`). */
-export type TipoGeracao = TipoGeracaoTexto | "tema";
+export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco";
 
 export interface SugestaoGerada {
   texto: string;
@@ -70,6 +78,8 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number }
   descricao: { maxTokens: 2600, temperatura: 0.7 },
   // Sete campos curtos (4 cores, 1 fonte, título, mensagem) — cabe folgado em 500 tokens.
   tema: { maxTokens: 500, temperatura: 0.8 },
+  // Diagnóstico + até 5 estratégias de 280 caracteres, mais o raciocínio.
+  preco: { maxTokens: 1600, temperatura: 0.6 },
 };
 
 /** Falha de infraestrutura: o usuário não fez nada errado, então a cota volta. */
@@ -174,74 +184,118 @@ async function executar(
   };
 }
 
-export interface SugestaoTema {
-  tema: TemaSugerido;
+/** Saldo e origem que toda geração devolve para a tela. */
+interface MetaGeracao {
   usadas: number;
   limite: number;
+  /** Veio do cache: não custou nada e não consumiu cota. */
   doCache: boolean;
   origem: "sistema" | "propria";
   provedorRotulo: string | null;
 }
 
 /**
- * Gera o tema da vitrine. Função irmã de `executar()`, não uma variante dela: um tema não
- * é "um texto" (a saída de `interpretarTema` é um objeto de cores + fonte), então forçá-lo
- * dentro do shape de `SugestaoGerada` criaria campos que não fazem sentido nos dois
- * sentidos. O que É compartilhado — `ia_buscar_sugestao`/`ia_consumir`/`ia_guardar_sugestao`,
- * a ordem dos passos, o estorno — é reaproveitado por inteiro; só o schema, o prompt e o
- * interpretador são próprios.
+ * Caminho comum das gerações que devolvem JSON estruturado (tema da vitrine, Vixe Preço e
+ * os próximos usos da 7.7): mesmos passos de `executar()` — cache, cota, chamada, estorno —
+ * com prompt, esquema e interpretador próprios de cada tipo.
  *
- * O tema fica guardado como JSON serializado dentro da coluna `texto` de `ia_sugestoes` —
- * mesma tabela dos outros dois tipos, sem coluna nova, porque `palavras_chave` e
- * `posicionamento` simplesmente ficam vazios para este tipo.
+ * O cache guarda a resposta CRUA do modelo e reinterpreta na leitura. Antes o tema
+ * guardava o objeto já interpretado (camelCase) e o lia de volta com `interpretarTema`,
+ * que espera snake_case: todo acerto de cache devolvia as cores de reserva.
  */
-export async function gerarTemaVitrineIA(
+async function executarEstruturado<T>(
   supabase: SupabaseClient,
-  contexto: ContextoTema,
-): Promise<Resultado<SugestaoTema>> {
-  return comResultado(() => executarTema(supabase, contexto));
-}
-
-async function executarTema(supabase: SupabaseClient, contexto: ContextoTema): Promise<SugestaoTema> {
-  if (!contexto.descricaoLoja?.trim()) throw new Error("Descreva a loja em uma frase para a IA sugerir um tema.");
-  if (contexto.descricaoLoja.length > 500) throw new Error("Descrição da loja longa demais.");
+  tipo: TipoGeracao,
+  hashBase: string,
+  prompt: string,
+  esquema: object,
+  interpretar: (bruto: string) => T,
+): Promise<{ valor: T } & MetaGeracao> {
   const ia = await resolverProvedor(supabase);
-
-  const { maxTokens, temperatura } = PARAMETROS.tema;
-  const hash = `${hashContextoTema(contexto)}:${ia.provedor}:${ia.modelo}`;
+  const { maxTokens, temperatura } = PARAMETROS[tipo];
+  const hash = `${hashBase}:${ia.provedor}:${ia.modelo}`;
 
   const { data: cache, error: erroCache } = await supabase
-    .rpc("ia_buscar_sugestao", { p_tipo: "tema", p_hash: hash })
+    .rpc("ia_buscar_sugestao", { p_tipo: tipo, p_hash: hash })
     .maybeSingle<{ texto: string }>();
   if (erroCache) lancarErroSupabase(erroCache);
 
   if (cache) {
     const saldo = await lerSaldo(supabase, ia);
-    return { tema: interpretarTema(cache.texto), ...saldo, doCache: true, origem: ia.origem, provedorRotulo: rotuloIA(ia) };
+    return { valor: interpretar(cache.texto), ...saldo, doCache: true, origem: ia.origem, provedorRotulo: rotuloIA(ia) };
   }
 
-  const { usadas, limite: limiteDiario } = await reservarCota(supabase, "tema", ia);
+  const { usadas, limite } = await reservarCota(supabase, tipo, ia);
 
   let bruto: string;
   try {
-    bruto = await chamarProvedor(ia, montarPromptTema(contexto), { maxTokens, temperatura, esquema: esquemaTema() });
+    bruto = await chamarProvedor(ia, prompt, { maxTokens, temperatura, esquema });
   } catch (e) {
     await estornarSePreciso(supabase, ia, e);
     throw e;
   }
 
-  const tema = interpretarTema(bruto);
+  const valor = interpretar(bruto);
 
   const { error: erroGuardar } = await supabase.rpc("ia_guardar_sugestao", {
-    p_tipo: "tema",
+    p_tipo: tipo,
     p_hash: hash,
-    p_texto: JSON.stringify(tema),
+    p_texto: bruto,
     p_palavras_chave: [],
     p_posicionamento: null,
   });
-  if (erroGuardar) console.error("[ia] falha ao gravar cache de tema:", erroGuardar.message);
+  if (erroGuardar) console.error(`[ia] falha ao gravar cache de ${tipo}:`, erroGuardar.message);
 
-  return { tema, usadas, limite: limiteDiario, doCache: false, origem: ia.origem, provedorRotulo: rotuloIA(ia) };
+  return { valor, usadas, limite, doCache: false, origem: ia.origem, provedorRotulo: rotuloIA(ia) };
+}
+
+export interface SugestaoTema extends MetaGeracao {
+  tema: TemaSugerido;
+}
+
+/** Tema da vitrine: um objeto de cores + fonte, não um texto (ver `prompts-tema.ts`). */
+export async function gerarTemaVitrineIA(
+  supabase: SupabaseClient,
+  contexto: ContextoTema,
+): Promise<Resultado<SugestaoTema>> {
+  return comResultado(async () => {
+    if (!contexto.descricaoLoja?.trim()) throw new Error("Descreva a loja em uma frase para a IA sugerir um tema.");
+    if (contexto.descricaoLoja.length > 500) throw new Error("Descrição da loja longa demais.");
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "tema",
+      hashContextoTema(contexto),
+      montarPromptTema(contexto),
+      esquemaTema(),
+      interpretarTema,
+    );
+    return { tema: valor, ...meta };
+  });
+}
+
+export interface SugestaoPreco extends MetaGeracao {
+  diagnostico: DiagnosticoPreco;
+}
+
+/**
+ * Vixe Preço: diagnóstico e estratégias sobre números que a tela já calculou. Diagnóstico
+ * vazio conta como falha do modelo (a vaga não volta: o token foi gasto do outro lado).
+ */
+export async function gerarDiagnosticoPrecoIA(supabase: SupabaseClient, contexto: unknown): Promise<Resultado<SugestaoPreco>> {
+  return comResultado(async () => {
+    const ctx = validar(iaPrecoSchema, contexto) as ContextoPrecoIA;
+    const limites = { precoMinimoViavel: ctx.precoMinimoViavel ?? null, precoAtual: ctx.preco };
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "preco",
+      hashContextoPreco(ctx),
+      montarPromptPreco(ctx),
+      esquemaPreco(),
+      (bruto) => interpretarPreco(bruto, limites),
+    );
+    if (!valor.diagnostico && valor.estrategias.length === 0) throw new ErroIA("vazio", "diagnóstico vazio");
+    return { diagnostico: valor, ...meta };
+  });
 }
 
 function rotuloIA(ia: ProvedorResolvido): string | null {

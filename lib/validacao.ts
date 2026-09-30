@@ -583,3 +583,29 @@ export const iaCadastroSchema = iaChaveSchema.extend({
     .regex(/^[\w.@+-]+(\/[\w.@+-]+)?(:[\w.-]+)?$/, "Nome de modelo inválido"),
   padrao: z.boolean(),
 });
+
+/**
+ * Contexto do Vixe Preço (7.6). Os números vêm da tela, calculados por `lib/vixe/preco.ts`;
+ * aqui só se barra valor absurdo antes de gastar token. Quem mandar número falso engana só
+ * a própria consulta.
+ */
+const valorPreco = z.number().finite().min(0).max(10_000_000);
+export const iaPrecoSchema = z.object({
+  produtoNome: z.string().trim().min(1, "Informe o produto").max(300),
+  canal: z.string().trim().max(120).nullish(),
+  objetivo: z.enum(["volume", "margem"]),
+  custo: valorPreco,
+  preco: z.number().finite().positive("Informe o preço atual").max(10_000_000),
+  lucro: z.number().finite().min(-10_000_000).max(10_000_000),
+  margemPct: z.number().finite().min(-100).max(1),
+  comissaoPct: z.number().finite().min(0).max(100),
+  tarifa: valorPreco,
+  impostoPct: z.number().finite().min(0).max(1),
+  precoMinimoViavel: valorPreco.nullish(),
+  zonaMorta: z.object({ inicio: valorPreco, fim: valorPreco, precoMelhor: valorPreco, ganhoLiquido: valorPreco }).nullish(),
+  concorrencia: z
+    .object({ min: valorPreco, max: valorPreco, media: valorPreco, diferencaPct: z.number().finite().min(-100).max(100), quantidade: z.number().int().min(1).max(100) })
+    .nullish(),
+  precoPsicologico: valorPreco.nullish(),
+  instrucaoExtra: z.string().trim().max(300, "Instrução longa demais").nullish(),
+});

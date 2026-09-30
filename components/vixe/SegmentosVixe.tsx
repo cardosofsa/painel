@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
  */
 const SEGMENTOS: { href: string; rotulo: string; pronto: boolean }[] = [
   { href: "/vixe", rotulo: "Alertas", pronto: true },
-  { href: "/vixe/preco", rotulo: "Preço", pronto: false },
+  { href: "/vixe/preco", rotulo: "Preço", pronto: true },
   { href: "/vixe/insights", rotulo: "Insights", pronto: false },
   { href: "/vixe/vitrine", rotulo: "Vitrine", pronto: false },
 ];
