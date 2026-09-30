@@ -3,11 +3,9 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CircleCheck, ExternalLink } from "lucide-react";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-import { IconeLampiao } from "@/components/ui/IconeLampiao";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL } from "@/lib/format";
 import { ROTULO_CATEGORIA, type AcaoAlerta, type AlertaVixe, type CategoriaAlerta, type Gravidade } from "@/lib/vixe/alertas";
@@ -108,12 +106,7 @@ export function CentralAlertas({
 
   return (
     <>
-      <PageHeader eyebrow="Vixe" title="Alertas" />
-
-      <div className="flex items-center gap-3 mb-5">
-        <span className="w-9 h-9 rounded-md bg-accent-soft text-accent flex items-center justify-center shrink-0">
-          <IconeLampiao size={18} />
-        </span>
+      <div className="mb-5">
         <p className="text-sm text-text-secondary">
           {alertas.length === 0
             ? "Vixe, tudo em ordem por aqui. Nenhum alerta agora."

@@ -1,5 +1,5 @@
 -- ============================================================
--- 0038 — Aba "Vixe Alertas" (Fase 7.5).
+-- 0038 — Aba "Vixe" (Fase 7.5). Uma entrada no menu; os segmentos ficam dentro dela.
 --
 -- A central de alertas só lê dados que a própria conta já tem (RLS de sempre) e esconde o
 -- que for de aba não liberada (ex.: fiado sem acesso a Financeiro/Clientes). Por isso ela

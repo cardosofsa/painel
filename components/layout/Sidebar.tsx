@@ -86,8 +86,8 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">
         {grupos.map((grupo) => (
-          <div key={grupo.label}>
-            {!recolhida && (
+          <div key={grupo.label ?? "sem-titulo"}>
+            {!recolhida && grupo.label && (
               <div className="px-3 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-text-tertiary truncate">
                 {grupo.label}
               </div>

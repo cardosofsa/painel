@@ -32,7 +32,7 @@ const ROTULOS: Record<AbaId, string> = {
   estoque: "Estoque",
   financeiro: "Financeiro",
   catalogo: "Catálogo",
-  vixe: "Vixe Alertas",
+  vixe: "Vixe",
   configuracoes: "Configurações",
 };
 

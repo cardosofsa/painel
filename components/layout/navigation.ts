@@ -51,8 +51,10 @@ export const NAV_ITEMS: { id: AbaId; href: string; label: string; icon: IconeNav
  * por um item de menu. `configuracoes` também fica de fora: é renderizado à parte, sempre
  * por último, igual já era o link de Administração do master.
  */
-export const GRUPOS_NAV: { label: string; itens: AbaId[] }[] = [
-  { label: "Vixe", itens: ["vixe"] },
+export const GRUPOS_NAV: { label: string | null; itens: AbaId[] }[] = [
+  // Sem título: a Vixe é uma entrada só no menu; os segmentos dela (Alertas, Preço…)
+  // ficam dentro da própria página, para não encher a barra lateral.
+  { label: null, itens: ["vixe"] },
   { label: "Vendas", itens: ["pdv", "vendas", "catalogo"] },
   { label: "Produtos & Estoque", itens: ["precificacao", "produtos", "estoque"] },
   { label: "Compras", itens: ["compras", "fornecedores"] },

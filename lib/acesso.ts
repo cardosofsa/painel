@@ -22,7 +22,7 @@ export const ABAS = [
   { id: "estoque", label: "Estoque", href: "/estoque" },
   { id: "financeiro", label: "Financeiro", href: "/financeiro" },
   { id: "catalogo", label: "Catálogo", href: "/catalogo" },
-  { id: "vixe", label: "Vixe Alertas", href: "/vixe" },
+  { id: "vixe", label: "Vixe", href: "/vixe" },
   { id: "configuracoes", label: "Configurações", href: "/configuracoes" },
 ] as const;
 
