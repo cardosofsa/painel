@@ -9,15 +9,10 @@ import { contaLiberada, podeAcessarRota, rotaEhLivre } from "@/lib/acesso";
  * não existindo por construção, não por sorte.
  */
 function ehOuComeca(pathname: string, bases: string[]): boolean {
-  return bases.some(
-    (base) => pathname === base || pathname.startsWith(`${base}/`),
-  );
+  return bases.some((base) => pathname === base || pathname.startsWith(`${base}/`));
 }
 
-export async function updateSession(
-  request: NextRequest,
-  csp: { nonce: string; politica: string },
-) {
+export async function updateSession(request: NextRequest, csp: { nonce: string; politica: string }) {
   /**
    * O nonce e a política precisam ir TAMBÉM nos cabeçalhos da requisição, não só na
    * resposta: é de lá que o Next lê o nonce para carimbar nas tags <script> que ele mesmo
@@ -46,13 +41,9 @@ export async function updateSession(
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = proximaResposta();
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          );
+          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options));
         },
       },
     },
@@ -94,25 +85,23 @@ export async function updateSession(
    */
   // A página inicial é pública: o Google exige que ela explique a finalidade do app. Quem já
   // tem sessão é mandado para /dashboard pela própria página.
-  const isPublicRoute =
-    pathname === "/" ||
-    ehOuComeca(pathname, [
-      "/login",
-      "/signup",
-      "/recuperar",
-      "/auth/callback",
-      "/auth/reset",
-      "/vitrine",
-      // Exigidas pelo Google (e pela LGPD) para publicar o login: precisam abrir sem sessão.
-      "/privacidade",
-      "/termos",
-      // Quem faz o pedido é o cliente final, que nunca teve login. Sem esta linha o POST
-      // viraria um redirect para /login e o carrinho nunca enviaria.
-      "/api/vitrine",
-      // O navegador reporta violação de CSP sem sessão. Sem esta linha o relatório viraria
-      // um redirect para /login e a violação nunca chegaria ao log.
-      "/api/csp-report",
-    ]);
+  const isPublicRoute = pathname === "/" || ehOuComeca(pathname, [
+    "/login",
+    "/signup",
+    "/recuperar",
+    "/auth/callback",
+    "/auth/reset",
+    "/vitrine",
+    // Exigidas pelo Google (e pela LGPD) para publicar o login: precisam abrir sem sessão.
+    "/privacidade",
+    "/termos",
+    // Quem faz o pedido é o cliente final, que nunca teve login. Sem esta linha o POST
+    // viraria um redirect para /login e o carrinho nunca enviaria.
+    "/api/vitrine",
+    // O navegador reporta violação de CSP sem sessão. Sem esta linha o relatório viraria
+    // um redirect para /login e a violação nunca chegaria ao log.
+    "/api/csp-report",
+  ]);
 
   /**
    * Só login e cadastro. `/auth/reset` NÃO pode entrar aqui: nesse ponto o usuário já tem

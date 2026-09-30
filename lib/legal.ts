@@ -5,4 +5,4 @@ export const RESPONSAVEL = {
 } as const;
 
 /** Data da última revisão dos textos legais; mude junto com qualquer alteração de conteúdo. */
-export const ATUALIZADO_EM = "29 de setembro de 2026";
+export const ATUALIZADO_EM = "30 de setembro de 2026";

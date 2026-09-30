@@ -609,3 +609,35 @@ export const iaPrecoSchema = z.object({
   precoPsicologico: valorPreco.nullish(),
   instrucaoExtra: z.string().trim().max(300, "Instrução longa demais").nullish(),
 });
+
+/** Ferramentas de texto da Vixe (7.7). Cada uma valida só o que manda para a IA. */
+const produtoTextoIaSchema = z.object({
+  nome: z.string().trim().min(1, "Escolha o produto").max(300),
+  descricao: z.string().trim().max(5000).nullish(),
+  categoria: z.string().trim().max(120).nullish(),
+  preco: z.number().finite().min(0).max(10_000_000).nullish(),
+  garantiaDias: z.number().int().min(1).max(3650).nullish(),
+  emEstoque: z.boolean().nullish(),
+});
+export const iaFerramentaSchemas = {
+  resposta: z.object({
+    produto: produtoTextoIaSchema,
+    pergunta: z.string().trim().min(3, "Cole a pergunta do cliente").max(500, "Pergunta longa demais"),
+    nomeNegocio: z.string().trim().max(120).nullish(),
+  }),
+  cobranca: z.object({
+    parcelas: z
+      .array(z.object({ valor: z.number().finite().positive().max(10_000_000), vencimento: z.string().max(20), atrasoDias: z.number().int().min(0).max(10_000) }))
+      .min(1, "Esse cliente não tem parcela em aberto")
+      .max(24),
+    nomeNegocio: z.string().trim().max(120).nullish(),
+    tom: z.enum(["gentil", "firme"]),
+  }),
+  legenda: z.object({
+    produto: produtoTextoIaSchema,
+    rede: z.enum(["whatsapp", "instagram"]),
+    linkVitrine: urlPublica.nullish(),
+    instrucaoExtra: z.string().trim().max(300, "Instrução longa demais").nullish(),
+  }),
+  atributos: z.object({ produto: produtoTextoIaSchema }),
+} as const;

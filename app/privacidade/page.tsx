@@ -58,8 +58,10 @@ export default function PrivacidadePage() {
         <li>Vercel: hospedagem do sistema.</li>
         <li>Google: login com Google, quando você escolhe essa opção.</li>
         <li>
-          Provedor de IA (Google Gemini, OpenAI, Anthropic ou OpenRouter): só ao gerar texto. Enviamos apenas os dados do
-          produto, como nome, categoria e características. Nunca enviamos dados de clientes, compradores ou vendas.
+          Provedor de IA (Google Gemini, OpenAI, Anthropic ou OpenRouter): só quando você pede uma geração. Enviamos os
+          dados do produto (nome, categoria, características, preço e custos), o texto que você digitar no pedido e, na
+          mensagem de cobrança, apenas valores e datas das parcelas. Nunca enviamos nome, telefone, e-mail ou endereço de
+          clientes e compradores.
         </li>
         <li>ViaCEP: consulta de endereço a partir do CEP digitado, sem identificar a pessoa.</li>
       </ul>

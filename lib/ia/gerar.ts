@@ -7,7 +7,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { validar, iaContextoSchema, iaPrecoSchema } from "@/lib/validacao";
+import { validar, iaContextoSchema, iaPrecoSchema, iaFerramentaSchemas } from "@/lib/validacao";
 import { lancarErroSupabase } from "@/lib/erros";
 import { comResultado, type Resultado } from "@/lib/acao";
 import { ErroIA } from "./erro";
@@ -39,12 +39,29 @@ import {
   type ContextoPrecoIA,
   type DiagnosticoPreco,
 } from "./prompts-preco";
+import {
+  montarPromptResposta,
+  montarPromptCobranca,
+  montarPromptLegenda,
+  montarPromptAtributos,
+  esquemaTexto,
+  esquemaAtributos,
+  interpretarTexto,
+  interpretarAtributos,
+  hashFerramenta,
+  LIMITE_TEXTO,
+  type FerramentaTexto,
+  type ContextoResposta,
+  type ContextoCobranca,
+  type ContextoLegenda,
+  type ContextoAtributos,
+} from "./prompts-textos";
 
 /** Os dois tipos de texto — título de anúncio e descrição de produto. */
 export type TipoGeracaoTexto = "titulo" | "descricao";
 
 /** Todo tipo de geração, incluindo "tema" (que não é texto — ver `gerarTemaVitrineIA`). */
-export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco";
+export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | FerramentaTexto;
 
 export interface SugestaoGerada {
   texto: string;
@@ -80,6 +97,11 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number }
   tema: { maxTokens: 500, temperatura: 0.8 },
   // Diagnóstico + até 5 estratégias de 280 caracteres, mais o raciocínio.
   preco: { maxTokens: 1600, temperatura: 0.6 },
+  // Ferramentas de texto da 7.7: respostas curtas.
+  resposta: { maxTokens: 700, temperatura: 0.5 },
+  cobranca: { maxTokens: 700, temperatura: 0.6 },
+  legenda: { maxTokens: 1200, temperatura: 0.9 },
+  atributos: { maxTokens: 900, temperatura: 0.2 },
 };
 
 /** Falha de infraestrutura: o usuário não fez nada errado, então a cota volta. */
@@ -338,4 +360,59 @@ async function lerSaldo(supabase: SupabaseClient, ia: ProvedorResolvido): Promis
     .rpc("ia_estado_teste")
     .maybeSingle<{ usadas: number; limite: number; ilimitado: boolean }>();
   return { usadas: data?.usadas ?? 0, limite: data?.ilimitado ? 0 : (data?.limite ?? 0) };
+}
+
+export interface ResultadoFerramenta extends MetaGeracao {
+  texto: string;
+  hashtags: string[];
+  atributos: { nome: string; valor: string }[];
+}
+
+/**
+ * Ferramentas de texto da Vixe (7.7). Uma função só para as quatro: muda o prompt, o
+ * esquema e o interpretador; cache, cota e estorno são os de `executarEstruturado`.
+ */
+export async function gerarFerramentaIA(
+  supabase: SupabaseClient,
+  ferramenta: FerramentaTexto,
+  contexto: unknown,
+): Promise<Resultado<ResultadoFerramenta>> {
+  return comResultado(async () => {
+    if (ferramenta === "atributos") {
+      const ctx = validar(iaFerramentaSchemas.atributos, contexto) as ContextoAtributos;
+      const { valor, ...meta } = await executarEstruturado(
+        supabase,
+        "atributos",
+        hashFerramenta(ferramenta, ctx),
+        montarPromptAtributos(ctx),
+        esquemaAtributos(),
+        interpretarAtributos,
+      );
+      return { texto: "", hashtags: [], atributos: valor, ...meta };
+    }
+
+    let prompt: string;
+    let ctx: unknown;
+    if (ferramenta === "resposta") {
+      ctx = validar(iaFerramentaSchemas.resposta, contexto);
+      prompt = montarPromptResposta(ctx as ContextoResposta);
+    } else if (ferramenta === "cobranca") {
+      ctx = validar(iaFerramentaSchemas.cobranca, contexto);
+      prompt = montarPromptCobranca(ctx as ContextoCobranca);
+    } else {
+      ctx = validar(iaFerramentaSchemas.legenda, contexto);
+      prompt = montarPromptLegenda(ctx as ContextoLegenda);
+    }
+    const limite = LIMITE_TEXTO[ferramenta];
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      ferramenta,
+      hashFerramenta(ferramenta, ctx),
+      prompt,
+      esquemaTexto(ferramenta === "legenda"),
+      (bruto) => interpretarTexto(bruto, limite),
+    );
+    if (!valor.texto) throw new ErroIA("vazio", "texto vazio");
+    return { ...valor, atributos: [], ...meta };
+  });
 }
