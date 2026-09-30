@@ -10,7 +10,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { validar, iaContextoSchema } from "@/lib/validacao";
 import { lancarErroSupabase } from "@/lib/erros";
 import { comResultado, type Resultado } from "@/lib/acao";
-import { chamarGemini, ErroIA } from "./gemini";
+import { ErroIA } from "./erro";
+import { PROVEDORES, chamarProvedor } from "./provedores";
+import { resolverProvedor, type ProvedorResolvido } from "./resolver";
 import {
   montarPromptTitulo,
   montarPromptDescricao,
@@ -44,6 +46,10 @@ export interface SugestaoGerada {
   limite: number;
   /** Veio do cache: não custou nada e não consumiu cota. */
   doCache: boolean;
+  /** Qual IA atendeu: a do sistema (com cota) ou a própria da conta. */
+  origem: "sistema" | "propria";
+  /** Ex.: "OpenAI (ChatGPT) · gpt-4.1-mini" — só para mostrar na tela. */
+  provedorRotulo: string | null;
 }
 
 /**
@@ -88,11 +94,14 @@ async function executar(
   // 1. Valida. É o freio de custo de token, antes de qualquer coisa que gaste.
   const ctx = validar(iaContextoSchema, contexto) as ContextoIA;
 
-  // 2. Sem chave não há o que fazer — e a cota não pode ser cobrada por isso.
-  if (!process.env.GEMINI_API_KEY) throw new ErroIA("sem_chave");
+  // 2. Qual IA atende esta conta. Sem nenhuma, não há o que fazer — e a cota não pode ser
+  //    cobrada por isso.
+  const ia = await resolverProvedor(supabase);
 
   const { maxTokens, temperatura, limite } = PARAMETROS[tipo];
-  const hash = hashContexto(ctx, tipo);
+  // O provedor e o modelo entram no hash: o mesmo produto gerado por IAs diferentes dá
+  // textos diferentes, e o cache de uma não pode responder pela outra.
+  const hash = `${hashContexto(ctx, tipo)}:${ia.provedor}:${ia.modelo}`;
 
   // 3. Autentica E tenta o cache na mesma ida ao banco. É aqui que conta suspensa é
   //    barrada — por isso este passo vem antes de falar com o Google.
@@ -110,17 +119,13 @@ async function executar(
       posicionamento: cache.posicionamento,
       ...saldo,
       doCache: true,
+      origem: ia.origem,
+      provedorRotulo: rotuloIA(ia),
     };
   }
 
-  // 5. Erro de cache: reserva a vaga do dia. Estourou a cota, para aqui.
-  const { data: cota, error: erroCota } = await supabase
-    .rpc("ia_consumir", { p_tipo: tipo })
-    .maybeSingle<{ usadas: number; limite: number }>();
-  if (erroCota) lancarErroSupabase(erroCota);
-
-  const usadas = cota?.usadas ?? 0;
-  const limiteDiario = cota?.limite ?? 0;
+  // 5. Erro de cache: reserva a vaga. Estourou a cota, para aqui.
+  const { usadas, limite: limiteDiario } = await reservarCota(supabase, tipo, ia);
 
   // 6. Gera.
   const temConcorrente = concorrentesRelevantes(ctx.concorrentes, ctx.precoCalculado ?? ctx.precoVenda).length > 0;
@@ -128,7 +133,7 @@ async function executar(
 
   let bruto: string;
   try {
-    bruto = await chamarGemini(prompt, {
+    bruto = await chamarProvedor(ia, prompt, {
       maxTokens,
       temperatura,
       esquema: esquemaSugestao(tipo === "titulo" && temConcorrente),
@@ -136,10 +141,7 @@ async function executar(
   } catch (e) {
     // 7. Falha de infraestrutura não come a cota de quem não teve culpa. Bloqueio de
     //    conteúdo e resposta vazia NÃO estornam: o token já foi gasto do outro lado.
-    if (e instanceof ErroIA && ESTORNAVEIS.has(e.codigo)) {
-      const { error } = await supabase.rpc("ia_estornar");
-      if (error) console.error("[ia] falha ao estornar cota:", error.message);
-    }
+    await estornarSePreciso(supabase, ia, e);
     throw e;
   }
 
@@ -157,7 +159,14 @@ async function executar(
   // perde só a economia da próxima vez.
   if (erroGuardar) console.error("[ia] falha ao gravar cache:", erroGuardar.message);
 
-  return { ...sugestao, usadas, limite: limiteDiario, doCache: false };
+  return {
+    ...sugestao,
+    usadas,
+    limite: limiteDiario,
+    doCache: false,
+    origem: ia.origem,
+    provedorRotulo: rotuloIA(ia),
+  };
 }
 
 export interface SugestaoTema {
@@ -165,6 +174,8 @@ export interface SugestaoTema {
   usadas: number;
   limite: number;
   doCache: boolean;
+  origem: "sistema" | "propria";
+  provedorRotulo: string | null;
 }
 
 /**
@@ -189,10 +200,10 @@ export async function gerarTemaVitrineIA(
 async function executarTema(supabase: SupabaseClient, contexto: ContextoTema): Promise<SugestaoTema> {
   if (!contexto.descricaoLoja?.trim()) throw new Error("Descreva a loja em uma frase para a IA sugerir um tema.");
   if (contexto.descricaoLoja.length > 500) throw new Error("Descrição da loja longa demais.");
-  if (!process.env.GEMINI_API_KEY) throw new ErroIA("sem_chave");
+  const ia = await resolverProvedor(supabase);
 
   const { maxTokens, temperatura } = PARAMETROS.tema;
-  const hash = hashContextoTema(contexto);
+  const hash = `${hashContextoTema(contexto)}:${ia.provedor}:${ia.modelo}`;
 
   const { data: cache, error: erroCache } = await supabase
     .rpc("ia_buscar_sugestao", { p_tipo: "tema", p_hash: hash })
@@ -201,25 +212,16 @@ async function executarTema(supabase: SupabaseClient, contexto: ContextoTema): P
 
   if (cache) {
     const saldo = await lerSaldo(supabase);
-    return { tema: interpretarTema(cache.texto), ...saldo, doCache: true };
+    return { tema: interpretarTema(cache.texto), ...saldo, doCache: true, origem: ia.origem, provedorRotulo: rotuloIA(ia) };
   }
 
-  const { data: cota, error: erroCota } = await supabase
-    .rpc("ia_consumir", { p_tipo: "tema" })
-    .maybeSingle<{ usadas: number; limite: number }>();
-  if (erroCota) lancarErroSupabase(erroCota);
-
-  const usadas = cota?.usadas ?? 0;
-  const limiteDiario = cota?.limite ?? 0;
+  const { usadas, limite: limiteDiario } = await reservarCota(supabase, "tema", ia);
 
   let bruto: string;
   try {
-    bruto = await chamarGemini(montarPromptTema(contexto), { maxTokens, temperatura, esquema: esquemaTema() });
+    bruto = await chamarProvedor(ia, montarPromptTema(contexto), { maxTokens, temperatura, esquema: esquemaTema() });
   } catch (e) {
-    if (e instanceof ErroIA && ESTORNAVEIS.has(e.codigo)) {
-      const { error } = await supabase.rpc("ia_estornar");
-      if (error) console.error("[ia] falha ao estornar cota:", error.message);
-    }
+    await estornarSePreciso(supabase, ia, e);
     throw e;
   }
 
@@ -234,7 +236,37 @@ async function executarTema(supabase: SupabaseClient, contexto: ContextoTema): P
   });
   if (erroGuardar) console.error("[ia] falha ao gravar cache de tema:", erroGuardar.message);
 
-  return { tema, usadas, limite: limiteDiario, doCache: false };
+  return { tema, usadas, limite: limiteDiario, doCache: false, origem: ia.origem, provedorRotulo: rotuloIA(ia) };
+}
+
+function rotuloIA(ia: ProvedorResolvido): string | null {
+  return ia.origem === "propria" ? `${PROVEDORES[ia.provedor].nome} · ${ia.modelo}` : null;
+}
+
+/**
+ * Reserva a vaga da geração. Só a IA do SISTEMA passa pela cota (`ia_consumir`): quem usa a
+ * própria chave paga o próprio uso. (O teto de segurança da chave própria entra na 7.3.)
+ */
+async function reservarCota(
+  supabase: SupabaseClient,
+  tipo: TipoGeracao,
+  ia: ProvedorResolvido,
+): Promise<{ usadas: number; limite: number }> {
+  if (ia.origem === "propria") return { usadas: 0, limite: 0 };
+  const { data, error } = await supabase
+    .rpc("ia_consumir", { p_tipo: tipo })
+    .maybeSingle<{ usadas: number; limite: number }>();
+  if (error) lancarErroSupabase(error);
+  return { usadas: data?.usadas ?? 0, limite: data?.limite ?? 0 };
+}
+
+/** Falha de infraestrutura devolve a vaga — mas só se ela foi de fato reservada. */
+async function estornarSePreciso(supabase: SupabaseClient, ia: ProvedorResolvido, e: unknown) {
+  if (ia.origem !== "sistema") return;
+  if (e instanceof ErroIA && ESTORNAVEIS.has(e.codigo)) {
+    const { error } = await supabase.rpc("ia_estornar");
+    if (error) console.error("[ia] falha ao estornar cota:", error.message);
+  }
 }
 
 /**

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient";
 
 export default async function ProdutosPage() {
@@ -117,6 +118,8 @@ export default async function ProdutosPage() {
     markup_pct: r.markup_pct,
   }));
 
+  const iaDisponivel = await iaDisponivelParaConta(supabase);
+
   return (
     <ProdutosClient
       produtos={produtos}
@@ -130,7 +133,7 @@ export default async function ProdutosPage() {
       grupos={gruposRes.data ?? []}
       // Lido no servidor de propósito: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no
       // cliente o bundler trocaria por `undefined` calado e o botão sumiria sempre.
-      iaDisponivel={Boolean(process.env.GEMINI_API_KEY)}
+      iaDisponivel={iaDisponivel}
     />
   );
 }

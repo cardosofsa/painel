@@ -17,7 +17,11 @@
  * existe mais `thinkingBudget: 0`.
  */
 
-import { traduzirErroIA } from "@/lib/erros";
+import { ErroIA } from "./erro";
+import { requisitarJson } from "./http";
+
+// Compatibilidade: o resto do projeto e os testes importam estes nomes daqui.
+export { ErroIA, mapearStatusHttp, type CodigoErroIA } from "./erro";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
@@ -32,28 +36,6 @@ const MODELO_PADRAO = "gemini-3.5-flash-lite";
 /** Modelos que NÃO aceitam `minimal`; para eles o mínimo cobrável é `low`. */
 const SEM_NIVEL_MINIMO = ["3.8-flash", "3-pro", "3.1-pro", "2.5-"];
 
-export type CodigoErroIA =
-  | "sem_chave"
-  | "chave_invalida"
-  | "limite_api"
-  | "sem_credito"
-  | "timeout"
-  | "bloqueado_seguranca"
-  | "vazio"
-  | "servidor"
-  | "rede"
-  | "desconhecido";
-
-export class ErroIA extends Error {
-  constructor(
-    readonly codigo: CodigoErroIA,
-    readonly detalhe?: string,
-  ) {
-    super(traduzirErroIA(codigo));
-    this.name = "ErroIA";
-  }
-}
-
 export interface OpcoesGeracao {
   /** Teto de custo por chamada. Atenção: inclui os tokens de raciocínio. */
   maxTokens: number;
@@ -61,19 +43,6 @@ export interface OpcoesGeracao {
   /** JSON Schema da resposta. Ver `esquemaSugestao` em `./prompts`. */
   esquema: object;
   timeoutMs?: number;
-}
-
-/** Puro. Traduz o status HTTP no nosso código de erro. */
-export function mapearStatusHttp(status: number, corpo: string): CodigoErroIA {
-  if (status === 401 || status === 403) return "chave_invalida";
-  // Cota da conta Google acabou. A doc é explícita: não retentar.
-  if (status === 402) return "sem_credito";
-  if (status === 429) return "limite_api";
-  if (status === 504) return "timeout";
-  if (status >= 500) return "servidor";
-  // 400 com chave ruim é comum o suficiente para valer a checagem no corpo.
-  if (status === 400 && /api.?key/i.test(corpo)) return "chave_invalida";
-  return "desconhecido";
 }
 
 /** Códigos de bloqueio de conteúdo da API — todos viram a mesma mensagem para o usuário. */
@@ -148,44 +117,53 @@ export function montarCorpo(prompt: string, o: OpcoesGeracao, modelo: string) {
   };
 }
 
+export interface CredencialGemini {
+  chave: string;
+  modelo: string;
+}
+
+/** Credencial da IA DO SISTEMA (variáveis de ambiente). Lida dentro da função, não no módulo. */
+export function credencialDoSistema(): CredencialGemini | null {
+  const chave = process.env.GEMINI_API_KEY;
+  if (!chave) return null;
+  return { chave, modelo: process.env.GEMINI_MODEL || MODELO_PADRAO };
+}
+
 /**
  * Faz a chamada e devolve o texto cru do modelo. Lança `ErroIA`.
  *
  * Sem retry automático de propósito: retry multiplica o custo e, num erro sistêmico,
  * vira amplificação contra a própria conta. Retentar é clique do usuário em "Gerar outro".
+ *
+ * `cred` vem da conta (chave própria, já decifrada) ou do sistema; sem ela usa a do sistema.
  */
-export async function chamarGemini(prompt: string, o: OpcoesGeracao): Promise<string> {
-  // Lida DENTRO da função: em escopo de módulo, um import inocente derrubaria o app de
-  // quem não usa IA.
-  const chave = process.env.GEMINI_API_KEY;
-  if (!chave) throw new ErroIA("sem_chave");
+export async function chamarGemini(prompt: string, o: OpcoesGeracao, cred?: CredencialGemini): Promise<string> {
+  const c = cred ?? credencialDoSistema();
+  if (!c) throw new ErroIA("sem_chave");
 
-  const modelo = process.env.GEMINI_MODEL || MODELO_PADRAO;
-
-  let resposta: Response;
-  try {
-    resposta = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: {
-        // Header, nunca query string: URL vai parar em log de proxy e de erro.
-        "x-goog-api-key": chave,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(montarCorpo(prompt, o, modelo)),
-      signal: AbortSignal.timeout(o.timeoutMs ?? 12_000),
-    });
-  } catch (e) {
-    const nome = e instanceof Error ? e.name : "";
-    throw new ErroIA(nome === "TimeoutError" || nome === "AbortError" ? "timeout" : "rede", nome);
-  }
-
-  if (!resposta.ok) {
-    const corpo = await resposta.text().catch(() => "");
-    // O corpo pode trazer eco do prompt — vai para o log do servidor, nunca para a tela.
-    console.error("[ia] http", resposta.status, corpo.slice(0, 300));
-    throw new ErroIA(mapearStatusHttp(resposta.status, corpo));
-  }
-
-  const json = await resposta.json().catch(() => null);
+  const json = await requisitarJson(ENDPOINT, {
+    method: "POST",
+    // Header, nunca query string: URL vai parar em log de proxy e de erro.
+    headers: { "x-goog-api-key": c.chave },
+    body: montarCorpo(prompt, o, c.modelo),
+    timeoutMs: o.timeoutMs ?? 12_000,
+  });
   return extrairTextoGemini(json);
+}
+
+/**
+ * Modelos que a chave enxerga e que geram texto. Também serve de "testar conexão": chave
+ * errada estoura aqui como `chave_invalida`.
+ */
+export async function listarModelosGemini(chave: string): Promise<string[]> {
+  const json = (await requisitarJson("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
+    method: "GET",
+    headers: { "x-goog-api-key": chave },
+    timeoutMs: 10_000,
+  })) as { models?: { name?: string; supportedGenerationMethods?: string[] }[] } | null;
+
+  return (json?.models ?? [])
+    .filter((m) => m.name?.startsWith("models/gemini") && (m.supportedGenerationMethods ?? []).includes("generateContent"))
+    .map((m) => (m.name as string).replace("models/", ""))
+    .sort();
 }

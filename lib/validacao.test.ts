@@ -14,6 +14,8 @@ import {
   acaoEmMassaProdutosSchema,
   produtoSchema,
   vendaSchema,
+  iaChaveSchema,
+  iaCadastroSchema,
   SENHA_MIN,
   SENHA_MAX,
 } from "./validacao";
@@ -305,5 +307,28 @@ describe("vendaSchema — garantia por item", () => {
     for (const ruim of [0, -5, 1.5, 3651]) {
       expect(vendaSchema.safeParse(comGarantia(ruim)).success).toBe(false);
     }
+  });
+});
+
+describe("schemas de cadastro de IA", () => {
+  it("aceita chave normal e apara espaços nas pontas", () => {
+    const r = iaChaveSchema.safeParse({ provedor: "openai", chave: "  sk-proj-abc123XYZ  " });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.chave).toBe("sk-proj-abc123XYZ");
+  });
+
+  it("recusa chave com espaço no meio, curta demais ou provedor desconhecido", () => {
+    expect(iaChaveSchema.safeParse({ provedor: "openai", chave: "sk abc def ghi" }).success).toBe(false);
+    expect(iaChaveSchema.safeParse({ provedor: "openai", chave: "curta" }).success).toBe(false);
+    expect(iaChaveSchema.safeParse({ provedor: "grok", chave: "sk-abcdefgh" }).success).toBe(false);
+  });
+
+  it("modelo aceita ids do OpenRouter (com / e :) e recusa lixo", () => {
+    const base = { provedor: "openrouter" as const, chave: "sk-or-v1-abcdefgh", padrao: true };
+    expect(iaCadastroSchema.safeParse({ ...base, modelo: "google/gemini-2.5-flash:free" }).success).toBe(true);
+    expect(iaCadastroSchema.safeParse({ ...base, modelo: "gpt-4.1-mini" }).success).toBe(true);
+    expect(iaCadastroSchema.safeParse({ ...base, modelo: "modelo com espaço" }).success).toBe(false);
+    expect(iaCadastroSchema.safeParse({ ...base, modelo: "https://evil.example/x" }).success).toBe(false);
+    expect(iaCadastroSchema.safeParse({ ...base, modelo: "" }).success).toBe(false);
   });
 });

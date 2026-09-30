@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { cofreDisponivel } from "@/lib/ia/cofre";
+import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
 import {
   ConfiguracoesClient,
   type Categoria,
@@ -116,6 +118,14 @@ export default async function ConfiguracoesPage() {
     skus: contagemPorCategoria.get(c.id) ?? 0,
   }));
 
+  // Nunca seleciona `chave_cifrada`: a tela só precisa de provedor, modelo e final da chave.
+  // Tabela ausente (0035 não aplicada) = lista vazia, sem derrubar a página.
+  const { data: iasData } = await supabase
+    .from("ia_provedores")
+    .select("id, provedor, modelo, chave_final, padrao")
+    .order("criado_em");
+  const ias = (iasData ?? []) as IaCadastrada[];
+
   return (
     <ConfiguracoesClient
       categorias={categorias}
@@ -126,6 +136,9 @@ export default async function ConfiguracoesPage() {
       formasPagamento={(formasPagamentoRes.data ?? []) as FormaPagamento[]}
       perfil={perfil}
       email={user?.email ?? ""}
+      ias={ias}
+      cofreOk={cofreDisponivel()}
+      iaSistemaOk={Boolean(process.env.GEMINI_API_KEY)}
     />
   );
 }

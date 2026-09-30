@@ -147,8 +147,9 @@ export function traduzirErroAuth(erro: ErroAuth): string {
  */
 const POR_CODIGO_IA: Record<string, string> = {
   sem_chave: "A geração por IA não está configurada neste sistema.",
-  chave_invalida: "A chave da IA foi recusada. Avise o administrador do sistema.",
-  sem_credito: "Os créditos de IA do sistema acabaram. Avise o administrador.",
+  chave_invalida: "A chave da IA foi recusada. Confira a chave em Configurações → IA (ou avise o administrador, se estiver usando a IA do sistema).",
+  modelo_invalido: "O modelo escolhido não existe para essa chave. Escolha outro em Configurações → IA.",
+  sem_credito: "O saldo dessa IA acabou. Se for a IA do sistema, avise o administrador; se for a sua, recarregue no site do provedor ou escolha outra em Configurações → IA.",
   limite_api: "A IA está sobrecarregada no momento. Tente de novo em alguns minutos.",
   timeout: "A IA demorou demais para responder. Tente de novo.",
   bloqueado_seguranca: "A IA recusou gerar texto para este produto. Ajuste o nome ou a descrição e tente de novo.",

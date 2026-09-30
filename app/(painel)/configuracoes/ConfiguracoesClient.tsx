@@ -41,6 +41,7 @@ import {
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { AbaConta } from "@/components/configuracoes/AbaConta";
+import { AbaIA, type IaCadastrada } from "@/components/configuracoes/AbaIA";
 import { FaixasModal, CanalModal, LojaModal } from "@/components/configuracoes/ModaisCanal";
 import { ContaModal, FormaPagamentoModal, ArmazemModal, ROTULO_TIPO_FORMA } from "@/components/configuracoes/ModaisCadastro";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
@@ -93,7 +94,7 @@ export const ICONES_CANAL: Record<string, LucideIcon> = {
   Facebook: Users,
 };
 
-const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Conta"] as const;
+const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "IA", "Conta"] as const;
 const ABAS_TABS = ABAS.map((a) => ({ value: a, label: a }));
 
 export function ConfiguracoesClient({
@@ -105,6 +106,9 @@ export function ConfiguracoesClient({
   formasPagamento,
   perfil,
   email,
+  ias,
+  cofreOk,
+  iaSistemaOk,
 }: {
   categorias: Categoria[];
   canais: Canal[];
@@ -114,6 +118,9 @@ export function ConfiguracoesClient({
   formasPagamento: FormaPagamento[];
   perfil: PerfilNegocio;
   email: string;
+  ias: IaCadastrada[];
+  cofreOk: boolean;
+  iaSistemaOk: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -547,6 +554,7 @@ export function ConfiguracoesClient({
           </Card>
         </div>
       )}
+      {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} />}
       {aba === "Conta" && (
         <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} />
       )}

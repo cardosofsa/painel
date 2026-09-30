@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { CatalogoClient, type Catalogo } from "./CatalogoClient";
 import type { PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
 import { enderecoEmLinha } from "@/lib/comprovante";
@@ -81,6 +82,8 @@ export default async function CatalogoPage() {
     itens: (p.pedidos_vitrine_itens ?? []).map((i) => ({ ...i, preco_unitario: Number(i.preco_unitario) })),
   }));
 
+  const iaDisponivel = await iaDisponivelParaConta(supabase);
+
   return (
     <CatalogoClient
       catalogos={(catalogosRes.data ?? []) as Catalogo[]}
@@ -91,7 +94,7 @@ export default async function CatalogoPage() {
       formasPagamento={formasRes.data ?? []}
       // Lido no servidor de propósito: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no
       // cliente ela sempre voltaria `undefined` — só um booleano atravessa.
-      iaDisponivel={Boolean(process.env.GEMINI_API_KEY)}
+      iaDisponivel={iaDisponivel}
     />
   );
 }

@@ -14,6 +14,9 @@ export interface SugestaoIAUI {
   usadas: number;
   limite: number;
   doCache: boolean;
+  /** Qual IA atendeu. Ausente = IA do sistema. */
+  origem?: "sistema" | "propria";
+  provedorRotulo?: string | null;
 }
 
 interface Props {
@@ -212,7 +215,9 @@ export function GeradorIA({
                   <Zap size={11} /> cache
                 </span>
               )}
-              {sugestao.usadas}/{sugestao.limite} hoje
+              {sugestao.origem === "propria"
+                ? `Sua IA · ${sugestao.provedorRotulo ?? ""}`
+                : `${sugestao.usadas}/${sugestao.limite} hoje`}
             </span>
           </div>
         </div>

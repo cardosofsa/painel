@@ -537,3 +537,25 @@ export const dadosEmpresaSchema = z.object({
   cidade: z.string().trim().max(200).nullable(),
   uf: z.string().trim().max(2).nullable(),
 });
+
+/** Chave de IA que o usuário cola: sem espaço/quebra de linha (sinal de cópia errada). */
+export const iaChaveSchema = z.object({
+  provedor: z.enum(["gemini", "openai", "anthropic", "openrouter"]),
+  chave: z
+    .string()
+    .trim()
+    .min(8, "A chave parece curta demais")
+    .max(400, "A chave parece longa demais")
+    .regex(/^\S+$/, "A chave não pode ter espaços nem quebras de linha"),
+});
+
+export const iaCadastroSchema = iaChaveSchema.extend({
+  /** Ids de modelo: `nome`, `fornecedor/nome`, com sufixo opcional `:variante` (OpenRouter). */
+  modelo: z
+    .string()
+    .trim()
+    .min(1, "Escolha o modelo")
+    .max(200)
+    .regex(/^[\w.@+-]+(\/[\w.@+-]+)?(:[\w.-]+)?$/, "Nome de modelo inválido"),
+  padrao: z.boolean(),
+});
