@@ -375,7 +375,14 @@ export function ConfiguracoesClient({
       </TabPanel>
 
       <ContaModal key={`conta-${modalConta === "novo" ? "novo" : modalConta?.id ?? "fechado"}`} conta={modalConta} onClose={() => setModalConta(null)} onSave={salvarContaHandler} salvando={pending} />
-      <ArmazemModal key={`armazem-${modalArmazem === "novo" ? "novo" : modalArmazem?.id ?? "fechado"}`} armazem={modalArmazem} onClose={() => setModalArmazem(null)} onSave={salvarArmazemHandler} salvando={pending} />
+      <ArmazemModal
+        key={`armazem-${modalArmazem === "novo" ? "novo" : modalArmazem?.id ?? "fechado"}`}
+        armazem={modalArmazem}
+        lojas={lojas.map((l) => ({ id: l.id, nome: l.nome, canal: canais.find((c) => c.id === l.canal_id)?.nome ?? "" }))}
+        onClose={() => setModalArmazem(null)}
+        onSave={salvarArmazemHandler}
+        salvando={pending}
+      />
       <FormaPagamentoModal
         key={`forma-pagamento-${modalFormaPagamento === "novo" ? "novo" : modalFormaPagamento?.id ?? "fechado"}`}
         formaPagamento={modalFormaPagamento}

@@ -39,10 +39,27 @@ export interface ProdutoInput {
   garantia_dias: number | null;
   /** Palavras-chave da IA (0037). Ausente = não mexe na coluna. */
   palavras_chave?: string[] | null;
+  /** Envio (0041). */
+  peso_g?: number | null;
+  altura_cm?: number | null;
+  largura_cm?: number | null;
+  comprimento_cm?: number | null;
   ativo: boolean;
   grupo_id: string | null;
   variante_nome: string | null;
   loja_ids: string[];
+}
+
+/**
+ * Sem nenhuma medida preenchida, as colunas de envio nem vão no insert/update: antes da
+ * 0041 elas não existem, e mandar `null` nelas derrubaria o cadastro de produto inteiro.
+ */
+function semEnvioVazio<T extends Record<string, unknown>>(p: T): T {
+  const chaves = ["peso_g", "altura_cm", "largura_cm", "comprimento_cm"] as const;
+  if (chaves.some((k) => p[k] != null)) return p;
+  const copia = { ...p };
+  for (const k of chaves) delete copia[k];
+  return copia;
 }
 
 function revalidateTudo() {
@@ -89,7 +106,7 @@ export async function criarProduto(dados: ProdutoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
-    const { data, error } = await supabase.from("produtos").insert(produto).select("id").single();
+    const { data, error } = await supabase.from("produtos").insert(semEnvioVazio(produto)).select("id").single();
     if (error) lancarErroSupabase(error);
     if (!data) throw new Error("Erro ao criar produto.");
     await sincronizarLojasProduto(supabase, data.id, loja_ids);
@@ -101,7 +118,7 @@ export async function atualizarProduto(id: string, dados: ProdutoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
-    const { error } = await supabase.from("produtos").update(produto).eq("id", id);
+    const { error } = await supabase.from("produtos").update(semEnvioVazio(produto)).eq("id", id);
     if (error) lancarErroSupabase(error);
     await sincronizarLojasProduto(supabase, id, loja_ids);
     revalidateTudo();

@@ -80,6 +80,11 @@ export const produtoSchema = z.object({
   garantia_dias: z.number().int("Garantia em dias inteiros").min(1).max(3650).nullable(),
   // Guardadas pela IA para reaproveitar no próximo título (0037).
   palavras_chave: z.array(z.string().trim().min(1).max(40)).max(20).nullable().optional(),
+  // Envio (0041): peso da embalagem pronta e medidas. Opcionais antes da migração.
+  peso_g: z.number().int().min(1).max(1_000_000).nullable().optional(),
+  altura_cm: z.number().positive().max(1000).nullable().optional(),
+  largura_cm: z.number().positive().max(1000).nullable().optional(),
+  comprimento_cm: z.number().positive().max(1000).nullable().optional(),
   ativo: z.boolean(),
   grupo_id: uuidOpcional,
   variante_nome: z.string().trim().max(100).nullable(),
@@ -156,6 +161,8 @@ export const armazemSchema = z.object({
   nome: textoCurto,
   endereco: z.string().trim().max(500),
   lojas_abastecidas: z.array(z.string().trim().max(200)).max(100),
+  // Lojas cadastradas que este armazém abastece (0041). Opcional: antes da migração não existe.
+  loja_ids: z.array(uuid).max(100).optional(),
 });
 
 export const formaPagamentoSchema = z.object({
@@ -657,3 +664,16 @@ export const iaVitrineSchema = z.object({
 export const secoesVitrineSchema = z
   .record(z.string(), z.unknown())
   .refine((v) => JSON.stringify(v).length <= 6000, "Seções da vitrine grandes demais");
+
+/** Movimentação por armazém (0041): entrada leva custo, saída não; transferência tem destino. */
+export const movimentacaoArmazemSchema = z
+  .object({
+    produtoId: uuid,
+    armazemId: uuid,
+    tipo: z.enum(["entrada", "saida", "transferencia"]),
+    quantidade: z.number().int("Quantidade precisa ser inteira").min(1, "Quantidade mínima é 1").max(1_000_000),
+    custoUnitario: dinheiro.nullable(),
+    destinoId: uuid.nullable(),
+    motivo: z.string().trim().max(200).nullable(),
+  })
+  .refine((v) => v.tipo !== "transferencia" || (!!v.destinoId && v.destinoId !== v.armazemId), "Escolha um armazém de destino diferente do de origem.");

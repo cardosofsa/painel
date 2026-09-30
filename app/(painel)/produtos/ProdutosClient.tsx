@@ -13,6 +13,7 @@ import { ProductThumb } from "@/components/ui/ProductThumb";
 import { BarraFiltros, FiltroChips, FiltroSelect } from "@/components/ui/BarraFiltros";
 import { ExportarModal } from "@/components/ui/ExportarModal";
 import type { TabelaExport } from "@/lib/exportar";
+import type { DimensoesEnvio } from "@/components/produtos/CamposEnvio";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
 import { formatBRL } from "@/lib/format";
@@ -114,6 +115,10 @@ function formVazio(armazemPadrao: string | null): ProdutoInput {
     saida_media_semanal: 0,
     garantia_dias: null,
     palavras_chave: null,
+    peso_g: null,
+    altura_cm: null,
+    largura_cm: null,
+    comprimento_cm: null,
     ativo: true,
     grupo_id: null,
     variante_nome: null,
@@ -274,6 +279,10 @@ export function ProdutosClient({
       saida_media_semanal: p.saida_media_semanal,
       garantia_dias: p.garantia_dias,
       palavras_chave: p.palavras_chave ?? null,
+      peso_g: p.peso_g ?? null,
+      altura_cm: p.altura_cm ?? null,
+      largura_cm: p.largura_cm ?? null,
+      comprimento_cm: p.comprimento_cm ?? null,
       ativo: p.ativo,
       grupo_id: p.grupo_id,
       variante_nome: p.variante_nome,
@@ -396,6 +405,18 @@ export function ProdutosClient({
       if (r.ok) setSelecionados([]);
     });
   }
+
+  /** Medidas padrão de cada grupo de variação: as da primeira variante que tem alguma. */
+  const padroesEnvio = useMemo(() => {
+    const m: Record<string, DimensoesEnvio> = {};
+    for (const p of produtos) {
+      if (!p.grupo_id || m[p.grupo_id]) continue;
+      if (p.peso_g != null || p.altura_cm != null || p.largura_cm != null || p.comprimento_cm != null) {
+        m[p.grupo_id] = { peso_g: p.peso_g ?? null, altura_cm: p.altura_cm ?? null, largura_cm: p.largura_cm ?? null, comprimento_cm: p.comprimento_cm ?? null };
+      }
+    }
+    return m;
+  }, [produtos]);
 
   const produtoDetalhe = produtos.find((p) => p.id === detalheId) ?? null;
   // Deriva do prop (não do snapshot em `editando`) pra a lista de fotos atualizar sozinha
@@ -599,6 +620,7 @@ export function ProdutosClient({
         armazens={armazens}
         lojas={lojas}
         grupos={grupos}
+        padroesEnvio={padroesEnvio}
         iaDisponivel={iaDisponivel}
         produtosParaInsumo={produtosParaInsumo}
         enviandoImagem={enviandoImagem}

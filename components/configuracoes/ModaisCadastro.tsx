@@ -111,21 +111,35 @@ export function FormaPagamentoModal({
 
 export function ArmazemModal({
   armazem,
+  lojas: lojasCadastradas,
   onClose,
   onSave,
   salvando,
 }: {
   armazem: Armazem | "novo" | null;
+  /** Lojas cadastradas em Canais de Venda, para marcar quais este armazém abastece. */
+  lojas: { id: string; nome: string; canal: string }[];
   onClose: () => void;
   onSave: (dados: ArmazemInput) => void;
   salvando: boolean;
 }) {
-  const base = armazem && armazem !== "novo" ? armazem : { nome: "", endereco: "", lojas_abastecidas: [] as string[] };
+  const base = armazem && armazem !== "novo" ? armazem : { nome: "", endereco: "", lojas_abastecidas: [] as string[], loja_ids: [] as string[] };
   const [nome, setNome] = useState(base.nome);
   const [endereco, setEndereco] = useState(base.endereco);
-  const [lojas, setLojas] = useState(base.lojas_abastecidas.join(", "));
-  const [inicial] = useState({ nome: base.nome, endereco: base.endereco, lojas: base.lojas_abastecidas.join(", ") });
-  const sujo = useFormularioSujo({ nome, endereco, lojas }, inicial);
+  // Marcadas: pelos ids (0041) ou, em cadastro antigo, pelo nome que bate com uma loja.
+  const [marcadas, setMarcadas] = useState<string[]>(() =>
+    base.loja_ids?.length
+      ? base.loja_ids
+      : lojasCadastradas.filter((l) => base.lojas_abastecidas.some((n) => n.trim().toLowerCase() === l.nome.trim().toLowerCase())).map((l) => l.id),
+  );
+  // Nomes antigos que não viraram loja cadastrada continuam, para não sumirem sem aviso.
+  const [avulsas] = useState(() => base.lojas_abastecidas.filter((n) => !lojasCadastradas.some((l) => l.nome.trim().toLowerCase() === n.trim().toLowerCase())));
+  const [inicial] = useState({ nome: base.nome, endereco: base.endereco, marcadas: [...marcadas].sort().join(",") });
+  const sujo = useFormularioSujo({ nome, endereco, marcadas: [...marcadas].sort().join(",") }, inicial);
+
+  function alternar(id: string) {
+    setMarcadas((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]));
+  }
 
   return (
     <Modal open={!!armazem} onClose={onClose} title={armazem === "novo" ? "Adicionar Armazém" : "Editar Armazém"} sujo={sujo}>
@@ -135,13 +149,21 @@ export function ArmazemModal({
       <FormField label="Endereço">
         <input className={inputClass} value={endereco} onChange={(e) => setEndereco(e.target.value)} />
       </FormField>
-      <FormField label="Lojas Abastecidas">
-        <input
-          className={inputClass}
-          value={lojas}
-          onChange={(e) => setLojas(e.target.value)}
-          placeholder="Separe por vírgula: Perfumaria & Couro, Moto Parts"
-        />
+      <FormField label="Lojas abastecidas">
+        {lojasCadastradas.length === 0 ? (
+          <p className="text-xs text-text-tertiary">Cadastre suas lojas em Canais de Venda para marcar aqui quais este armazém abastece.</p>
+        ) : (
+          <div className="max-h-48 overflow-y-auto rounded-md border border-border divide-y divide-border">
+            {lojasCadastradas.map((l) => (
+              <label key={l.id} className="flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-surface-2">
+                <input type="checkbox" className="w-4 h-4 accent-accent" checked={marcadas.includes(l.id)} onChange={() => alternar(l.id)} />
+                <span className="text-text-primary">{l.nome}</span>
+                {l.canal && <span className="text-xs text-text-tertiary ml-auto">{l.canal}</span>}
+              </label>
+            ))}
+          </div>
+        )}
+        {avulsas.length > 0 && <p className="text-xs text-text-tertiary mt-1">Também registradas antes: {avulsas.join(", ")}.</p>}
       </FormField>
       <div className="flex gap-2 mt-5">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
@@ -154,10 +176,8 @@ export function ArmazemModal({
             onSave({
               nome,
               endereco,
-              lojas_abastecidas: lojas
-                .split(",")
-                .map((l) => l.trim())
-                .filter(Boolean),
+              lojas_abastecidas: [...lojasCadastradas.filter((l) => marcadas.includes(l.id)).map((l) => l.nome), ...avulsas],
+              loja_ids: marcadas,
             })
           }
           loading={salvando}

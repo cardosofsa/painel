@@ -276,29 +276,37 @@ export async function removerFormaPagamento(id: string) {
 export interface ArmazemInput {
   nome: string;
   endereco: string;
+  /** Nomes das lojas (mostrados nos cartões). Com `loja_ids`, são derivados das marcadas. */
   lojas_abastecidas: string[];
+  loja_ids?: string[];
+}
+
+/**
+ * Grava o armazém; sem a 0041 a coluna `loja_ids` não existe (PGRST204), e aí grava de novo
+ * só com os nomes — o cadastro não pode travar por falta de migração.
+ */
+async function gravarArmazem(id: string | null, dados: ArmazemInput) {
+  const supabase = await createClient();
+  const v = validar(armazemSchema, dados);
+  const tentar = (linha: typeof v) => (id ? supabase.from("armazens").update(linha).eq("id", id) : supabase.from("armazens").insert(linha));
+  let { error } = await tentar(v);
+  if (error?.code === "PGRST204" && v.loja_ids) {
+    const { loja_ids: _ignorado, ...semIds } = v;
+    void _ignorado;
+    ({ error } = await tentar(semIds));
+  }
+  if (error) lancarErroSupabase(error);
+  revalidatePath(PATH);
+  revalidatePath("/estoque");
+  revalidatePath("/produtos");
 }
 
 export async function criarArmazem(dados: ArmazemInput) {
-  return comResultado(async () => {
-    const supabase = await createClient();
-    const { error } = await supabase.from("armazens").insert(validar(armazemSchema, dados));
-    if (error) lancarErroSupabase(error);
-    revalidatePath(PATH);
-    revalidatePath("/estoque");
-    revalidatePath("/produtos");
-  });
+  return comResultado(() => gravarArmazem(null, dados));
 }
 
 export async function atualizarArmazem(id: string, dados: ArmazemInput) {
-  return comResultado(async () => {
-    const supabase = await createClient();
-    const { error } = await supabase.from("armazens").update(validar(armazemSchema, dados)).eq("id", id);
-    if (error) lancarErroSupabase(error);
-    revalidatePath(PATH);
-    revalidatePath("/estoque");
-    revalidatePath("/produtos");
-  });
+  return comResultado(() => gravarArmazem(id, dados));
 }
 
 export async function removerArmazem(id: string) {

@@ -7,6 +7,7 @@ import { ProductThumb } from "@/components/ui/ProductThumb";
 import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { GeradorIA } from "@/components/ia/GeradorIA";
+import { CamposEnvio, type DimensoesEnvio } from "@/components/produtos/CamposEnvio";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { formatBRL } from "@/lib/format";
@@ -32,6 +33,7 @@ export function ProdutoFormModal({
   armazens,
   lojas,
   grupos,
+  padroesEnvio = {},
   iaDisponivel,
   produtosParaInsumo,
   enviandoImagem,
@@ -54,6 +56,8 @@ export function ProdutoFormModal({
   armazens: Opcao[];
   lojas: Opcao[];
   grupos: Opcao[];
+  /** Medidas de envio padrão por grupo de variação. */
+  padroesEnvio?: Record<string, DimensoesEnvio>;
   iaDisponivel: boolean;
   produtosParaInsumo: { id: string; nome: string; custo: number }[];
   enviandoImagem: boolean;
@@ -161,7 +165,10 @@ export function ProdutoFormModal({
                   criarGrupo();
                   return;
                 }
-                setForm({ ...form, grupo_id: grupoId, variante_nome: grupoId ? form.variante_nome : null });
+                // Variação nova já nasce com as medidas do grupo; dá para mudar logo abaixo.
+                const semMedidas = form.peso_g == null && form.altura_cm == null && form.largura_cm == null && form.comprimento_cm == null;
+                const padrao = grupoId ? padroesEnvio[grupoId] : undefined;
+                setForm({ ...form, grupo_id: grupoId, variante_nome: grupoId ? form.variante_nome : null, ...(!editando && semMedidas && padrao ? padrao : {}) });
               }}
             >
               <option value="">Produto avulso</option>
@@ -401,6 +408,11 @@ export function ProdutoFormModal({
             />
           </FormField>
         </div>
+        <CamposEnvio
+          valor={{ peso_g: form.peso_g ?? null, altura_cm: form.altura_cm ?? null, largura_cm: form.largura_cm ?? null, comprimento_cm: form.comprimento_cm ?? null }}
+          onChange={(d) => setForm((f) => ({ ...f, ...d }))}
+          padrao={form.grupo_id ? (padroesEnvio[form.grupo_id] ?? null) : null}
+        />
         <FormField
           label="Garantia (dias, opcional)"
           dica="Vem preenchida no carrinho do PDV (dá pra ajustar por venda) e só aparece no comprovante se houver."

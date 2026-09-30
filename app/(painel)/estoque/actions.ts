@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, movimentacaoEstoqueSchema, entradaEstoqueComCustoSchema } from "@/lib/validacao";
+import { validar, movimentacaoEstoqueSchema, entradaEstoqueComCustoSchema, movimentacaoArmazemSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 
 /** Só pra saída: entrada passou a exigir custo, ver `registrarEntradaComCusto` abaixo. */
@@ -57,5 +57,48 @@ export async function registrarEntradaComCusto(dados: {
     revalidatePath("/produtos");
     revalidatePath("/dashboard");
     revalidatePath("/precificacao");
+  });
+}
+
+/**
+ * Movimentação com armazém (0041): entrada (com custo médio), saída ou transferência entre
+ * armazéns. Tudo validado e aplicado no banco (`movimentar_estoque_armazem`,
+ * `transferir_estoque`).
+ */
+export async function movimentarEstoqueArmazem(dados: {
+  produtoId: string;
+  armazemId: string;
+  tipo: "entrada" | "saida" | "transferencia";
+  quantidade: number;
+  custoUnitario: number | null;
+  destinoId: string | null;
+  motivo: string | null;
+}) {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const v = validar(movimentacaoArmazemSchema, dados);
+    const { error } =
+      v.tipo === "transferencia"
+        ? await supabase.rpc("transferir_estoque", {
+            p_produto_id: v.produtoId,
+            p_origem_id: v.armazemId,
+            p_destino_id: v.destinoId,
+            p_quantidade: v.quantidade,
+            p_motivo: v.motivo,
+          })
+        : await supabase.rpc("movimentar_estoque_armazem", {
+            p_produto_id: v.produtoId,
+            p_armazem_id: v.armazemId,
+            p_tipo: v.tipo,
+            p_quantidade: v.quantidade,
+            p_custo_unitario: v.custoUnitario,
+            p_motivo: v.motivo,
+          });
+    if (error) lancarErroSupabase(error);
+
+    revalidatePath("/estoque");
+    revalidatePath("/produtos");
+    revalidatePath("/dashboard");
+    if (v.tipo === "entrada") revalidatePath("/precificacao");
   });
 }

@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { ArrowRight, ArrowRightLeft, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
-import { Modal, FormField, inputClass } from "@/components/ui/Modal";
+import { BarraFiltros, FiltroChips, FiltroSelect } from "@/components/ui/BarraFiltros";
+import { MovimentacaoModal } from "@/components/estoque/MovimentacaoModal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
-import { registrarMovimentacaoEstoque, registrarEntradaComCusto } from "./actions";
-import { executarComToast } from "@/lib/acao-cliente";
-import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
 export interface ProdutoEstoque {
   id: string;
@@ -20,6 +19,7 @@ export interface ProdutoEstoque {
   estoque: number;
   estoque_minimo: number;
   armazem_id: string | null;
+  ativo?: boolean;
 }
 
 export interface Armazem {
@@ -29,101 +29,104 @@ export interface Armazem {
   lojas_abastecidas: string[];
 }
 
+export interface SaldoArmazem {
+  produto_id: string;
+  armazem_id: string;
+  quantidade: number;
+}
+
 export interface Movimentacao {
+  id?: string;
   produto_nome: string;
-  tipo: "entrada" | "saida";
+  tipo: "entrada" | "saida" | "transferencia";
   quantidade: number;
   motivo: string | null;
   data_movimentacao: string;
+  armazem_id?: string | null;
+  armazem_destino_id?: string | null;
 }
+
+const SITUACOES = ["Todos", "Repor", "OK"] as const;
+type Situacao = (typeof SITUACOES)[number];
 
 export function EstoqueClient({
   produtos,
   armazens,
   movimentacoes,
+  saldos,
+  porArmazem,
 }: {
   produtos: ProdutoEstoque[];
   armazens: Armazem[];
   movimentacoes: Movimentacao[];
+  saldos: SaldoArmazem[];
+  /** `false` antes da migração 0041: saldos derivados do armazém padrão, sem transferência. */
+  porArmazem: boolean;
 }) {
-  const [pending, startTransition] = useTransition();
-  const [modalAberto, setModalAberto] = useState(false);
-  const [movProdutoId, setMovProdutoId] = useState(produtos[0]?.id ?? "");
-  const [movTipo, setMovTipo] = useState<"entrada" | "saida">("entrada");
-  const [movQtd, setMovQtd] = useState(1);
-  const [movMotivo, setMovMotivo] = useState("");
-  const [movCustoUnitario, setMovCustoUnitario] = useState(0);
-  const sujo = useFormularioSujo(
-    { movProdutoId, movTipo, movQtd, movMotivo, movCustoUnitario },
-    { movProdutoId: produtos[0]?.id ?? "", movTipo: "entrada", movQtd: 1, movMotivo: "", movCustoUnitario: 0 },
-  );
+  const [modal, setModal] = useState<{ armazemId: string | null } | null>(null);
+  const [busca, setBusca] = useState("");
+  const [armazemFiltro, setArmazemFiltro] = useState("");
+  const [situacao, setSituacao] = useState<Situacao>("Todos");
+
+  const produtoPorId = useMemo(() => new Map(produtos.map((p) => [p.id, p])), [produtos]);
+  const nomeArmazem = useMemo(() => new Map(armazens.map((a) => [a.id, a.nome])), [armazens]);
 
   const totalUnidades = produtos.reduce((acc, p) => acc + p.estoque, 0);
   const criticos = produtos.filter((p) => p.estoque <= p.estoque_minimo).length;
   const valorTotal = produtos.reduce((acc, p) => acc + p.estoque * p.custo, 0);
 
-  function registrar() {
-    if (!movProdutoId) {
-      toast.error("Escolha o produto da movimentação.");
-      return;
+  /** Linhas por armazém já filtradas pela busca e pela situação (situação olha o total). */
+  const porArmazemFiltrado = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    const mapa = new Map<string, { produto: ProdutoEstoque; quantidade: number }[]>();
+    for (const s of saldos) {
+      if (s.quantidade <= 0) continue;
+      const p = produtoPorId.get(s.produto_id);
+      if (!p) continue;
+      if (t && !p.nome.toLowerCase().includes(t) && !p.sku.toLowerCase().includes(t)) continue;
+      const ok = p.estoque > p.estoque_minimo;
+      if (situacao === "Repor" && ok) continue;
+      if (situacao === "OK" && !ok) continue;
+      mapa.set(s.armazem_id, [...(mapa.get(s.armazem_id) ?? []), { produto: p, quantidade: s.quantidade }]);
     }
-    if (movQtd <= 0) {
-      toast.error("A quantidade precisa ser maior que zero.");
-      return;
-    }
-    if (movTipo === "entrada" && movCustoUnitario < 0) {
-      toast.error("O custo unitário não pode ser negativo.");
-      return;
-    }
-    startTransition(async () => {
-      // Entrada leva custo (média ponderada, calculada no banco); saída continua no
-      // caminho antigo — não há custo pra ponderar numa baixa de estoque.
-      const r =
-        movTipo === "entrada"
-          ? await executarComToast(
-              registrarEntradaComCusto({
-                produtoId: movProdutoId,
-                quantidade: movQtd,
-                custoUnitario: movCustoUnitario,
-                motivo: movMotivo || null,
-              }),
-              { erro: "Erro ao registrar entrada" },
-            )
-          : await executarComToast(
-              registrarMovimentacaoEstoque({
-                produtoId: movProdutoId,
-                tipo: movTipo,
-                quantidade: movQtd,
-                motivo: movMotivo || "Saída manual",
-              }),
-              { erro: "Erro ao registrar movimentação" },
-            );
-      if (r.ok) {
-        setModalAberto(false);
-        setMovQtd(1);
-        setMovMotivo("");
-        setMovCustoUnitario(0);
-        toast.success("Movimentação registrada");
-      }
-    });
-  }
+    for (const lista of mapa.values()) lista.sort((a, b) => a.produto.nome.localeCompare(b.produto.nome, "pt-BR"));
+    return mapa;
+  }, [saldos, produtoPorId, busca, situacao]);
+
+  const armazensVisiveis = armazens.filter((a) => !armazemFiltro || a.id === armazemFiltro);
+  const filtrosAtivos = (armazemFiltro ? 1 : 0) + (situacao === "Todos" ? 0 : 1);
 
   return (
     <>
       <PageHeader
         title="Armazéns & Estoque"
-        actions={<Button variant="primary" onClick={() => setModalAberto(true)}>Registrar Movimentação</Button>}
+        actions={
+          <Button variant="primary" onClick={() => setModal({ armazemId: armazemFiltro || null })} disabled={armazens.length === 0}>
+            Registrar Movimentação
+          </Button>
+        }
       />
+
+      {!porArmazem && (
+        <p className="text-xs text-text-secondary border border-border bg-surface-2 rounded-md px-3 py-2 mb-4">
+          Saldo por armazém e transferência ficam disponíveis depois de aplicar a migração 0041. Até lá, cada produto conta no armazém dele.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>
           <CardEyebrow>Estoque Físico Total</CardEyebrow>
           <HeroMetric value={`${totalUnidades} un.`} accent />
         </Card>
-        <Card>
-          <CardEyebrow>Valor Total em Estoque</CardEyebrow>
-          <HeroMetric value={formatBRL(valorTotal)} />
-        </Card>
+        <Link href="/estoque/valor" className="group block rounded-lg focus-visible:outline-2 focus-visible:outline-accent" aria-label="Ver detalhes do valor em estoque">
+          <Card className="h-full group-hover:border-accent transition-colors">
+            <div className="flex items-center justify-between">
+              <CardEyebrow>Valor Total em Estoque</CardEyebrow>
+              <ChevronRight size={16} className="text-text-tertiary group-hover:text-accent" />
+            </div>
+            <HeroMetric value={formatBRL(valorTotal)} caption="por armazém, categoria, giro e parados" />
+          </Card>
+        </Link>
         <Card>
           <CardEyebrow>Reposição Necessária</CardEyebrow>
           <HeroMetric value={String(criticos)} caption="produtos no mínimo ou abaixo" />
@@ -134,48 +137,74 @@ export function EstoqueClient({
         </Card>
       </div>
 
+      <BarraFiltros
+        busca={busca}
+        onBusca={setBusca}
+        placeholder="Buscar produto ou SKU…"
+        ativos={filtrosAtivos}
+        onLimpar={() => {
+          setBusca("");
+          setArmazemFiltro("");
+          setSituacao("Todos");
+        }}
+        situacao={<FiltroChips rotulo="Situação" valor={situacao} onChange={setSituacao} opcoes={SITUACOES.map((s) => ({ valor: s, rotulo: s }))} />}
+      >
+        <FiltroSelect rotulo="Armazém" valor={armazemFiltro} onChange={setArmazemFiltro} opcoes={armazens.map((a) => ({ valor: a.id, rotulo: a.nome }))} />
+      </BarraFiltros>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
-          {armazens.map((a) => {
-            const produtosDoArmazem = produtos.filter((p) => p.armazem_id === a.id);
-            const unidades = produtosDoArmazem.reduce((acc, p) => acc + p.estoque, 0);
+          {armazensVisiveis.map((a) => {
+            const linhas = porArmazemFiltrado.get(a.id) ?? [];
+            const unidades = linhas.reduce((acc, l) => acc + l.quantidade, 0);
+            const valor = linhas.reduce((acc, l) => acc + l.quantidade * l.produto.custo, 0);
             return (
               <Card key={a.id} padding="nenhum" className="overflow-hidden">
-                <div className="px-5 pt-5 pb-4 flex items-start justify-between">
-                  <div>
+                <div className="px-5 pt-5 pb-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <h2 className="text-base font-semibold text-text-primary">{a.nome}</h2>
-                    <p className="text-sm text-text-secondary">{a.endereco}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {a.lojas_abastecidas.map((loja) => (
-                        <span key={loja} className="text-xs bg-surface-2 text-text-secondary rounded-full px-2 py-0.5">
-                          {loja}
-                        </span>
-                      ))}
-                    </div>
+                    {a.endereco && <p className="text-sm text-text-secondary">{a.endereco}</p>}
+                    {a.lojas_abastecidas.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {a.lojas_abastecidas.map((loja) => (
+                          <span key={loja} className="text-xs bg-surface-2 text-text-secondary rounded-full px-2 py-0.5">
+                            {loja}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <div className="font-mono text-lg text-text-primary">{unidades} un.</div>
-                    <div className="text-xs text-text-tertiary">{produtosDoArmazem.length} produtos</div>
+                    <div className="text-xs text-text-tertiary">
+                      {linhas.length} produtos · {formatBRL(valor)}
+                    </div>
+                    <button onClick={() => setModal({ armazemId: a.id })} className="text-xs text-accent hover:underline mt-1">
+                      Movimentar
+                    </button>
                   </div>
                 </div>
                 <div className="divide-y divide-border border-t border-border">
-                  {produtosDoArmazem.map((p) => {
+                  {linhas.map(({ produto: p, quantidade }) => {
                     const ok = p.estoque > p.estoque_minimo;
                     return (
-                      <div key={p.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
-                        <div>
-                          <div className="text-text-primary">{p.nome}</div>
-                          <div className="text-xs text-text-tertiary font-mono">{p.sku}</div>
+                      <div key={p.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
+                        <div className="min-w-0">
+                          <div className="text-text-primary truncate">{p.nome}</div>
+                          <div className="text-xs text-text-tertiary font-mono truncate">{p.sku}</div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-text-secondary">{p.estoque} un.</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="font-mono text-text-secondary">
+                            {quantidade} un.
+                            {quantidade !== p.estoque && <span className="text-text-tertiary"> / {p.estoque}</span>}
+                          </span>
                           <StatusChip label={ok ? "OK" : "Repor"} tone={ok ? "positive" : "negative"} />
                         </div>
                       </div>
                     );
                   })}
-                  {produtosDoArmazem.length === 0 && (
-                    <div className="px-5 py-4 text-sm text-text-tertiary">Nenhum produto neste armazém ainda.</div>
+                  {linhas.length === 0 && (
+                    <div className="px-5 py-4 text-sm text-text-tertiary">{busca || situacao !== "Todos" ? "Nada com esses filtros aqui." : "Nenhum produto neste armazém ainda."}</div>
                   )}
                 </div>
               </Card>
@@ -183,9 +212,7 @@ export function EstoqueClient({
           })}
           {armazens.length === 0 && (
             <Card>
-              <p className="text-sm text-text-tertiary">
-                Nenhum armazém cadastrado ainda. Adicione um em Configurações → Armazéns.
-              </p>
+              <p className="text-sm text-text-tertiary">Nenhum armazém cadastrado ainda. Adicione um em Configurações → Armazéns.</p>
             </Card>
           )}
         </div>
@@ -193,15 +220,23 @@ export function EstoqueClient({
         <Card>
           <h2 className="text-base font-semibold text-text-primary mb-4">Histórico Recente</h2>
           <div className="space-y-4">
-            {movimentacoes.slice(0, 8).map((m, i) => (
-              <div key={i} className="flex items-start justify-between text-sm border-b border-border pb-3 last:border-0 last:pb-0">
-                <div>
-                  <div className="text-text-primary">{m.produto_nome}</div>
-                  <div className="text-xs text-text-tertiary">{m.motivo}</div>
+            {movimentacoes.slice(0, 10).map((m, i) => (
+              <div key={m.id ?? i} className="flex items-start justify-between text-sm border-b border-border pb-3 last:border-0 last:pb-0">
+                <div className="min-w-0">
+                  <div className="text-text-primary truncate">{m.produto_nome}</div>
+                  <div className="text-xs text-text-tertiary">
+                    {m.tipo === "transferencia" ? (
+                      <span className="inline-flex items-center gap-1">
+                        {nomeArmazem.get(m.armazem_id ?? "") ?? "?"} <ArrowRight size={11} /> {nomeArmazem.get(m.armazem_destino_id ?? "") ?? "?"}
+                      </span>
+                    ) : (
+                      [m.armazem_id ? nomeArmazem.get(m.armazem_id) : null, m.motivo].filter(Boolean).join(" · ")
+                    )}
+                  </div>
                 </div>
                 <div className="text-right shrink-0 ml-2">
-                  <div className={`font-mono ${m.tipo === "entrada" ? "text-positive" : "text-negative"}`}>
-                    {m.tipo === "entrada" ? "+" : "-"}
+                  <div className={`font-mono ${m.tipo === "entrada" ? "text-positive" : m.tipo === "saida" ? "text-negative" : "text-text-secondary"}`}>
+                    {m.tipo === "transferencia" ? <ArrowRightLeft size={12} className="inline mr-1" /> : m.tipo === "entrada" ? "+" : "-"}
                     {m.quantidade} un
                   </div>
                   <div className="text-xs text-text-tertiary">{formatarDataHora(m.data_movimentacao)}</div>
@@ -213,64 +248,17 @@ export function EstoqueClient({
         </Card>
       </div>
 
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Registrar Movimentação" sujo={sujo}>
-        <FormField label="Produto">
-          <select className={inputClass} value={movProdutoId} onChange={(e) => setMovProdutoId(e.target.value)}>
-            {produtos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nome}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField label="Tipo">
-            <select className={inputClass} value={movTipo} onChange={(e) => setMovTipo(e.target.value as "entrada" | "saida")}>
-              <option value="entrada">Entrada</option>
-              <option value="saida">Saída</option>
-            </select>
-          </FormField>
-          <FormField label="Quantidade">
-            <input
-              type="number"
-              min={1}
-              className={inputClass}
-              value={movQtd}
-              onChange={(e) => setMovQtd(Number(e.target.value) || 0)}
-            />
-          </FormField>
-        </div>
-        {movTipo === "entrada" && (
-          <FormField
-            label="Custo unitário desta entrada (R$)"
-            dica="O custo do produto vira a média ponderada entre o que já tinha em estoque e esta entrada."
-          >
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              className={inputClass}
-              value={movCustoUnitario || ""}
-              placeholder="0,00"
-              onChange={(e) => setMovCustoUnitario(Number(e.target.value) || 0)}
-            />
-          </FormField>
-        )}
-        <FormField label="Motivo">
-          <input className={inputClass} value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} placeholder="Ex: ajuste, venda, avaria" />
-        </FormField>
-
-        <div className="flex gap-2 mt-5">
-          <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)} disabled={pending}>
-            Cancelar
-          </Button>
-          {/* `loading` também desabilita (ver Button.tsx): sem isso, dois cliques rápidos
-              gravavam duas movimentações e o estoque saía dobrado. */}
-          <Button variant="primary" className="flex-1" onClick={registrar} loading={pending}>
-            Registrar
-          </Button>
-        </div>
-      </Modal>
+      {modal && (
+        <MovimentacaoModal
+          aberto
+          onClose={() => setModal(null)}
+          produtos={produtos}
+          armazens={armazens}
+          saldos={saldos}
+          porArmazem={porArmazem}
+          armazemInicial={modal.armazemId}
+        />
+      )}
     </>
   );
 }
