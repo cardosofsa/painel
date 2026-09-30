@@ -181,9 +181,9 @@ export function VendasClient({
     );
   }
 
-  async function comprovanteEmImagem(v: Venda, acao: "copiar" | "baixar") {
+  async function comprovanteEmImagem(v: Venda) {
     const r = await executarComToast(obterComprovante(v.id), { erro: "Erro ao carregar o comprovante" });
-    if (r.ok) gerarImagem(r.dado, acao);
+    if (r.ok) gerarImagem(r.dado);
   }
 
   async function cancelar(v: Venda) {
@@ -317,7 +317,7 @@ export function VendasClient({
                           ? []
                           : [
                               { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
-                              { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v, "baixar") },
+                              { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
                               { label: "Comprovante em PDF", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
                               { label: "Editar", onClick: () => setEditando(v) },
                               { label: "Cancelar venda", onClick: () => cancelar(v), destructive: true },
@@ -412,7 +412,7 @@ export function VendasClient({
                   Enviar comprovante
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="secondary" className="flex-1" onClick={() => comprovanteEmImagem(detalhe, "baixar")}>
+                  <Button variant="secondary" className="flex-1" onClick={() => comprovanteEmImagem(detalhe)}>
                     Imagem
                   </Button>
                   <Button

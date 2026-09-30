@@ -92,6 +92,7 @@ export function ClienteDetalheClient({
   fiadoEmUso,
   nomeNegocio,
   logoUrl,
+  contatoNegocio,
 }: {
   cliente: ClienteDetalhe;
   vendas: VendaCliente[];
@@ -99,12 +100,14 @@ export function ClienteDetalheClient({
   fiadoEmUso: number;
   nomeNegocio: string | null;
   logoUrl: string | null;
+  /** Telefone/WhatsApp/Instagram do negócio, para o rodapé das imagens. */
+  contatoNegocio: string | null;
 }) {
   const [, startTransition] = useTransition();
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [parcelasVenda, setParcelasVenda] = useState<{ id: string; numero: string } | null>(null);
   const [enviandoResumoId, setEnviandoResumoId] = useState<string | null>(null);
-  const { abrirResumo, modais: modaisResumoFiado } = useResumoFiadoImagem(nomeNegocio, logoUrl);
+  const { abrirResumo, modais: modaisResumoFiado } = useResumoFiadoImagem(nomeNegocio, logoUrl, contatoNegocio);
   const { gerar: gerarComprovante, oculto: comprovanteOculto } = useComprovanteImagem();
   const hoje = hojeIsoLocal();
 
@@ -133,7 +136,7 @@ export function ClienteDetalheClient({
 
   async function baixarComprovante(vendaId: string) {
     const r = await executarComToast(obterComprovante(vendaId), { erro: "Erro ao carregar o comprovante" });
-    if (r.ok) gerarComprovante(r.dado, "baixar");
+    if (r.ok) gerarComprovante(r.dado);
   }
 
   function alternarSelecao(id: string) {
@@ -180,7 +183,6 @@ export function ClienteDetalheClient({
               dataVencimento: p.data_vencimento,
             })),
           },
-          "copiar",
         );
       } else {
         const restante = v.cpr_status === "recebido" ? 0 : (v.cpr_valor ?? 0);
@@ -207,7 +209,6 @@ export function ClienteDetalheClient({
               },
             ],
           },
-          "copiar",
         );
       }
     } finally {
@@ -444,7 +445,7 @@ export function ClienteDetalheClient({
                       <RowMenu
                         actions={[
                           { label: "Enviar por WhatsApp", onClick: () => window.open(link, "_blank") },
-                          { label: "Baixar imagem", onClick: () => baixarComprovante(v.id) },
+                          { label: "Ver imagem", onClick: () => baixarComprovante(v.id) },
                           { label: "PDF / Imprimir", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
                         ]}
                       />

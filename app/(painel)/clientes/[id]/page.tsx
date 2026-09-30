@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
+import { contatoDoNegocio } from "@/lib/empresa";
 import { ClienteDetalheClient, type ClienteDetalhe, type VendaCliente } from "./ClienteDetalheClient";
 
 interface VendaBruta {
@@ -52,7 +53,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       .order("data_venda", { ascending: false }),
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase.rpc("fiado_em_uso_cliente", { p_cliente_id: id }),
-    supabase.from("perfil_negocio").select("nome_negocio, logo_url").maybeSingle(),
+    supabase.from("perfil_negocio").select("nome_negocio, logo_url, telefone, whatsapp, instagram").maybeSingle(),
   ]);
 
   if (clienteRes.error) lancarErroSupabase(clienteRes.error);
@@ -128,6 +129,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       fiadoEmUso={Number(fiadoEmUsoRes.data ?? 0)}
       nomeNegocio={perfilRes.data?.nome_negocio ?? null}
       logoUrl={perfilRes.data?.logo_url ?? null}
+      contatoNegocio={contatoDoNegocio(perfilRes.data)}
     />
   );
 }

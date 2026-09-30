@@ -96,16 +96,12 @@ export function ReciboModal({
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => gerar(dados, "copiar")}
+                onClick={() => gerar(dados)}
                 disabled={!pronto || gerando}
                 loading={gerando}
               >
                 <ImageDown size={14} />
-                Copiar imagem
-              </Button>
-              <Button variant="secondary" onClick={() => gerar(dados, "baixar")} disabled={!pronto || gerando}>
-                <ImageDown size={14} />
-                Baixar imagem
+                Ver imagem
               </Button>
               {vendaId ? (
                 <a href={`/vendas/${vendaId}/comprovante`} target="_blank" rel="noopener noreferrer" className="block">

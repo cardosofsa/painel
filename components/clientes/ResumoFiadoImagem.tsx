@@ -1,148 +1,101 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { toPng } from "html-to-image";
 import { formatBRL, formatarDataIso } from "@/lib/format";
 import type { DadosResumoFiado } from "@/lib/comprovante";
+import { useCapturaImagem } from "@/components/ui/PreviaImagem";
 
-const ROTULO_STATUS_PARCELA: Record<string, { label: string; cor: string }> = {
-  paga: { label: "Paga", cor: "#16a34a" },
-  atrasada: { label: "Atrasada", cor: "#dc2626" },
-  pendente: { label: "Pendente", cor: "#6b7280" },
+const STATUS_PARCELA: Record<string, { label: string; cor: string; fundo: string }> = {
+  paga: { label: "Paga", cor: "#15803d", fundo: "#dcfce7" },
+  atrasada: { label: "Atrasada", cor: "#b91c1c", fundo: "#fee2e2" },
+  pendente: { label: "Pendente", cor: "#92400e", fundo: "#fef3c7" },
 };
 
+const COR = { texto: "#111827", suave: "#6b7280", linha: "#e5e7eb", fundoSuave: "#f9fafb" };
+
 /**
- * Card oculto capturado como PNG — "Enviar resumo" do box Fiado (2.5c). Mesmo padrão de
- * captura de `resultado-compartilhado.tsx` (`html-to-image`, sem dependência nova). O
- * cabeçalho "profissional" completo (logo definitivo, CNPJ, endereço) fica pra Fase 3 —
- * aqui só o nome do negócio, porque `perfil_negocio` ainda não tem coluna de logo.
+ * Cartão do resumo de fiado, capturado como PNG. Estilos inline de propósito: a captura
+ * (`html-to-image`) copia o CSS computado, e cor fixa aqui garante o mesmo resultado no
+ * tema claro e no escuro do painel. Sem logo, o cabeçalho fica só com o nome, sem buraco.
  */
-export function useResumoFiadoImagem(nomeNegocio: string | null, logoUrl: string | null = null) {
-  const [pendente, setPendente] = useState<{ dados: DadosResumoFiado; acao: "copiar" | "baixar" } | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!pendente || !ref.current) return;
-    const node = ref.current;
-    const { dados, acao } = pendente;
-    (async () => {
-      try {
-        const dataUrl = await toPng(node, { pixelRatio: 2 });
-        const nomeArquivo = `fiado-venda-${dados.numero}.png`;
-        if (acao === "copiar") {
-          try {
-            const blob = await (await fetch(dataUrl)).blob();
-            await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-            toast.success("Imagem copiada — cole na conversa do WhatsApp");
-          } catch {
-            const a = document.createElement("a");
-            a.href = dataUrl;
-            a.download = nomeArquivo;
-            a.click();
-            toast.error("Não foi possível copiar — baixando a imagem em vez disso");
-          }
-        } else {
-          const a = document.createElement("a");
-          a.href = dataUrl;
-          a.download = nomeArquivo;
-          a.click();
-          toast.success("Imagem baixada");
-        }
-      } catch {
-        toast.error("Erro ao gerar imagem do resumo");
-      } finally {
-        setPendente(null);
-      }
-    })();
-  }, [pendente]);
-
-  function abrirResumo(dados: DadosResumoFiado, acao: "copiar" | "baixar") {
-    setPendente({ dados, acao });
-  }
-
-  const modais = (
-    <div style={{ position: "fixed", left: -9999, top: 0, width: 380, pointerEvents: "none" }} aria-hidden>
-      <div ref={ref}>
-        {pendente && (
-          <div style={{ background: "#ffffff", padding: 24, fontFamily: "system-ui, sans-serif", color: "#111827", border: "1px solid #e5e7eb" }}>
-            {logoUrl && (
-              // eslint-disable-next-line @next/next/no-img-element -- captura por html-to-image; precisa ser <img> puro
-              <img
-                src={logoUrl}
-                alt=""
-                crossOrigin="anonymous"
-                style={{ display: "block", margin: "0 auto 8px", maxHeight: 56, maxWidth: 160, objectFit: "contain" }}
-              />
-            )}
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2, textAlign: logoUrl ? "center" : "left" }}>
-              {nomeNegocio ?? "Resumo de Fiado"}
-            </div>
-            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 14 }}>
-              Venda {pendente.dados.numero} · {formatarDataIso(pendente.dados.data.slice(0, 10))}
-            </div>
-            <div style={{ fontSize: 13, color: "#374151", marginBottom: 10 }}>Cliente: {pendente.dados.clienteNome}</div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4, color: "#374151" }}>
-              <span>Valor total</span>
-              <span>{formatBRL(pendente.dados.valorTotal)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4, color: "#374151" }}>
-              <span>Já pago</span>
-              <span>{formatBRL(pendente.dados.valorPago)}</span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontWeight: 700,
-                fontSize: 14,
-                borderTop: "1px solid #e5e7eb",
-                paddingTop: 8,
-                marginTop: 4,
-                marginBottom: 14,
-                color: "#dc2626",
-              }}
-            >
-              <span>Falta pagar</span>
-              <span>{formatBRL(pendente.dados.valorRestante)}</span>
-            </div>
-
-            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 }}>
-              Parcelas
-            </div>
-            <div style={{ borderTop: "1px solid #e5e7eb" }}>
-              {pendente.dados.parcelas.map((p) => {
-                const rotulo = ROTULO_STATUS_PARCELA[p.status];
-                return (
-                  <div
-                    key={p.numero}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      fontSize: 12,
-                      padding: "6px 0",
-                      borderBottom: "1px solid #f3f4f6",
-                      color: "#374151",
-                    }}
-                  >
-                    <span>
-                      {p.numero}/{p.totalParcelas} — vence {formatarDataIso(p.dataVencimento.slice(0, 10))}
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span>{formatBRL(p.valor)}</span>
-                      <span style={{ color: rotulo.cor, fontWeight: 600 }}>{rotulo.label}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+function CartaoResumoFiado({ dados, nomeNegocio, logoUrl, contato }: { dados: DadosResumoFiado; nomeNegocio: string | null; logoUrl: string | null; contato: string | null }) {
+  const pago = dados.valorTotal > 0 ? Math.min(1, Math.max(0, dados.valorPago / dados.valorTotal)) : 0;
+  return (
+    <div style={{ background: "#ffffff", width: 420, fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", color: COR.texto, borderRadius: 16, overflow: "hidden", border: `1px solid ${COR.linha}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 22px", borderBottom: `1px solid ${COR.linha}` }}>
+        {logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- captura por html-to-image; precisa ser <img> puro
+          <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ width: 44, height: 44, objectFit: "contain", borderRadius: 8 }} />
         )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>{nomeNegocio ?? "Resumo de fiado"}</div>
+          {contato && <div style={{ fontSize: 11, color: COR.suave, marginTop: 2 }}>{contato}</div>}
+        </div>
+      </div>
+
+      <div style={{ padding: "18px 22px 20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: COR.suave }}>Resumo de fiado</span>
+          <span style={{ fontSize: 12, color: COR.suave }}>
+            Venda {dados.numero} · {formatarDataIso(dados.data.slice(0, 10))}
+          </span>
+        </div>
+        <div style={{ fontSize: 14, marginBottom: 14 }}>
+          Cliente: <strong>{dados.clienteNome}</strong>
+        </div>
+
+        <div style={{ background: dados.valorRestante > 0 ? "#fef2f2" : "#f0fdf4", borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: dados.valorRestante > 0 ? "#b91c1c" : "#15803d", fontWeight: 600 }}>{dados.valorRestante > 0 ? "Falta pagar" : "Quitado"}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: dados.valorRestante > 0 ? "#b91c1c" : "#15803d", lineHeight: 1.15, marginTop: 2 }}>{formatBRL(dados.valorRestante)}</div>
+          <div style={{ height: 6, background: "#ffffff", borderRadius: 99, marginTop: 10, overflow: "hidden" }}>
+            <div style={{ width: `${Math.round(pago * 100)}%`, height: "100%", background: "#16a34a", borderRadius: 99 }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: COR.suave, marginTop: 6 }}>
+            <span>Pago {formatBRL(dados.valorPago)}</span>
+            <span>Total {formatBRL(dados.valorTotal)}</span>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: COR.suave, marginBottom: 6 }}>Parcelas</div>
+        <div style={{ border: `1px solid ${COR.linha}`, borderRadius: 10, overflow: "hidden" }}>
+          {dados.parcelas.map((p, i) => {
+            const s = STATUS_PARCELA[p.status];
+            return (
+              <div
+                key={p.numero}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", fontSize: 13, background: i % 2 ? COR.fundoSuave : "#ffffff", borderTop: i ? `1px solid ${COR.linha}` : "none" }}
+              >
+                <span>
+                  <strong>
+                    {p.numero}/{p.totalParcelas}
+                  </strong>
+                  <span style={{ color: COR.suave }}> · vence {formatarDataIso(p.dataVencimento.slice(0, 10))}</span>
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 600 }}>{formatBRL(p.valor)}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: s.cor, background: s.fundo, borderRadius: 99, padding: "2px 8px" }}>{s.label}</span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: "#9ca3af", textAlign: "center", marginTop: 14 }}>Emitido em {new Date().toLocaleDateString("pt-BR")}</div>
       </div>
     </div>
   );
+}
 
-  return { abrirResumo, modais };
+/** "Enviar resumo" do box Fiado: gera o cartão e abre a prévia (copiar, baixar, enviar). */
+export function useResumoFiadoImagem(nomeNegocio: string | null, logoUrl: string | null = null, contato: string | null = null) {
+  const { capturar, elementos } = useCapturaImagem();
+
+  function abrirResumo(dados: DadosResumoFiado) {
+    capturar(<CartaoResumoFiado dados={dados} nomeNegocio={nomeNegocio} logoUrl={logoUrl} contato={contato} />, {
+      nome: `fiado-venda-${dados.numero}.png`,
+      titulo: `Resumo do fiado · ${dados.numero}`,
+      texto: `Resumo do fiado da venda ${dados.numero}: falta pagar ${formatBRL(dados.valorRestante)}.`,
+      largura: 420,
+    });
+  }
+
+  return { abrirResumo, modais: elementos };
 }

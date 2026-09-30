@@ -18,9 +18,9 @@ export function ComprovanteImpressao({ dados }: { dados: DadosComprovante }) {
           <ArrowLeft size={14} /> Vendas
         </Link>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => gerar(dados, "baixar")} loading={gerando}>
+          <Button variant="secondary" onClick={() => gerar(dados)} loading={gerando}>
             <ImageDown size={14} />
-            Baixar imagem
+            Ver imagem
           </Button>
           <Button variant="primary" onClick={() => window.print()}>
             <Printer size={14} />
