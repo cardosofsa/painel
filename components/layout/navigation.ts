@@ -11,13 +11,17 @@ import {
   Wallet,
   BookOpen,
   Settings,
-  type LucideIcon,
 } from "lucide-react";
+import type { ComponentType } from "react";
+import { IconeLampiao } from "@/components/ui/IconeLampiao";
 import { ABAS, type AbaId } from "@/lib/acesso";
 
 /** Ícone de cada aba. O catálogo em si (id, rótulo, rota) mora em `lib/acesso.ts`,
  * que o middleware também usa e por isso não pode importar ícone nenhum. */
-const ICONES: Record<AbaId, LucideIcon> = {
+/** Ícone lucide ou desenhado à mão (Vixe): os dois aceitam size/strokeWidth/className. */
+export type IconeNav = ComponentType<{ size?: number | string; strokeWidth?: number; className?: string }>;
+
+const ICONES: Record<AbaId, IconeNav> = {
   dashboard: LayoutDashboard,
   pdv: ScanBarcode,
   vendas: Receipt,
@@ -29,10 +33,11 @@ const ICONES: Record<AbaId, LucideIcon> = {
   estoque: Boxes,
   financeiro: Wallet,
   catalogo: BookOpen,
+  vixe: IconeLampiao,
   configuracoes: Settings,
 };
 
-export const NAV_ITEMS: { id: AbaId; href: string; label: string; icon: LucideIcon }[] = ABAS.map((aba) => ({
+export const NAV_ITEMS: { id: AbaId; href: string; label: string; icon: IconeNav }[] = ABAS.map((aba) => ({
   id: aba.id,
   href: aba.href,
   label: aba.label,
@@ -47,6 +52,7 @@ export const NAV_ITEMS: { id: AbaId; href: string; label: string; icon: LucideIc
  * por último, igual já era o link de Administração do master.
  */
 export const GRUPOS_NAV: { label: string; itens: AbaId[] }[] = [
+  { label: "Vixe", itens: ["vixe"] },
   { label: "Vendas", itens: ["pdv", "vendas", "catalogo"] },
   { label: "Produtos & Estoque", itens: ["precificacao", "produtos", "estoque"] },
   { label: "Compras", itens: ["compras", "fornecedores"] },

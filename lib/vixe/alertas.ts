@@ -1,0 +1,198 @@
+/**
+ * Vixe Alertas: junta, numa lista só e por ordem de urgência, o que hoje está espalhado
+ * pelo sino, pelo Financeiro e pela Precificação. Sem IA — são regras.
+ *
+ * Funções puras (a leitura do banco mora em `carregar-alertas.ts`), cobertas por
+ * `alertas.test.ts`. Cada alerta já sai com as ações que resolvem o problema.
+ */
+
+import { formatBRL, formatarDataIso } from "@/lib/format";
+import type { AlertaErosaoMargem, AlertaRupturaEstoque } from "@/lib/alertas";
+import type { ZonaMorta } from "@/lib/pricing";
+
+export type Gravidade = "alta" | "media" | "baixa";
+export type CategoriaAlerta = "estoque" | "margem" | "financeiro" | "preco";
+
+export const ROTULO_CATEGORIA: Record<CategoriaAlerta, string> = {
+  estoque: "Estoque",
+  margem: "Margem",
+  financeiro: "Contas e fiado",
+  preco: "Preço",
+};
+
+export type AcaoAlerta =
+  | { tipo: "link"; rotulo: string; href: string }
+  | { tipo: "externo"; rotulo: string; href: string }
+  | { tipo: "marcar_lido"; rotulo: string; alertaId: string }
+  | { tipo: "ajustar_preco"; rotulo: string; produtoId: string; produtoNome: string; preco: number };
+
+export interface AlertaVixe {
+  /** Estável entre recargas: a tela usa como `key`. */
+  id: string;
+  categoria: CategoriaAlerta;
+  gravidade: Gravidade;
+  titulo: string;
+  detalhe: string;
+  acoes: AcaoAlerta[];
+}
+
+const PESO: Record<Gravidade, number> = { alta: 0, media: 1, baixa: 2 };
+
+/** Mais grave primeiro; dentro da mesma gravidade, mantém a ordem de entrada (estável). */
+export function ordenarAlertas(alertas: AlertaVixe[]): AlertaVixe[] {
+  return alertas
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => PESO[x.a.gravidade] - PESO[y.a.gravidade] || x.i - y.i)
+    .map(({ a }) => a);
+}
+
+// ---------- Estoque ----------
+
+export interface AlertaEstoqueMinimoBruto {
+  id: string;
+  mensagem: string;
+  produto_id: string | null;
+}
+
+export function alertasEstoqueMinimo(linhas: AlertaEstoqueMinimoBruto[]): AlertaVixe[] {
+  return linhas.map((l) => ({
+    id: `estoque-min-${l.id}`,
+    categoria: "estoque",
+    gravidade: "alta",
+    titulo: "Estoque abaixo do mínimo",
+    detalhe: l.mensagem,
+    acoes: [
+      ...(l.produto_id ? [{ tipo: "link" as const, rotulo: "Criar pedido de compra", href: `/compras?novo=${l.produto_id}` }] : []),
+      { tipo: "marcar_lido" as const, rotulo: "Ignorar", alertaId: l.id },
+    ],
+  }));
+}
+
+/**
+ * Ruptura prevista pela saída dos últimos 30 dias. Produto que já tem alerta de estoque
+ * mínimo fica de fora: seriam dois cartões pedindo a mesma compra.
+ */
+export function alertasRuptura(itens: AlertaRupturaEstoque[], comEstoqueMinimo: Set<string>): AlertaVixe[] {
+  return itens
+    .filter((r) => !comEstoqueMinimo.has(r.produtoId))
+    .map((r) => {
+      const dias = Math.max(0, Math.floor(r.diasRestantes));
+      return {
+        id: `ruptura-${r.produtoId}`,
+        categoria: "estoque" as const,
+        gravidade: dias <= 3 ? ("alta" as const) : ("media" as const),
+        titulo: dias === 0 ? `${r.produtoNome}: estoque acaba hoje` : `${r.produtoNome}: estoque acaba em ~${dias} ${dias === 1 ? "dia" : "dias"}`,
+        detalhe: `${r.estoqueAtual} em estoque, saindo ~${r.mediaSaidaDiaria.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} por dia.`,
+        acoes: [{ tipo: "link" as const, rotulo: "Criar pedido de compra", href: `/compras?novo=${r.produtoId}` }],
+      };
+    });
+}
+
+// ---------- Margem ----------
+
+/** Custo da última compra subiu em relação ao custo usado na última precificação. */
+export function alertasMargem(itens: AlertaErosaoMargem[]): AlertaVixe[] {
+  return itens.map((m) => ({
+    id: `margem-${m.produtoId}`,
+    categoria: "margem",
+    gravidade: m.aumentoPct >= 15 ? "alta" : "media",
+    titulo: `${m.produtoNome}: custo subiu ${m.aumentoPct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`,
+    detalhe: `Precificado com custo de ${formatBRL(m.custoPrecificado)}; a última compra saiu a ${formatBRL(m.custoRecente)}. A margem real está menor que a calculada.`,
+    acoes: [{ tipo: "link", rotulo: "Reprecificar", href: "/precificacao" }],
+  }));
+}
+
+// ---------- Contas e fiado ----------
+
+export interface ContaVencida {
+  id: string;
+  tipo: "pagar" | "receber" | "fiado";
+  descricao: string;
+  valor: number;
+  /** yyyy-mm-dd */
+  vencimento: string;
+  clienteNome?: string | null;
+  whatsapp?: string | null;
+}
+
+/** Dias inteiros entre duas datas yyyy-mm-dd (sem fuso: as duas são datas locais). */
+export function diasEntre(deIso: string, ateIso: string): number {
+  const de = Date.UTC(+deIso.slice(0, 4), +deIso.slice(5, 7) - 1, +deIso.slice(8, 10));
+  const ate = Date.UTC(+ateIso.slice(0, 4), +ateIso.slice(5, 7) - 1, +ateIso.slice(8, 10));
+  return Math.round((ate - de) / 86_400_000);
+}
+
+export function mensagemCobranca(c: Pick<ContaVencida, "clienteNome" | "valor" | "vencimento">, nomeNegocio: string | null): string {
+  const saudacao = c.clienteNome ? `Olá, ${c.clienteNome.split(" ")[0]}! Tudo bem?` : "Olá! Tudo bem?";
+  const quem = nomeNegocio ? ` aqui é da ${nomeNegocio}.` : "";
+  return (
+    `${saudacao}${quem}\n\n` +
+    `Passando para lembrar da parcela de ${formatBRL(c.valor)} que venceu em ${formatarDataIso(c.vencimento)}. ` +
+    "Quando puder, me avisa como prefere acertar. Obrigado!"
+  );
+}
+
+function linkWhatsapp(numero: string | null | undefined, texto: string): string {
+  const digitos = numero?.replace(/\D/g, "");
+  const base = digitos ? `https://wa.me/${digitos.startsWith("55") ? digitos : `55${digitos}`}` : "https://wa.me/";
+  return `${base}?text=${encodeURIComponent(texto)}`;
+}
+
+export function alertasContasVencidas(itens: ContaVencida[], hojeIso: string, nomeNegocio: string | null): AlertaVixe[] {
+  return itens
+    .map((c) => ({ c, atraso: diasEntre(c.vencimento, hojeIso) }))
+    .filter(({ atraso }) => atraso > 0)
+    .sort((x, y) => y.atraso - x.atraso)
+    .map(({ c, atraso }) => {
+      const quando = `venceu há ${atraso} ${atraso === 1 ? "dia" : "dias"} (${formatarDataIso(c.vencimento)})`;
+      if (c.tipo === "fiado") {
+        return {
+          id: `fiado-${c.id}`,
+          categoria: "financeiro" as const,
+          gravidade: atraso > 7 ? ("alta" as const) : ("media" as const),
+          titulo: `Fiado atrasado: ${c.clienteNome ?? "cliente"} · ${formatBRL(c.valor)}`,
+          detalhe: `${c.descricao}; ${quando}.`,
+          acoes: [
+            { tipo: "externo" as const, rotulo: c.whatsapp ? "Cobrar no WhatsApp" : "Montar cobrança no WhatsApp", href: linkWhatsapp(c.whatsapp, mensagemCobranca(c, nomeNegocio)) },
+            { tipo: "link" as const, rotulo: "Ver no Financeiro", href: "/financeiro" },
+          ],
+        };
+      }
+      const pagar = c.tipo === "pagar";
+      return {
+        id: `conta-${c.id}`,
+        categoria: "financeiro" as const,
+        gravidade: pagar || atraso > 7 ? ("alta" as const) : ("media" as const),
+        titulo: `${pagar ? "Conta a pagar" : "Conta a receber"} atrasada · ${formatBRL(c.valor)}`,
+        detalhe: `${c.descricao}; ${quando}.`,
+        acoes: [{ tipo: "link" as const, rotulo: "Ver no Financeiro", href: "/financeiro" }],
+      };
+    });
+}
+
+// ---------- Preço ----------
+
+export interface PrecoEmZonaMorta {
+  produtoId: string;
+  produtoNome: string;
+  preco: number;
+  canalNome: string;
+  zona: ZonaMorta;
+}
+
+/** Preço caiu numa faixa de comissão pior: baixar para o fim da faixa anterior rende mais. */
+export function alertasZonaMorta(itens: PrecoEmZonaMorta[]): AlertaVixe[] {
+  return itens.map((z) => ({
+    id: `zona-${z.produtoId}-${z.canalNome}`,
+    categoria: "preco",
+    gravidade: z.zona.ganhoLiquido >= 5 ? "media" : "baixa",
+    titulo: `${z.produtoNome}: preço em zona morta na ${z.canalNome}`,
+    detalhe:
+      `A ${formatBRL(z.preco)} você recebe ${formatBRL(z.zona.ganhoLiquido)} a menos por venda do que a ${formatBRL(z.zona.precoMelhor)}, ` +
+      `por causa da troca de faixa de comissão. Entre ${formatBRL(z.zona.inicio)} e ${formatBRL(z.zona.fim)} nenhum preço compensa.`,
+    acoes: [
+      { tipo: "ajustar_preco", rotulo: `Mudar para ${formatBRL(z.zona.precoMelhor)}`, produtoId: z.produtoId, produtoNome: z.produtoNome, preco: z.zona.precoMelhor },
+      { tipo: "link", rotulo: "Abrir Precificação", href: "/precificacao" },
+    ],
+  }));
+}

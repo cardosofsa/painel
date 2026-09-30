@@ -22,6 +22,7 @@ export const ABAS = [
   { id: "estoque", label: "Estoque", href: "/estoque" },
   { id: "financeiro", label: "Financeiro", href: "/financeiro" },
   { id: "catalogo", label: "Catálogo", href: "/catalogo" },
+  { id: "vixe", label: "Vixe Alertas", href: "/vixe" },
   { id: "configuracoes", label: "Configurações", href: "/configuracoes" },
 ] as const;
 
@@ -37,7 +38,7 @@ export const TODAS_AS_ABAS: AbaId[] = ABAS.map((a) => a.id);
 export const ABAS_OBRIGATORIAS: AbaId[] = ["dashboard", "configuracoes"];
 
 /** O que uma conta nova recebe ao ser aprovada — o mínimo pra operar, o resto o master libera. */
-export const ABAS_PADRAO: AbaId[] = ["dashboard", "pdv", "produtos", "estoque", "configuracoes"];
+export const ABAS_PADRAO: AbaId[] = ["dashboard", "pdv", "produtos", "estoque", "vixe", "configuracoes"];
 
 /** Rotas de dentro do painel que não pertencem a nenhuma aba (o painel master tem regra própria). */
 const ROTAS_LIVRES = ["/admin"];
