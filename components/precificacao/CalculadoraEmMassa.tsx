@@ -31,7 +31,9 @@ export function CalculadoraEmMassa({
   lojas,
   historico,
   setVisao,
+  empresa = null,
 }: {
+  empresa?: { nome: string | null; logoUrl: string | null } | null;
   produtos: ProdutoMassa[];
   lojas: LojaMassa[];
   historico: PrecificacaoHist[];
@@ -45,7 +47,7 @@ export function CalculadoraEmMassa({
   const [sugestaoAbertaId, setSugestaoAbertaId] = useState<string | null>(null);
   const [linhaExpandidaId, setLinhaExpandidaId] = useState<string | null>(null);
   const salvosRecentes = useMemo(() => historico.filter((h) => h.origem === "em_massa").slice(0, 5), [historico]);
-  const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao();
+  const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
   function sugestoesPorNome(nome: string) {
     const q = nome.trim().toLowerCase();

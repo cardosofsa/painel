@@ -50,7 +50,9 @@ export function PrecificacaoClient({
   anuncios,
   concorrentesPorProduto,
   iaDisponivel,
+  empresa,
 }: {
+  empresa: { nome: string | null; logoUrl: string | null } | null;
   historico: PrecificacaoHist[];
   produtos: ProdutoOpcao[];
   aliquotaDasPadrao: number;
@@ -60,7 +62,7 @@ export function PrecificacaoClient({
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
   iaDisponivel: boolean;
 }) {
-  const estado = usePrecificacao({ historico, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto });
+  const estado = usePrecificacao({ historico, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa });
   const { visao, setVisao } = estado;
 
   function acoesLigarProduto(h: PrecificacaoHist) {
@@ -80,7 +82,7 @@ export function PrecificacaoClient({
           o <Tabs>. Duas telas do mesmo app navegavam de jeitos visualmente diferentes. */}
       <Tabs tabs={ABAS_PRECIFICACAO} value={visao} onChange={setVisao} className="mb-5" />
 
-      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} setVisao={setVisao} />}
+      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} setVisao={setVisao} empresa={empresa} />}
 
       {visao === "variacoes" && (
         <VariacoesView
@@ -92,6 +94,7 @@ export function PrecificacaoClient({
           setVisao={setVisao}
           exportarAnunciosCsv={estado.exportarAnunciosCsv}
           iaDisponivel={iaDisponivel}
+          empresa={empresa}
         />
       )}
 

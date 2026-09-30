@@ -472,7 +472,7 @@ export function ProdutosClient({
                 <Th>
                   <input type="checkbox" checked={todosSelecionadosNaPagina} onChange={alternarSelecaoTodos} className="w-4 h-4 accent-accent" />
                 </Th>
-                <Th></Th>
+                <Th>SKU</Th>
                 <Th>Produto</Th>
                 <Th>Armazém</Th>
                 <Th align="right">Custo</Th>
@@ -494,7 +494,7 @@ export function ProdutosClient({
                     />
                   </Td>
                   <Td className="cursor-pointer" onClick={() => setDetalheId(p.id)}>
-                    <ProductThumb src={p.imagem_url} sku={p.sku} />
+                    <ProductThumb src={p.imagem_url} sku={p.sku} mostrarSku />
                   </Td>
                   <Td className="cursor-pointer" onClick={() => setDetalheId(p.id)}>
                     <div className={p.ativo ? "text-text-primary font-medium" : "text-text-tertiary line-through"}>
@@ -518,9 +518,13 @@ export function ProdutosClient({
                       <div className="text-[10px] text-accent">Valor de Outros Canais Disponíveis</div>
                     )}
                     <span className="font-mono text-accent">{formatBRL(p.preco_venda)}</span>
-                    <div className="text-[10px] text-text-tertiary">
-                      {margemMarkupSimples(p.preco_venda, p.custo).margemPct.toFixed(1)}% marg. ·{" "}
-                      {margemMarkupSimples(p.preco_venda, p.custo).markupPct.toFixed(1)}% markup
+                    <div className="flex justify-end gap-1 mt-0.5" title="Sobre o custo, sem as taxas de canal">
+                      <span className="rounded bg-surface-2 px-1.5 py-px text-[10px] text-text-secondary whitespace-nowrap">
+                        {margemMarkupSimples(p.preco_venda, p.custo).margemPct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% margem
+                      </span>
+                      <span className="rounded bg-surface-2 px-1.5 py-px text-[10px] text-text-secondary whitespace-nowrap">
+                        {margemMarkupSimples(p.preco_venda, p.custo).markupPct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% markup
+                      </span>
                     </div>
                   </Td>
                   <Td align="right" mono>

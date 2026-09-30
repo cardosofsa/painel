@@ -36,7 +36,9 @@ export function VariacoesView({
   setVisao,
   exportarAnunciosCsv,
   iaDisponivel,
+  empresa = null,
 }: {
+  empresa?: { nome: string | null; logoUrl: string | null } | null;
   produtos: ProdutoOpcao[];
   lojas: LojaOpcao[];
   anuncios: AnuncioSalvo[];
@@ -64,7 +66,7 @@ export function VariacoesView({
   const [lucroDesejado, setLucroDesejado] = useState(30);
   const [precoFixo, setPrecoFixo] = useState(99.9);
   const [variacoes, setVariacoes] = useState<VariacaoLinha[]>(VARIACOES_INICIAIS);
-  const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao();
+  const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- override de parâmetro só faz sentido dentro do modo em que foi digitado
@@ -119,6 +121,7 @@ export function VariacoesView({
     const { resultado, taxas } = calcular(v);
     return {
       titulo: `${nomeAnuncio.trim() || "Anúncio"} — ${v.nome}`,
+      imagemUrl: produtos.find((p) => p.id === produtoId)?.imagem_url ?? null,
       precoVenda: resultado.precoVenda,
       custoTotal: resultado.custoTotal,
       taxaVariavelValor: resultado.taxaVariavelValor,

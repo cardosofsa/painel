@@ -54,6 +54,14 @@ async function provarModelo(provedor: z.infer<typeof iaChaveSchema>["provedor"],
     });
   } catch (e) {
     if (e instanceof ErroIA && (e.codigo === "vazio" || e.codigo === "bloqueado_seguranca")) return;
+    // A chave lista modelos sem crédito (listar é grátis), mas gerar não: conta sem saldo ou
+    // sem cobrança ativada. A mensagem genérica de `sem_credito` fala da IA do sistema, que
+    // não é o caso aqui.
+    if (e instanceof ErroIA && e.codigo === "sem_credito") {
+      throw new Error(
+        "A chave é válida, mas a conta do provedor está sem crédito. Ative a cobrança ou adicione saldo no site do provedor e tente de novo.",
+      );
+    }
     throw e;
   }
 }

@@ -30,7 +30,7 @@ export function ProdutoResumo({
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-4">
-        <ProductThumb src={produto.imagem_url} sku={produto.sku} size={56} />
+        <ProductThumb src={produto.imagem_url} sku={produto.sku} size={56} mostrarSku />
         <div className="flex-1">
           <div className="text-xs text-text-tertiary">
             {produto.categoria_nome ?? "Sem categoria"} · {produto.fornecedor_nome ?? "Sem fornecedor"}

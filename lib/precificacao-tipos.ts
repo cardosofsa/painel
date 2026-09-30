@@ -77,6 +77,8 @@ export interface ProdutoOpcao {
   preco_venda: number;
   /** Palavras-chave guardadas no produto (0037), reaproveitadas no título. */
   palavras_chave?: string[] | null;
+  /** Foto do produto, usada na imagem compartilhada da precificação. */
+  imagem_url?: string | null;
 }
 
 export type VisaoPrecificacao = "individual" | "variacoes" | "massa" | "historico";
@@ -88,4 +90,6 @@ export interface PrecificacaoProps {
   lojas: LojaOpcao[];
   anuncios: AnuncioSalvo[];
   concorrentesPorProduto: Record<string, Concorrente[]>;
+  /** Nome e logo da empresa (Dados da Empresa), no cabeçalho da imagem compartilhada. */
+  empresa?: { nome: string | null; logoUrl: string | null } | null;
 }

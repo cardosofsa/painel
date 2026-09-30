@@ -79,6 +79,7 @@ export function usePrecificacao({
   lojas,
   anuncios,
   concorrentesPorProduto,
+  empresa = null,
 }: PrecificacaoProps) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -109,7 +110,7 @@ export function usePrecificacao({
   const [filtroHistoricoTexto, setFiltroHistoricoTexto] = useState("");
   const [filtroHistoricoDataIni, setFiltroHistoricoDataIni] = useState("");
   const [filtroHistoricoDataFim, setFiltroHistoricoDataFim] = useState("");
-  const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao();
+  const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
   const [custoProduto, setCustoProduto] = useState(0);
   const [componentes, setComponentes] = useState<ComponenteKit[]>([]);
@@ -320,6 +321,7 @@ export function usePrecificacao({
   function resumoAtual(): ResumoExport {
     return {
       titulo: nomeAnuncio.trim() || nomeProduto || "Produto",
+      imagemUrl: produtos.find((p) => p.id === produtoId)?.imagem_url ?? null,
       precoVenda: resultado.precoVenda,
       custoTotal: resultado.custoTotal,
       taxaVariavelValor: resultado.taxaVariavelValor,
@@ -364,6 +366,7 @@ export function usePrecificacao({
           : 0;
     return {
       titulo: h.titulo_anuncio || h.produto_nome,
+      imagemUrl: h.produto_id ? (produtos.find((p) => p.id === h.produto_id)?.imagem_url ?? null) : null,
       precoVenda: h.preco_calculado,
       custoTotal: h.custo,
       taxaVariavelValor: h.preco_calculado * h.taxa_variavel_pct,

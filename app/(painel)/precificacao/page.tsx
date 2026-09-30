@@ -16,8 +16,8 @@ export default async function PrecificacaoPage() {
       )
       .order("criado_em", { ascending: false })
       .limit(50),
-    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave").order("nome"),
-    supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
+    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url").order("nome"),
+    supabase.from("perfil_negocio").select("aliquota_das, nome_negocio, logo_url").maybeSingle(),
     supabase
       .from("canais")
       .select(
@@ -101,6 +101,7 @@ export default async function PrecificacaoPage() {
       historico={historicoRes.data ?? []}
       produtos={produtos}
       aliquotaDasPadrao={perfilRes.data?.aliquota_das ?? 6}
+      empresa={{ nome: perfilRes.data?.nome_negocio?.trim() || null, logoUrl: perfilRes.data?.logo_url ?? null }}
       lojas={lojas}
       anuncios={anuncios}
       concorrentesPorProduto={concorrentesPorProduto}

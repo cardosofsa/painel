@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { toPng } from "html-to-image";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { formatBRL } from "@/lib/format";
+import { useCapturaImagem } from "@/components/ui/PreviaImagem";
+import { CartaoPrecificacao, type EmpresaCartao } from "@/components/precificacao/CartaoPrecificacao";
 import { resultadoParaPreco, type ComponenteKit, type TaxasPlataforma } from "@/lib/pricing";
 
 /** Lucro no menor e no maior preço que o vendedor aceitaria praticar — opcional, só aparece
@@ -35,6 +36,8 @@ export interface ResumoExport {
   margemEfetivaPct: number;
   componentes: ComponenteKit[] | null;
   faixaVenda: FaixaVendaExport | null;
+  /** Foto do produto vinculado, centralizada embaixo do nome na imagem. */
+  imagemUrl?: string | null;
 }
 
 export function precoPsicologico(preco: number): number {
@@ -100,50 +103,11 @@ export function FormatoExportModal({
   );
 }
 
-export function useExportarPrecificacao() {
+export function useExportarPrecificacao(empresa: EmpresaCartao | null = null) {
   const [pendenteExport, setPendenteExport] = useState<{ acao: "copiar" | "whatsapp"; dados: ResumoExport } | null>(null);
   const [pendenteImagem, setPendenteImagem] = useState<ResumoExport | null>(null);
   const [imagemFormato, setImagemFormato] = useState<"simples" | "completo">("completo");
-  const [imagemParaExportar, setImagemParaExportar] = useState<{
-    dados: ResumoExport;
-    acao: "copiar" | "baixar";
-    formato: "simples" | "completo";
-  } | null>(null);
-  const imagemRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!imagemParaExportar || !imagemRef.current) return;
-    const node = imagemRef.current;
-    const { dados, acao } = imagemParaExportar;
-    (async () => {
-      try {
-        const dataUrl = await toPng(node, { pixelRatio: 2 });
-        if (acao === "copiar") {
-          try {
-            const blob = await (await fetch(dataUrl)).blob();
-            await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-            toast.success("Imagem copiada — cole na conversa do WhatsApp");
-          } catch {
-            const a = document.createElement("a");
-            a.href = dataUrl;
-            a.download = `precificacao-${dados.titulo.toLowerCase().replace(/\s+/g, "-").slice(0, 40)}.png`;
-            a.click();
-            toast.error("Não foi possível copiar — baixando a imagem em vez disso");
-          }
-        } else {
-          const a = document.createElement("a");
-          a.href = dataUrl;
-          a.download = `precificacao-${dados.titulo.toLowerCase().replace(/\s+/g, "-").slice(0, 40)}.png`;
-          a.click();
-          toast.success("Imagem baixada — anexe manualmente na conversa do WhatsApp");
-        }
-      } catch {
-        toast.error("Erro ao gerar imagem");
-      } finally {
-        setImagemParaExportar(null);
-      }
-    })();
-  }, [imagemParaExportar]);
+  const { capturar, gerando, elementos } = useCapturaImagem();
 
   async function executarExport(formato: "simples" | "completo") {
     if (!pendenteExport) return;
@@ -161,6 +125,19 @@ export function useExportarPrecificacao() {
     setPendenteExport(null);
   }
 
+  /** Gera a imagem e abre a prévia (copiar, baixar, enviar). Ver `useCapturaImagem`. */
+  function gerarImagem() {
+    if (!pendenteImagem) return;
+    const dados = pendenteImagem;
+    capturar(<CartaoPrecificacao dados={dados} formato={imagemFormato} empresa={empresa} />, {
+      nome: `precificacao-${dados.titulo.toLowerCase().replace(/\s+/g, "-").slice(0, 40)}.png`,
+      titulo: dados.titulo,
+      texto: montarTextoResumo(dados, "simples"),
+      largura: 380,
+    });
+    setPendenteImagem(null);
+  }
+
   const modais = (
     <>
       <FormatoExportModal aberto={!!pendenteExport} onClose={() => setPendenteExport(null)} onEscolher={executarExport} />
@@ -173,147 +150,20 @@ export function useExportarPrecificacao() {
         }}
         title="Imagem"
       >
-        <p className="text-sm text-text-secondary mb-4">Escolha o formato e depois copie ou baixe o PNG.</p>
+        <p className="text-sm text-text-secondary mb-4">Escolha o formato. Você vê a imagem antes de copiar ou enviar.</p>
         <div className="flex gap-2 mb-4">
-          <Button
-            variant={imagemFormato === "simples" ? "primary" : "secondary"}
-            className="flex-1"
-            onClick={() => setImagemFormato("simples")}
-          >
+          <Button variant={imagemFormato === "simples" ? "primary" : "secondary"} className="flex-1" onClick={() => setImagemFormato("simples")}>
             Simplificada
           </Button>
-          <Button
-            variant={imagemFormato === "completo" ? "primary" : "secondary"}
-            className="flex-1"
-            onClick={() => setImagemFormato("completo")}
-          >
+          <Button variant={imagemFormato === "completo" ? "primary" : "secondary"} className="flex-1" onClick={() => setImagemFormato("completo")}>
             Completa
           </Button>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            className="flex-1"
-            onClick={() => {
-              if (pendenteImagem) setImagemParaExportar({ dados: pendenteImagem, acao: "copiar", formato: imagemFormato });
-              setPendenteImagem(null);
-            }}
-          >
-            Copiar Imagem
-          </Button>
-          <Button
-            variant="primary"
-            className="flex-1"
-            onClick={() => {
-              if (pendenteImagem) setImagemParaExportar({ dados: pendenteImagem, acao: "baixar", formato: imagemFormato });
-              setPendenteImagem(null);
-            }}
-          >
-            Baixar Imagem
-          </Button>
-        </div>
+        <Button variant="primary" className="w-full" loading={gerando} onClick={gerarImagem}>
+          Gerar imagem
+        </Button>
       </Modal>
-
-      <div style={{ position: "fixed", left: -9999, top: 0, width: 360, pointerEvents: "none" }} aria-hidden>
-        <div ref={imagemRef}>
-          {imagemParaExportar && (
-            <div style={{ background: "#ffffff", padding: 24, fontFamily: "system-ui, sans-serif", color: "#111827", border: "1px solid #e5e7eb" }}>
-              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 2 }}>{imagemParaExportar.dados.titulo}</div>
-              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 14 }}>{new Date().toLocaleDateString("pt-BR")}</div>
-              <div style={{ textAlign: "center", margin: "14px 0" }}>
-                <div style={{ fontSize: 11, color: "#6b7280" }}>Preço de Venda</div>
-                <div style={{ fontSize: 30, fontWeight: 700, color: "#4f46e5", fontFamily: "monospace" }}>
-                  {formatBRL(imagemParaExportar.dados.precoVenda)}
-                </div>
-              </div>
-              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, fontSize: 13 }}>
-                {imagemParaExportar.formato === "completo" ? (
-                  <>
-                    {imagemParaExportar.dados.componentes && imagemParaExportar.dados.componentes.length > 0 ? (
-                      <>
-                        {imagemParaExportar.dados.componentes.map((c, i) => (
-                          <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                            <span>{c.nome}</span>
-                            <span>{formatBRL(c.quantidade * c.custoUnitario)}</span>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                        <span>Custo</span>
-                        <span>{formatBRL(imagemParaExportar.dados.custoTotal)}</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                      <span>Taxa variável ({(imagemParaExportar.dados.taxaVariavelPct * 100).toFixed(1)}%)</span>
-                      <span>{formatBRL(imagemParaExportar.dados.taxaVariavelValor)}</span>
-                    </div>
-                    {imagemParaExportar.dados.taxaFixa > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                        <span>Taxa fixa</span>
-                        <span>{formatBRL(imagemParaExportar.dados.taxaFixa)}</span>
-                      </div>
-                    )}
-                    {imagemParaExportar.dados.taxaExtraCalculada > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                        <span>Taxa extra</span>
-                        <span>{formatBRL(imagemParaExportar.dados.taxaExtraCalculada)}</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                      <span>Imposto ({(imagemParaExportar.dados.impostoPct * 100).toFixed(1)}%)</span>
-                      <span>{formatBRL(imagemParaExportar.dados.impostoValor)}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                    <span>Custo</span>
-                    <span>{formatBRL(imagemParaExportar.dados.custoTotal)}</span>
-                  </div>
-                )}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontWeight: 700,
-                    borderTop: "1px solid #e5e7eb",
-                    paddingTop: 8,
-                    marginTop: 8,
-                    color: "#16a34a",
-                  }}
-                >
-                  <span>Lucro líquido</span>
-                  <span>
-                    {formatBRL(imagemParaExportar.dados.lucroLiquido)} ({(imagemParaExportar.dados.margemEfetivaPct * 100).toFixed(1)}%)
-                  </span>
-                </div>
-                {imagemParaExportar.formato === "completo" && imagemParaExportar.dados.faixaVenda && (
-                  <div style={{ borderTop: "1px solid #e5e7eb", marginTop: 10, paddingTop: 10 }}>
-                    <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
-                      Faixa de venda: {formatBRL(imagemParaExportar.dados.faixaVenda.precoMinimo)} a{" "}
-                      {formatBRL(imagemParaExportar.dados.faixaVenda.precoMaximo)}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "#374151" }}>
-                      <span>Lucro mínimo</span>
-                      <span>
-                        {formatBRL(imagemParaExportar.dados.faixaVenda.lucroMinimo)} (
-                        {(imagemParaExportar.dados.faixaVenda.margemMinimaPct * 100).toFixed(1)}%)
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#374151" }}>
-                      <span>Lucro máximo</span>
-                      <span>
-                        {formatBRL(imagemParaExportar.dados.faixaVenda.lucroMaximo)} (
-                        {(imagemParaExportar.dados.faixaVenda.margemMaximaPct * 100).toFixed(1)}%)
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {elementos}
     </>
   );
 
