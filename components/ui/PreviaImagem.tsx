@@ -14,6 +14,8 @@ interface Previa {
   titulo: string;
   /** Texto que acompanha no WhatsApp/compartilhar (opcional). */
   texto?: string;
+  /** Chamado quando a prévia fecha (ex.: fechar o modal que pediu a imagem). */
+  onFechar?: () => void;
 }
 
 /**
@@ -26,29 +28,33 @@ interface Previa {
  * `toBlob`, sem `fetch`) quando a pessoa clica em Copiar, e o clique é o gesto.
  */
 export function useCapturaImagem() {
-  const [pendente, setPendente] = useState<{ conteudo: ReactNode; nome: string; titulo: string; texto?: string; largura?: number } | null>(null);
+  const [pendente, setPendente] = useState<{ conteudo: ReactNode; nome: string; titulo: string; texto?: string; largura?: number; onFechar?: () => void } | null>(null);
   const [previa, setPrevia] = useState<Previa | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!pendente || !ref.current) return;
     const node = ref.current;
-    const { nome, titulo, texto } = pendente;
+    const { nome, titulo, texto, onFechar } = pendente;
     toBlob(node, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true })
       .then((blob) => {
         if (!blob) throw new Error("vazio");
-        setPrevia({ blob, url: URL.createObjectURL(blob), nome, titulo, texto });
+        setPrevia({ blob, url: URL.createObjectURL(blob), nome, titulo, texto, onFechar });
       })
-      .catch(() => toast.error("Não foi possível gerar a imagem"))
+      .catch(() => {
+        toast.error("Não foi possível gerar a imagem");
+        onFechar?.();
+      })
       .finally(() => setPendente(null));
   }, [pendente]);
 
-  function capturar(conteudo: ReactNode, opcoes: { nome: string; titulo: string; texto?: string; largura?: number }) {
+  function capturar(conteudo: ReactNode, opcoes: { nome: string; titulo: string; texto?: string; largura?: number; onFechar?: () => void }) {
     setPendente({ conteudo, ...opcoes });
   }
 
   function fechar() {
     if (previa) URL.revokeObjectURL(previa.url);
+    previa?.onFechar?.();
     setPrevia(null);
   }
 
@@ -98,7 +104,7 @@ function PreviaImagemModal({ previa, onClose }: { previa: Previa | null; onClose
   }
 
   return (
-    <Modal open={!!previa} onClose={onClose} title={previa?.titulo ?? ""} width="max-w-md">
+    <Modal open={!!previa} onClose={onClose} title={previa?.titulo ?? ""} width="max-w-2xl">
       {previa && (
         <>
           <div className="rounded-md border border-border bg-surface-2 p-2 max-h-[60vh] overflow-y-auto">

@@ -6,14 +6,16 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal, FormField, inputClass, campoBase } from "@/components/ui/Modal";
+import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { ProductThumb } from "@/components/ui/ProductThumb";
+import { BarraFiltros, FiltroChips, FiltroSelect } from "@/components/ui/BarraFiltros";
+import { ExportarModal } from "@/components/ui/ExportarModal";
+import type { TabelaExport } from "@/lib/exportar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
 import { formatBRL } from "@/lib/format";
-import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import {
   criarProduto,
@@ -29,7 +31,6 @@ import {
 import { executarComToast } from "@/lib/acao-cliente";
 import { rotuloProduto } from "@/lib/produtos";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
-import { Chip } from "@/components/ui/Chip";
 import { ProdutoResumo } from "@/components/produtos/ProdutoResumo";
 import { ProdutoFormModal } from "@/components/produtos/ProdutoFormModal";
 
@@ -146,7 +147,10 @@ export function ProdutosClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [categoriaFiltro, setCategoriaFiltro] = useState<string>("Todas");
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string>("");
+  const [armazemFiltro, setArmazemFiltro] = useState<string>("");
+  const [ativoFiltro, setAtivoFiltro] = useState<"" | "ativos" | "inativos">("");
+  const [exportando, setExportando] = useState(false);
   const [statusFiltro, setStatusFiltro] = useState<(typeof STATUS_FILTROS)[number]>("Todos");
   const [busca, setBusca] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
@@ -181,7 +185,9 @@ export function ProdutosClient({
   const filtrados = useMemo(() => {
     return produtos
       .filter((p) => {
-        const passaCategoria = categoriaFiltro === "Todas" || p.categoria_nome === categoriaFiltro;
+        const passaCategoria = !categoriaFiltro || p.categoria_id === categoriaFiltro;
+        const passaArmazem = !armazemFiltro || p.armazem_id === armazemFiltro;
+        const passaAtivo = !ativoFiltro || (ativoFiltro === "ativos" ? p.ativo : !p.ativo);
         const passaBusca =
           busca.trim() === "" ||
           rotuloProduto(p).toLowerCase().includes(busca.toLowerCase()) ||
@@ -191,7 +197,7 @@ export function ProdutosClient({
           (statusFiltro === "Sem estoque" && p.estoque === 0) ||
           (statusFiltro === "Estoque baixo" && p.estoque > 0 && p.estoque <= p.estoque_minimo) ||
           (statusFiltro === "Em estoque" && p.estoque > p.estoque_minimo);
-        return passaCategoria && passaBusca && passaStatus;
+        return passaCategoria && passaArmazem && passaAtivo && passaBusca && passaStatus;
       })
       // Variantes do mesmo grupo ficam adjacentes e em ordem, senão a lista vira
       // três linhas com o mesmo nome espalhadas pela tabela.
@@ -201,7 +207,27 @@ export function ProdutosClient({
         if (grupoA !== grupoB) return grupoA.localeCompare(grupoB, "pt-BR");
         return (a.variante_nome ?? "").localeCompare(b.variante_nome ?? "", "pt-BR");
       });
-  }, [produtos, categoriaFiltro, busca, statusFiltro]);
+  }, [produtos, categoriaFiltro, armazemFiltro, ativoFiltro, busca, statusFiltro]);
+
+  /** Contagem por situação de estoque, para os chips. */
+  const contagemStatus = useMemo(() => {
+    const c = { "Todos": produtos.length, "Em estoque": 0, "Estoque baixo": 0, "Sem estoque": 0 } as Record<(typeof STATUS_FILTROS)[number], number>;
+    for (const p of produtos) {
+      if (p.estoque === 0) c["Sem estoque"]++;
+      else if (p.estoque <= p.estoque_minimo) c["Estoque baixo"]++;
+      else c["Em estoque"]++;
+    }
+    return c;
+  }, [produtos]);
+  const filtrosAtivos = [categoriaFiltro, armazemFiltro, ativoFiltro].filter(Boolean).length + (statusFiltro === "Todos" ? 0 : 1);
+
+  function limparFiltros() {
+    setBusca("");
+    setCategoriaFiltro("");
+    setArmazemFiltro("");
+    setAtivoFiltro("");
+    setStatusFiltro("Todos");
+  }
 
   const valorEmEstoque = produtos.reduce((acc, p) => acc + p.custo * p.estoque, 0);
   const reposicaoNecessaria = produtos.filter((p) => p.estoque <= p.estoque_minimo).length;
@@ -375,23 +401,28 @@ export function ProdutosClient({
   // Deriva do prop (não do snapshot em `editando`) pra a lista de fotos atualizar sozinha
   // depois de adicionar/remover, sem precisar fechar e reabrir o modal.
   const editandoAtual = editando ? (produtos.find((p) => p.id === editando.id) ?? editando) : null;
-  const categoriasNomes = ["Todas", ...categorias.map((c) => c.nome)];
 
-  function exportarCsv() {
-    const cabecalho = ["SKU", "Nome", "Categoria", "Fornecedor", "Armazém", "Custo", "Preço Venda", "Estoque", "Estoque Mínimo", "Ativo"];
-    const linhas = filtrados.map((p) => [
-      p.sku,
-      p.nome,
-      p.categoria_nome ?? "",
-      p.fornecedor_nome ?? "",
-      p.armazem_nome ?? "",
-      p.custo.toFixed(2),
-      p.preco_venda.toFixed(2),
-      p.estoque,
-      p.estoque_minimo,
-      p.ativo ? "Sim" : "Não",
-    ]);
-    baixarArquivo("produtos.csv", matrizParaCsv([cabecalho, ...linhas]));
+  function tabelaProdutos(escopo: string): TabelaExport<Produto> {
+    const fonte = escopo === "selecionados" ? produtos.filter((p) => selecionados.includes(p.id)) : escopo === "filtrados" ? filtrados : produtos;
+    return {
+      titulo: "Produtos",
+      subtitulo: escopo === "filtrados" ? "Lista filtrada" : escopo === "selecionados" ? `${fonte.length} selecionado(s)` : undefined,
+      colunas: [
+        { rotulo: "SKU", largura: 16, valor: (p) => p.sku },
+        { rotulo: "Produto", largura: 36, valor: (p) => rotuloProduto(p) },
+        { rotulo: "Categoria", largura: 16, valor: (p) => p.categoria_nome ?? "" },
+        { rotulo: "Fornecedor", largura: 16, valor: (p) => p.fornecedor_nome ?? "" },
+        { rotulo: "Armazém", largura: 14, valor: (p) => p.armazem_nome ?? "" },
+        { rotulo: "Custo", tipo: "moeda", valor: (p) => p.custo },
+        { rotulo: "Preço de venda", tipo: "moeda", valor: (p) => p.preco_venda },
+        { rotulo: "Estoque", tipo: "inteiro", valor: (p) => p.estoque },
+        { rotulo: "Mínimo", tipo: "inteiro", valor: (p) => p.estoque_minimo },
+        { rotulo: "Valor em estoque", tipo: "moeda", valor: (p) => p.custo * p.estoque },
+        { rotulo: "Ativo", valor: (p) => (p.ativo ? "Sim" : "Não") },
+      ],
+      linhas: fonte,
+      total: ["Total", `${fonte.length} produtos`, null, null, null, null, null, fonte.reduce((a, p) => a + p.estoque, 0), null, fonte.reduce((a, p) => a + p.custo * p.estoque, 0), null],
+    };
   }
 
   return (
@@ -400,7 +431,7 @@ export function ProdutosClient({
         title="Produtos"
         actions={
           <>
-            <Button variant="secondary" onClick={exportarCsv}>Exportar CSV</Button>
+            <Button variant="secondary" onClick={() => setExportando(true)}>Exportar</Button>
             <Button variant="primary" onClick={abrirNovo}>+ Cadastrar Produto</Button>
           </>
         }
@@ -421,29 +452,33 @@ export function ProdutosClient({
         </Card>
       </div>
 
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome ou SKU…"
-          className={`${campoBase} w-full sm:w-64`}
+      <BarraFiltros
+        busca={busca}
+        onBusca={setBusca}
+        placeholder="Buscar por nome ou SKU…"
+        ativos={filtrosAtivos}
+        onLimpar={limparFiltros}
+        situacao={
+          <FiltroChips
+            rotulo="Estoque"
+            valor={statusFiltro}
+            onChange={setStatusFiltro}
+            opcoes={STATUS_FILTROS.map((st) => ({ valor: st, rotulo: st, quantidade: contagemStatus[st] }))}
+          />
+        }
+      >
+        <FiltroSelect rotulo="Categoria" valor={categoriaFiltro} onChange={setCategoriaFiltro} todos="Todas" opcoes={categorias.map((c) => ({ valor: c.id, rotulo: c.nome }))} />
+        <FiltroSelect rotulo="Armazém" valor={armazemFiltro} onChange={setArmazemFiltro} opcoes={armazens.map((a) => ({ valor: a.id, rotulo: a.nome }))} />
+        <FiltroSelect
+          rotulo="Situação"
+          valor={ativoFiltro}
+          onChange={(v) => setAtivoFiltro(v as "" | "ativos" | "inativos")}
+          opcoes={[
+            { valor: "ativos", rotulo: "Ativos" },
+            { valor: "inativos", rotulo: "Inativos" },
+          ]}
         />
-        <div className="flex gap-2 flex-wrap">
-          {categoriasNomes.map((c) => (
-            <Chip key={c} onClick={() => setCategoriaFiltro(c)} ativo={categoriaFiltro === c}>
-              {c}
-            </Chip>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {STATUS_FILTROS.map((s) => (
-          <Chip key={s} onClick={() => setStatusFiltro(s)} ativo={statusFiltro === s}>
-            {s}
-          </Chip>
-        ))}
-      </div>
+      </BarraFiltros>
 
       {selecionados.length > 0 && (
         <div className="flex items-center justify-between bg-accent-soft border border-accent-soft rounded-md px-4 py-2.5 mb-3">
@@ -610,6 +645,18 @@ export function ProdutosClient({
       </Modal>
 
       {ConfirmDialog}
+      <ExportarModal
+        key={exportando ? "exp-aberto" : "exp-fechado"}
+        aberto={exportando}
+        onClose={() => setExportando(false)}
+        titulo="Exportar produtos"
+        escopos={[
+          { id: "todos", rotulo: "Todos", quantidade: produtos.length },
+          { id: "filtrados", rotulo: "Filtrados", quantidade: filtrados.length },
+          { id: "selecionados", rotulo: "Selecionados", quantidade: selecionados.length },
+        ]}
+        montar={tabelaProdutos}
+      />
     </>
   );
 }
