@@ -36,6 +36,7 @@ import { AbaConta } from "@/components/configuracoes/AbaConta";
 import { AbaIA, type IaCadastrada } from "@/components/configuracoes/AbaIA";
 import type { EstadoTeste } from "@/lib/ia/teste";
 import { AbaCanais } from "@/components/configuracoes/AbaCanais";
+import { AbaDados } from "@/components/configuracoes/AbaDados";
 import { ContaModal, FormaPagamentoModal, ArmazemModal, ROTULO_TIPO_FORMA } from "@/components/configuracoes/ModaisCadastro";
 
 export interface Categoria {
@@ -90,7 +91,7 @@ export const ICONES_CANAL: Record<string, LucideIcon> = {
   Facebook: Users,
 };
 
-const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "IA", "Conta"] as const;
+const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "IA", "Dados", "Conta"] as const;
 const ABAS_TABS = ABAS.map((a) => ({ value: a, label: a }));
 
 export function ConfiguracoesClient({
@@ -386,6 +387,7 @@ export function ConfiguracoesClient({
         </div>
       )}
       {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} teste={teste} />}
+      {aba === "Dados" && <AbaDados armazens={armazens.map((a) => ({ id: a.id, nome: a.nome }))} />}
       {aba === "Conta" && (
         <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} />
       )}
