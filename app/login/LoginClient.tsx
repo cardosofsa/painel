@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { CartaoAuth, ErroAuth } from "@/components/auth/CartaoAuth";
+import { LinksLegais } from "@/components/legal/LinksLegais";
 import { BotaoGoogle, DivisorOu } from "@/components/auth/BotaoGoogle";
 import { traduzirErroAuth, ERROS_LINK } from "@/lib/erros";
 import { reenviarConfirmacao } from "@/app/auth/actions";
@@ -73,6 +74,7 @@ export function LoginClient() {
           <Link href="/signup" className="text-accent hover:underline">
             Criar conta
           </Link>
+          <LinksLegais className="mt-2" />
         </>
       }
     >

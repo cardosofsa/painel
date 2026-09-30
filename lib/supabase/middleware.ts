@@ -90,6 +90,9 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     "/auth/callback",
     "/auth/reset",
     "/vitrine",
+    // Exigidas pelo Google (e pela LGPD) para publicar o login: precisam abrir sem sessão.
+    "/privacidade",
+    "/termos",
     // Quem faz o pedido é o cliente final, que nunca teve login. Sem esta linha o POST
     // viraria um redirect para /login e o carrinho nunca enviaria.
     "/api/vitrine",

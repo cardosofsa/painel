@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { LinksLegais } from "@/components/legal/LinksLegais";
 import { derivarTokens } from "@/lib/cores";
 import { classeFonte } from "@/lib/fontes-vitrine";
 import { buscarAparenciaPublica } from "./dados";
@@ -30,7 +31,7 @@ export default async function VitrineLayout({
   const { slug } = await params;
   const aparencia = await buscarAparenciaPublica(slug);
 
-  if (!aparencia) return <>{children}</>;
+  if (!aparencia) return <>{children}<LinksLegais className="py-4" /></>;
 
   const tokens = derivarTokens({
     corPrimaria: aparencia.cor_primaria,
@@ -60,6 +61,7 @@ export default async function VitrineLayout({
   return (
     <div style={estiloTokens} className={`${classeFonte(aparencia.fonte)} min-h-screen`}>
       {children}
+      <LinksLegais className="py-4" />
     </div>
   );
 }
