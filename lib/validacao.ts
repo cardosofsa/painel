@@ -641,3 +641,19 @@ export const iaFerramentaSchemas = {
   }),
   atributos: z.object({ produto: produtoTextoIaSchema }),
 } as const;
+
+/** Assistente de vitrine da Vixe (7.9): as respostas do dono. */
+export const iaVitrineSchema = z.object({
+  nomeNegocio: z.string().trim().max(120).nullish(),
+  segmento: z.string().trim().min(2, "Conte o que a loja vende").max(200),
+  publico: z.string().trim().max(200).nullish(),
+  estilo: z.enum(["moderno", "elegante", "rustico", "divertido", "minimalista"]),
+  cores: z.string().trim().max(120).nullish(),
+  diferenciais: z.string().trim().max(500, "Diferenciais: até 500 caracteres").nullish(),
+  cidade: z.string().trim().max(80).nullish(),
+});
+
+/** Seções já normalizadas por `normalizarSecoes`; aqui só o teto de segurança antes de gravar. */
+export const secoesVitrineSchema = z
+  .record(z.string(), z.unknown())
+  .refine((v) => JSON.stringify(v).length <= 6000, "Seções da vitrine grandes demais");

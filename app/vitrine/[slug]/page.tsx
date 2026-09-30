@@ -5,6 +5,8 @@ import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { VitrineInterativa } from "@/components/catalogo/VitrineInterativa";
 import { agruparLinhas, decodificarCarrinho, montarCarrinho } from "@/lib/vitrine-catalogo";
 import { buscarCatalogoPublico, buscarAparenciaPublica } from "./dados";
+import { normalizarSecoes } from "@/lib/vixe/vitrine";
+import { DestaqueVitrine, SecoesFinaisVitrine } from "@/components/catalogo/VitrineSecoes";
 
 /**
  * Metadata própria da vitrine.
@@ -67,6 +69,8 @@ export default async function VitrinePage({
   // Título e mensagem personalizados substituem o nome cru do catálogo; sem eles, o
   // comportamento é o de sempre.
   const tituloExibido = aparencia?.titulo || nome;
+  // Mesmo portão da gravação: o que vier do banco fora do formato simplesmente não aparece.
+  const secoes = normalizarSecoes(aparencia?.secoes);
 
   // Quando o catálogo existe mas não tem produto elegível, a função ainda devolve uma
   // linha (pra distinguir de "slug inválido"), só que com produto_id nulo. Produto sem
@@ -103,6 +107,7 @@ export default async function VitrinePage({
                 <p className="text-sm text-text-secondary mt-2">{aparencia.mensagem_boas_vindas}</p>
               )}
             </div>
+            <DestaqueVitrine secoes={secoes} />
             {itens.length === 0 ? (
               <div className="bg-surface-1 border border-border rounded-lg">
                 <EmptyState icon={BookOpen} title="Nenhum produto disponível no momento" />
@@ -116,6 +121,7 @@ export default async function VitrinePage({
                 carrinhoInicial={carrinhoInicial}
               />
             )}
+            <SecoesFinaisVitrine secoes={secoes} whatsapp={negocioWhatsapp} />
           </>
         )}
       </div>

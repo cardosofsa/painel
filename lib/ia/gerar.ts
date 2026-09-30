@@ -7,7 +7,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { validar, iaContextoSchema, iaPrecoSchema, iaFerramentaSchemas } from "@/lib/validacao";
+import { validar, iaContextoSchema, iaPrecoSchema, iaFerramentaSchemas, iaVitrineSchema } from "@/lib/validacao";
 import { lancarErroSupabase } from "@/lib/erros";
 import { comResultado, type Resultado } from "@/lib/acao";
 import { ErroIA } from "./erro";
@@ -56,6 +56,14 @@ import {
   type ContextoLegenda,
   type ContextoAtributos,
 } from "./prompts-textos";
+import {
+  montarPromptVitrine,
+  esquemaVitrine,
+  interpretarVitrine,
+  hashContextoVitrine,
+  type ContextoVitrine,
+  type VitrineSugerida,
+} from "./prompts-vitrine";
 
 /** Os dois tipos de texto — título de anúncio e descrição de produto. */
 export type TipoGeracaoTexto = "titulo" | "descricao";
@@ -232,9 +240,10 @@ async function executarEstruturado<T>(
   prompt: string,
   esquema: object,
   interpretar: (bruto: string) => T,
+  parametros: { maxTokens: number; temperatura: number } = PARAMETROS[tipo],
 ): Promise<{ valor: T } & MetaGeracao> {
   const ia = await resolverProvedor(supabase);
-  const { maxTokens, temperatura } = PARAMETROS[tipo];
+  const { maxTokens, temperatura } = parametros;
   const hash = `${hashBase}:${ia.provedor}:${ia.modelo}`;
 
   const { data: cache, error: erroCache } = await supabase
@@ -414,5 +423,29 @@ export async function gerarFerramentaIA(
     );
     if (!valor.texto) throw new ErroIA("vazio", "texto vazio");
     return { ...valor, atributos: [], ...meta };
+  });
+}
+
+export interface SugestaoVitrine extends MetaGeracao {
+  vitrine: VitrineSugerida;
+}
+
+/**
+ * Vixe Vitrine (7.9): tema + seções numa chamada. Conta como geração de "tema" (é o mesmo
+ * produto: a aparência da vitrine), com teto de tokens maior porque as seções têm texto.
+ */
+export async function gerarVitrineIA(supabase: SupabaseClient, contexto: unknown): Promise<Resultado<SugestaoVitrine>> {
+  return comResultado(async () => {
+    const ctx = validar(iaVitrineSchema, contexto) as ContextoVitrine;
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "tema",
+      hashContextoVitrine(ctx),
+      montarPromptVitrine(ctx),
+      esquemaVitrine(),
+      interpretarVitrine,
+      { maxTokens: 1800, temperatura: 0.8 },
+    );
+    return { vitrine: valor, ...meta };
   });
 }

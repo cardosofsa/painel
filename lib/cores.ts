@@ -166,3 +166,27 @@ export function tokensDoBloco(css: string, seletor: string): Record<string, stri
   for (const m of corpo.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) out[m[1]] = m[2].trim();
   return out;
 }
+
+/**
+ * Tokens como variáveis CSS, com os MESMOS nomes do `@theme inline` de `globals.css`. Usado
+ * pelo layout da vitrine e pela prévia da Vixe Vitrine: aplicado como `style` numa `<div>`,
+ * todo componente escrito com `bg-background`, `text-accent` etc. passa a seguir o tema.
+ */
+export function variaveisCssVitrine(base: TemaBase): Record<string, string> {
+  const t = derivarTokens(base);
+  return {
+    "--background": t.background,
+    "--surface-1": t.surface1,
+    "--surface-2": t.surface1,
+    "--surface-3": t.border,
+    "--border": t.border,
+    "--border-forte": t.border,
+    "--text-primary": t.textPrimary,
+    "--text-secondary": t.textSecondary,
+    "--text-tertiary": t.textTertiary,
+    "--accent": t.accent,
+    "--accent-hover": t.accentHover,
+    "--accent-soft": t.accentSoft,
+    "--accent-on": t.accentOn,
+  };
+}

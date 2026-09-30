@@ -29,6 +29,8 @@ export interface AparenciaPublica {
   logo_url: string | null;
   titulo: string | null;
   mensagem_boas_vindas: string | null;
+  /** Seções da Vixe (0040). Cru do banco: passe por `normalizarSecoes` antes de usar. */
+  secoes?: unknown;
 }
 
 /** `null` quando o dono nunca personalizou — a vitrine usa os tokens padrão do sistema. */

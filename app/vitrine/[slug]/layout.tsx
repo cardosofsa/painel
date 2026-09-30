@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { LinksLegais } from "@/components/legal/LinksLegais";
-import { derivarTokens } from "@/lib/cores";
+import { variaveisCssVitrine } from "@/lib/cores";
 import { classeFonte } from "@/lib/fontes-vitrine";
 import { buscarAparenciaPublica } from "./dados";
 
@@ -33,30 +33,14 @@ export default async function VitrineLayout({
 
   if (!aparencia) return <>{children}<LinksLegais className="py-4" /></>;
 
-  const tokens = derivarTokens({
+  // As variáveis usam os MESMOS nomes que `@theme inline` espera (ver `variaveisCssVitrine`),
+  // então nenhum componente da vitrine precisa saber que o tema existe.
+  const estiloTokens = variaveisCssVitrine({
     corPrimaria: aparencia.cor_primaria,
     corFundo: aparencia.cor_fundo,
     corSuperficie: aparencia.cor_superficie,
     corTexto: aparencia.cor_texto,
-  });
-
-  // As variáveis usam os MESMOS nomes que `@theme inline` espera, então nada além desta
-  // `style` precisa mudar — nenhum componente da vitrine referencia cor fora de token.
-  const estiloTokens = {
-    "--background": tokens.background,
-    "--surface-1": tokens.surface1,
-    "--surface-2": tokens.surface1,
-    "--surface-3": tokens.border,
-    "--border": tokens.border,
-    "--border-forte": tokens.border,
-    "--text-primary": tokens.textPrimary,
-    "--text-secondary": tokens.textSecondary,
-    "--text-tertiary": tokens.textTertiary,
-    "--accent": tokens.accent,
-    "--accent-hover": tokens.accentHover,
-    "--accent-soft": tokens.accentSoft,
-    "--accent-on": tokens.accentOn,
-  } as CSSProperties;
+  }) as CSSProperties;
 
   return (
     <div style={estiloTokens} className={`${classeFonte(aparencia.fonte)} min-h-screen`}>
