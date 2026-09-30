@@ -23,6 +23,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SERTÃO",
   description: "Sistema local de gestão — precificação, produtos, estoque, compras e financeiro.",
+  // Prova de propriedade do site no Google Search Console (exigida na verificação do login com Google).
+  verification: { google: "AywG-MdNmFQ7TsFAs9aoDFTn635PCS-KAoFi6HsDnr4" },
 };
 
 const themeInitScript = `
