@@ -15,6 +15,7 @@ import { formatBRL } from "@/lib/format";
 import {
   criarCategoria,
   removerCategoria,
+  definirTipoCategoria,
   criarConta,
   atualizarConta,
   removerConta,
@@ -41,6 +42,8 @@ export interface Categoria {
   id: string;
   nome: string;
   skus: number;
+  /** 0042. Ausente antes da migração. */
+  tipo?: "produto" | "insumo" | "embalagem";
 }
 export interface Canal {
   id: string;
@@ -245,6 +248,21 @@ export function ConfiguracoesClient({
               <div key={c.id} className="flex items-center justify-between bg-surface-2 rounded-md px-3 py-2">
                 <span className="text-sm text-text-primary">{c.nome}</span>
                 <div className="flex items-center gap-3">
+                  <select
+                    aria-label={`Tipo da categoria ${c.nome}`}
+                    value={c.tipo ?? "produto"}
+                    onChange={(e) => {
+                      const tipo = e.target.value as "produto" | "insumo" | "embalagem";
+                      startTransition(async () => {
+                        await executarComToast(definirTipoCategoria(c.id, tipo), { sucesso: "Tipo atualizado", erro: "Erro ao mudar o tipo" });
+                      });
+                    }}
+                    className="h-7 text-xs rounded-md border border-border bg-surface-1 px-2 text-text-secondary"
+                  >
+                    <option value="produto">Produto</option>
+                    <option value="insumo">Insumo</option>
+                    <option value="embalagem">Embalagem</option>
+                  </select>
                   <span className="font-mono text-xs text-text-secondary">{c.skus} SKUs</span>
                   <button onClick={() => removerCategoriaHandler(c)} className="text-text-tertiary hover:text-negative text-sm">
                     ×

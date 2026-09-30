@@ -25,7 +25,8 @@ export default async function ProdutosPage() {
         "*",
       )
       .order("nome"),
-    supabase.from("categorias").select("id, nome").order("nome"),
+    // `*`: `tipo` (insumo/embalagem) só existe a partir da 0042.
+    supabase.from("categorias").select("*").order("nome"),
     supabase.from("fornecedores").select("id, nome").order("nome"),
     supabase.from("armazens").select("id, nome").order("nome"),
     supabase

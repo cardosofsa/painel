@@ -59,7 +59,7 @@ export function ProdutoFormModal({
   /** Medidas de envio padrão por grupo de variação. */
   padroesEnvio?: Record<string, DimensoesEnvio>;
   iaDisponivel: boolean;
-  produtosParaInsumo: { id: string; nome: string; custo: number }[];
+  produtosParaInsumo: { id: string; nome: string; custo: number; sku?: string; tipo?: "produto" | "insumo" | "embalagem" | null }[];
   enviandoImagem: boolean;
   enviarImagem: (file: File) => void;
   adicionarFotoExtra: (file: File) => void;

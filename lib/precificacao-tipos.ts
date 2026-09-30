@@ -79,6 +79,8 @@ export interface ProdutoOpcao {
   palavras_chave?: string[] | null;
   /** Foto do produto, usada na imagem compartilhada da precificação. */
   imagem_url?: string | null;
+  /** Tipo da categoria (0042): insumo/embalagem aparecem primeiro na composição. */
+  tipo?: "produto" | "insumo" | "embalagem" | null;
 }
 
 export type VisaoPrecificacao = "individual" | "variacoes" | "massa" | "historico";

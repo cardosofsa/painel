@@ -182,8 +182,13 @@ export function ProdutosClient({
   // Pro seletor "+ Do estoque" do editor de insumos: qualquer outro produto pode virar
   // insumo de um kit. Exclui o próprio produto em edição, pra não deixar ele se referenciar.
   const produtosParaInsumo = useMemo(
-    () => produtos.filter((p) => p.id !== editando?.id).map((p) => ({ id: p.id, nome: p.nome, custo: p.custo })),
-    [produtos, editando],
+    () => {
+      const tipoCategoria = new Map(categorias.map((c) => [c.id, (c as { tipo?: "produto" | "insumo" | "embalagem" }).tipo ?? null]));
+      return produtos
+        .filter((p) => p.id !== editando?.id)
+        .map((p) => ({ id: p.id, nome: p.nome, custo: p.custo, sku: p.sku, tipo: p.categoria_id ? (tipoCategoria.get(p.categoria_id) ?? null) : null }));
+    },
+    [produtos, editando, categorias],
   );
 
 

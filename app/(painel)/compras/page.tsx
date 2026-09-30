@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { hojeIsoLocal } from "@/lib/format";
 import { quantidadeSugeridaCompra } from "@/lib/alertas";
-import { ComprasClient, type Pedido } from "./ComprasClient";
+import { ComprasClient, type ItemPedido, type Pedido } from "./ComprasClient";
+import { faltaReceber, statusAberto, sugestaoCompras } from "@/lib/compras";
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;
@@ -32,17 +33,16 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       // baixar tudo. Pedido pendente antigo entra na janela de qualquer jeito (ver abaixo).
       supabase
         .from("pedidos_compra")
-        .select(
-          "id, numero, fornecedor_id, armazem_id, nf, nf_arquivo_path, valor_total, status, data_pedido, data_entrega_prevista, data_recebimento, forma_pagamento, parcelas, pedidos_compra_itens(produto_id, produto_nome, quantidade, custo_unitario)",
-        )
-        .or(`data_pedido.gte.${inicioJanela},status.eq.pendente`)
+        // `*`: frete, observação e quantidade_recebida só existem a partir da 0042.
+        .select("*, pedidos_compra_itens(*)")
+        .or(`data_pedido.gte.${inicioJanela},status.in.(pendente,em_transito,parcial)`)
         .order("data_pedido", { ascending: false })
         .limit(500),
       supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
       supabase.from("fornecedores").select("id, nome, cnpj"),
       supabase
         .from("produtos")
-        .select("id, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal")
+        .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo")
         .order("nome"),
       supabase.from("armazens").select("id, nome").order("nome"),
       supabase.from("contas").select("id, nome").order("nome"),
@@ -89,13 +89,19 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       nf_arquivo_path: p.nf_arquivo_path,
       valor_total: p.valor_total,
       status: p.status,
+      frete: p.frete ?? 0,
+      observacao: p.observacao ?? null,
       data_pedido: p.data_pedido,
       data_entrega_prevista: p.data_entrega_prevista,
       data_recebimento: p.data_recebimento,
       forma_pagamento: p.forma_pagamento,
       parcelas: p.parcelas,
       conta_nome: (contaIdPorPedidoId.get(p.id) && contasPorId.get(contaIdPorPedidoId.get(p.id)!)) ?? null,
-      itens: p.pedidos_compra_itens ?? [],
+      itens: ((p.pedidos_compra_itens ?? []) as ItemPedido[]).map((i) => ({
+        ...i,
+        // Antes da 0042 não há `quantidade_recebida`: pedido recebido = tudo chegou.
+        quantidade_recebida: i.quantidade_recebida ?? (p.status === "recebido" ? i.quantidade : 0),
+      })),
     };
   });
 
@@ -116,8 +122,22 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
         }
       : null;
 
+  // Sugestão de compra: desconta o que já foi pedido e ainda não chegou.
+  const emAberto = new Map<string, number>();
+  for (const p of pedidos) {
+    if (!statusAberto(p.status)) continue;
+    for (const i of p.itens) if (i.produto_id) emAberto.set(i.produto_id, (emAberto.get(i.produto_id) ?? 0) + faltaReceber(i));
+  }
+  const sugestao = sugestaoCompras(
+    (produtosRes.data ?? [])
+      .filter((p) => p.ativo !== false)
+      .map((p) => ({ ...p, nome: produtos.find((x) => x.id === p.id)?.nome ?? p.nome })),
+    emAberto,
+  );
+
   return (
     <ComprasClient
+      sugestao={sugestao}
       pedidoInicial={pedidoInicial}
       pedidos={pedidos}
       fornecedores={fornecedoresAtivosRes.data ?? []}

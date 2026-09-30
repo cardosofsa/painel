@@ -18,6 +18,11 @@ import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
  * autocontido: recebe fornecedores, produtos, armazéns e contas por prop e não
  * compartilha estado nenhum com a listagem.
  */
+/** Um item (alerta de estoque) ou vários (Sugestão de Compras). */
+function itensIniciais(p: { item?: ItemPedidoInput; itens?: ItemPedidoInput[] } | null): ItemPedidoInput[] {
+  return p?.itens ?? (p?.item ? [p.item] : []);
+}
+
 export function NovoPedidoModal({
   pedidoInicial = null,
   open,
@@ -29,7 +34,7 @@ export function NovoPedidoModal({
   formasPagamento,
 }: {
   /** Fornecedor e item já escolhidos (vindo do alerta de estoque mínimo). */
-  pedidoInicial?: { fornecedorId: string | null; item: ItemPedidoInput } | null;
+  pedidoInicial?: { fornecedorId: string | null; item?: ItemPedidoInput; itens?: ItemPedidoInput[] } | null;
   open: boolean;
   onClose: () => void;
   fornecedores: Opcao[];
@@ -52,7 +57,7 @@ export function NovoPedidoModal({
   const [parcelado, setParcelado] = useState(false);
   const [parcelas, setParcelas] = useState(2);
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => hojeIsoLocal());
-  const [itens, setItens] = useState<ItemPedidoInput[]>(pedidoInicial ? [pedidoInicial.item] : []);
+  const [itens, setItens] = useState<ItemPedidoInput[]>(itensIniciais(pedidoInicial));
   // `fechar()` já devolve todos esses campos ao padrão ao fechar (confirmado ou não), então
   // basta comparar contra os valores de abertura pra saber se há algo pra perder — não
   // precisa de um `formOriginal` capturado por efeito.
@@ -68,7 +73,7 @@ export function NovoPedidoModal({
       contaId: contas[0]?.id ?? "",
       parcelado: false,
       parcelas: 2,
-      itens: (pedidoInicial ? [pedidoInicial.item] : []) as ItemPedidoInput[],
+      itens: itensIniciais(pedidoInicial),
     },
   );
 

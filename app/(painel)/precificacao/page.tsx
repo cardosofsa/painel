@@ -7,7 +7,7 @@ import type { Concorrente } from "@/lib/pricing";
 
 export default async function PrecificacaoPage() {
   const supabase = await createClient();
-  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes] =
+  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes] =
     await Promise.all([
     supabase
       .from("precificacoes")
@@ -16,7 +16,7 @@ export default async function PrecificacaoPage() {
       )
       .order("criado_em", { ascending: false })
       .limit(50),
-    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url").order("nome"),
+    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id").order("nome"),
     supabase.from("perfil_negocio").select("aliquota_das, nome_negocio, logo_url").maybeSingle(),
     supabase
       .from("canais")
@@ -35,6 +35,8 @@ export default async function PrecificacaoPage() {
       .limit(30),
     supabase.from("concorrentes_preco").select("id, produto_id, nome, preco, link").order("criado_em"),
     supabase.from("produto_grupos").select("id, nome"),
+    // `*`: `tipo` (insumo/embalagem) só existe a partir da 0042.
+    supabase.from("categorias").select("*"),
   ]);
 
   if (historicoRes.error) throw new Error(historicoRes.error.message);
@@ -50,7 +52,11 @@ export default async function PrecificacaoPage() {
   // O autocomplete corta em 6 sugestões: sem o rótulo, três variantes do mesmo
   // grupo ocupam metade da lista sem dar pra distinguir uma da outra.
   const grupos = mapaGrupos(gruposRes.data ?? []);
-  const produtos = (produtosRes.data ?? []).map((p) => comRotulo(p, grupos));
+  const tipoCategoria = new Map(((categoriasRes.data ?? []) as { id: string; tipo?: string }[]).map((c) => [c.id, c.tipo ?? null]));
+  const produtos = (produtosRes.data ?? []).map((p) => ({
+    ...comRotulo(p, grupos),
+    tipo: (p.categoria_id ? tipoCategoria.get(p.categoria_id) : null) as "produto" | "insumo" | "embalagem" | null,
+  }));
 
   const canaisPorId = new Map((canaisRes.data ?? []).map((c) => [c.id, c]));
 

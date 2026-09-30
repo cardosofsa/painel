@@ -2,24 +2,34 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { PackageSearch, Lightbulb, ClipboardList } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal, campoBase } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PackageSearch } from "lucide-react";
+import { useConfirm } from "@/components/ui/ConfirmModal";
+import { BarraFiltros, FiltroSelect } from "@/components/ui/BarraFiltros";
+import { ExportarModal } from "@/components/ui/ExportarModal";
 import { formatBRL, formatarDataIso, hojeIsoLocal, dataLocal } from "@/lib/format";
-import { marcarPedidoRecebido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { ORDEM_STATUS, STATUS_COMPRA, faltaReceber, statusAberto, type LinhaSugestao, type StatusCompra } from "@/lib/compras";
+import type { TabelaExport } from "@/lib/exportar";
+import { cancelarPedidoCompra, definirTransitoPedido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 import { NovoPedidoModal } from "@/components/compras/NovoPedidoModal";
+import { ReceberPedidoModal } from "@/components/compras/ReceberPedidoModal";
+import { DetalhePedidoModal } from "@/components/compras/DetalhePedidoModal";
+import { SugestaoCompras } from "@/components/compras/SugestaoCompras";
+import { ImportarPedidosModal } from "@/components/compras/ImportarPedidosModal";
 
 export interface ItemPedido {
+  id?: string;
   produto_id: string | null;
   produto_nome: string;
   quantidade: number;
+  quantidade_recebida?: number | null;
   custo_unitario: number;
 }
 
@@ -34,7 +44,9 @@ export interface Pedido {
   nf: string | null;
   nf_arquivo_path: string | null;
   valor_total: number;
-  status: "pendente" | "recebido";
+  frete?: number | null;
+  observacao?: string | null;
+  status: StatusCompra;
   data_pedido: string;
   data_entrega_prevista: string | null;
   data_recebimento: string | null;
@@ -49,8 +61,12 @@ export interface Opcao {
   nome: string;
 }
 
-const PERIODOS = ["Todos", "Últimos 7 dias", "Este mês"] as const;
-const STATUS_OPCOES = ["Todos", "Pendente", "Recebido"] as const;
+type Secao = "sugestao" | "todos" | StatusCompra;
+const PERIODOS = [
+  { valor: "7", rotulo: "Últimos 7 dias" },
+  { valor: "mes", rotulo: "Este mês" },
+  { valor: "30", rotulo: "Últimos 30 dias" },
+] as const;
 
 export function ComprasClient({
   pedidoInicial,
@@ -60,311 +76,333 @@ export function ComprasClient({
   armazens,
   contas,
   formasPagamento,
+  sugestao,
 }: {
   /** Pedido pré-preenchido vindo do alerta de estoque mínimo (?novo=…). */
   pedidoInicial: { fornecedorId: string | null; item: ItemPedidoInput } | null;
   pedidos: Pedido[];
   fornecedores: Opcao[];
-  produtos: (Opcao & { custo: number })[];
+  produtos: (Opcao & { custo: number; sku: string })[];
   armazens: Opcao[];
   contas: Opcao[];
   formasPagamento: Opcao[];
+  sugestao: LinhaSugestao[];
 }) {
   const [, startTransition] = useTransition();
-  const [pedidoDetalhe, setPedidoDetalhe] = useState<Pedido | null>(null);
-  const [notaDetalhe, setNotaDetalhe] = useState<Pedido | null>(null);
   const router = useRouter();
-  const [modalNovo, setModalNovo] = useState(pedidoInicial !== null);
+  const { confirm, ConfirmDialog } = useConfirm();
+  const [secao, setSecao] = useState<Secao>(pedidos.some((p) => statusAberto(p.status)) ? "todos" : sugestao.length ? "sugestao" : "todos");
+  const [novoPedido, setNovoPedido] = useState<{ fornecedorId: string | null; itens?: ItemPedidoInput[]; item?: ItemPedidoInput } | null>(pedidoInicial);
+  const [detalhe, setDetalhe] = useState<Pedido | null>(null);
+  const [receber, setReceber] = useState<Pedido | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [busca, setBusca] = useState("");
+  const [periodo, setPeriodo] = useState("");
+  const [fornecedorFiltro, setFornecedorFiltro] = useState("");
 
-  const [periodo, setPeriodo] = useState<(typeof PERIODOS)[number]>("Todos");
-  const [statusFiltro, setStatusFiltro] = useState<(typeof STATUS_OPCOES)[number]>("Todos");
-  const [fornecedorFiltro, setFornecedorFiltro] = useState("Todos");
-
-  const fornecedoresDisponiveis = useMemo(
-    () => ["Todos", ...Array.from(new Set(pedidos.map((p) => p.fornecedor_nome)))],
-    [pedidos],
-  );
+  const contagem = useMemo(() => {
+    const c = Object.fromEntries(ORDEM_STATUS.map((s) => [s, 0])) as Record<StatusCompra, number>;
+    for (const p of pedidos) c[p.status] = (c[p.status] ?? 0) + 1;
+    return c;
+  }, [pedidos]);
 
   const filtrados = useMemo(() => {
     const agora = new Date();
+    const t = busca.trim().toLowerCase();
     return pedidos.filter((p) => {
-      if (statusFiltro !== "Todos") {
-        const statusLabel = p.status === "pendente" ? "Pendente" : "Recebido";
-        if (statusLabel !== statusFiltro) return false;
-      }
-      if (fornecedorFiltro !== "Todos" && p.fornecedor_nome !== fornecedorFiltro) return false;
-      if (periodo !== "Todos") {
-        // `data_pedido` é coluna `date`; sem o "T00:00:00" ela é lida como meia-noite UTC e,
-        // em UTC-3, todo dia 1º cai no mês anterior.
-        const dataPedido = dataLocal(p.data_pedido);
-        const diffDias = (agora.getTime() - dataPedido.getTime()) / 86400000;
-        if (periodo === "Últimos 7 dias" && diffDias > 7) return false;
-        // Comparar só o mês deixava março de 2025 passar no filtro de março de 2026.
-        if (
-          periodo === "Este mês" &&
-          (dataPedido.getMonth() !== agora.getMonth() || dataPedido.getFullYear() !== agora.getFullYear())
-        ) {
-          return false;
-        }
+      if (secao !== "todos" && secao !== "sugestao" && p.status !== secao) return false;
+      if (fornecedorFiltro && p.fornecedor_id !== fornecedorFiltro) return false;
+      if (t && !p.numero.toLowerCase().includes(t) && !p.fornecedor_nome.toLowerCase().includes(t) && !p.itens.some((i) => i.produto_nome.toLowerCase().includes(t))) return false;
+      if (periodo) {
+        // `data_pedido` é `date`: sem o T00:00:00 cai no dia anterior em UTC-3.
+        const d = dataLocal(p.data_pedido);
+        const dias = (agora.getTime() - d.getTime()) / 86_400_000;
+        if (periodo === "7" && dias > 7) return false;
+        if (periodo === "30" && dias > 30) return false;
+        if (periodo === "mes" && (d.getMonth() !== agora.getMonth() || d.getFullYear() !== agora.getFullYear())) return false;
       }
       return true;
     });
-  }, [pedidos, periodo, statusFiltro, fornecedorFiltro]);
+  }, [pedidos, secao, busca, periodo, fornecedorFiltro]);
 
-  const pendentes = pedidos.filter((p) => p.status === "pendente");
-  const capitalComprometido = pendentes.reduce((acc, p) => acc + p.valor_total, 0);
-
-  // "Recebidos neste Mês" tem que olhar o mês DO RECEBIMENTO. Antes era a lista inteira de
-  // recebidos de todos os tempos, então o card mostrava o histórico e chamava de "neste mês".
+  const abertos = pedidos.filter((p) => statusAberto(p.status));
+  const capitalComprometido = abertos.reduce((acc, p) => acc + p.valor_total, 0);
   const inicioDoMes = hojeIsoLocal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const recebidosMes = pedidos.filter((p) => p.status === "recebido" && (p.data_recebimento ?? "") >= inicioDoMes);
-  const totalLiquidado = recebidosMes.reduce((acc, p) => acc + p.valor_total, 0);
 
-  // A lista vem ordenada por `data_pedido`; "Última Entrada" precisa da mais recente por
-  // `data_recebimento`, que é outra coisa — o pedido emitido por último não é o que chegou
-  // por último.
-  const ultimaEntrada = [...pedidos]
-    .filter((p) => p.status === "recebido" && p.data_recebimento)
-    .sort((a, b) => (b.data_recebimento ?? "").localeCompare(a.data_recebimento ?? ""))[0];
+  function alternarSelecao(id: string) {
+    setSelecionados((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  }
 
-  function marcarRecebido(id: string, numero: string) {
+  function transito(p: Pedido, em: boolean) {
     startTransition(async () => {
-      await executarComToast(marcarPedidoRecebido(id), { sucesso: `Pedido ${numero} marcado como recebido`, erro: "Erro ao marcar como recebido" });
+      await executarComToast(definirTransitoPedido(p.id, em), { sucesso: em ? `Pedido ${p.numero} em trânsito` : `Pedido ${p.numero} de volta para Para comprar`, erro: "Erro ao mudar a situação" });
+    });
+  }
+
+  async function cancelar(p: Pedido) {
+    const ok = await confirm({
+      title: `Cancelar o pedido ${p.numero}?`,
+      message:
+        p.status === "parcial"
+          ? "O que já chegou continua no estoque. As parcelas ainda não pagas deste pedido são removidas do contas a pagar."
+          : "As parcelas ainda não pagas deste pedido são removidas do contas a pagar. As já pagas continuam no financeiro.",
+      confirmLabel: "Cancelar pedido",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      const r = await executarComToast(cancelarPedidoCompra(p.id), { erro: "Erro ao cancelar" });
+      if (r.ok) setDetalhe(null);
     });
   }
 
   async function abrirNota(p: Pedido) {
-    if (!p.nf_arquivo_path) {
-      setNotaDetalhe(p);
-      return;
-    }
-    const r = await executarComToast(obterUrlNotaFiscal(p.nf_arquivo_path), {
-      erro: "Erro ao abrir nota fiscal",
-    });
+    if (!p.nf_arquivo_path) return setDetalhe(p);
+    const r = await executarComToast(obterUrlNotaFiscal(p.nf_arquivo_path), { erro: "Erro ao abrir nota fiscal" });
     if (r.ok) window.open(r.dado, "_blank", "noopener,noreferrer");
   }
+
+  function tabelaPedidos(escopo: string): TabelaExport<{ p: Pedido; i: ItemPedido }> {
+    const fonte = escopo === "selecionados" ? pedidos.filter((p) => selecionados.includes(p.id)) : escopo === "filtrados" ? filtrados : pedidos;
+    const linhas = fonte.flatMap((p) => p.itens.map((i) => ({ p, i })));
+    return {
+      titulo: "Pedidos de compra",
+      subtitulo: `${fonte.length} pedido(s)`,
+      colunas: [
+        { rotulo: "Pedido", valor: (l) => l.p.numero },
+        { rotulo: "Data", tipo: "data", valor: (l) => l.p.data_pedido },
+        { rotulo: "Fornecedor", largura: 24, valor: (l) => l.p.fornecedor_nome },
+        { rotulo: "Situação", valor: (l) => STATUS_COMPRA[l.p.status]?.rotulo ?? l.p.status },
+        { rotulo: "Destino", valor: (l) => l.p.armazem_nome ?? "" },
+        { rotulo: "Item", largura: 34, valor: (l) => l.i.produto_nome },
+        { rotulo: "Qtd", tipo: "inteiro", valor: (l) => l.i.quantidade },
+        { rotulo: "Recebido", tipo: "inteiro", valor: (l) => l.i.quantidade_recebida ?? (l.p.status === "recebido" ? l.i.quantidade : 0) },
+        { rotulo: "Custo unit.", tipo: "moeda", valor: (l) => l.i.custo_unitario },
+        { rotulo: "Subtotal", tipo: "moeda", valor: (l) => l.i.quantidade * l.i.custo_unitario },
+      ],
+      linhas,
+      total: ["Total", null, null, null, null, null, linhas.reduce((s, l) => s + l.i.quantidade, 0), null, null, linhas.reduce((s, l) => s + l.i.quantidade * l.i.custo_unitario, 0)],
+    };
+  }
+
+  const itemMenu = (id: Secao, rotulo: string, qtd?: number, icone?: React.ReactNode) => (
+    <button
+      key={id}
+      onClick={() => {
+        setSecao(id);
+        setSelecionados([]);
+      }}
+      aria-current={secao === id ? "page" : undefined}
+      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm transition-colors ${secao === id ? "bg-accent-soft text-accent font-medium" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}
+    >
+      <span className="flex items-center gap-2 truncate">
+        {icone}
+        {rotulo}
+      </span>
+      {qtd != null && <span className="text-xs tabular opacity-80">{qtd}</span>}
+    </button>
+  );
 
   return (
     <>
       <PageHeader
         title="Compras & Reposição"
-        actions={<Button variant="primary" onClick={() => setModalNovo(true)}>+ Novo Pedido de Compra</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setImportando(true)}>
+              Importar
+            </Button>
+            <Button variant="secondary" onClick={() => setExportando(true)} disabled={pedidos.length === 0}>
+              Exportar
+            </Button>
+            <Button variant="primary" onClick={() => setNovoPedido({ fornecedorId: null })}>
+              + Novo Pedido
+            </Button>
+          </>
+        }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
         <Card>
-          <CardEyebrow>Pendentes de Entrega</CardEyebrow>
-          <HeroMetric value={`${pendentes.length}`} caption="pedidos em trânsito" />
+          <CardEyebrow>Em aberto</CardEyebrow>
+          <HeroMetric value={`${abertos.length}`} caption="para comprar, em trânsito ou parcial" />
           <div className="text-xs text-text-secondary mt-3 pt-3 border-t border-border">
             Capital comprometido: <span className="font-mono text-text-primary">{formatBRL(capitalComprometido)}</span>
           </div>
         </Card>
         <Card>
-          <CardEyebrow>Recebidos neste Mês</CardEyebrow>
+          <CardEyebrow>Completados neste mês</CardEyebrow>
           <HeroMetric value={`${recebidosMes.length}`} caption="pedidos conferidos" />
           <div className="text-xs text-text-secondary mt-3 pt-3 border-t border-border">
-            Total liquidado: <span className="font-mono text-text-primary">{formatBRL(totalLiquidado)}</span>
+            Total: <span className="font-mono text-text-primary">{formatBRL(recebidosMes.reduce((a, p) => a + p.valor_total, 0))}</span>
           </div>
         </Card>
         <Card>
-          <CardEyebrow>Última Entrada</CardEyebrow>
-          <HeroMetric
-            value={ultimaEntrada?.fornecedor_nome ?? "—"}
-            caption={ultimaEntrada?.data_recebimento ? `em ${formatarDataIso(ultimaEntrada.data_recebimento)}` : undefined}
-          />
+          <CardEyebrow>Sugestão de compra</CardEyebrow>
+          <HeroMetric value={`${sugestao.length}`} caption="produtos abaixo do mínimo ou acabando" />
+          <button onClick={() => setSecao("sugestao")} className="text-xs text-accent hover:underline mt-3">
+            Ver sugestão ›
+          </button>
         </Card>
       </div>
 
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className={campoBase}>
-          {PERIODOS.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-        <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value as typeof statusFiltro)} className={campoBase}>
-          {STATUS_OPCOES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select value={fornecedorFiltro} onChange={(e) => setFornecedorFiltro(e.target.value)} className={campoBase}>
-          {fornecedoresDisponiveis.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-5 items-start">
+        <nav aria-label="Controle de compras" className="bg-surface-1 border border-border rounded-lg p-2 space-y-0.5 lg:sticky lg:top-4">
+          <div className="px-3 pt-1 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-tertiary">Controle de compras</div>
+          {itemMenu("sugestao", "Sugestão de Compras", sugestao.length, <Lightbulb size={14} />)}
+          <div className="px-3 pt-3 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-tertiary flex items-center gap-1.5">
+            <ClipboardList size={12} /> Pedidos de compra
+          </div>
+          {itemMenu("todos", "Tudo", pedidos.length)}
+          {ORDEM_STATUS.map((s) => itemMenu(s, STATUS_COMPRA[s].rotulo, contagem[s]))}
+        </nav>
+
+        <div className="min-w-0">
+          {secao === "sugestao" ? (
+            <SugestaoCompras linhas={sugestao} fornecedores={fornecedores} onCriarPedido={(fornecedorId, itens) => setNovoPedido({ fornecedorId, itens })} />
+          ) : (
+            <>
+              <BarraFiltros
+                busca={busca}
+                onBusca={setBusca}
+                placeholder="Nº, fornecedor ou item…"
+                ativos={(periodo ? 1 : 0) + (fornecedorFiltro ? 1 : 0)}
+                onLimpar={() => {
+                  setBusca("");
+                  setPeriodo("");
+                  setFornecedorFiltro("");
+                }}
+              >
+                <FiltroSelect rotulo="Período" valor={periodo} onChange={setPeriodo} todos="Qualquer data" opcoes={PERIODOS.map((p) => ({ valor: p.valor, rotulo: p.rotulo }))} />
+                <FiltroSelect rotulo="Fornecedor" valor={fornecedorFiltro} onChange={setFornecedorFiltro} opcoes={fornecedores.map((f) => ({ valor: f.id, rotulo: f.nome }))} />
+              </BarraFiltros>
+
+              {selecionados.length > 0 && (
+                <div className="flex items-center justify-between bg-accent-soft rounded-md px-4 py-2.5 mb-3">
+                  <span className="text-sm text-accent font-medium">{selecionados.length} selecionado(s)</span>
+                  <div className="flex gap-4">
+                    <button onClick={() => setExportando(true)} className="text-sm text-text-secondary hover:text-text-primary">
+                      Exportar selecionados
+                    </button>
+                    <button onClick={() => setSelecionados([])} className="text-sm text-text-secondary hover:text-text-primary">
+                      Limpar seleção
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <Card padding="nenhum" className="overflow-hidden">
+                {filtrados.length === 0 ? (
+                  <EmptyState icon={PackageSearch} title="Nenhum pedido aqui" description="Ajuste os filtros, escolha outra situação ou crie um novo pedido." />
+                ) : (
+                  <Table>
+                    <Thead>
+                      <tr>
+                        <Th>
+                          <input
+                            type="checkbox"
+                            aria-label="Selecionar todos"
+                            className="w-4 h-4 accent-accent"
+                            checked={filtrados.every((p) => selecionados.includes(p.id))}
+                            onChange={(e) => setSelecionados(e.target.checked ? filtrados.map((p) => p.id) : [])}
+                          />
+                        </Th>
+                        <Th>Nº</Th>
+                        <Th>Fornecedor</Th>
+                        <Th>Destino</Th>
+                        <Th>Data</Th>
+                        <Th align="right">Valor</Th>
+                        <Th>Situação</Th>
+                        <Th align="right"></Th>
+                      </tr>
+                    </Thead>
+                    <tbody>
+                      {filtrados.map((p) => {
+                        const st = STATUS_COMPRA[p.status] ?? { rotulo: p.status, tom: "neutral" as const };
+                        const falta = p.itens.reduce((s, i) => s + faltaReceber(i), 0);
+                        return (
+                          <Tr key={p.id}>
+                            <Td>
+                              <input type="checkbox" aria-label={`Selecionar ${p.numero}`} className="w-4 h-4 accent-accent" checked={selecionados.includes(p.id)} onChange={() => alternarSelecao(p.id)} />
+                            </Td>
+                            <Td mono className="text-accent cursor-pointer" onClick={() => setDetalhe(p)}>
+                              {p.numero}
+                            </Td>
+                            <Td className="cursor-pointer" onClick={() => setDetalhe(p)}>
+                              <div>{p.fornecedor_nome}</div>
+                              <div className="text-xs text-text-tertiary truncate max-w-[16rem]">{p.itens.map((i) => i.produto_nome).join(", ")}</div>
+                            </Td>
+                            <Td>{p.armazem_nome ?? "—"}</Td>
+                            <Td mono>{formatarDataIso(p.data_pedido)}</Td>
+                            <Td align="right" mono>
+                              {formatBRL(p.valor_total)}
+                            </Td>
+                            <Td>
+                              <StatusChip label={st.rotulo} tone={st.tom} />
+                              {p.status === "parcial" && <div className="text-[11px] text-text-tertiary mt-0.5">faltam {falta}</div>}
+                            </Td>
+                            <Td align="right">
+                              <RowMenu
+                                actions={[
+                                  { label: "Ver pedido", onClick: () => setDetalhe(p) },
+                                  ...(statusAberto(p.status) ? [{ label: p.status === "parcial" ? "Receber o que falta" : "Receber", onClick: () => setReceber(p) }] : []),
+                                  ...(p.status === "pendente" ? [{ label: "Marcar em trânsito", onClick: () => transito(p, true) }] : []),
+                                  ...(p.status === "em_transito" ? [{ label: "Voltar para Para comprar", onClick: () => transito(p, false) }] : []),
+                                  ...(p.nf || p.nf_arquivo_path ? [{ label: "Ver nota fiscal", onClick: () => abrirNota(p) }] : []),
+                                  ...(statusAberto(p.status) ? [{ label: "Cancelar pedido", onClick: () => cancelar(p), destructive: true }] : []),
+                                ]}
+                              />
+                            </Td>
+                          </Tr>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
+                )}
+              </Card>
+            </>
+          )}
+        </div>
       </div>
 
-      <Card padding="nenhum" className="overflow-hidden">
-        {filtrados.length === 0 ? (
-          <EmptyState icon={PackageSearch} title="Nenhum pedido encontrado" description="Ajuste os filtros ou crie um novo pedido de compra." />
-        ) : (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>N° Pedido</Th>
-                <Th>Fornecedor</Th>
-                <Th>Destino</Th>
-                <Th>Data</Th>
-                <Th align="right">Valor Total</Th>
-                <Th>Status</Th>
-                <Th align="right"></Th>
-              </tr>
-            </Thead>
-            <tbody>
-              {filtrados.map((p) => (
-                <Tr key={p.id}>
-                  <Td mono className="text-accent cursor-pointer" onClick={() => setPedidoDetalhe(p)}>
-                    {p.numero}
-                  </Td>
-                  <Td className="cursor-pointer" onClick={() => setPedidoDetalhe(p)}>
-                    <div>{p.fornecedor_nome}</div>
-                    <div className="text-xs text-text-tertiary font-mono">{p.cnpj}</div>
-                  </Td>
-                  <Td>{p.armazem_nome ?? "—"}</Td>
-                  <Td mono>{formatarDataIso(p.data_pedido)}</Td>
-                  <Td align="right" mono>
-                    {formatBRL(p.valor_total)}
-                  </Td>
-                  <Td>
-                    <StatusChip
-                      label={p.status === "pendente" ? "Pendente" : "Recebido"}
-                      tone={p.status === "pendente" ? "negative" : "positive"}
-                    />
-                  </Td>
-                  <Td align="right">
-                    <RowMenu
-                      actions={[
-                        { label: "Ver pedido", onClick: () => setPedidoDetalhe(p) },
-                        ...(p.nf || p.nf_arquivo_path ? [{ label: "Ver nota", onClick: () => abrirNota(p) }] : []),
-                        ...(p.status === "pendente"
-                          ? [{ label: "Marcar recebido", onClick: () => marcarRecebido(p.id, p.numero) }]
-                          : []),
-                      ]}
-                    />
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-
-      <Modal open={!!pedidoDetalhe} onClose={() => setPedidoDetalhe(null)} title={`Pedido ${pedidoDetalhe?.numero ?? ""}`}>
-        {pedidoDetalhe && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div>
-                <div className="text-xs text-text-tertiary">Fornecedor</div>
-                <div className="text-text-primary">{pedidoDetalhe.fornecedor_nome}</div>
-              </div>
-              <div>
-                <div className="text-xs text-text-tertiary">Destino</div>
-                <div className="text-text-primary">{pedidoDetalhe.armazem_nome ?? "—"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-text-tertiary">Data do Pedido</div>
-                <div className="text-text-primary font-mono">{formatarDataIso(pedidoDetalhe.data_pedido)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-text-tertiary">Entrega Prevista</div>
-                <div className="text-text-primary font-mono">
-                  {pedidoDetalhe.data_entrega_prevista ? formatarDataIso(pedidoDetalhe.data_entrega_prevista) : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-text-tertiary">Data de Chegada</div>
-                <div className="text-text-primary font-mono">
-                  {pedidoDetalhe.data_recebimento ? formatarDataIso(pedidoDetalhe.data_recebimento) : "Ainda não chegou"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-text-tertiary">Status</div>
-                <StatusChip
-                  label={pedidoDetalhe.status === "pendente" ? "Pendente" : "Recebido"}
-                  tone={pedidoDetalhe.status === "pendente" ? "negative" : "positive"}
-                />
-              </div>
-              <div>
-                <div className="text-xs text-text-tertiary">Forma de Pagamento</div>
-                <div className="text-text-primary">
-                  {pedidoDetalhe.forma_pagamento ?? "—"}
-                  {pedidoDetalhe.parcelas && pedidoDetalhe.parcelas > 1 ? ` em ${pedidoDetalhe.parcelas}x` : ""}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-text-tertiary">Conta</div>
-                <div className="text-text-primary">{pedidoDetalhe.conta_nome ?? "—"}</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs text-text-tertiary mb-2">Itens do pedido</div>
-              <div className="border border-border rounded-md divide-y divide-border">
-                {pedidoDetalhe.itens.map((it, i) => (
-                  <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <span className="text-text-primary">{it.produto_nome}</span>
-                    <span className="font-mono text-text-secondary">
-                      {it.quantidade} × {formatBRL(it.custo_unitario)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-3 border-t border-border">
-              <span className="text-sm text-text-secondary">Valor Total</span>
-              <span className="font-mono text-text-primary font-semibold">{formatBRL(pedidoDetalhe.valor_total)}</span>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      <Modal open={!!notaDetalhe} onClose={() => setNotaDetalhe(null)} title="Nota Fiscal">
-        {notaDetalhe && (
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-text-secondary">Número da NF</span>
-              <span className="font-mono text-text-primary">{notaDetalhe.nf}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-secondary">Fornecedor</span>
-              <span className="text-text-primary">{notaDetalhe.fornecedor_nome}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-secondary">CNPJ</span>
-              <span className="font-mono text-text-primary">{notaDetalhe.cnpj}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-secondary">Valor Total</span>
-              <span className="font-mono text-text-primary">{formatBRL(notaDetalhe.valor_total)}</span>
-            </div>
-            <p className="text-xs text-text-tertiary pt-2 border-t border-border">
-              Nenhum arquivo de nota fiscal foi anexado a este pedido.
-            </p>
-          </div>
-        )}
-      </Modal>
-
-      <NovoPedidoModal
-        key={pedidoInicial?.item.produto_id ?? "novo"}
-        pedidoInicial={pedidoInicial}
-        open={modalNovo}
-        onClose={() => {
-          setModalNovo(false);
-          // Tira o ?novo= da URL: senão um F5 reabriria o pedido que o usuário acabou de fechar.
-          if (pedidoInicial) router.replace("/compras");
-        }}
-        fornecedores={fornecedores}
-        produtos={produtos}
-        armazens={armazens}
-        contas={contas}
-        formasPagamento={formasPagamento}
-      />
+      {detalhe && <DetalhePedidoModal pedido={detalhe} onClose={() => setDetalhe(null)} />}
+      {receber && <ReceberPedidoModal pedido={receber} armazens={armazens} onClose={() => setReceber(null)} />}
+      {importando && (
+        <ImportarPedidosModal onClose={() => setImportando(false)} produtos={produtos} fornecedores={fornecedores} armazens={armazens} contas={contas} formasPagamento={formasPagamento} />
+      )}
+      {exportando && (
+        <ExportarModal
+          aberto
+          onClose={() => setExportando(false)}
+          titulo="Exportar pedidos de compra"
+          escopos={[
+            { id: "selecionados", rotulo: "Selecionados", quantidade: selecionados.length },
+            { id: "filtrados", rotulo: "Desta lista", quantidade: filtrados.length },
+            { id: "todos", rotulo: "Todos", quantidade: pedidos.length },
+          ]}
+          montar={tabelaPedidos}
+        />
+      )}
+      {novoPedido && (
+        <NovoPedidoModal
+          key={JSON.stringify(novoPedido).slice(0, 200)}
+          pedidoInicial={novoPedido.item || novoPedido.itens ? novoPedido : null}
+          open
+          onClose={() => {
+            setNovoPedido(null);
+            // Tira o ?novo= da URL: senão um F5 reabriria o pedido que o usuário acabou de fechar.
+            if (pedidoInicial) router.replace("/compras");
+          }}
+          fornecedores={fornecedores}
+          produtos={produtos}
+          armazens={armazens}
+          contas={contas}
+          formasPagamento={formasPagamento}
+        />
+      )}
+      {ConfirmDialog}
     </>
   );
 }

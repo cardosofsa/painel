@@ -36,7 +36,8 @@ export default async function ConfiguracoesPage() {
 
   const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes] =
     await Promise.all([
-      supabase.from("categorias").select("id, nome").order("nome"),
+      // `*`: `tipo` só existe a partir da 0042.
+      supabase.from("categorias").select("*").order("nome"),
       supabase
         .from("canais")
         .select(
@@ -118,6 +119,7 @@ export default async function ConfiguracoesPage() {
     id: c.id,
     nome: c.nome,
     skus: contagemPorCategoria.get(c.id) ?? 0,
+    tipo: c.tipo ?? "produto",
   }));
 
   // Nunca seleciona `chave_cifrada`: a tela só precisa de provedor, modelo e final da chave.

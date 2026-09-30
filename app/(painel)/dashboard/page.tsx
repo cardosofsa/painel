@@ -97,7 +97,8 @@ export default async function DashboardPage() {
       supabase
         .from("pedidos_compra")
         .select("id, numero, valor_total, status, fornecedor_id")
-        .eq("status", "pendente"),
+        // Em aberto = para comprar, em trânsito ou parcial (0042).
+        .in("status", ["pendente", "em_transito", "parcial"]),
       supabase.from("fornecedores").select("id, nome"),
       supabase
         .from("contas_a_pagar_receber")

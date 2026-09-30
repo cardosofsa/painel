@@ -31,6 +31,19 @@ export async function criarCategoria(nome: string) {
   });
 }
 
+/** Produto, insumo ou embalagem (0042): insumo e embalagem aparecem primeiro na composição de custo. */
+export async function definirTipoCategoria(id: string, tipo: "produto" | "insumo" | "embalagem") {
+  return comResultado(async () => {
+    if (!["produto", "insumo", "embalagem"].includes(tipo)) throw new Error("Tipo inválido.");
+    const supabase = await createClient();
+    const { error } = await supabase.from("categorias").update({ tipo }).eq("id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/produtos");
+    revalidatePath("/precificacao");
+  });
+}
+
 export async function removerCategoria(id: string) {
   return comResultado(async () => {
     const supabase = await createClient();

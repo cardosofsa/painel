@@ -60,7 +60,7 @@ export function lerCsv(texto: string): string[][] {
  * (`{ sku: ["sku", "codigo"], quantidade: ["quantidade", "qtd"] }`). Coluna desconhecida é
  * ignorada. Devolve também as obrigatórias que faltaram no cabeçalho.
  */
-export function mapearColunas<A extends Record<string, string[]>, K extends keyof A & string = keyof A & string>(
+export function mapearColunas<A extends Record<string, readonly string[]>, K extends keyof A & string = keyof A & string>(
   matriz: string[][],
   apelidos: A,
   obrigatorias: NoInfer<K>[],
@@ -69,7 +69,7 @@ export function mapearColunas<A extends Record<string, string[]>, K extends keyo
   const cabecalho = (matriz[linhaCabecalho] ?? []).map(normalizarCabecalho);
   const indice = {} as Record<K, number>;
   for (const chave of Object.keys(apelidos) as K[]) {
-    const nomes = (apelidos[chave] as string[]).map(normalizarCabecalho);
+    const nomes = (apelidos[chave] as readonly string[]).map(normalizarCabecalho);
     // Exato primeiro; depois "começa com" (ex.: "sku da variacao" para o apelido "sku").
     let i = cabecalho.findIndex((h) => nomes.includes(h));
     if (i < 0) i = cabecalho.findIndex((h) => nomes.some((n) => n && h.startsWith(n)));
