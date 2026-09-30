@@ -7,12 +7,12 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
-import { inputClass } from "@/components/ui/Modal";
+import { FormField, inputClass } from "@/components/ui/Modal";
 import { SalesChart } from "@/components/charts/SalesChart";
 import { formatBRL, formatarDataCurta, formatarDataHora } from "@/lib/format";
 import { formatarDiffHistorico } from "@/lib/admin";
 import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta } from "@/lib/acesso";
-import { atualizarAcessoConta, definirLimiteIaConta } from "../actions";
+import { atualizarAcessoConta, definirTesteIaConta } from "../actions";
 import type { ContaAdmin } from "../AdminClient";
 import type { LinhaHistorico } from "../HistoricoAdmin";
 import { executarComToast } from "@/lib/acao-cliente";
@@ -45,6 +45,10 @@ export interface UsoIa {
   cache_hoje: number;
   usadas_30dias: number;
   cache_30dias: number;
+  /** Teste grátis da IA do sistema (0036). */
+  teste_usadas: number;
+  teste_dias: number;
+  teste_expira_em: string | null;
 }
 
 export function ContaDetalheClient({
@@ -64,16 +68,20 @@ export function ContaDetalheClient({
   const [abas, setAbas] = useState<string[]>(conta.abas);
   const [observacao, setObservacao] = useState(conta.observacao ?? "");
   const [expiraEm, setExpiraEm] = useState(conta.expira_em ?? "");
-  const [cotaIa, setCotaIa] = useState(usoIa?.limite ?? 0);
+  const [testeLimite, setTesteLimite] = useState(usoIa?.limite ?? 0);
+  const [testeDias, setTesteDias] = useState(usoIa?.teste_dias ?? 0);
 
   function alternarAba(id: string) {
     if (ABAS_OBRIGATORIAS.includes(id as (typeof ABAS_OBRIGATORIAS)[number])) return;
     setAbas((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
   }
 
-  function salvarCotaIa() {
+  function salvarTesteIa(reiniciar: boolean) {
     startTransition(async () => {
-      await executarComToast(definirLimiteIaConta(conta.user_id, cotaIa), { sucesso: cotaIa === 0 ? "Geração por IA desligada para esta conta" : `Cota de IA: ${cotaIa} por dia`, erro: "Erro ao alterar a cota de IA" });
+      await executarComToast(definirTesteIaConta(conta.user_id, testeDias, testeLimite, reiniciar), {
+        sucesso: reiniciar ? "Teste reiniciado" : "Teste da IA atualizado",
+        erro: "Erro ao alterar o teste da IA",
+      });
     });
   }
 
@@ -245,29 +253,53 @@ export function ContaDetalheClient({
             <section className="border-t border-border pt-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary uppercase tracking-wide">
-                  <Sparkles size={13} /> Cota de IA por dia
+                  <Sparkles size={13} /> Teste grátis da IA do sistema
                 </div>
                 <span className="text-xs text-text-tertiary font-mono">
-                  {usoIa.usadas_hoje} de {usoIa.limite} usadas hoje
+                  {usoIa.teste_usadas} de {usoIa.limite} usadas
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={1000}
-                  className={`${inputClass} flex-1`}
-                  value={cotaIa}
-                  onChange={(e) => setCotaIa(Math.max(0, Math.min(1000, Number(e.target.value) || 0)))}
-                />
-                <Button variant="secondary" loading={pending} disabled={cotaIa === usoIa.limite} onClick={salvarCotaIa}>
+              <div className="grid grid-cols-2 gap-2">
+                <FormField label="Gerações no total">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100000}
+                    className={inputClass}
+                    value={testeLimite}
+                    onChange={(e) => setTesteLimite(Math.max(0, Math.min(100000, Number(e.target.value) || 0)))}
+                  />
+                </FormField>
+                <FormField label="Dias de validade">
+                  <input
+                    type="number"
+                    min={0}
+                    max={3650}
+                    className={inputClass}
+                    value={testeDias}
+                    onChange={(e) => setTesteDias(Math.max(0, Math.min(3650, Number(e.target.value) || 0)))}
+                  />
+                </FormField>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  loading={pending}
+                  disabled={testeLimite === usoIa.limite && testeDias === usoIa.teste_dias}
+                  onClick={() => salvarTesteIa(false)}
+                >
                   Aplicar
+                </Button>
+                <Button variant="secondary" className="flex-1" loading={pending} onClick={() => salvarTesteIa(true)}>
+                  Reiniciar teste
                 </Button>
               </div>
               <p className="text-xs text-text-tertiary mt-1.5">
-                {cotaIa === 0
-                  ? "Zero desliga a geração por IA para esta conta."
-                  : `${cotaIa} gerações por dia. O contador zera à meia-noite (horário de Brasília).`}
+                {usoIa.teste_expira_em
+                  ? `Janela em andamento: vale até ${new Date(usoIa.teste_expira_em).toLocaleDateString("pt-BR")}.`
+                  : "A janela de dias só começa na primeira geração da conta."}{" "}
+                Zero em qualquer campo desliga a IA do sistema para esta conta. Quem cadastra a própria IA não é afetado.
               </p>
               {/* O cache é o que separa "usou muito" de "custou muito": acerto de cache
                   não gasta cota nem chama a API. */}

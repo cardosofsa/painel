@@ -217,7 +217,9 @@ export function GeradorIA({
               )}
               {sugestao.origem === "propria"
                 ? `Sua IA · ${sugestao.provedorRotulo ?? ""}`
-                : `${sugestao.usadas}/${sugestao.limite} hoje`}
+                : sugestao.limite > 0
+                  ? `${sugestao.usadas}/${sugestao.limite} do teste grátis`
+                  : "IA do sistema"}
             </span>
           </div>
         </div>

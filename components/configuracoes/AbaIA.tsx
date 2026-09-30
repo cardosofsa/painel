@@ -11,6 +11,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { PROVEDORES, type ProvedorId } from "@/lib/ia/provedores/catalogo";
 import { AdicionarIAModal } from "@/components/configuracoes/AdicionarIAModal";
+import { textoDoTeste, type EstadoTeste } from "@/lib/ia/teste";
 import { definirIAPadrao, removerIA, usarIADoSistema } from "@/app/(painel)/configuracoes/ia-actions";
 
 export interface IaCadastrada {
@@ -29,11 +30,14 @@ export function AbaIA({
   ias,
   cofreOk,
   iaSistemaOk,
+  teste,
 }: {
   ias: IaCadastrada[];
   /** `IA_CHAVE_COFRE` configurada no servidor; sem ela não dá para guardar chave. */
   cofreOk: boolean;
   iaSistemaOk: boolean;
+  /** Estado do teste grátis da IA do sistema; `null` se a migração 0036 ainda não foi aplicada. */
+  teste: EstadoTeste | null;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -129,9 +133,19 @@ export function AbaIA({
         </div>
         <p className="text-xs text-text-tertiary mb-3">
           {iaSistemaOk
-            ? "É a IA que o SERTÃO oferece para você experimentar, com uso limitado. Para usar sem limite, cadastre a sua."
+            ? "É a IA que o SERTÃO oferece para você experimentar, com uso limitado. Para usar sem esse limite, cadastre a sua."
             : "A IA do sistema não está ativada neste momento. Cadastre a sua para usar os recursos de IA."}
         </p>
+        {iaSistemaOk && teste && (
+          <p
+            className={`text-xs mb-3 rounded-md border px-3 py-2 ${
+              teste.situacao === "encerrado" ? "border-negative/30 bg-negative-soft text-negative" : "border-border bg-surface-2 text-text-secondary"
+            }`}
+          >
+            {textoDoTeste(teste)}
+            {teste.situacao === "encerrado" && " Cadastre a sua IA acima para continuar usando os recursos de IA."}
+          </p>
+        )}
         {usandoPropria && iaSistemaOk && (
           <Button variant="secondary" onClick={voltarParaSistema} loading={pending}>
             Voltar a usar a IA do sistema

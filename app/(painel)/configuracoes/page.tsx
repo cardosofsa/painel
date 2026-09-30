@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { cofreDisponivel } from "@/lib/ia/cofre";
+import { estadoDoTeste, type EstadoTesteBruto } from "@/lib/ia/teste";
 import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
 import {
   ConfiguracoesClient,
@@ -126,6 +127,10 @@ export default async function ConfiguracoesPage() {
     .order("criado_em");
   const ias = (iasData ?? []) as IaCadastrada[];
 
+  // Migração 0036 ausente = a RPC não existe: `teste` fica nulo e o quadro simplesmente some.
+  const { data: testeBruto } = await supabase.rpc("ia_estado_teste").maybeSingle<EstadoTesteBruto>();
+  const teste = testeBruto ? estadoDoTeste(testeBruto, new Date()) : null;
+
   return (
     <ConfiguracoesClient
       categorias={categorias}
@@ -139,6 +144,7 @@ export default async function ConfiguracoesPage() {
       ias={ias}
       cofreOk={cofreDisponivel()}
       iaSistemaOk={Boolean(process.env.GEMINI_API_KEY)}
+      teste={teste}
     />
   );
 }

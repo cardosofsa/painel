@@ -57,16 +57,19 @@ export async function atualizarStatusEmLote(userIds: string[], status: StatusCon
 }
 
 /**
- * Cota diária de gerações por IA da conta. Quem confere `e_master()` e valida o intervalo
- * é a RPC, no banco.
+ * Teste grátis da IA do sistema para uma conta: por quantos dias e quantas gerações no total
+ * (migração 0036). `reiniciar` zera o consumo e faz a janela recomeçar na próxima geração.
+ * Quem confere `e_master()` e valida os intervalos é a RPC, no banco.
  */
-export async function definirLimiteIaConta(userId: string, limite: number) {
+export async function definirTesteIaConta(userId: string, dias: number, limite: number, reiniciar: boolean) {
   return comResultado(async () => {
     const supabase = await createClient();
 
-    const { error } = await supabase.rpc("admin_definir_limite_ia", {
+    const { error } = await supabase.rpc("admin_definir_teste_ia", {
       p_user_id: userId,
+      p_dias: dias,
       p_limite: limite,
+      p_reiniciar: reiniciar,
     });
     if (error) lancarErroSupabase(error);
 

@@ -42,6 +42,7 @@ import {
 import { executarComToast } from "@/lib/acao-cliente";
 import { AbaConta } from "@/components/configuracoes/AbaConta";
 import { AbaIA, type IaCadastrada } from "@/components/configuracoes/AbaIA";
+import type { EstadoTeste } from "@/lib/ia/teste";
 import { FaixasModal, CanalModal, LojaModal } from "@/components/configuracoes/ModaisCanal";
 import { ContaModal, FormaPagamentoModal, ArmazemModal, ROTULO_TIPO_FORMA } from "@/components/configuracoes/ModaisCadastro";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
@@ -109,6 +110,7 @@ export function ConfiguracoesClient({
   ias,
   cofreOk,
   iaSistemaOk,
+  teste,
 }: {
   categorias: Categoria[];
   canais: Canal[];
@@ -121,6 +123,7 @@ export function ConfiguracoesClient({
   ias: IaCadastrada[];
   cofreOk: boolean;
   iaSistemaOk: boolean;
+  teste: EstadoTeste | null;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -554,7 +557,7 @@ export function ConfiguracoesClient({
           </Card>
         </div>
       )}
-      {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} />}
+      {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} teste={teste} />}
       {aba === "Conta" && (
         <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} />
       )}

@@ -12,6 +12,10 @@ import type { AbaId } from "./acesso";
 export interface CampoAlterado {
   de: unknown;
   para: unknown;
+  // Só o registro `ia_teste` (0036) tem sub-campos: cada um é um par de/para próprio.
+  dias?: CampoAlterado;
+  limite?: CampoAlterado;
+  reiniciado?: boolean;
 }
 
 export type DetalhesHistorico = Record<string, CampoAlterado>;
@@ -127,6 +131,20 @@ export function formatarDiffHistorico(detalhes: DetalhesHistorico | null | undef
   if (detalhes.ia_limite_diario) {
     const rotular = (v: unknown) => (Number(v) === 0 ? "desligada" : `${v}/dia`);
     linhas.push(`Cota de IA: ${rotular(detalhes.ia_limite_diario.de)} → ${rotular(detalhes.ia_limite_diario.para)}`);
+  }
+
+  // Gravado por `admin_definir_teste_ia` (migração 0036).
+  if (detalhes.ia_teste) {
+    const t = detalhes.ia_teste as {
+      dias?: { de: unknown; para: unknown };
+      limite?: { de: unknown; para: unknown };
+      reiniciado?: boolean;
+    };
+    const partes: string[] = [];
+    if (t.limite && t.limite.de !== t.limite.para) partes.push(`${t.limite.de} → ${t.limite.para} gerações`);
+    if (t.dias && t.dias.de !== t.dias.para) partes.push(`${t.dias.de} → ${t.dias.para} dias`);
+    if (t.reiniciado) partes.push("reiniciado");
+    linhas.push(`Teste da IA: ${partes.join(", ") || "sem mudança"}`);
   }
 
   return linhas;

@@ -112,7 +112,7 @@ async function executar(
 
   // 4. Acerto de cache: devolve sem chamar a API e sem consumir cota.
   if (cache) {
-    const saldo = await lerSaldo(supabase);
+    const saldo = await lerSaldo(supabase, ia);
     return {
       texto: cache.texto,
       palavrasChave: cache.palavras_chave ?? [],
@@ -211,7 +211,7 @@ async function executarTema(supabase: SupabaseClient, contexto: ContextoTema): P
   if (erroCache) lancarErroSupabase(erroCache);
 
   if (cache) {
-    const saldo = await lerSaldo(supabase);
+    const saldo = await lerSaldo(supabase, ia);
     return { tema: interpretarTema(cache.texto), ...saldo, doCache: true, origem: ia.origem, provedorRotulo: rotuloIA(ia) };
   }
 
@@ -244,61 +244,39 @@ function rotuloIA(ia: ProvedorResolvido): string | null {
 }
 
 /**
- * Reserva a vaga da geração. Só a IA do SISTEMA passa pela cota (`ia_consumir`): quem usa a
- * própria chave paga o próprio uso. (O teto de segurança da chave própria entra na 7.3.)
+ * Reserva a vaga da geração no banco. A origem decide a regra (migração 0036):
+ * IA do sistema = teste grátis (dias + total de gerações); IA própria = só o teto de
+ * segurança diário. O banco recusa com mensagem clara quando não cabe.
  */
 async function reservarCota(
   supabase: SupabaseClient,
   tipo: TipoGeracao,
   ia: ProvedorResolvido,
 ): Promise<{ usadas: number; limite: number }> {
-  if (ia.origem === "propria") return { usadas: 0, limite: 0 };
   const { data, error } = await supabase
-    .rpc("ia_consumir", { p_tipo: tipo })
+    .rpc("ia_consumir", { p_tipo: tipo, p_origem: ia.origem })
     .maybeSingle<{ usadas: number; limite: number }>();
   if (error) lancarErroSupabase(error);
   return { usadas: data?.usadas ?? 0, limite: data?.limite ?? 0 };
 }
 
-/** Falha de infraestrutura devolve a vaga — mas só se ela foi de fato reservada. */
+/** Falha de infraestrutura devolve a vaga que foi reservada. */
 async function estornarSePreciso(supabase: SupabaseClient, ia: ProvedorResolvido, e: unknown) {
-  if (ia.origem !== "sistema") return;
   if (e instanceof ErroIA && ESTORNAVEIS.has(e.codigo)) {
-    const { error } = await supabase.rpc("ia_estornar");
+    const { error } = await supabase.rpc("ia_estornar", { p_origem: ia.origem });
     if (error) console.error("[ia] falha ao estornar cota:", error.message);
   }
 }
 
 /**
- * Saldo do dia para o rótulo "{usadas}/{limite} hoje" no acerto de cache, onde
- * `ia_consumir` não roda. Falha aqui é cosmética: zera o rótulo, não quebra a geração.
+ * Saldo para o rótulo no acerto de cache, onde `ia_consumir` não roda. Na IA do sistema é o
+ * saldo do teste; na IA própria não há saldo a mostrar. Falha aqui é cosmética: zera o
+ * rótulo, não quebra a geração.
  */
-async function lerSaldo(supabase: SupabaseClient): Promise<{ usadas: number; limite: number }> {
-  // O `.eq("user_id", ...)` vale só para `perfis_acesso`: a policy dela deixa o master ver
-  // todas as contas, então sem filtro o `maybeSingle()` dava PGRST116 e o master lia
-  // sempre limite 0. `ia_uso` não tem essa exceção — a policy já devolve só a própria linha.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const [usoRes, perfilRes] = await Promise.all([
-    supabase.from("ia_uso").select("geracoes").eq("dia", hojeSaoPaulo()).maybeSingle<{ geracoes: number }>(),
-    supabase
-      .from("perfis_acesso")
-      .select("ia_limite_diario")
-      .eq("user_id", user?.id ?? "")
-      .maybeSingle<{ ia_limite_diario: number }>(),
-  ]);
-  return {
-    usadas: usoRes.data?.geracoes ?? 0,
-    limite: perfilRes.data?.ia_limite_diario ?? 0,
-  };
-}
-
-/**
- * Mesmo fuso que a migração 0024 usa para virar o dia. `toISOString().slice(0,10)` daria
- * o dia seguinte depois das 21h e o saldo apareceria zerado à noite.
- */
-function hojeSaoPaulo(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+async function lerSaldo(supabase: SupabaseClient, ia: ProvedorResolvido): Promise<{ usadas: number; limite: number }> {
+  if (ia.origem === "propria") return { usadas: 0, limite: 0 };
+  const { data } = await supabase
+    .rpc("ia_estado_teste")
+    .maybeSingle<{ usadas: number; limite: number; ilimitado: boolean }>();
+  return { usadas: data?.usadas ?? 0, limite: data?.ilimitado ? 0 : (data?.limite ?? 0) };
 }

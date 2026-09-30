@@ -112,3 +112,19 @@ describe("formatarDiffHistorico — cota de IA", () => {
     expect(linhas[1]).toContain("Cota de IA");
   });
 });
+
+describe("formatarDiffHistorico — teste da IA (0036)", () => {
+  it("mostra limite e dias que mudaram, e o reinício", () => {
+    const linhas = formatarDiffHistorico({
+      ia_teste: { de: null, para: null, dias: { de: 7, para: 30 }, limite: { de: 15, para: 100 }, reiniciado: true },
+    });
+    expect(linhas).toEqual(["Teste da IA: 15 → 100 gerações, 7 → 30 dias, reiniciado"]);
+  });
+
+  it("omite o que não mudou", () => {
+    const linhas = formatarDiffHistorico({
+      ia_teste: { de: null, para: null, dias: { de: 7, para: 7 }, limite: { de: 15, para: 40 }, reiniciado: false },
+    });
+    expect(linhas).toEqual(["Teste da IA: 15 → 40 gerações"]);
+  });
+});
