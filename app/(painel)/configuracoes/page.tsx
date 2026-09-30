@@ -40,7 +40,7 @@ export default async function ConfiguracoesPage() {
       supabase
         .from("canais")
         .select(
-          "id, nome, tipo_taxa, icone, cor, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao",
+          "id, nome, tipo_taxa, icone, cor, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao, limite_titulo, limite_descricao",
         )
         .order("criado_em"),
       supabase

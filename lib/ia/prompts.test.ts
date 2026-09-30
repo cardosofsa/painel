@@ -8,6 +8,10 @@ import {
   esquemaSugestao,
   LIMITE_TITULO,
   LIMITE_DESCRICAO,
+  LIMITE_DESCRICAO_ANUNCIO,
+  limiteEfetivo,
+  empacotarOpcoes,
+  desempacotarOpcoes,
   montarPromptTema,
   esquemaTema,
   interpretarTema,
@@ -235,11 +239,90 @@ describe("hashContexto", () => {
 
 describe("esquemaSugestao", () => {
   it("posicionamento fica fora de required — obrigatório faria o modelo inventar", () => {
-    const com = esquemaSugestao(true);
+    const com = esquemaSugestao("titulo", true);
     expect(com.properties).toHaveProperty("posicionamento");
-    expect(com.required).toEqual(["texto", "palavras_chave"]);
+    expect(com.required).toEqual(["opcoes", "palavras_chave"]);
 
-    expect(esquemaSugestao(false).properties).not.toHaveProperty("posicionamento");
+    expect(esquemaSugestao("titulo", false).properties).not.toHaveProperty("posicionamento");
+  });
+
+  it("descrição pede um texto só", () => {
+    const e = esquemaSugestao("descricao", false);
+    expect(e.properties).toHaveProperty("texto");
+    expect(e.required).toEqual(["texto", "palavras_chave"]);
+  });
+});
+
+describe("7.4: canal, tom, opções e seções", () => {
+  it("usa o limite do canal no prompt do título, sem Shopee fixo", () => {
+    const p = montarPromptTitulo(ctx({ canal: "Mercado Livre", limite: 60 }));
+    expect(p).toContain("no máximo 60 caracteres");
+    expect(p).toContain("(Mercado Livre)");
+    expect(p).not.toContain("Shopee");
+    expect(p).toContain("3 OPÇÕES");
+  });
+
+  it("limite do canal nunca passa do teto do app nem fica absurdo", () => {
+    expect(limiteEfetivo("titulo", 500)).toBe(LIMITE_TITULO);
+    expect(limiteEfetivo("titulo", 5)).toBe(20);
+    expect(limiteEfetivo("titulo", null)).toBe(LIMITE_TITULO);
+    expect(limiteEfetivo("descricao", 10000)).toBe(LIMITE_DESCRICAO_ANUNCIO);
+    expect(limiteEfetivo("descricao", undefined)).toBe(LIMITE_DESCRICAO);
+  });
+
+  it("o tom escolhido entra no prompt; o padrão não acrescenta nada", () => {
+    expect(montarPromptTitulo(ctx({ tom: "premium" }))).toContain("Tom premium");
+    expect(montarPromptTitulo(ctx({ tom: "padrao" }))).not.toContain("Tom ");
+  });
+
+  it("descrição só fala de garantia quando ela existe", () => {
+    const com = montarPromptDescricao(ctx({ garantiaDias: 90 }));
+    expect(com).toContain("- Garantia: 3 meses");
+    expect(com).toContain("garantia de 3 meses");
+    const sem = montarPromptDescricao(ctx());
+    expect(sem).toContain("NÃO tem garantia informada");
+    expect(sem).not.toContain("\"Garantia:\"");
+  });
+
+  it("descrição em seções: variações e acompanhantes só quando informados", () => {
+    const p = montarPromptDescricao(ctx({ variacoes: ["P", "M"], componentes: [{ nome: "Bolsa", quantidade: 1 }] }));
+    expect(p).toContain("Benefícios:");
+    expect(p).toContain("Opções disponíveis:");
+    expect(p).toContain("O que acompanha:");
+    expect(montarPromptDescricao(ctx())).not.toContain("Opções disponíveis:");
+  });
+
+  it("lê as 3 opções, sem repetir e sem quebra de linha dentro", () => {
+    const r = interpretarSugestao(
+      JSON.stringify({ opcoes: ["Camiseta A", "camiseta a", "Camiseta\nB", "Camiseta C", "Camiseta D"], palavras_chave: ["x"] }),
+      60,
+      "titulo",
+    );
+    expect(r.opcoes).toEqual(["Camiseta A", "Camiseta B", "Camiseta C"]);
+    expect(r.texto).toBe("Camiseta A");
+  });
+
+  it("título de modelo que ignorou o esquema (campo texto) ainda funciona", () => {
+    const r = interpretarSugestao(JSON.stringify({ texto: "Camiseta Única", palavras_chave: [] }), 60, "titulo");
+    expect(r.opcoes).toEqual(["Camiseta Única"]);
+  });
+
+  it("cada opção respeita o limite do canal", () => {
+    const r = interpretarSugestao(JSON.stringify({ opcoes: ["palavra ".repeat(20)], palavras_chave: [] }), 60, "titulo");
+    expect(r.opcoes[0].length).toBeLessThanOrEqual(60);
+  });
+
+  it("empacotar e desempacotar opções é ida e volta; descrição mantém as quebras", () => {
+    const ops = ["Um", "Dois", "Três"];
+    expect(desempacotarOpcoes(empacotarOpcoes(ops), "titulo")).toEqual(ops);
+    expect(desempacotarOpcoes("linha 1\n\nlinha 2", "descricao")).toEqual(["linha 1\n\nlinha 2"]);
+  });
+
+  it("tom, limite e garantia mudam o hash", () => {
+    const base = hashContexto(ctx(), "titulo");
+    expect(hashContexto(ctx({ tom: "tecnico" }), "titulo")).not.toBe(base);
+    expect(hashContexto(ctx({ limite: 60 }), "titulo")).not.toBe(base);
+    expect(hashContexto(ctx({ garantiaDias: 30 }), "titulo")).not.toBe(base);
   });
 });
 

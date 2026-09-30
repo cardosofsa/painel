@@ -15,13 +15,6 @@ import { formatBRL } from "@/lib/format";
 import {
   criarCategoria,
   removerCategoria,
-  criarLoja,
-  atualizarLoja,
-  removerLoja,
-  atualizarFaixasCanal,
-  criarCanal,
-  removerCanal,
-  restaurarCanaisPadrao,
   criarConta,
   atualizarConta,
   removerConta,
@@ -32,8 +25,6 @@ import {
   atualizarFormaPagamento,
   removerFormaPagamento,
   type LojaInput,
-  type FaixaComissaoInput,
-  type CanalInput,
   type ContaInput,
   type ArmazemInput,
   type FormaPagamentoInput,
@@ -43,9 +34,8 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { AbaConta } from "@/components/configuracoes/AbaConta";
 import { AbaIA, type IaCadastrada } from "@/components/configuracoes/AbaIA";
 import type { EstadoTeste } from "@/lib/ia/teste";
-import { FaixasModal, CanalModal, LojaModal } from "@/components/configuracoes/ModaisCanal";
+import { AbaCanais } from "@/components/configuracoes/AbaCanais";
 import { ContaModal, FormaPagamentoModal, ArmazemModal, ROTULO_TIPO_FORMA } from "@/components/configuracoes/ModaisCadastro";
-import { ImagemStorage } from "@/components/ui/ImagemStorage";
 
 export interface Categoria {
   id: string;
@@ -62,6 +52,8 @@ export interface Canal {
   taxa_fixa_padrao: number;
   taxa_extra_valor_padrao: number | null;
   taxa_extra_tipo_padrao: "percentual" | "fixo" | null;
+  limite_titulo: number | null;
+  limite_descricao: number | null;
   faixas: { id: string; preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[];
 }
 export interface Loja extends LojaInput {
@@ -129,84 +121,11 @@ export function ConfiguracoesClient({
   const { confirm, ConfirmDialog } = useConfirm();
   const [aba, setAba] = useState<(typeof ABAS)[number]>("Canais de Venda");
 
-  const [modalLoja, setModalLoja] = useState<{ loja: Loja | null; canal: Canal } | null>(null);
-  const [modalFaixas, setModalFaixas] = useState<Canal | null>(null);
-  const [modalCanal, setModalCanal] = useState(false);
   const [modalConta, setModalConta] = useState<Conta | "novo" | null>(null);
   const [modalArmazem, setModalArmazem] = useState<Armazem | "novo" | null>(null);
   const [modalFormaPagamento, setModalFormaPagamento] = useState<FormaPagamento | "novo" | null>(null);
   const [novaCategoria, setNovaCategoria] = useState("");
 
-
-  function salvarLojaHandler(dados: LojaInput) {
-    startTransition(async () => {
-      const r = modalLoja?.loja
-        ? await executarComToast(atualizarLoja(modalLoja.loja.id, dados), {
-            sucesso: "Loja atualizada",
-            erro: "Erro ao salvar loja",
-          })
-        : await executarComToast(criarLoja(dados), { sucesso: "Loja adicionada", erro: "Erro ao salvar loja" });
-      if (r.ok) setModalLoja(null);
-    });
-  }
-
-  async function removerLojaHandler(l: Loja) {
-    const ok = await confirm({ title: "Remover loja?", message: `"${l.nome}" será removida definitivamente.` });
-    if (!ok) return;
-    startTransition(async () => {
-      await executarComToast(removerLoja(l.id), { sucesso: "Loja removida", erro: "Erro ao remover loja" });
-    });
-  }
-
-  function salvarFaixasHandler(canalId: string, faixas: FaixaComissaoInput[]) {
-    startTransition(async () => {
-      const r = await executarComToast(atualizarFaixasCanal(canalId, faixas), { sucesso: "Faixas de comissão atualizadas", erro: "Erro ao salvar faixas" });
-      if (r.ok) {
-        setModalFaixas(null);
-      }
-    });
-  }
-
-  function salvarCanalHandler(dados: CanalInput) {
-    startTransition(async () => {
-      const r = await executarComToast(criarCanal(dados), { sucesso: "Canal adicionado", erro: "Erro ao adicionar canal" });
-      if (r.ok) {
-        setModalCanal(false);
-      }
-    });
-  }
-
-  async function removerCanalHandler(c: Canal) {
-    const lojasDoCanal = lojas.filter((l) => l.canal_id === c.id);
-    const trechoLojas =
-      lojasDoCanal.length > 0
-        ? ` junto com ${lojasDoCanal.length === 1 ? "a loja" : `as ${lojasDoCanal.length} lojas`} dele e as faixas de comissão cadastradas`
-        : " junto com as faixas de comissão cadastradas";
-    const ok = await confirm({
-      title: "Remover canal?",
-      message:
-        `"${c.nome}" será removido${trechoLojas}. ` +
-        "Precificações e anúncios já salvos são preservados, mas ficam sem loja vinculada.",
-    });
-    if (!ok) return;
-    startTransition(async () => {
-      await executarComToast(removerCanal(c.id), { sucesso: "Canal removido", erro: "Erro ao remover canal" });
-    });
-  }
-
-  async function restaurarCanaisPadraoHandler() {
-    const ok = await confirm({
-      title: "Restaurar canais padrão?",
-      message:
-        "Shopee, Mercado Livre, Loja Física e Facebook serão recriados apenas se estiverem faltando — nada existente é alterado. " +
-        "As faixas de comissão da Shopee não são restauradas: você precisa cadastrá-las de novo em Editar Faixas de Comissão.",
-      confirmLabel: "Restaurar",
-    });
-    if (!ok) return;
-    startTransition(async () => {
-      await executarComToast(restaurarCanaisPadrao(), { sucesso: "Canais padrão restaurados", erro: "Erro ao restaurar canais" });
-    });
-  }
 
   function adicionarCategoriaHandler() {
     if (!novaCategoria.trim()) return;
@@ -304,116 +223,7 @@ export function ConfiguracoesClient({
       <Tabs tabs={ABAS_TABS} value={aba} onChange={setAba} className="mb-6" />
 
       <TabPanel key={aba} tabValue={aba}>
-      {aba === "Canais de Venda" && (
-        <div className="space-y-4">
-          {canais.map((c) => {
-            const Icone = ICONES_CANAL[c.icone] ?? Store;
-            const lojasDoCanal = lojas.filter((l) => l.canal_id === c.id);
-            return (
-              <Card key={c.id}>
-                {/* `flex-wrap` + `min-w-0`: sem os dois, os dois links e o RowMenu eram
-                    empurrados para fora da tela no celular e a página inteira ganhava
-                    rolagem horizontal — o único vazamento que sobrou nas 8 telas. */}
-                <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: `${c.cor}1a`, color: c.cor }}
-                    >
-                      <Icone size={18} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-medium text-text-primary text-sm">{c.nome}</div>
-                      {c.tipo_taxa === "faixas" && (
-                        <div className="text-xs text-text-tertiary">Comissão por faixa de preço (tabela editável)</div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {c.tipo_taxa === "faixas" && (
-                      <button onClick={() => setModalFaixas(c)} className="text-sm text-accent hover:underline">
-                        Editar Faixas
-                      </button>
-                    )}
-                    <button onClick={() => setModalLoja({ loja: null, canal: c })} className="text-sm text-accent hover:underline">
-                      + Adicionar Loja
-                    </button>
-                    <RowMenu actions={[{ label: "Remover canal", onClick: () => removerCanalHandler(c), destructive: true }]} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {lojasDoCanal.map((l) => {
-                    const comissaoEfetiva = l.comissao_pct ?? c.comissao_pct_padrao;
-                    const taxaFixaEfetiva = l.taxa_fixa ?? c.taxa_fixa_padrao;
-                    return (
-                      <div key={l.id} className="flex items-center justify-between border border-border rounded-md p-3">
-                        <div className="flex items-center gap-3">
-                          {l.logo_url ? (
-                            <ImagemStorage src={l.logo_url} alt={l.nome} className="w-8 h-8 rounded-md object-cover border border-border" />
-                          ) : (
-                            <div
-                              className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
-                              style={{ backgroundColor: `${c.cor}1a`, color: c.cor }}
-                            >
-                              <Icone size={14} />
-                            </div>
-                          )}
-                          <div>
-                            <div className="text-sm font-medium text-text-primary">
-                              {l.nome}
-                              {l.link && (
-                                <a
-                                  href={l.link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-accent hover:underline ml-2"
-                                >
-                                  visitar
-                                </a>
-                              )}
-                            </div>
-                            <div className="text-xs text-text-tertiary">
-                              {c.tipo_taxa === "faixas"
-                                ? `Faixas automáticas (${c.faixas.length} cadastradas)`
-                                : `Comissão: ${comissaoEfetiva}% · Taxa fixa: ${formatBRL(taxaFixaEfetiva)}`}
-                              {l.taxa_extra_valor != null && l.taxa_extra_tipo && (
-                                <>
-                                  {" · Extra: "}
-                                  {l.taxa_extra_tipo === "percentual" ? `${l.taxa_extra_valor}%` : formatBRL(l.taxa_extra_valor)}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <RowMenu
-                          actions={[
-                            { label: "Editar", onClick: () => setModalLoja({ loja: l, canal: c }) },
-                            { label: "Remover", onClick: () => removerLojaHandler(l), destructive: true },
-                          ]}
-                        />
-                      </div>
-                    );
-                  })}
-                  {lojasDoCanal.length === 0 && (
-                    <p className="text-sm text-text-tertiary">Nenhuma loja cadastrada neste canal ainda.</p>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-          <Card className="border-dashed">
-            <div className="flex items-center justify-center gap-4">
-              <button onClick={() => setModalCanal(true)} className="text-sm text-accent hover:underline">
-                + Adicionar Canal
-              </button>
-              <span className="text-border">|</span>
-              <button onClick={restaurarCanaisPadraoHandler} className="text-sm text-accent hover:underline" disabled={pending}>
-                Restaurar Canais Padrão
-              </button>
-            </div>
-          </Card>
-        </div>
-      )}
+      {aba === "Canais de Venda" && <AbaCanais canais={canais} lojas={lojas} />}
 
       {aba === "Categorias" && (
         <Card>
@@ -564,8 +374,6 @@ export function ConfiguracoesClient({
 
       </TabPanel>
 
-      <LojaModal key={`loja-${modalLoja?.loja?.id ?? modalLoja?.canal.id ?? "fechado"}`} modalLoja={modalLoja} onClose={() => setModalLoja(null)} onSave={salvarLojaHandler} salvando={pending} />
-      <FaixasModal key={`faixas-${modalFaixas?.id ?? "fechado"}`} canal={modalFaixas} onClose={() => setModalFaixas(null)} onSave={salvarFaixasHandler} salvando={pending} />
       <ContaModal key={`conta-${modalConta === "novo" ? "novo" : modalConta?.id ?? "fechado"}`} conta={modalConta} onClose={() => setModalConta(null)} onSave={salvarContaHandler} salvando={pending} />
       <ArmazemModal key={`armazem-${modalArmazem === "novo" ? "novo" : modalArmazem?.id ?? "fechado"}`} armazem={modalArmazem} onClose={() => setModalArmazem(null)} onSave={salvarArmazemHandler} salvando={pending} />
       <FormaPagamentoModal
@@ -575,7 +383,6 @@ export function ConfiguracoesClient({
         onSave={salvarFormaPagamentoHandler}
         salvando={pending}
       />
-      <CanalModal open={modalCanal} onClose={() => setModalCanal(false)} onSave={salvarCanalHandler} salvando={pending} />
       {ConfirmDialog}
     </>
   );

@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => logSpy.mockRestore());
 
-const esquema = esquemaSugestao(false);
+const esquema = esquemaSugestao("titulo", false);
 const opcoes = { maxTokens: 700, temperatura: 0.9, esquema };
 
 describe("mapearStatusHttp (todos os provedores)", () => {

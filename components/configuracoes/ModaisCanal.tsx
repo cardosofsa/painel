@@ -9,7 +9,7 @@ import { formatBRL } from "@/lib/format";
 import { formatarFaixaLabel } from "@/lib/pricing";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
-import type { CanalInput, LojaInput, FaixaComissaoInput } from "@/app/(painel)/configuracoes/actions";
+import type { CanalInput, LojaInput, FaixaComissaoInput, LimitesCanalInput } from "@/app/(painel)/configuracoes/actions";
 import { ICONES_CANAL, type Canal, type Loja } from "@/app/(painel)/configuracoes/ConfiguracoesClient";
 
 /**
@@ -352,6 +352,74 @@ export function LojaModal({
             })
           }
           loading={salvando}
+        >
+          Salvar
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Campo numérico opcional: vazio = null (sem limite próprio). */
+function lerLimite(valor: string): number | null {
+  const n = Number(valor);
+  return valor.trim() === "" || !Number.isFinite(n) ? null : Math.floor(n);
+}
+
+/**
+ * Limites de título e descrição que a IA respeita neste canal (0037). Editáveis porque as
+ * plataformas mudam a regra sem avisar.
+ */
+export function LimitesTextoModal({
+  canal,
+  onClose,
+  onSave,
+  salvando,
+}: {
+  canal: Canal | null;
+  onClose: () => void;
+  onSave: (canalId: string, dados: LimitesCanalInput) => void;
+  salvando: boolean;
+}) {
+  const inicial = { titulo: canal?.limite_titulo?.toString() ?? "", descricao: canal?.limite_descricao?.toString() ?? "" };
+  const [titulo, setTitulo] = useState(inicial.titulo);
+  const [descricao, setDescricao] = useState(inicial.descricao);
+  const sujo = useFormularioSujo({ titulo, descricao }, inicial);
+
+  return (
+    <Modal open={!!canal} onClose={onClose} title={canal ? `Limites de texto (${canal.nome})` : ""} width="max-w-md" sujo={sujo}>
+      <p className="text-sm text-text-secondary mb-4">
+        Quantos caracteres a plataforma aceita. A IA gera títulos e descrições dentro desse limite. Deixe em branco para usar o
+        teto do sistema (título 200, descrição 5.000).
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Título (20 a 200)">
+          <input type="number" min={20} max={200} className={inputClass} value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+        </FormField>
+        <FormField label="Descrição (100 a 10.000)">
+          <input
+            type="number"
+            min={100}
+            max={10000}
+            className={inputClass}
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+          />
+        </FormField>
+      </div>
+      <p className="text-xs text-text-tertiary mt-1">
+        Referência em set/2026: Shopee título 100 e descrição 5.000; Mercado Livre título 60 e descrição 10.000. Confira na
+        plataforma se mudou.
+      </p>
+      <div className="flex gap-2 mt-4">
+        <Button variant="secondary" className="flex-1" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button
+          variant="primary"
+          className="flex-1"
+          loading={salvando}
+          onClick={() => canal && onSave(canal.id, { limite_titulo: lerLimite(titulo), limite_descricao: lerLimite(descricao) })}
         >
           Salvar
         </Button>

@@ -115,12 +115,25 @@ export const lojaSchema = z.object({
   taxa_extra_tipo: z.enum(["percentual", "fixo"]).nullable(),
 });
 
-export const canalSchema = z.object({
-  nome: textoCurto,
-  tipo_taxa: z.enum(["faixas", "fixo"]),
-  icone: textoCurto,
-  cor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Cor inválida"),
+/** Limites de texto do canal (0037). Mesmos intervalos do check do banco; null = sem limite próprio. */
+export const canalLimitesSchema = z.object({
+  limite_titulo: z.number().int().min(20, "Título: mínimo 20 caracteres").max(200, "Título: máximo 200 caracteres").nullable(),
+  limite_descricao: z
+    .number()
+    .int()
+    .min(100, "Descrição: mínimo 100 caracteres")
+    .max(10000, "Descrição: máximo 10.000 caracteres")
+    .nullable(),
 });
+
+export const canalSchema = z
+  .object({
+    nome: textoCurto,
+    tipo_taxa: z.enum(["faixas", "fixo"]),
+    icone: textoCurto,
+    cor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Cor inválida"),
+  })
+  .merge(canalLimitesSchema.partial());
 
 export const faixaComissaoSchema = z.object({
   preco_min: dinheiro,
@@ -505,6 +518,12 @@ export const iaContextoSchema = z.object({
     .array(z.object({ nome: z.string().trim().max(120), preco: dinheiro.nullable() }))
     .max(30)
     .optional(),
+  variacoes: z.array(z.string().trim().max(60)).max(30).optional(),
+  garantiaDias: z.number().int().min(1).max(3650).nullish(),
+  palavrasChave: z.array(z.string().trim().max(40)).max(20).optional(),
+  // O servidor ainda aperta com `limiteEfetivo`; aqui só barra valor absurdo.
+  limite: z.number().int().min(20).max(10000).nullish(),
+  tom: z.enum(["padrao", "tecnico", "premium", "descontraido"]).nullish(),
   instrucaoExtra: z.string().trim().max(300, "Instrução longa demais").nullish(),
 });
 

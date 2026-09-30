@@ -69,6 +69,9 @@ export interface LojaOpcao {
   taxaExtraValor: number | null;
   taxaExtraTipo: "percentual" | "fixo" | null;
   faixas: FaixaComissao[];
+  /** Limites de texto do canal (0037). null = vale o teto do sistema. */
+  limiteTitulo: number | null;
+  limiteDescricao: number | null;
 }
 
 export interface VariacaoSalva {

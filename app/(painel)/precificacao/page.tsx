@@ -20,7 +20,9 @@ export default async function PrecificacaoPage() {
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     supabase
       .from("canais")
-      .select("id, nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao")
+      .select(
+        "id, nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao, limite_titulo, limite_descricao",
+      )
       .order("criado_em"),
     supabase.from("lojas_canal").select("id, canal_id, nome, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo").order("nome"),
     supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
@@ -71,6 +73,8 @@ export default async function PrecificacaoPage() {
       taxaExtraValor: l.taxa_extra_valor ?? canal?.taxa_extra_valor_padrao ?? null,
       taxaExtraTipo: l.taxa_extra_tipo ?? canal?.taxa_extra_tipo_padrao ?? null,
       faixas: faixasPorCanal.get(l.canal_id) ?? [],
+      limiteTitulo: canal?.limite_titulo ?? null,
+      limiteDescricao: canal?.limite_descricao ?? null,
     };
   });
 

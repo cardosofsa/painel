@@ -4,7 +4,7 @@ import { inputClass } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
 import { formatBRL } from "@/lib/format";
 import { GeradorIA } from "@/components/ia/GeradorIA";
-import { LIMITE_TITULO } from "@/lib/ia/prompts";
+import { limiteEfetivo } from "@/lib/ia/prompts";
 import { gerarTituloAnuncioIA } from "@/app/(painel)/precificacao/actions";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import type { EstadoPrecificacao, ProdutoOpcao } from "@/lib/precificacao-estado";
@@ -96,12 +96,14 @@ export function PainelEntradas({
           <GeradorIA
             key={`ia-titulo-${produtoId ?? nomeProduto}`}
             rotulo="Gerar título com IA"
-            limite={LIMITE_TITULO}
+            tipo="titulo"
+            limite={limiteEfetivo("titulo", lojaSelecionada?.limiteTitulo)}
+            termoPrincipal={nomeProduto}
             valorAtual={nomeAnuncio}
             disponivel={iaDisponivel}
             desabilitado={!nomeProduto.trim()}
             motivoDesabilitado={!nomeProduto.trim() ? "Informe o nome do produto primeiro." : undefined}
-            gerar={(instrucaoExtra) =>
+            gerar={(instrucaoExtra, tom) =>
               gerarTituloAnuncioIA({
                 produtoNome: nomeProduto,
                 sku: produtos.find((p) => p.id === produtoId)?.sku ?? null,
@@ -112,6 +114,8 @@ export function PainelEntradas({
                 componentes: componentes.map((c) => ({ nome: c.nome, quantidade: c.quantidade })),
                 // Só nome e preço: o link do concorrente não entra no prompt.
                 concorrentes: concorrentes.map((c) => ({ nome: c.nome, preco: c.preco })),
+                limite: lojaSelecionada?.limiteTitulo ?? null,
+                tom,
                 instrucaoExtra,
               })
             }

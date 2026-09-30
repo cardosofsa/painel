@@ -106,7 +106,7 @@ describe("nivelRaciocinio", () => {
 });
 
 describe("montarCorpo", () => {
-  const opcoes = { maxTokens: 220, temperatura: 0.9, esquema: esquemaSugestao(false) };
+  const opcoes = { maxTokens: 220, temperatura: 0.9, esquema: esquemaSugestao("titulo", false) };
 
   it("limita o raciocínio — é a maior economia do desenho, merece teste de regressão", () => {
     const corpo = montarCorpo("oi", opcoes, "gemini-3.5-flash-lite");

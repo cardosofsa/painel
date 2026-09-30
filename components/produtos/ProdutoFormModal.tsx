@@ -314,12 +314,13 @@ export function ProdutoFormModal({
           <GeradorIA
             key={`ia-desc-${editando?.id ?? "novo"}`}
             rotulo="Gerar descrição com IA"
+            tipo="descricao"
             limite={LIMITE_DESCRICAO}
             valorAtual={form.descricao ?? ""}
             disponivel={iaDisponivel}
             desabilitado={!form.nome.trim()}
             motivoDesabilitado={!form.nome.trim() ? "Preencha o nome do produto primeiro." : undefined}
-            gerar={(instrucaoExtra) =>
+            gerar={(instrucaoExtra, tom) =>
               gerarDescricaoProdutoIA({
                 produtoNome: form.nome,
                 sku: form.sku || null,
@@ -330,6 +331,9 @@ export function ProdutoFormModal({
                 codigoBarras: form.codigo_barras,
                 custo: custoComposto(form.custo_base, form.insumos),
                 precoVenda: form.preco_venda,
+                garantiaDias: form.garantia_dias ?? null,
+                limite: LIMITE_DESCRICAO,
+                tom,
                 instrucaoExtra,
               })
             }

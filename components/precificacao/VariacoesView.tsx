@@ -15,7 +15,7 @@ import { TabelaVariacoes } from "@/components/precificacao/variacoes/TabelaVaria
 import { VariacoesSalvas } from "@/components/precificacao/variacoes/VariacoesSalvas";
 import { criarAnuncio, removerAnuncio, gerarTituloAnuncioIA, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
 import { GeradorIA } from "@/components/ia/GeradorIA";
-import { LIMITE_TITULO } from "@/lib/ia/prompts";
+import { limiteEfetivo } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/lib/precificacao-estado";
 import { executarComToast } from "@/lib/acao-cliente";
 import { inputClass } from "@/components/ui/Modal";
@@ -207,21 +207,23 @@ export function VariacoesView({
             <GeradorIA
               key={`ia-titulo-var-${produtoId ?? nomeAnuncio}`}
               rotulo="Gerar título com IA"
-              limite={LIMITE_TITULO}
+              tipo="titulo"
+              limite={limiteEfetivo("titulo", lojaSelecionada?.limiteTitulo)}
+              termoPrincipal={nomeAnuncio}
               valorAtual={tituloAnuncio}
               disponivel={iaDisponivel}
               desabilitado={!nomeAnuncio.trim()}
               motivoDesabilitado={!nomeAnuncio.trim() ? "Preencha o nome do anúncio primeiro." : undefined}
-              gerar={(instrucaoExtra) =>
+              gerar={(instrucaoExtra, tom) =>
                 gerarTituloAnuncioIA({
                   produtoNome: nomeAnuncio,
                   sku: produtos.find((p) => p.id === produtoId)?.sku ?? null,
                   canal: lojaSelecionada?.canalNome ?? null,
                   loja: lojaSelecionada?.nome ?? null,
                   custo: custoUnitarioBase,
-                  // A variação entra como "itens que acompanham": é o que diferencia este
-                  // anúncio de um produto simples.
-                  componentes: variacoes.filter((v) => v.nome.trim()).map((v) => ({ nome: v.nome, quantidade: 1 })),
+                      variacoes: variacoes.map((v) => v.nome.trim()).filter(Boolean),
+                  limite: lojaSelecionada?.limiteTitulo ?? null,
+                  tom,
                   instrucaoExtra,
                 })
               }

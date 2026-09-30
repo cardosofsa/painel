@@ -20,8 +20,9 @@ import {
   esquemaSugestao,
   hashContexto,
   concorrentesRelevantes,
-  LIMITE_TITULO,
-  LIMITE_DESCRICAO,
+  limiteEfetivo,
+  empacotarOpcoes,
+  desempacotarOpcoes,
   montarPromptTema,
   esquemaTema,
   interpretarTema,
@@ -39,6 +40,8 @@ export type TipoGeracao = TipoGeracaoTexto | "tema";
 
 export interface SugestaoGerada {
   texto: string;
+  /** Título: até 3 opções; descrição: uma. */
+  opcoes: string[];
   palavrasChave: string[];
   posicionamento: string | null;
   /** Quantas gerações do dia já foram usadas, para a UI mostrar o saldo. */
@@ -60,14 +63,13 @@ export interface SugestaoGerada {
  * API devolve vazio e a cota teria sido gasta à toa. Quem controla o gasto de verdade é o
  * `thinking_level` em `gemini.ts`.
  */
-const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number; limite: number }> = {
-  // Título é curto, mas vem com palavras-chave e posicionamento na mesma resposta.
-  titulo: { maxTokens: 700, temperatura: 0.9, limite: LIMITE_TITULO },
-  descricao: { maxTokens: 1600, temperatura: 0.7, limite: LIMITE_DESCRICAO },
+const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number }> = {
+  // Três títulos curtos + palavras-chave + posicionamento na mesma resposta.
+  titulo: { maxTokens: 900, temperatura: 0.9 },
+  // Descrição em seções pode chegar a 5000 caracteres (~1500 tokens) mais o raciocínio.
+  descricao: { maxTokens: 2600, temperatura: 0.7 },
   // Sete campos curtos (4 cores, 1 fonte, título, mensagem) — cabe folgado em 500 tokens.
-  // `limite` aqui não é usado (tema não passa por `truncarEmPalavra` de um texto único),
-  // mas o tipo exige o campo; mantém o shape uniforme entre os três.
-  tema: { maxTokens: 500, temperatura: 0.8, limite: 0 },
+  tema: { maxTokens: 500, temperatura: 0.8 },
 };
 
 /** Falha de infraestrutura: o usuário não fez nada errado, então a cota volta. */
@@ -98,7 +100,8 @@ async function executar(
   //    cobrada por isso.
   const ia = await resolverProvedor(supabase);
 
-  const { maxTokens, temperatura, limite } = PARAMETROS[tipo];
+  const { maxTokens, temperatura } = PARAMETROS[tipo];
+  const limite = limiteEfetivo(tipo, ctx.limite);
   // O provedor e o modelo entram no hash: o mesmo produto gerado por IAs diferentes dá
   // textos diferentes, e o cache de uma não pode responder pela outra.
   const hash = `${hashContexto(ctx, tipo)}:${ia.provedor}:${ia.modelo}`;
@@ -113,8 +116,10 @@ async function executar(
   // 4. Acerto de cache: devolve sem chamar a API e sem consumir cota.
   if (cache) {
     const saldo = await lerSaldo(supabase, ia);
+    const opcoes = desempacotarOpcoes(cache.texto, tipo);
     return {
-      texto: cache.texto,
+      texto: opcoes[0] ?? "",
+      opcoes,
       palavrasChave: cache.palavras_chave ?? [],
       posicionamento: cache.posicionamento,
       ...saldo,
@@ -136,7 +141,7 @@ async function executar(
     bruto = await chamarProvedor(ia, prompt, {
       maxTokens,
       temperatura,
-      esquema: esquemaSugestao(tipo === "titulo" && temConcorrente),
+      esquema: esquemaSugestao(tipo, tipo === "titulo" && temConcorrente),
     });
   } catch (e) {
     // 7. Falha de infraestrutura não come a cota de quem não teve culpa. Bloqueio de
@@ -145,13 +150,13 @@ async function executar(
     throw e;
   }
 
-  const sugestao = interpretarSugestao(bruto, limite);
+  const sugestao = interpretarSugestao(bruto, limite, tipo);
   if (!sugestao.texto) throw new ErroIA("vazio", "texto vazio após interpretar");
 
   const { error: erroGuardar } = await supabase.rpc("ia_guardar_sugestao", {
     p_tipo: tipo,
     p_hash: hash,
-    p_texto: sugestao.texto,
+    p_texto: empacotarOpcoes(sugestao.opcoes),
     p_palavras_chave: sugestao.palavrasChave,
     p_posicionamento: sugestao.posicionamento,
   });
