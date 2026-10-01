@@ -37,11 +37,11 @@ export function PedidosMarketplace({
   lojas,
   produtos,
   impostoPct,
-  apiLigada,
+  faltandoApi,
   aviso,
 }: {
-  /** O sistema tem SHOPEE_PARTNER_ID/KEY e o cofre: mostra conectar/sincronizar. */
-  apiLigada: boolean;
+  /** Variáveis que faltam para a API (vazio = ligada: mostra conectar/sincronizar). */
+  faltandoApi: string[];
   /** `?shopee=` da volta da autorização. */
   aviso: string | null;
   dados: DadosMarketplace;
@@ -101,7 +101,7 @@ export function PedidosMarketplace({
 
   return (
     <>
-      {apiLigada && <ConexaoShopee lojas={lojas} conexoes={dados.conexoes} aviso={aviso} />}
+      <ConexaoShopee lojas={lojas} conexoes={dados.conexoes} aviso={aviso} faltando={faltandoApi} />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex flex-wrap gap-4 text-sm">
           <span className="text-text-secondary">

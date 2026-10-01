@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { assinar, credenciaisShopee, pedidoDaApi, statusDaApi, ufDoEstado, urlAutorizacao } from "./shopee-api";
+import { assinar, credenciaisShopee, faltandoShopee, pedidoDaApi, statusDaApi, ufDoEstado, urlAutorizacao } from "./shopee-api";
 
 const c = { partnerId: 123, partnerKey: "segredo", host: "https://partner.shopeemobile.com" };
 
@@ -8,6 +8,12 @@ describe("credenciaisShopee", () => {
   it("desligada sem as variáveis", () => {
     expect(credenciaisShopee({})).toBeNull();
     expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "abc", SHOPEE_PARTNER_KEY: "k" })).toBeNull();
+  });
+  it("faltandoShopee diz só os nomes do que falta", () => {
+    expect(faltandoShopee({})).toEqual(["SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY"]);
+    expect(faltandoShopee({ SHOPEE_PARTNER_ID: " 123 ", SHOPEE_PARTNER_KEY: "" })).toEqual(["SHOPEE_PARTNER_KEY"]);
+    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "12a", SHOPEE_PARTNER_KEY: "k" })).toEqual(["SHOPEE_PARTNER_ID"]);
+    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: "k" })).toEqual([]);
   });
   it("lê id, chave e ambiente de teste", () => {
     expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: "k", SHOPEE_AMBIENTE: "teste" })?.host).toContain("test-stable");

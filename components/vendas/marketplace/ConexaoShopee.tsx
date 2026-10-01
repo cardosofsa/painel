@@ -17,9 +17,20 @@ const AVISO: Record<string, [string, "ok" | "erro"]> = {
 
 /**
  * API oficial por loja: conectar (autorização na Shopee), sincronizar agora e desligar.
- * Só aparece quando o sistema tem as credenciais de parceiro; sem elas, vale a planilha.
+ * Sem as credenciais de parceiro, diz quais variáveis faltam (só os nomes); a planilha segue valendo.
  */
-export function ConexaoShopee({ lojas, conexoes, aviso }: { lojas: LojaMarketplace[]; conexoes: ConexaoResumo[]; aviso: string | null }) {
+export function ConexaoShopee({
+  lojas,
+  conexoes,
+  aviso,
+  faltando,
+}: {
+  lojas: LojaMarketplace[];
+  conexoes: ConexaoResumo[];
+  aviso: string | null;
+  /** Nomes das variáveis de ambiente que faltam (nunca os valores). Vazio = API ligada. */
+  faltando: string[];
+}) {
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -28,13 +39,38 @@ export function ConexaoShopee({ lojas, conexoes, aviso }: { lojas: LojaMarketpla
   }, [aviso]);
 
   const lojasShopee = lojas.filter((l) => /shopee/i.test(`${l.canalNome} ${l.nome}`));
-  if (lojasShopee.length === 0) return null;
+  const titulo = (
+    <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-2">
+      <PlugZap size={15} className="text-accent" /> API oficial da Shopee
+    </div>
+  );
+
+  if (faltando.length > 0) {
+    return (
+      <div className="rounded-lg border border-border bg-surface-1 p-3 mb-4">
+        {titulo}
+        <p className="text-sm text-text-secondary">
+          Desligada neste servidor. Falta configurar na Vercel: <span className="font-mono text-text-primary">{faltando.join(", ")}</span>. Depois de salvar as
+          variáveis, faça o <strong>Redeploy</strong> (variável nova só vale num deploy novo). Enquanto isso, a importação por planilha funciona.
+        </p>
+      </div>
+    );
+  }
+
+  if (lojasShopee.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-surface-1 p-3 mb-4">
+        {titulo}
+        <p className="text-sm text-text-secondary">
+          Nenhuma loja da Shopee cadastrada. Em Configurações → Canais de venda, crie a loja dentro de um canal chamado &quot;Shopee&quot; e volte aqui para conectar.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-border bg-surface-1 p-3 mb-4">
-      <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-2">
-        <PlugZap size={15} className="text-accent" /> API oficial da Shopee
-      </div>
+      {titulo}
       <div className="space-y-2">
         {lojasShopee.map((l) => {
           const c = conexoes.find((x) => x.loja_id === l.id);

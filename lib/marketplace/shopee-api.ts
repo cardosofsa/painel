@@ -31,6 +31,15 @@ export function credenciaisShopee(env: Record<string, string | undefined> = proc
   return { partnerId: id, partnerKey: key, host: env.SHOPEE_AMBIENTE === "teste" ? HOST_TESTE : HOST_PRODUCAO };
 }
 
+/** Quais variáveis da Shopee faltam ou estão inválidas (só os NOMES, nunca os valores). */
+export function faltandoShopee(env: Record<string, string | undefined> = process.env): string[] {
+  const id = Number(env.SHOPEE_PARTNER_ID);
+  return [
+    ...(!Number.isInteger(id) || id <= 0 ? ["SHOPEE_PARTNER_ID"] : []),
+    ...(env.SHOPEE_PARTNER_KEY?.trim() ? [] : ["SHOPEE_PARTNER_KEY"]),
+  ];
+}
+
 export function assinar(c: CredenciaisShopee, caminho: string, timestamp: number, accessToken = "", shopId: number | string = ""): string {
   return createHmac("sha256", c.partnerKey).update(`${c.partnerId}${caminho}${timestamp}${accessToken}${shopId}`).digest("hex");
 }

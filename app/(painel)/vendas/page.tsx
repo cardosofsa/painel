@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { carregarPedidosVitrine } from "@/lib/pedidos-vitrine-servidor";
 import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
-import { credenciaisShopee } from "@/lib/marketplace/shopee-api";
+import { faltandoShopee } from "@/lib/marketplace/shopee-api";
 import { cofreDisponivel } from "@/lib/ia/cofre";
 import { VendasClient, type Venda } from "./VendasClient";
 
@@ -54,7 +54,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       formasPagamentoPdv={formasPdvRes.data ?? []}
       pedidoInicial={pedido && /^P-\d{1,8}$/.test(pedido) ? pedido : null}
       marketplace={marketplace}
-      apiShopee={!!credenciaisShopee() && cofreDisponivel()}
+      faltandoShopee={[...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])]}
       avisoShopee={shopee && ["conectada", "erro", "desligada"].includes(shopee) ? shopee : null}
       lojasMarketplace={((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => ({
         id: l.id,
