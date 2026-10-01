@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, BarChart3, Boxes, Calculator, Check, Sparkles, Store } from "lucide-react";
 import { IconeCacto } from "@/components/ui/IconeCacto";
+import { LogoSertao } from "@/components/ui/LogoSertao";
 import { LinksLegais } from "@/components/legal/LinksLegais";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
@@ -244,9 +245,7 @@ export default async function Home() {
 function Marca() {
   return (
     <span className="flex items-center gap-2">
-      <span className="w-8 h-8 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
-        <IconeCacto size={18} strokeWidth={2.25} />
-      </span>
+      <LogoSertao tamanho={34} prioridade />
       <span className="font-semibold tracking-tight text-lg">SERTÃO</span>
     </span>
   );

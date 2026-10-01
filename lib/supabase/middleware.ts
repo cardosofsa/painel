@@ -110,6 +110,8 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     // O navegador reporta violação de CSP sem sessão. Sem esta linha o relatório viraria
     // um redirect para /login e a violação nunca chegaria ao log.
     "/api/csp-report",
+    // Instalar o app no celular: o navegador busca o manifesto sem sessão.
+    "/manifest.webmanifest",
     // Cron da Vercel (sem sessão): a rota exige o CRON_SECRET no cabeçalho.
     "/api/cron",
   ]);

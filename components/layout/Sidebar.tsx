@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsLeft, ChevronsRight, Settings, ShieldCheck } from "lucide-react";
-import { IconeCacto } from "@/components/ui/IconeCacto";
+import { LogoSertao } from "@/components/ui/LogoSertao";
 import { NAV_ITEMS, GRUPOS_NAV } from "./navigation";
 import { normalizarAbas } from "@/lib/acesso";
 import { useSidebarMobile } from "./SidebarMobileContext";
@@ -68,17 +68,15 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
         {/* Dashboard não é mais um item de menu: é pra cá que o logo leva. Master não roda
             loja por esta conta (ver comentário acima), então pra ele o logo fica estático. */}
         {ehMaster ? (
-          <span className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
-            <IconeCacto size={14} strokeWidth={2.25} />
-          </span>
+          <LogoSertao tamanho={28} prioridade />
         ) : (
           <Link
             href="/dashboard"
             onClick={fechar}
             title={recolhida ? "Dashboard" : undefined}
-            className="w-6 h-6 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0 hover:opacity-90 transition-opacity"
+            className="shrink-0 hover:opacity-90 transition-opacity"
           >
-            <IconeCacto size={14} strokeWidth={2.25} />
+            <LogoSertao tamanho={28} prioridade />
           </Link>
         )}
         {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">SERTÃO</span>}

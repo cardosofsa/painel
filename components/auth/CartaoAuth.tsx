@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { IconeCacto } from "@/components/ui/IconeCacto";
+import { LogoSertao } from "@/components/ui/LogoSertao";
 
 /**
  * Casca das telas de autenticação (entrar, criar conta, recuperar senha, redefinir senha).
@@ -22,9 +22,7 @@ export function CartaoAuth({
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2 mb-6">
-          <span className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-accent-on shrink-0">
-            <IconeCacto size={16} strokeWidth={2.25} />
-          </span>
+          <LogoSertao tamanho={36} prioridade />
           <span className="font-semibold tracking-tight text-text-primary text-lg">SERTÃO</span>
         </div>
 
