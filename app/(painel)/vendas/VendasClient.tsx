@@ -1,35 +1,56 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { BarChart3, Receipt, ScanBarcode } from "lucide-react";
+import { toast } from "sonner";
+import { ArrowDownUp, BarChart3, Link2, RefreshCw, ScanBarcode, Search, SlidersHorizontal, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
-import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
-import { StatusChip } from "@/components/ui/Badge";
-import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { RowMenu } from "@/components/ui/RowMenu";
+import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-import { Tabs } from "@/components/ui/Tabs";
-import { BarraFiltros, FiltroSelect } from "@/components/ui/BarraFiltros";
 import { ExportarModal } from "@/components/ui/ExportarModal";
-import { formatBRL, formatarDataCurta } from "@/lib/format";
+import { SeletorPeriodo } from "@/components/ui/SeletorPeriodo";
+import { inputClass } from "@/components/ui/Modal";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { executarComToast } from "@/lib/acao-cliente";
-import { decomporVenda, origemVenda, situacaoVenda, ROTULO_ORIGEM, type StatusEnvio } from "@/lib/vendas-painel";
+import { periodoAnterior, periodoDoAtalho, rotuloPeriodo, type Periodo } from "@/lib/periodo";
+import {
+  contarEtapas,
+  filtrarCentral,
+  FILTROS_VAZIOS,
+  indicadores,
+  montarCentral,
+  opcoesFiltro,
+  PROXIMA,
+  ROTULO_ETAPA,
+  type Etapa,
+  type EtapaVenda,
+  type FiltrosCentral,
+  type PedidoCentral,
+  type VendaIn,
+} from "@/lib/pedidos-central";
+import type { StatusEnvio } from "@/lib/vendas-painel";
 import type { TabelaExport } from "@/lib/exportar";
+import type { DadosMarketplace } from "@/lib/marketplace/pedidos-servidor";
+import type { PedidoVitrine } from "@/lib/pedidos-vitrine-tipos";
+import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
 import { obterComprovante } from "./comprovante-actions";
 import { useComprovanteImagem } from "@/components/comprovante/useComprovanteImagem";
-import { atualizarStatusEnvio, cancelarVenda } from "./actions";
+import { cancelarVenda } from "./actions";
+import { definirEtapaVendas, definirLogisticaVenda, sincronizarTodasShopee } from "./central-actions";
 import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
 import { DetalheVendaModal } from "@/components/vendas/DetalheVendaModal";
-import { ValorComLucro } from "@/components/vendas/ValorComLucro";
-import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
-import { PedidosMarketplace } from "@/components/vendas/marketplace/PedidosMarketplace";
-import type { LojaMarketplace, ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
-import type { DadosMarketplace } from "@/lib/marketplace/pedidos-servidor";
-import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
+import { LinhaPedido } from "@/components/vendas/central/LinhaPedido";
+import { MenuEtapas } from "@/components/vendas/central/MenuEtapas";
+import { FiltroCanais } from "@/components/vendas/central/FiltroCanais";
+import { FiltrosModal, contarExtras, type FiltrosExtras } from "@/components/vendas/central/FiltrosModal";
+import { KpisVendas } from "@/components/vendas/central/KpisVendas";
+import { PedidoCatalogoModal } from "@/components/vendas/central/PedidoCatalogoModal";
+import { DetalheMarketplaceModal } from "@/components/vendas/central/DetalheMarketplaceModal";
+import { VincularAnunciosModal } from "@/components/vendas/central/VincularAnunciosModal";
+import { ImportarExportarModal } from "@/components/vendas/central/ImportarExportarModal";
+import { ImportarShopeeModal, type LojaMarketplace, type ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
 
 export interface VendaItem {
   produto_nome: string;
@@ -49,6 +70,10 @@ export interface Venda {
   forma_pagamento: string | null;
   status: "paga" | "fiado" | "cancelada";
   status_envio?: StatusEnvio;
+  /** 0047. */
+  etapa?: EtapaVenda | null;
+  logistica?: string | null;
+  clientes?: { cidade: string | null; uf: string | null } | null;
   subtotal: number;
   desconto: number;
   valor_entrega: number;
@@ -59,21 +84,23 @@ export interface Venda {
   venda_itens: VendaItem[];
 }
 
-type Aba = "pedidos" | "marketplace" | "abertas" | "concluidas" | "canceladas" | "todas";
+const POR_PAGINA = 40;
 
-const PERIODOS = [
-  { valor: "0", rotulo: "Hoje" },
-  { valor: "7", rotulo: "Últimos 7 dias" },
-  { valor: "30", rotulo: "Últimos 30 dias" },
-] as const;
-
-const TOM_PAGTO: Record<Venda["status"], "positive" | "negative" | "neutral"> = { paga: "positive", fiado: "neutral", cancelada: "negative" };
-const ROTULO_PAGTO: Record<Venda["status"], string> = { paga: "Paga", fiado: "Fiado", cancelada: "Cancelada" };
+const EXTRAS_VAZIOS: FiltrosExtras = {
+  pagamento: [],
+  logistica: "",
+  uf: "",
+  valorMin: null,
+  valorMax: null,
+  soPrejuizo: false,
+  soSemCusto: false,
+};
 
 /**
- * Vendas é OPERAÇÃO: o que precisa ser confirmado, separado, enviado ou recebido. Os
- * números e gráficos saíram para /vendas/relatorios. Pedido do catálogo mora aqui (não no
- * Catálogo): pedido de venda é venda, venha do PDV ou da vitrine.
+ * Vendas = central de pedidos (como num ERP): PDV, catálogo e marketplaces juntos, por
+ * etapa de expedição (Para Emitir → Imprimir → Enviar → Enviado → Concluído), com período,
+ * canais/lojas, filtros, lucro de cada pedido e ações em massa. Números e gráficos ficam em
+ * /vendas/relatorios.
  */
 export function VendasClient({
   vendas,
@@ -90,18 +117,8 @@ export function VendasClient({
   produtosMarketplace,
   impostoPct,
   faltandoShopee,
-  ambienteShopee,
   avisoShopee,
 }: {
-  /** Variáveis de ambiente que faltam para a API da Shopee (só nomes). */
-  faltandoShopee: string[];
-  ambienteShopee: "teste" | "producao";
-  avisoShopee: string | null;
-  marketplace: DadosMarketplace;
-  lojasMarketplace: LojaMarketplace[];
-  produtosMarketplace: ProdutoMarketplace[];
-  /** Fração (alíquota do perfil), para o lucro dos pedidos importados. */
-  impostoPct: number;
   vendas: Venda[];
   diasJanela: number;
   clientes: (ClienteOpcao & { whatsapp: string | null })[];
@@ -111,52 +128,112 @@ export function VendasClient({
   contas: ContaPdv[];
   formasPagamentoPdv: FormaPagamentoPdv[];
   pedidoInicial: string | null;
+  marketplace: DadosMarketplace;
+  lojasMarketplace: LojaMarketplace[];
+  produtosMarketplace: ProdutoMarketplace[];
+  impostoPct: number;
+  faltandoShopee: string[];
+  avisoShopee: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const pedidosAbertos = pedidos.filter((p) => p.status === "pendente" || p.status === "aceito");
-  const [aba, setAba] = useState<Aba>(avisoShopee ? "marketplace" : pedidoInicial || pedidosAbertos.length > 0 ? "pedidos" : "abertas");
-  const [detalhe, setDetalhe] = useState<Venda | null>(null);
-  const [editando, setEditando] = useState<Venda | null>(null);
-  const [exportando, setExportando] = useState(false);
-  const [busca, setBusca] = useState("");
-  const [periodo, setPeriodo] = useState("");
-  const [origem, setOrigem] = useState("");
   const { gerar: gerarImagem, oculto: comprovanteOculto } = useComprovanteImagem();
 
-  const vendasDoCatalogo = useMemo(() => new Set(pedidos.map((p) => p.venda_id).filter((id): id is string => !!id)), [pedidos]);
+  const lista = useMemo(
+    () => montarCentral({ vendas: vendas as VendaIn[], pedidosCatalogo: pedidos, marketplace: marketplace.pedidos, lojas: lojasMarketplace }),
+    [vendas, pedidos, marketplace.pedidos, lojasMarketplace],
+  );
 
-  const contagem = useMemo(() => {
-    const c = { abertas: 0, concluidas: 0, canceladas: 0 };
-    for (const v of vendas) {
-      const s = situacaoVenda(v);
-      if (s === "aberta") c.abertas++;
-      else if (s === "concluida") c.concluidas++;
-      else c.canceladas++;
-    }
-    return c;
-  }, [vendas]);
+  const [periodo, setPeriodo] = useState<Periodo>(() => periodoDoAtalho("hoje"));
+  const [canais, setCanais] = useState<string[]>([]);
+  const [busca, setBusca] = useState("");
+  const [extras, setExtras] = useState<FiltrosExtras>(EXTRAS_VAZIOS);
+  const filtros: FiltrosCentral = useMemo(() => ({ periodo, canais, busca, ...extras }), [periodo, canais, busca, extras]);
+  const contagem = useMemo(() => contarEtapas(lista, filtros), [lista, filtros]);
+  const [etapa, setEtapa] = useState<Etapa | "todos">(() => {
+    const c = contarEtapas(lista, { ...FILTROS_VAZIOS, periodo: periodoDoAtalho("hoje") });
+    return c.emitir > 0 ? "emitir" : c.imprimir > 0 ? "imprimir" : "todos";
+  });
+  const filtrados = useMemo(() => filtrarCentral(lista, filtros, etapa), [lista, filtros, etapa]);
+  const [mostrar, setMostrar] = useState(POR_PAGINA);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [processando, setProcessando] = useState<string | null>(null);
 
-  const filtradas = useMemo(() => {
-    const t = busca.trim().toLowerCase();
-    const inicio = new Date();
-    inicio.setHours(0, 0, 0, 0);
-    if (periodo) inicio.setDate(inicio.getDate() - Number(periodo));
-    return vendas.filter((v) => {
-      const s = situacaoVenda(v);
-      if (aba === "abertas" && s !== "aberta") return false;
-      if (aba === "concluidas" && s !== "concluida") return false;
-      if (aba === "canceladas" && s !== "cancelada") return false;
-      if (periodo && new Date(v.data_venda) < inicio) return false;
-      if (origem && origemVenda(v, vendasDoCatalogo) !== origem) return false;
-      if (t && !v.numero.toLowerCase().includes(t) && !(v.cliente_nome ?? "").toLowerCase().includes(t) && !v.venda_itens.some((i) => i.produto_nome.toLowerCase().includes(t))) return false;
-      return true;
+  const kpiAtual = useMemo(() => indicadores(lista, filtros), [lista, filtros]);
+  const kpiAnterior = useMemo(() => indicadores(lista, { ...filtros, periodo: periodoAnterior(filtros.periodo) }), [lista, filtros]);
+  const { ufs, logisticas } = useMemo(() => opcoesFiltro(lista), [lista]);
+  const semCusto = marketplace.pedidos.some((p) => p.custo_incompleto && p.status !== "cancelado" && p.status !== "devolvido");
+
+  // Modais
+  const vendaPorId = useMemo(() => new Map(vendas.map((v) => [v.id, v])), [vendas]);
+  const [detalhe, setDetalhe] = useState<Venda | null>(null);
+  const [editando, setEditando] = useState<Venda | null>(null);
+  const [catalogo, setCatalogo] = useState<PedidoVitrine | null>(() => (pedidoInicial ? (pedidos.find((p) => p.numero === pedidoInicial) ?? null) : null));
+  const [detalheMkt, setDetalheMkt] = useState<PedidoCentral | null>(null);
+  const [filtrando, setFiltrando] = useState(false);
+  const [impExp, setImpExp] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [vinculando, setVinculando] = useState(false);
+
+  useEffect(() => {
+    if (avisoShopee === "conectada") toast.success("Loja conectada à Shopee.");
+    else if (avisoShopee === "erro") toast.error("Não foi possível conectar a loja à Shopee.");
+    else if (avisoShopee === "desligada") toast.error("A API da Shopee não está ligada neste servidor.");
+  }, [avisoShopee]);
+
+  function mudarEtapa(e: Etapa | "todos") {
+    setEtapa(e);
+    setSelecionados(new Set());
+    setMostrar(POR_PAGINA);
+  }
+
+  function abrir(p: PedidoCentral) {
+    if (p.origem === "marketplace") setDetalheMkt(p);
+    else if (p.chave.startsWith("catalogo:")) setCatalogo(pedidos.find((x) => x.id === p.id) ?? null);
+    else setDetalhe(vendaPorId.get(p.id) ?? null);
+  }
+
+  function avancar(ps: PedidoCentral[]) {
+    if (!ps.length) return;
+    const p0 = ps[0];
+    if (p0.chave.startsWith("catalogo:")) return abrir(p0);
+    const prox = PROXIMA[p0.etapa];
+    if (!prox) return;
+    const ids = ps.filter((p) => p.chave.startsWith("venda:") && p.etapa === p0.etapa).map((p) => p.id);
+    setProcessando(ps.length === 1 ? p0.chave : "massa");
+    startTransition(async () => {
+      const r = await executarComToast(definirEtapaVendas(ids, prox.etapa), { erro: "Erro ao atualizar a etapa" });
+      setProcessando(null);
+      if (r.ok) {
+        setSelecionados(new Set());
+        toast.success(`${ids.length} pedido(s) em ${ROTULO_ETAPA[prox.etapa]}.`);
+      }
     });
-  }, [vendas, aba, busca, periodo, origem, vendasDoCatalogo]);
+  }
 
-  const emSeparacao = vendas.filter((v) => v.status !== "cancelada" && v.status_envio === "separacao").length;
-  const enviadas = vendas.filter((v) => v.status !== "cancelada" && v.status_envio === "enviado").length;
-  const fiadoAberto = vendas.filter((v) => v.status === "fiado").reduce((s, v) => s + v.total, 0);
+  function voltarEtapa(p: PedidoCentral, para: EtapaVenda) {
+    startTransition(async () => {
+      await executarComToast(definirEtapaVendas([p.id], para), { sucesso: `Pedido ${p.numero} em ${ROTULO_ETAPA[para]}`, erro: "Erro ao atualizar a etapa" });
+    });
+  }
+
+  function mudarLogistica(p: PedidoCentral, l: string | null) {
+    startTransition(async () => {
+      await executarComToast(definirLogisticaVenda(p.id, l), { erro: "Erro ao salvar a logística" });
+    });
+  }
+
+  function sincronizar() {
+    startTransition(async () => {
+      const r = await executarComToast(sincronizarTodasShopee(), { erro: "Erro ao sincronizar" });
+      if (r.ok) {
+        const d = r.dado;
+        toast.success(`${d.lojas} loja(s): ${d.pedidos} pedido(s) lido(s), ${d.novos} novo(s).`);
+        if (d.erros.length) toast.error(d.erros.join(" · "));
+      }
+    });
+  }
 
   function comprovanteLink(v: Venda) {
     const cliente = v.cliente_id ? clientes.find((c) => c.id === v.cliente_id) : null;
@@ -180,12 +257,6 @@ export function VendasClient({
     if (r.ok) gerarImagem(r.dado);
   }
 
-  function mudarEnvio(v: Venda, status: StatusEnvio) {
-    startTransition(async () => {
-      await executarComToast(atualizarStatusEnvio(v.id, status), { erro: "Erro ao atualizar o envio" });
-    });
-  }
-
   async function cancelar(v: Venda) {
     const ok = await confirm({
       title: `Cancelar a venda ${v.numero}?`,
@@ -199,37 +270,55 @@ export function VendasClient({
     });
   }
 
-  function tabela(escopo: string): TabelaExport<Venda> {
-    const fonte = escopo === "filtrados" ? filtradas : vendas;
+  const ANTERIOR: Partial<Record<Etapa, EtapaVenda>> = { imprimir: "emitir", enviar: "imprimir", enviado: "enviar", concluido: "enviado" };
+
+  function acoesDe(p: PedidoCentral) {
+    if (p.origem === "marketplace") return [{ label: "Ver detalhes", onClick: () => abrir(p) }];
+    if (p.chave.startsWith("catalogo:")) return [{ label: "Abrir pedido", onClick: () => abrir(p) }];
+    const v = vendaPorId.get(p.id);
+    if (!v) return [];
+    if (p.etapa === "cancelado") return [{ label: "Ver detalhes", onClick: () => setDetalhe(v) }];
+    const voltar = ANTERIOR[p.etapa];
+    return [
+      { label: "Ver detalhes", onClick: () => setDetalhe(v) },
+      { label: "Imprimir (PDF)", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
+      { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
+      { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
+      ...(voltar ? [{ label: `Voltar para ${ROTULO_ETAPA[voltar]}`, onClick: () => voltarEtapa(p, voltar) }] : []),
+      { label: "Editar", onClick: () => setEditando(v) },
+      { label: "Cancelar venda", onClick: () => cancelar(v), destructive: true },
+    ];
+  }
+
+  function tabela(): TabelaExport<PedidoCentral> {
     return {
-      titulo: "Vendas",
-      subtitulo: escopo === "filtrados" ? "Lista filtrada" : `Últimos ${diasJanela} dias`,
+      titulo: "Pedidos",
+      subtitulo: `${etapa === "todos" ? "Todas as etapas" : ROTULO_ETAPA[etapa]} · ${rotuloPeriodo(periodo)}`,
       colunas: [
-        { rotulo: "Número", valor: (v) => v.numero },
-        { rotulo: "Data", largura: 18, valor: (v) => new Date(v.data_venda).toLocaleString("pt-BR") },
-        { rotulo: "Cliente", largura: 22, valor: (v) => v.cliente_nome ?? "" },
-        { rotulo: "Origem", valor: (v) => ROTULO_ORIGEM[origemVenda(v, vendasDoCatalogo)] },
-        { rotulo: "Pagamento", valor: (v) => v.forma_pagamento ?? "" },
-        { rotulo: "Situação", valor: (v) => ROTULO_PAGTO[v.status] },
-        { rotulo: "Total", tipo: "moeda", valor: (v) => v.total },
-        { rotulo: "Custo", tipo: "moeda", valor: (v) => v.custo_total },
-        { rotulo: "Lucro", tipo: "moeda", valor: (v) => v.lucro },
-        { rotulo: "Margem", tipo: "percentual", valor: (v) => (v.total > 0 ? v.lucro / v.total : 0) },
+        { rotulo: "Pedido", valor: (p) => p.numero },
+        { rotulo: "Data", largura: 18, valor: (p) => new Date(p.data).toLocaleString("pt-BR") },
+        { rotulo: "Canal", valor: (p) => p.canal },
+        { rotulo: "Loja", valor: (p) => p.loja ?? "" },
+        { rotulo: "Cliente", largura: 22, valor: (p) => p.cliente ?? "" },
+        { rotulo: "UF", valor: (p) => p.uf ?? "" },
+        { rotulo: "Produtos", largura: 40, valor: (p) => p.itens.map((i) => `${i.quantidade}x ${i.nome}`).join("; ") },
+        { rotulo: "Etapa", valor: (p) => ROTULO_ETAPA[p.etapa] },
+        { rotulo: "Logística", valor: (p) => p.logistica ?? "" },
+        { rotulo: "Valor", tipo: "moeda", valor: (p) => p.total },
+        { rotulo: "Taxas", tipo: "moeda", valor: (p) => p.taxas },
+        { rotulo: "Custo", tipo: "moeda", valor: (p) => p.custo },
+        { rotulo: "Lucro", tipo: "moeda", valor: (p) => p.lucro },
+        { rotulo: "Margem", tipo: "percentual", valor: (p) => (p.total > 0 ? p.lucro / p.total : 0) },
       ],
-      linhas: fonte,
-      total: ["Total", `${fonte.length} vendas`, null, null, null, null, fonte.filter((v) => v.status !== "cancelada").reduce((s, v) => s + v.total, 0), null, fonte.filter((v) => v.status !== "cancelada").reduce((s, v) => s + v.lucro, 0), null],
+      linhas: filtrados,
     };
   }
 
-  const aEnviarMkt = marketplace.pedidos.filter((p) => p.status === "a_enviar").length;
-  const abas = [
-    { value: "pedidos" as const, label: `Pedidos do catálogo${pedidosAbertos.length ? ` (${pedidosAbertos.length})` : ""}` },
-    { value: "marketplace" as const, label: `Shopee${aEnviarMkt ? ` (${aEnviarMkt})` : ""}` },
-    { value: "abertas" as const, label: `Em aberto (${contagem.abertas})` },
-    { value: "concluidas" as const, label: "Concluídas" },
-    { value: "canceladas" as const, label: "Canceladas" },
-    { value: "todas" as const, label: "Todas" },
-  ];
+  const nExtras = contarExtras(extras);
+  const visiveis = filtrados.slice(0, mostrar);
+  const selecionaveis = visiveis.filter((p) => p.editavel && PROXIMA[p.etapa] && p.chave.startsWith("venda:"));
+  const lotes = filtrados.filter((p) => selecionados.has(p.chave));
+  const proxLote = lotes[0] ? PROXIMA[lotes[0].etapa] : undefined;
 
   return (
     <>
@@ -237,14 +326,17 @@ export function VendasClient({
         title="Vendas"
         actions={
           <>
+            <Button variant="secondary" loading={pending && processando === null} onClick={sincronizar} title="Puxa agora os pedidos das lojas conectadas à API">
+              <RefreshCw size={14} /> Sincronizar pedidos
+            </Button>
+            <Button variant="secondary" onClick={() => setImpExp(true)}>
+              <ArrowDownUp size={14} /> Importar/Exportar
+            </Button>
             <Link href="/vendas/relatorios">
               <Button variant="secondary">
                 <BarChart3 size={14} /> Relatórios
               </Button>
             </Link>
-            <Button variant="secondary" onClick={() => setExportando(true)} disabled={vendas.length === 0}>
-              Exportar
-            </Button>
             <Link href="/pdv">
               <Button variant="primary">
                 <ScanBarcode size={14} /> Abrir PDV
@@ -254,143 +346,105 @@ export function VendasClient({
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-        <Card>
-          <CardEyebrow>Pedidos a confirmar</CardEyebrow>
-          <HeroMetric value={String(pedidosAbertos.length)} caption={formatBRL(pedidosAbertos.reduce((s, p) => s + p.total, 0))} accent={pedidosAbertos.length > 0} />
-        </Card>
-        <Card>
-          <CardEyebrow>Em separação</CardEyebrow>
-          <HeroMetric value={String(emSeparacao)} caption="para embalar" />
-        </Card>
-        <Card>
-          <CardEyebrow>Enviadas</CardEyebrow>
-          <HeroMetric value={String(enviadas)} caption="a caminho do cliente" />
-        </Card>
-        <Card>
-          <CardEyebrow>Fiado em aberto</CardEyebrow>
-          <HeroMetric value={formatBRL(fiadoAberto)} caption="a receber" />
-        </Card>
-      </div>
-
-      <Tabs tabs={abas} value={aba} onChange={setAba} className="mb-4" />
-
-      {aba === "pedidos" ? (
-        <PedidosVitrine pedidos={pedidos} clientes={clientesPdv} contas={contas} formasPagamento={formasPagamentoPdv} pedidoInicial={pedidoInicial} />
-      ) : aba === "marketplace" ? (
-        <PedidosMarketplace dados={marketplace} lojas={lojasMarketplace} produtos={produtosMarketplace} impostoPct={impostoPct} faltandoApi={faltandoShopee} ambienteApi={ambienteShopee} aviso={avisoShopee} />
-      ) : (
-        <>
-          <BarraFiltros
-            busca={busca}
-            onBusca={setBusca}
-            placeholder="Nº, cliente ou produto…"
-            ativos={(periodo ? 1 : 0) + (origem ? 1 : 0)}
-            onLimpar={() => {
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <SeletorPeriodo valor={periodo} onChange={(p) => (setPeriodo(p), setMostrar(POR_PAGINA))} limiteDias={diasJanela} />
+        <FiltroCanais valor={canais} onChange={setCanais} lojas={lojasMarketplace} />
+        <div className="relative flex-1 min-w-[12rem] max-w-md">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+          <input className={`${inputClass} pl-9`} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nº do pedido, cliente, produto ou SKU…" aria-label="Buscar pedidos" />
+        </div>
+        <Button variant={nExtras ? "primary" : "secondary"} onClick={() => setFiltrando(true)}>
+          <SlidersHorizontal size={14} /> Filtrar{nExtras ? ` (${nExtras})` : ""}
+        </Button>
+        {(nExtras > 0 || canais.length > 0 || busca) && (
+          <button
+            type="button"
+            className="text-xs text-text-secondary hover:text-text-primary inline-flex items-center gap-1"
+            onClick={() => {
+              setCanais([]);
               setBusca("");
-              setPeriodo("");
-              setOrigem("");
+              setExtras(EXTRAS_VAZIOS);
             }}
           >
-            <FiltroSelect rotulo="Período" valor={periodo} onChange={setPeriodo} todos={`Últimos ${diasJanela} dias`} opcoes={PERIODOS.map((p) => ({ valor: p.valor, rotulo: p.rotulo }))} />
-            <FiltroSelect
-              rotulo="Origem"
-              valor={origem}
-              onChange={setOrigem}
-              todos="Todas"
-              opcoes={[
-                { valor: "pdv", rotulo: "PDV" },
-                { valor: "catalogo", rotulo: "Catálogo" },
-              ]}
-            />
-          </BarraFiltros>
+            <X size={12} /> Limpar filtros
+          </button>
+        )}
+      </div>
 
-          <Card padding="nenhum" className="overflow-visible">
-            {filtradas.length === 0 ? (
-              <EmptyState
-                icon={Receipt}
-                title={aba === "abertas" ? "Nada em aberto" : "Nenhuma venda aqui"}
-                description={aba === "abertas" ? "Vendas em separação, enviadas ou no fiado aparecem aqui." : `A tela carrega os últimos ${diasJanela} dias.`}
-              />
-            ) : (
-              <Table>
-                <Thead>
-                  <tr>
-                    <Th>Nº</Th>
-                    <Th>Data</Th>
-                    <Th>Cliente</Th>
-                    <Th>Origem</Th>
-                    <Th>Envio</Th>
-                    <Th>Pagamento</Th>
-                    <Th align="right">Valor</Th>
-                    <Th align="right"></Th>
-                  </tr>
-                </Thead>
-                <tbody>
-                  {filtradas.map((v) => {
-                    const org = origemVenda(v, vendasDoCatalogo);
-                    return (
-                      <Tr key={v.id}>
-                        <Td mono className="text-accent cursor-pointer" onClick={() => setDetalhe(v)}>
-                          {v.numero}
-                        </Td>
-                        <Td>{formatarDataCurta(v.data_venda)}</Td>
-                        <Td>
-                          <div className="max-w-[12rem] truncate">{v.cliente_nome ?? "—"}</div>
-                          <div className="text-[11px] text-text-tertiary truncate max-w-[12rem]">{v.venda_itens.map((i) => `${i.quantidade}× ${i.produto_nome}`).join(", ")}</div>
-                        </Td>
-                        <Td>
-                          <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${org === "catalogo" ? "bg-accent-soft text-accent" : "bg-surface-2 text-text-secondary"}`}>{ROTULO_ORIGEM[org]}</span>
-                        </Td>
-                        <Td>
-                          {v.status === "cancelada" ? (
-                            <span className="text-text-tertiary">—</span>
-                          ) : (
-                            <select
-                              aria-label={`Envio da venda ${v.numero}`}
-                              className="bg-transparent border border-border rounded-md px-2 py-1 text-xs"
-                              value={v.status_envio ?? ""}
-                              onChange={(e) => mudarEnvio(v, (e.target.value || null) as StatusEnvio)}
-                            >
-                              <option value="">Sem envio</option>
-                              <option value="separacao">Em separação</option>
-                              <option value="enviado">Enviado</option>
-                              <option value="concluido">Entregue</option>
-                            </select>
-                          )}
-                        </Td>
-                        <Td>
-                          <StatusChip label={ROTULO_PAGTO[v.status]} tone={TOM_PAGTO[v.status]} />
-                          <div className="text-[11px] text-text-tertiary">{v.forma_pagamento ?? ""}</div>
-                        </Td>
-                        <Td align="right">
-                          <ValorComLucro valor={v.total} d={decomporVenda(v)} apagado={v.status === "cancelada"} />
-                        </Td>
-                        <Td align="right">
-                          <RowMenu
-                            actions={[
-                              { label: "Ver detalhes", onClick: () => setDetalhe(v) },
-                              ...(v.status === "cancelada"
-                                ? []
-                                : [
-                                    { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
-                                    { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
-                                    { label: "Comprovante em PDF", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
-                                    { label: "Editar", onClick: () => setEditando(v) },
-                                    { label: "Cancelar venda", onClick: () => cancelar(v), destructive: true },
-                                  ]),
-                            ]}
-                          />
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            )}
-          </Card>
-        </>
+      <KpisVendas atual={kpiAtual} anterior={kpiAnterior} rotuloAnterior="anterior" />
+
+      {semCusto && (
+        <button type="button" onClick={() => setVinculando(true)} className="w-full mb-4 flex items-center gap-2 rounded-md border border-negative/30 bg-negative-soft px-3 py-2 text-sm text-negative text-left">
+          <Link2 size={14} className="shrink-0" /> Há pedidos da Shopee com anúncio sem produto vinculado (sem custo e sem baixa no estoque). Vincular agora ›
+        </button>
       )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[13rem_minmax(0,1fr)] gap-4 items-start">
+        <div className="lg:sticky lg:top-4 min-w-0">
+          <MenuEtapas valor={etapa} onChange={mudarEtapa} contagem={contagem} />
+          <p className="hidden lg:block text-[11px] text-text-tertiary mt-3 px-3">Para Emitir, Imprimir e Enviar mostram pedidos de qualquer data. As demais etapas seguem o período.</p>
+        </div>
+
+        <div className="min-w-0 space-y-3">
+          {selecionaveis.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <label className="inline-flex items-center gap-2 text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={selecionaveis.every((p) => selecionados.has(p.chave))}
+                  onChange={(e) => setSelecionados(e.target.checked ? new Set(selecionaveis.map((p) => p.chave)) : new Set())}
+                />
+                Selecionar todos desta página
+              </label>
+              {lotes.length > 0 && proxLote && (
+                <Button size="sm" variant="primary" loading={processando === "massa"} onClick={() => avancar(lotes)}>
+                  {proxLote.acao} {lotes.length} pedido(s)
+                </Button>
+              )}
+            </div>
+          )}
+
+          {filtrados.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={Search}
+                title={etapa === "todos" ? "Nenhum pedido no período" : `Nada em ${ROTULO_ETAPA[etapa]}`}
+                description={
+                  faltandoShopee.length === 0 || marketplace.conexoes.length
+                    ? "Mude o período, os canais ou os filtros."
+                    : "Mude o período ou os filtros. Para trazer pedidos da Shopee, conecte a loja em Configurações → Canais de venda ou importe a planilha."
+                }
+              />
+            </Card>
+          ) : (
+            visiveis.map((p) => (
+              <LinhaPedido
+                key={p.chave}
+                p={p}
+                selecionado={selecionados.has(p.chave)}
+                onSelecionar={(v) =>
+                  setSelecionados((s) => {
+                    const n = new Set(s);
+                    if (v) n.add(p.chave);
+                    else n.delete(p.chave);
+                    return n;
+                  })
+                }
+                onAbrir={() => abrir(p)}
+                onAvancar={() => avancar([p])}
+                onLogistica={(l) => mudarLogistica(p, l)}
+                acoes={acoesDe(p)}
+                processando={processando === p.chave}
+              />
+            ))
+          )}
+          {filtrados.length > mostrar && (
+            <Button variant="secondary" className="w-full" onClick={() => setMostrar((m) => m + POR_PAGINA)}>
+              Mostrar mais ({filtrados.length - mostrar} restantes)
+            </Button>
+          )}
+        </div>
+      </div>
 
       {detalhe && (
         <DetalheVendaModal
@@ -403,11 +457,7 @@ export function VendasClient({
           cancelando={pending}
         />
       )}
-
-      {/*
-        `key` no componente externo: os `useState` de `EditarVendaModal` leem `venda` na
-        montagem. Sem isso o modal abria com desconto e entrega zerados.
-      */}
+      {/* `key`: os useState de EditarVendaModal leem `venda` na montagem. */}
       <EditarVendaModal
         key={editando?.id ?? "fechado"}
         venda={editando}
@@ -419,18 +469,15 @@ export function VendasClient({
           setDetalhe(null);
         }}
       />
+      {catalogo && <PedidoCatalogoModal key={catalogo.id} pedido={catalogo} onClose={() => setCatalogo(null)} clientes={clientesPdv} contas={contas} formasPagamento={formasPagamentoPdv} />}
+      {detalheMkt && <DetalheMarketplaceModal p={detalheMkt} bruto={marketplace.pedidos.find((x) => x.id === detalheMkt.id)} onClose={() => setDetalheMkt(null)} />}
+      {filtrando && <FiltrosModal inicial={extras} onAplicar={setExtras} onClose={() => setFiltrando(false)} ufs={ufs} logisticas={logisticas} />}
+      {impExp && <ImportarExportarModal onClose={() => setImpExp(false)} onImportarShopee={() => setImportando(true)} onExportar={() => setExportando(true)} podeImportar={marketplace.disponivel} />}
+      {importando && <ImportarShopeeModal onClose={() => setImportando(false)} lojas={lojasMarketplace} produtos={produtosMarketplace} vinculos={marketplace.vinculos} impostoPct={impostoPct} />}
       {exportando && (
-        <ExportarModal
-          aberto
-          onClose={() => setExportando(false)}
-          titulo="Exportar vendas"
-          escopos={[
-            { id: "filtrados", rotulo: "Desta lista", quantidade: aba === "pedidos" || aba === "marketplace" ? 0 : filtradas.length },
-            { id: "todos", rotulo: `Últimos ${diasJanela} dias`, quantidade: vendas.length },
-          ]}
-          montar={tabela}
-        />
+        <ExportarModal aberto onClose={() => setExportando(false)} titulo="Exportar pedidos" escopos={[{ id: "filtrados", rotulo: "Lista atual (filtros e período)", quantidade: filtrados.length }]} montar={tabela} />
       )}
+      {vinculando && <VincularAnunciosModal pedidos={marketplace.pedidos} lojas={lojasMarketplace} produtos={produtosMarketplace} onClose={() => setVinculando(false)} />}
       {ConfirmDialog}
       {comprovanteOculto}
     </>

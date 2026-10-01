@@ -68,6 +68,12 @@ export async function sincronizarConexao(
             : await supabase.rpc("importar_pedidos_marketplace", { p_loja_id: conexao.loja_id, p_pedidos: lote });
         if (error) throw new Error(error.message);
         for (const [k, v] of Object.entries((data ?? {}) as Record<string, unknown>)) if (typeof v === "number") resultado[k] = (resultado[k] ?? 0) + v;
+        // Logística e prazo (0047); sem a migração a função não existe e é ignorada.
+        const envios = lote.filter((p) => p.logistica || p.prazo_envio).map((p) => ({ numero: p.numero, logistica: p.logistica, prazo_envio: p.prazo_envio }));
+        if (envios.length)
+          await (modo === "servico"
+            ? supabase.rpc("atualizar_envio_marketplace_servico", { p_user: conexao.user_id, p_loja_id: conexao.loja_id, p_envios: envios })
+            : supabase.rpc("atualizar_envio_marketplace", { p_loja_id: conexao.loja_id, p_envios: envios }));
       }
     } else resultado = { novos: 0, atualizados: 0 };
 

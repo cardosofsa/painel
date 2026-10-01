@@ -20,6 +20,13 @@ function revalidar() {
   revalidatePath("/financeiro");
 }
 
+/** Logística e prazo de envio (0047). Sem a migração, a função não existe e isso é ignorado. */
+async function gravarEnvios(supabase: Awaited<ReturnType<typeof createClient>>, lojaId: string, pedidos: { numero: string; logistica?: string | null; prazo_envio?: string | null }[]) {
+  const envios = pedidos.filter((p) => p.logistica || p.prazo_envio).map((p) => ({ numero: p.numero, logistica: p.logistica ?? null, prazo_envio: p.prazo_envio ?? null }));
+  if (!envios.length) return;
+  await supabase.rpc("atualizar_envio_marketplace", { p_loja_id: lojaId, p_envios: envios });
+}
+
 export interface ResultadoImportacaoMarketplace {
   novos: number;
   atualizados: number;
@@ -37,6 +44,7 @@ export async function importarPedidosMarketplace(lojaId: string, pedidos: Pedido
       if (faltaMigracao(error.code)) throw new Error(SEM_MIGRACAO);
       lancarErroSupabase(error);
     }
+    await gravarEnvios(supabase, loja, dados);
     revalidar();
     const r = (data ?? {}) as Partial<ResultadoImportacaoMarketplace>;
     return { novos: r.novos ?? 0, atualizados: r.atualizados ?? 0, baixas: r.baixas ?? 0, estornos: r.estornos ?? 0 };

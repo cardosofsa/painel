@@ -1,5 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
-import type { PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
+import type { PedidoVitrine } from "@/lib/pedidos-vitrine-tipos";
 import { enderecoEmLinha } from "@/lib/comprovante";
 import { formatarCep } from "@/lib/cep";
 
@@ -20,6 +20,7 @@ interface LinhaPedido {
   entrega_cidade: string | null;
   entrega_uf: string | null;
   observacao: string | null;
+  forma_pagamento?: string | null;
   total: number;
   status: PedidoVitrine["status"];
   criado_em: string;
@@ -60,6 +61,9 @@ export async function carregarPedidosVitrine(supabase: Supabase, limite = 200): 
       uf: p.entrega_uf,
       cep: p.entrega_cep ? formatarCep(p.entrega_cep) : null,
     }),
+    entrega_cidade: p.entrega_cidade,
+    entrega_uf: p.entrega_uf,
+    forma_pagamento: p.forma_pagamento ?? null,
     observacao: p.observacao,
     total: Number(p.total),
     status: p.status,

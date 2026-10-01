@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { carregarPedidosVitrine } from "@/lib/pedidos-vitrine-servidor";
 import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
-import { ambienteShopee, faltandoShopee } from "@/lib/marketplace/shopee-api";
+import { faltandoShopee } from "@/lib/marketplace/shopee-api";
 import { cofreDisponivel } from "@/lib/ia/cofre";
 import { VendasClient, type Venda } from "./VendasClient";
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
-const DIAS_JANELA = 90;
+const DIAS_JANELA = 120;
 
 export default async function VendasPage({ searchParams }: { searchParams: Promise<{ pedido?: string; shopee?: string }> }) {
   const { pedido, shopee } = await searchParams;
@@ -18,9 +18,8 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   const [vendasRes, clientesRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes] = await Promise.all([
     supabase
       .from("vendas")
-      .select(
-        "id, numero, data_venda, cliente_id, cliente_nome, forma_pagamento, status, status_envio, subtotal, desconto, valor_entrega, total, custo_total, lucro, observacao, venda_itens(produto_nome, produto_sku, quantidade, preco_unitario, custo_unitario, garantia_dias)",
-      )
+      // `*`: etapa e logística só existem a partir da 0047.
+      .select("*, clientes(cidade, uf), venda_itens(produto_nome, produto_sku, quantidade, preco_unitario, custo_unitario, garantia_dias)")
       .gte("data_venda", inicio.toISOString())
       .order("data_venda", { ascending: false }),
     supabase.from("clientes").select("id, nome, whatsapp").eq("status", "ativo").order("nome"),
@@ -54,7 +53,6 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       formasPagamentoPdv={formasPdvRes.data ?? []}
       pedidoInicial={pedido && /^P-\d{1,8}$/.test(pedido) ? pedido : null}
       marketplace={marketplace}
-      ambienteShopee={ambienteShopee()}
       faltandoShopee={[...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])]}
       avisoShopee={shopee && ["conectada", "erro", "desligada"].includes(shopee) ? shopee : null}
       lojasMarketplace={((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => ({

@@ -17,6 +17,8 @@ export const pedidosMarketplaceSchema = z
       cidade: texto(120),
       uf: texto(2),
       rastreio: texto(80),
+      logistica: texto(80).optional(),
+      prazo_envio: isoData.optional(),
       subtotal: valor,
       desconto_vendedor: valor,
       cupom_vendedor: valor,

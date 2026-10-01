@@ -47,6 +47,10 @@ export interface PedidoMarketplace {
   cidade: string | null;
   uf: string | null;
   rastreio: string | null;
+  /** Opção de envio da Shopee (Shopee Express, Correios...). Definida pela plataforma. */
+  logistica: string | null;
+  /** Data limite para enviar (ISO). */
+  prazoEnvio: string | null;
   itens: ItemMarketplace[];
   /** Σ preço acordado × quantidade. */
   subtotal: number;
@@ -85,6 +89,8 @@ const APELIDOS = {
   cidade: ["cidade", "city"],
   uf: ["uf", "estado", "state", "province"],
   rastreio: ["numero de rastreamento", "tracking number"],
+  logistica: ["opcao de envio", "metodo de envio", "shipping option", "canal de envio"],
+  prazoEnvio: ["data prevista de envio", "ship by date", "enviar ate"],
 } as const;
 
 /** "A Enviar", "To ship", "Concluído", "Cancelado"... → status interno. */
@@ -193,6 +199,8 @@ export function interpretarPlanilhaShopee(matriz: string[][]): {
       cidade: p0.cidade?.trim() || null,
       uf: (p0.uf ?? "").trim().toUpperCase().slice(0, 2) || null,
       rastreio: p0.rastreio?.trim() || null,
+      logistica: p0.logistica?.trim() || null,
+      prazoEnvio: dataShopee(p0.prazoEnvio),
       itens,
       subtotal,
       descontoVendedor,

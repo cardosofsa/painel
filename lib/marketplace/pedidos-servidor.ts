@@ -23,6 +23,9 @@ export interface PedidoMarketplaceSalvo {
   cidade: string | null;
   uf: string | null;
   rastreio: string | null;
+  /** 0047; ausentes antes da migração. */
+  logistica?: string | null;
+  prazo_envio?: string | null;
   subtotal: number;
   cupom_vendedor: number;
   comissao: number;

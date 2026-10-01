@@ -65,6 +65,8 @@ export interface PedidoParaGravar {
   cidade: string | null;
   uf: string | null;
   rastreio: string | null;
+  logistica: string | null;
+  prazo_envio: string | null;
   subtotal: number;
   desconto_vendedor: number;
   cupom_vendedor: number;
@@ -110,6 +112,8 @@ export function montarPedidosParaGravar(
       cidade: p.cidade,
       uf: p.uf,
       rastreio: p.rastreio,
+      logistica: p.logistica,
+      prazo_envio: p.prazoEnvio,
       subtotal: p.subtotal,
       desconto_vendedor: p.descontoVendedor,
       cupom_vendedor: p.cupomVendedor,

@@ -157,6 +157,8 @@ export interface PedidoApi {
   buyer_username?: string;
   recipient_address?: { city?: string; state?: string };
   item_list?: ItemApi[];
+  shipping_carrier?: string;
+  ship_by_date?: number;
 }
 
 export interface EscrowApi {
@@ -212,6 +214,8 @@ export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null): PedidoMarketplac
     cidade: p.recipient_address?.city ?? null,
     uf: ufDoEstado(p.recipient_address?.state),
     rastreio: null,
+    logistica: p.shipping_carrier?.trim() || null,
+    prazoEnvio: iso(p.ship_by_date),
     itens,
     subtotal,
     descontoVendedor: 0,
@@ -249,7 +253,7 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
     const lote = numeros.slice(i, i + 50);
     const d = await getLoja(c, "/api/v2/order/get_order_detail", token, shopId, {
       order_sn_list: lote.join(","),
-      response_optional_fields: "buyer_username,item_list,recipient_address,pay_time",
+      response_optional_fields: "buyer_username,item_list,recipient_address,pay_time,shipping_carrier",
     });
     for (const p of (d.order_list as PedidoApi[] | undefined) ?? []) {
       let escrow: EscrowApi | null = null;
