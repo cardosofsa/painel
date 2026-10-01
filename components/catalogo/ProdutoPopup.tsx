@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ImageIcon, MessageCircle, Minus, Plus, ShoppingCart } from "lucide-react";
+import { toast } from "sonner";
+import { ImageIcon, MessageCircle, Minus, Plus, Share2, ShoppingCart } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button, IconButton } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
@@ -12,12 +13,18 @@ import { Chip } from "@/components/ui/Chip";
 import { MAX_QTD, linkPedidoWhatsapp, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
 
 export function ProdutoPopup({
+  slug,
+  varianteInicial = null,
   item,
   nomeCatalogo,
   negocioWhatsapp,
   onAdicionar,
   onClose,
 }: {
+  /** Para montar o link de compartilhar o produto. */
+  slug: string;
+  /** Variante pedida pelo link compartilhado. */
+  varianteInicial?: string | null;
   item: ItemVitrine | null;
   nomeCatalogo: string;
   negocioWhatsapp: string | null;
@@ -25,7 +32,26 @@ export function ProdutoPopup({
   onAdicionar: (item: ItemCarrinhoVitrine) => void;
   onClose: () => void;
 }) {
-  const [varianteId, setVarianteId] = useState<string | null>(null);
+  const [varianteId, setVarianteId] = useState<string | null>(() =>
+    varianteInicial && item?.variantes.some((v) => v.produto_id === varianteInicial) ? varianteInicial : null,
+  );
+
+  /** Link do produto (com prévia própria no WhatsApp): /vitrine/<slug>/p/<id>. */
+  async function compartilhar() {
+    const id = varianteId ?? item?.variantes[0]?.produto_id;
+    if (!id) return;
+    const url = `${window.location.origin}/vitrine/${slug}/p/${id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: item?.produto_nome ?? "Produto", url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success("Link do produto copiado");
+    } catch {
+      // Cancelar o compartilhamento cai aqui; não é erro.
+    }
+  }
   const [imagemAtiva, setImagemAtiva] = useState(0);
   const [quantidade, setQuantidade] = useState(1);
 
@@ -163,6 +189,9 @@ export function ProdutoPopup({
               </Button>
             </div>
           )}
+          <button type="button" onClick={compartilhar} className="w-full mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-text-secondary hover:text-accent py-1">
+            <Share2 size={14} /> Compartilhar este produto
+          </button>
         </div>
       )}
     </Modal>

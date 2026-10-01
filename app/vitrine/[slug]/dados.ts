@@ -44,3 +44,20 @@ export const buscarAparenciaPublica = cache(async (slug: string): Promise<Aparen
   }
   return data ?? null;
 });
+
+export interface EmpresaPublica {
+  nome_negocio: string | null;
+  logo_url: string | null;
+  cidade: string | null;
+  uf: string | null;
+  instagram: string | null;
+  whatsapp: string | null;
+}
+
+/** Dados públicos da loja (0044). Sem a migração ou sem cadastro: `null`, e a vitrine segue. */
+export const buscarEmpresaPublica = cache(async (slug: string): Promise<EmpresaPublica | null> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("obter_empresa_catalogo", { p_slug: slug }).maybeSingle<EmpresaPublica>();
+  if (error) return null;
+  return data ?? null;
+});

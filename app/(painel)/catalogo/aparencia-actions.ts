@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, catalogoAparenciaSchema, gerarTemaSchema } from "@/lib/validacao";
+import { validar, catalogoAparenciaSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
-import { gerarTemaVitrineIA } from "@/lib/ia/gerar";
+import { normalizarSecoes } from "@/lib/vixe/vitrine";
 import { z } from "zod";
 
 /**
@@ -74,13 +74,22 @@ export async function salvarAparenciaCatalogo(catalogoId: string, dados: Aparenc
   });
 }
 
+
 /**
- * Gera uma sugestão de tema a partir de uma frase sobre a loja. NÃO salva nada — o painel
- * mostra a prévia e só grava quando o dono clicar em usar, mesma regra do gerador de
- * título e descrição.
+ * Seções da vitrine (0040) editadas à mão em Catálogo › Personalizar. Passam pelo mesmo
+ * portão da IA (`normalizarSecoes`): o cliente poderia mandar qualquer coisa.
+ * Chamar depois de `salvarAparenciaCatalogo`, que garante a linha de aparência.
  */
-export async function gerarTemaCatalogoIA(dados: { descricaoLoja: string; nomeNegocio: string | null; instrucaoExtra: string | null }) {
-  const v = validar(gerarTemaSchema, dados);
-  const supabase = await createClient();
-  return gerarTemaVitrineIA(supabase, v);
+export async function salvarSecoesCatalogo(catalogoId: string, secoes: unknown) {
+  return comResultado(async () => {
+    const id = validar(uuid, catalogoId);
+    const s = normalizarSecoes(secoes);
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("catalogo_aparencia")
+      .update({ secoes: Object.keys(s).length ? s : null, atualizado_em: new Date().toISOString() })
+      .eq("catalogo_id", id);
+    if (error) lancarErroSupabase(error);
+    revalidatePath("/catalogo");
+  });
 }

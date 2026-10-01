@@ -21,7 +21,8 @@ import {
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
-import { AparenciaModal } from "@/components/catalogo/AparenciaModal";
+import { QrCatalogoModal } from "@/components/catalogo/QrCatalogoModal";
+import { useRouter } from "next/navigation";
 import { PrecosCatalogoModal } from "@/components/catalogo/PrecosCatalogoModal";
 import Link from "next/link";
 
@@ -38,20 +39,21 @@ export function CatalogoClient({
   catalogos,
   totalProdutosElegiveis,
   pedidosPendentes,
-  iaDisponivel,
+  estatisticas,
 }: {
+  /** Últimos 30 dias por catálogo: visitas (0044), pedidos e pedidos que viraram venda. */
+  estatisticas: Record<string, { visitas: number; pedidos: number; convertidos: number }>;
   catalogos: Catalogo[];
   totalProdutosElegiveis: number;
   /** Pedidos da vitrine esperando confirmação. Eles moram em Vendas desde a 8.6. */
   pedidosPendentes: number;
-  /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
-  iaDisponivel: boolean;
 }) {
+  const router = useRouter();
+  const [qrCatalogo, setQrCatalogo] = useState<Catalogo | null>(null);
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalCatalogo, setModalCatalogo] = useState<Catalogo | "novo" | null>(null);
   const [precosCatalogo, setPrecosCatalogo] = useState<Catalogo | null>(null);
-  const [aparenciaCatalogo, setAparenciaCatalogo] = useState<Catalogo | null>(null);
 
   function linkPublico(slug: string) {
     return `${window.location.origin}/vitrine/${slug}`;
@@ -181,17 +183,25 @@ export function CatalogoClient({
                     </a>
                   </div>
                 </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button variant="secondary" onClick={() => setQrCatalogo(c)}>
+                    QR code
+                  </Button>
+                  <Button variant="primary" onClick={() => router.push(`/catalogo/${c.id}/personalizar`)}>
+                    Personalizar ›
+                  </Button>
                 <RowMenu
                   actions={[
                     { label: "Editar", onClick: () => setModalCatalogo(c) },
-                    { label: "Personalizar Aparência", onClick: () => setAparenciaCatalogo(c) },
                     { label: "Preços", onClick: () => setPrecosCatalogo(c) },
                     { label: c.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivoHandler(c) },
                     { label: "Gerar novo link", onClick: () => regenerarLinkHandler(c) },
                     { label: "Remover", onClick: () => removerCatalogoHandler(c), destructive: true },
                   ]}
                 />
+                </div>
               </div>
+              <EstatisticasCatalogo e={estatisticas[c.id]} />
             </Card>
           ))}
         </div>
@@ -209,14 +219,32 @@ export function CatalogoClient({
         catalogo={precosCatalogo}
         onClose={() => setPrecosCatalogo(null)}
       />
-      <AparenciaModal
-        key={`aparencia-${aparenciaCatalogo?.id ?? "fechado"}`}
-        catalogo={aparenciaCatalogo}
-        iaDisponivel={iaDisponivel}
-        onClose={() => setAparenciaCatalogo(null)}
-      />
+      {qrCatalogo && <QrCatalogoModal catalogo={qrCatalogo} onClose={() => setQrCatalogo(null)} />}
       {ConfirmDialog}
     </>
+  );
+}
+
+/** Visitas, pedidos e conversão dos últimos 30 dias de um catálogo. */
+function EstatisticasCatalogo({ e }: { e?: { visitas: number; pedidos: number; convertidos: number } }) {
+  const visitas = e?.visitas ?? 0;
+  const pedidos = e?.pedidos ?? 0;
+  const conversao = visitas > 0 ? (pedidos / visitas) * 100 : null;
+  const itens = [
+    ["Visitas", String(visitas)],
+    ["Pedidos", String(pedidos)],
+    ["Viraram venda", String(e?.convertidos ?? 0)],
+    ["Conversão", conversao == null ? "—" : `${conversao.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`],
+  ];
+  return (
+    <div className="mt-3 pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {itens.map(([r, v]) => (
+        <div key={r}>
+          <div className="text-[11px] text-text-tertiary">{r} · 30 dias</div>
+          <div className="text-sm font-mono text-text-primary">{v}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -17,7 +17,7 @@ import { salvarDadosEmpresa, type DadosEmpresaInput } from "@/app/(painel)/confi
  * Logo, contato e endereço da empresa — o cabeçalho de todo comprovante. O nome e o CNPJ
  * continuam no card "Perfil do Negócio"; aqui só o que é novo (migração 0032).
  *
- * O logo vai para o bucket `produtos`, o mesmo do logo da vitrine (`AparenciaModal`), que já
+ * O logo vai para o bucket `produtos`, o mesmo do logo da vitrine (Catálogo › Personalizar), que já
  * tem leitura pública e escrita restrita à pasta do próprio usuário.
  */
 export function DadosEmpresaCard({ inicial }: { inicial: DadosEmpresaInput }) {

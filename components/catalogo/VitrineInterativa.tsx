@@ -10,7 +10,8 @@ import { ProdutoPopup } from "./ProdutoPopup";
 import { CarrinhoVitrine } from "./CarrinhoVitrine";
 import { FiltrosVitrine } from "./FiltrosVitrine";
 import { SidebarCategorias } from "./SidebarCategorias";
-import { consolidarCarrinho, quantidadeTotal, MAX_ITENS, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
+import { consolidarCarrinho, quantidadeTotal, totalCarrinho, MAX_ITENS, type ItemCarrinhoVitrine } from "@/lib/vitrine-pedido";
+import { formatBRL } from "@/lib/format";
 import {
   FILTROS_PADRAO,
   aplicarFiltros,
@@ -47,7 +48,10 @@ export function VitrineInterativa({
   itens,
   negocioWhatsapp,
   carrinhoInicial,
+  produtoInicial = null,
 }: {
+  /** Produto (variante) vindo do link compartilhado: abre o pop-up dele direto. */
+  produtoInicial?: string | null;
   nome: string;
   slug: string;
   itens: ItemVitrine[];
@@ -56,7 +60,9 @@ export function VitrineInterativa({
   carrinhoInicial: ItemCarrinhoVitrine[];
 }) {
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_PADRAO);
-  const [produtoAberto, setProdutoAberto] = useState<ItemVitrine | null>(null);
+  const [produtoAberto, setProdutoAberto] = useState<ItemVitrine | null>(() =>
+    produtoInicial ? (itens.find((i) => i.variantes.some((v) => v.produto_id === produtoInicial)) ?? null) : null,
+  );
   const [carrinho, setCarrinho] = useState<ItemCarrinhoVitrine[]>(carrinhoInicial);
   const [carrinhoAberto, setCarrinhoAberto] = useState(carrinhoInicial.length > 0);
   const [salvoCodigo, setSalvoCodigo] = useState<string | null>(null);
@@ -210,7 +216,19 @@ export function VitrineInterativa({
         </div>
       </div>
 
+      {/* Celular: o carrinho fica sempre à mão, sem precisar voltar ao topo. */}
+      {pecas > 0 && !carrinhoAberto && (
+        <div className="sm:hidden fixed inset-x-0 bottom-0 z-20 p-3 bg-background/95 backdrop-blur-sm border-t border-border">
+          <button onClick={abrirCarrinho} className="w-full h-12 rounded-md bg-accent text-accent-on font-medium flex items-center justify-center gap-2">
+            <ShoppingCart size={18} /> Ver carrinho · {pecas} {pecas === 1 ? "item" : "itens"} · {formatBRL(totalCarrinho(carrinho))}
+          </button>
+        </div>
+      )}
+
       <ProdutoPopup
+        key={produtoAberto?.produto_id ?? "fechado"}
+        slug={slug}
+        varianteInicial={produtoInicial}
         item={produtoAberto}
         nomeCatalogo={nome}
         negocioWhatsapp={negocioWhatsapp}

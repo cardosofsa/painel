@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
-import { BookOpen } from "lucide-react";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ImagemStorage } from "@/components/ui/ImagemStorage";
-import { VitrineInterativa } from "@/components/catalogo/VitrineInterativa";
-import { agruparLinhas, decodificarCarrinho, montarCarrinho } from "@/lib/vitrine-catalogo";
-import { buscarCatalogoPublico, buscarAparenciaPublica } from "./dados";
-import { normalizarSecoes } from "@/lib/vixe/vitrine";
-import { DestaqueVitrine, SecoesFinaisVitrine } from "@/components/catalogo/VitrineSecoes";
+import { buscarCatalogoPublico } from "./dados";
+import { VitrinePublica } from "@/components/catalogo/VitrinePublica";
 
 /**
  * Metadata própria da vitrine.
@@ -58,73 +52,9 @@ export default async function VitrinePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ c?: string }>;
+  searchParams: Promise<{ c?: string; produto?: string }>;
 }) {
   const { slug } = await params;
-  const { c } = await searchParams;
-  const [linhas, aparencia] = await Promise.all([buscarCatalogoPublico(slug), buscarAparenciaPublica(slug)]);
-
-  const nome = linhas[0]?.catalogo_nome;
-  const negocioWhatsapp = linhas[0]?.negocio_whatsapp ?? null;
-  // Título e mensagem personalizados substituem o nome cru do catálogo; sem eles, o
-  // comportamento é o de sempre.
-  const tituloExibido = aparencia?.titulo || nome;
-  // Mesmo portão da gravação: o que vier do banco fora do formato simplesmente não aparece.
-  const secoes = normalizarSecoes(aparencia?.secoes);
-
-  // Quando o catálogo existe mas não tem produto elegível, a função ainda devolve uma
-  // linha (pra distinguir de "slug inválido"), só que com produto_id nulo. Produto sem
-  // preço (preço nulo ou zero) NÃO é filtrado: vira "Consultar" na tela, e a RPC de pedido
-  // recusa esse item no banco.
-  const itens = agruparLinhas(linhas);
-
-  // Carrinho vindo do link "Compartilhar": só ids e quantidades; nome e preço são os de hoje.
-  const carrinhoInicial = montarCarrinho(decodificarCarrinho(c), itens);
-
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        {!nome ? (
-          <div className="bg-surface-1 border border-border rounded-lg">
-            <EmptyState
-              icon={BookOpen}
-              title="Catálogo não encontrado"
-              description="Esse link não existe mais ou o catálogo está indisponível no momento."
-            />
-          </div>
-        ) : (
-          <>
-            <div className={aparencia?.mensagem_boas_vindas ? "mb-2" : "mb-6"}>
-              <div className="flex items-center gap-3">
-                {aparencia?.logo_url && (
-                  <div className="w-12 h-12 rounded-md overflow-hidden shrink-0 border border-border">
-                    <ImagemStorage src={aparencia.logo_url} alt="" prioridade className="w-full h-full object-cover" />
-                  </div>
-                )}
-                <h1 className="text-2xl font-semibold text-text-primary">{tituloExibido}</h1>
-              </div>
-              {aparencia?.mensagem_boas_vindas && (
-                <p className="text-sm text-text-secondary mt-2">{aparencia.mensagem_boas_vindas}</p>
-              )}
-            </div>
-            <DestaqueVitrine secoes={secoes} />
-            {itens.length === 0 ? (
-              <div className="bg-surface-1 border border-border rounded-lg">
-                <EmptyState icon={BookOpen} title="Nenhum produto disponível no momento" />
-              </div>
-            ) : (
-              <VitrineInterativa
-                nome={nome}
-                slug={slug}
-                itens={itens}
-                negocioWhatsapp={negocioWhatsapp}
-                carrinhoInicial={carrinhoInicial}
-              />
-            )}
-            <SecoesFinaisVitrine secoes={secoes} whatsapp={negocioWhatsapp} />
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const { c, produto } = await searchParams;
+  return <VitrinePublica slug={slug} carrinho={c} produtoInicial={produto ?? null} />;
 }
