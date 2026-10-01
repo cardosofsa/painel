@@ -26,6 +26,9 @@ import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
 import { DetalheVendaModal } from "@/components/vendas/DetalheVendaModal";
 import { ValorComLucro } from "@/components/vendas/ValorComLucro";
 import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
+import { PedidosMarketplace } from "@/components/vendas/marketplace/PedidosMarketplace";
+import type { LojaMarketplace, ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
+import type { DadosMarketplace } from "@/lib/marketplace/pedidos-servidor";
 import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
 
 export interface VendaItem {
@@ -56,7 +59,7 @@ export interface Venda {
   venda_itens: VendaItem[];
 }
 
-type Aba = "pedidos" | "abertas" | "concluidas" | "canceladas" | "todas";
+type Aba = "pedidos" | "marketplace" | "abertas" | "concluidas" | "canceladas" | "todas";
 
 const PERIODOS = [
   { valor: "0", rotulo: "Hoje" },
@@ -82,7 +85,20 @@ export function VendasClient({
   contas,
   formasPagamentoPdv,
   pedidoInicial,
+  marketplace,
+  lojasMarketplace,
+  produtosMarketplace,
+  impostoPct,
+  apiShopee,
+  avisoShopee,
 }: {
+  apiShopee: boolean;
+  avisoShopee: string | null;
+  marketplace: DadosMarketplace;
+  lojasMarketplace: LojaMarketplace[];
+  produtosMarketplace: ProdutoMarketplace[];
+  /** Fração (alíquota do perfil), para o lucro dos pedidos importados. */
+  impostoPct: number;
   vendas: Venda[];
   diasJanela: number;
   clientes: (ClienteOpcao & { whatsapp: string | null })[];
@@ -96,7 +112,7 @@ export function VendasClient({
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const pedidosAbertos = pedidos.filter((p) => p.status === "pendente" || p.status === "aceito");
-  const [aba, setAba] = useState<Aba>(pedidoInicial || pedidosAbertos.length > 0 ? "pedidos" : "abertas");
+  const [aba, setAba] = useState<Aba>(avisoShopee ? "marketplace" : pedidoInicial || pedidosAbertos.length > 0 ? "pedidos" : "abertas");
   const [detalhe, setDetalhe] = useState<Venda | null>(null);
   const [editando, setEditando] = useState<Venda | null>(null);
   const [exportando, setExportando] = useState(false);
@@ -202,8 +218,10 @@ export function VendasClient({
     };
   }
 
+  const aEnviarMkt = marketplace.pedidos.filter((p) => p.status === "a_enviar").length;
   const abas = [
     { value: "pedidos" as const, label: `Pedidos do catálogo${pedidosAbertos.length ? ` (${pedidosAbertos.length})` : ""}` },
+    { value: "marketplace" as const, label: `Shopee${aEnviarMkt ? ` (${aEnviarMkt})` : ""}` },
     { value: "abertas" as const, label: `Em aberto (${contagem.abertas})` },
     { value: "concluidas" as const, label: "Concluídas" },
     { value: "canceladas" as const, label: "Canceladas" },
@@ -256,6 +274,8 @@ export function VendasClient({
 
       {aba === "pedidos" ? (
         <PedidosVitrine pedidos={pedidos} clientes={clientesPdv} contas={contas} formasPagamento={formasPagamentoPdv} pedidoInicial={pedidoInicial} />
+      ) : aba === "marketplace" ? (
+        <PedidosMarketplace dados={marketplace} lojas={lojasMarketplace} produtos={produtosMarketplace} impostoPct={impostoPct} apiLigada={apiShopee} aviso={avisoShopee} />
       ) : (
         <>
           <BarraFiltros
@@ -402,7 +422,7 @@ export function VendasClient({
           onClose={() => setExportando(false)}
           titulo="Exportar vendas"
           escopos={[
-            { id: "filtrados", rotulo: "Desta lista", quantidade: aba === "pedidos" ? 0 : filtradas.length },
+            { id: "filtrados", rotulo: "Desta lista", quantidade: aba === "pedidos" || aba === "marketplace" ? 0 : filtradas.length },
             { id: "todos", rotulo: `Últimos ${diasJanela} dias`, quantidade: vendas.length },
           ]}
           montar={tabela}

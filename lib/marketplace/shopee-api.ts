@@ -1,0 +1,236 @@
+/**
+ * API oficial da Shopee (Open Platform v2), pronta para ligar. Código de SERVIDOR.
+ *
+ * Fica DESLIGADA até existirem `SHOPEE_PARTNER_ID` e `SHOPEE_PARTNER_KEY` (app aprovado em
+ * open.shopee.com). Enquanto isso, a importação por planilha faz o mesmo trabalho.
+ *
+ * - Assinatura: HMAC-SHA256(partner_key, partner_id + caminho + timestamp [+ access_token + shop_id]).
+ * - Os pedidos da API viram o MESMO `PedidoMarketplace` da planilha (`pedidoDaApi`), então
+ *   margem, estoque e financeiro seguem pelo mesmo caminho (`montarPedidosParaGravar` + RPC).
+ *
+ * As partes puras (assinatura, URL, status e conversão) são cobertas por `shopee-api.test.ts`.
+ */
+
+import { createHmac } from "node:crypto";
+import type { PedidoMarketplace, StatusMarketplace } from "./shopee-planilha";
+
+const HOST_PRODUCAO = "https://partner.shopeemobile.com";
+const HOST_TESTE = "https://partner.test-stable.shopeemobile.com";
+
+export interface CredenciaisShopee {
+  partnerId: number;
+  partnerKey: string;
+  host: string;
+}
+
+/** null = integração desligada (sem as variáveis de ambiente). */
+export function credenciaisShopee(env: Record<string, string | undefined> = process.env): CredenciaisShopee | null {
+  const id = Number(env.SHOPEE_PARTNER_ID);
+  const key = env.SHOPEE_PARTNER_KEY?.trim();
+  if (!Number.isInteger(id) || id <= 0 || !key) return null;
+  return { partnerId: id, partnerKey: key, host: env.SHOPEE_AMBIENTE === "teste" ? HOST_TESTE : HOST_PRODUCAO };
+}
+
+export function assinar(c: CredenciaisShopee, caminho: string, timestamp: number, accessToken = "", shopId: number | string = ""): string {
+  return createHmac("sha256", c.partnerKey).update(`${c.partnerId}${caminho}${timestamp}${accessToken}${shopId}`).digest("hex");
+}
+
+const agora = () => Math.floor(Date.now() / 1000);
+
+/** Link para o dono autorizar a loja; a Shopee volta em `redirect` com `code` e `shop_id`. */
+export function urlAutorizacao(c: CredenciaisShopee, redirect: string, timestamp = agora()): string {
+  const caminho = "/api/v2/shop/auth_partner";
+  const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(timestamp), sign: assinar(c, caminho, timestamp), redirect });
+  return `${c.host}${caminho}?${q}`;
+}
+
+export interface TokensShopee {
+  accessToken: string;
+  refreshToken: string;
+  /** ISO. */
+  expiraEm: string;
+}
+
+async function postPublico(c: CredenciaisShopee, caminho: string, corpo: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const ts = agora();
+  const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), sign: assinar(c, caminho, ts) });
+  const r = await fetch(`${c.host}${caminho}?${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...corpo, partner_id: c.partnerId }),
+    cache: "no-store",
+  });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok || j.error) throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
+  return j;
+}
+
+function tokensDe(j: Record<string, unknown>): TokensShopee {
+  const expira = Number(j.expire_in ?? 14400);
+  return {
+    accessToken: String(j.access_token ?? ""),
+    refreshToken: String(j.refresh_token ?? ""),
+    expiraEm: new Date(Date.now() + (expira - 300) * 1000).toISOString(),
+  };
+}
+
+export async function trocarCodigo(c: CredenciaisShopee, code: string, shopId: number): Promise<TokensShopee> {
+  return tokensDe(await postPublico(c, "/api/v2/auth/token/get", { code, shop_id: shopId }));
+}
+
+export async function renovarToken(c: CredenciaisShopee, refreshToken: string, shopId: number): Promise<TokensShopee> {
+  return tokensDe(await postPublico(c, "/api/v2/auth/access_token/get", { refresh_token: refreshToken, shop_id: shopId }));
+}
+
+async function getLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, params: Record<string, string>): Promise<Record<string, unknown>> {
+  const ts = agora();
+  const q = new URLSearchParams({ ...params, partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
+  const r = await fetch(`${c.host}${caminho}?${q}`, { cache: "no-store" });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok || j.error) throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
+  return (j.response ?? {}) as Record<string, unknown>;
+}
+
+/** Status da API → status interno (mesmos da planilha). */
+export function statusDaApi(s: string): StatusMarketplace {
+  switch (s) {
+    case "UNPAID":
+      return "nao_pago";
+    case "SHIPPED":
+    case "TO_CONFIRM_RECEIVE":
+      return "enviado";
+    case "COMPLETED":
+      return "concluido";
+    case "IN_CANCEL":
+    case "CANCELLED":
+      return "cancelado";
+    case "TO_RETURN":
+      return "devolvido";
+    default:
+      return "a_enviar"; // READY_TO_SHIP, PROCESSED, INVOICE_PENDING, RETRY_SHIP
+  }
+}
+
+interface ItemApi {
+  item_name?: string;
+  item_sku?: string;
+  model_name?: string;
+  model_sku?: string;
+  model_quantity_purchased?: number;
+  model_discounted_price?: number;
+  model_original_price?: number;
+}
+
+export interface PedidoApi {
+  order_sn: string;
+  order_status: string;
+  create_time?: number;
+  pay_time?: number;
+  buyer_username?: string;
+  recipient_address?: { city?: string; state?: string };
+  item_list?: ItemApi[];
+}
+
+export interface EscrowApi {
+  escrow_amount?: number;
+  commission_fee?: number;
+  service_fee?: number;
+  seller_transaction_fee?: number;
+  voucher_from_seller?: number;
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const iso = (unix?: number) => (unix && unix > 0 ? new Date(unix * 1000).toISOString() : null);
+
+/** UF a partir do estado por extenso que a API manda ("São Paulo" → "SP"). */
+const UFS: Record<string, string> = {
+  acre: "AC", alagoas: "AL", amapa: "AP", amazonas: "AM", bahia: "BA", ceara: "CE", "distrito federal": "DF", "espirito santo": "ES",
+  goias: "GO", maranhao: "MA", "mato grosso": "MT", "mato grosso do sul": "MS", "minas gerais": "MG", para: "PA", paraiba: "PB", parana: "PR",
+  pernambuco: "PE", piaui: "PI", "rio de janeiro": "RJ", "rio grande do norte": "RN", "rio grande do sul": "RS", rondonia: "RO", roraima: "RR",
+  "santa catarina": "SC", "sao paulo": "SP", sergipe: "SE", tocantins: "TO",
+};
+export function ufDoEstado(estado: string | undefined): string | null {
+  const s = (estado ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  if (!s) return null;
+  if (/^[a-z]{2}$/.test(s)) return s.toUpperCase();
+  return UFS[s] ?? null;
+}
+
+/** Pedido + escrow da API → o mesmo formato da planilha. */
+export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null): PedidoMarketplace {
+  const itens = (p.item_list ?? []).map((i) => ({
+    sku: i.model_sku?.trim() || null,
+    skuPrincipal: i.item_sku?.trim() || null,
+    nome: i.item_name?.trim() || "Produto",
+    variacao: i.model_name?.trim() || null,
+    quantidade: Math.max(1, Math.round(i.model_quantity_purchased ?? 1)),
+    precoUnitario: r2(i.model_discounted_price ?? i.model_original_price ?? 0),
+    precoOriginal: i.model_original_price ?? null,
+  }));
+  const subtotal = r2(itens.reduce((s, i) => s + i.precoUnitario * i.quantidade, 0));
+  const status = statusDaApi(p.order_status);
+  const comissao = r2(Math.abs(e?.commission_fee ?? 0));
+  const taxaServico = r2(Math.abs(e?.service_fee ?? 0));
+  const taxaTransacao = r2(Math.abs(e?.seller_transaction_fee ?? 0));
+  const cupomVendedor = r2(Math.abs(e?.voucher_from_seller ?? 0));
+  const calculado = r2(subtotal - cupomVendedor - comissao - taxaServico - taxaTransacao);
+  return {
+    numero: p.order_sn,
+    status,
+    statusOriginal: p.order_status,
+    criadoEm: iso(p.create_time),
+    pagoEm: iso(p.pay_time),
+    comprador: p.buyer_username ?? null,
+    cidade: p.recipient_address?.city ?? null,
+    uf: ufDoEstado(p.recipient_address?.state),
+    rastreio: null,
+    itens,
+    subtotal,
+    descontoVendedor: 0,
+    cupomVendedor,
+    comissao,
+    taxaServico,
+    taxaTransacao,
+    fretePagoComprador: 0,
+    // O escrow é o valor que a Shopee de fato repassa; sem ele, a mesma conta da planilha.
+    repasse: status === "cancelado" ? 0 : e?.escrow_amount != null ? r2(e.escrow_amount) : calculado,
+  };
+}
+
+/** Pedidos criados desde `desde` (no máximo 15 dias por chamada, regra da API), com escrow. */
+export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId: number, desde: Date): Promise<PedidoMarketplace[]> {
+  const fim = agora();
+  const inicio = Math.max(Math.floor(desde.getTime() / 1000), fim - 15 * 86400);
+  const numeros: string[] = [];
+  let cursor = "";
+  for (let pagina = 0; pagina < 20; pagina++) {
+    const r = await getLoja(c, "/api/v2/order/get_order_list", token, shopId, {
+      time_range_field: "update_time",
+      time_from: String(inicio),
+      time_to: String(fim),
+      page_size: "100",
+      cursor,
+    });
+    for (const o of (r.order_list as { order_sn: string }[] | undefined) ?? []) numeros.push(o.order_sn);
+    if (!r.more) break;
+    cursor = String(r.next_cursor ?? "");
+  }
+
+  const pedidos: PedidoMarketplace[] = [];
+  for (let i = 0; i < numeros.length; i += 50) {
+    const lote = numeros.slice(i, i + 50);
+    const d = await getLoja(c, "/api/v2/order/get_order_detail", token, shopId, {
+      order_sn_list: lote.join(","),
+      response_optional_fields: "buyer_username,item_list,recipient_address,pay_time",
+    });
+    for (const p of (d.order_list as PedidoApi[] | undefined) ?? []) {
+      let escrow: EscrowApi | null = null;
+      if (p.order_status !== "UNPAID" && p.order_status !== "CANCELLED") {
+        const e = await getLoja(c, "/api/v2/payment/get_escrow_detail", token, shopId, { order_sn: p.order_sn }).catch(() => null);
+        escrow = ((e?.order_income as EscrowApi | undefined) ?? null) as EscrowApi | null;
+      }
+      pedidos.push(pedidoDaApi(p, escrow));
+    }
+  }
+  return pedidos;
+}

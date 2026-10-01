@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { VendaRelatorio } from "@/lib/relatorios-vendas";
+import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
 import { RelatoriosVendasClient } from "./RelatoriosVendasClient";
 
 /** Até um ano (mais o ano anterior para comparar os 365 dias). */
@@ -10,7 +11,7 @@ export default async function RelatoriosVendasPage() {
   const agora = new Date();
   const inicio = new Date(agora.getTime() - DIAS * 86_400_000);
 
-  const [vendasRes, pedidosRes] = await Promise.all([
+  const [vendasRes, pedidosRes, marketplace, lojasRes] = await Promise.all([
     supabase
       .from("vendas")
       .select("id, data_venda, status, total, custo_total, lucro, observacao, clientes(uf), venda_itens(produto_id, produto_nome, quantidade, preco_unitario, custo_unitario)")
@@ -19,6 +20,8 @@ export default async function RelatoriosVendasPage() {
       .order("data_venda")
       .limit(20000),
     supabase.from("pedidos_vitrine").select("venda_id, entrega_uf").not("venda_id", "is", null),
+    carregarPedidosMarketplace(supabase, DIAS),
+    supabase.from("lojas_canal").select("id, nome"),
   ]);
   if (vendasRes.error) throw new Error(vendasRes.error.message);
 
@@ -50,6 +53,30 @@ export default async function RelatoriosVendasPage() {
       custo: i.quantidade * Number(i.custo_unitario),
     })),
   }));
+
+  // Shopee (0046): cada loja vira uma origem, para comparar as lojas entre si e com o PDV.
+  const nomeLoja = new Map((lojasRes.data ?? []).map((l) => [l.id as string, l.nome as string]));
+  for (const p of marketplace.pedidos) {
+    if (p.status === "cancelado" || p.status === "devolvido" || p.status === "nao_pago" || !p.criado_em_plataforma) continue;
+    vendas.push({
+      id: `mkt:${p.id}`,
+      data: p.criado_em_plataforma,
+      origem: `Shopee · ${nomeLoja.get(p.loja_id) ?? "loja"}`,
+      uf: p.uf?.toUpperCase() ?? null,
+      total: p.subtotal,
+      custo: p.custo,
+      lucro: p.lucro,
+      taxas: p.comissao + p.taxa_servico + p.taxa_transacao + p.cupom_vendedor,
+      itens: p.pedidos_marketplace_itens.map((i) => ({
+        chave: i.produto_id ?? `nome:${i.nome}`,
+        nome: i.nome,
+        quantidade: i.quantidade,
+        receita: i.quantidade * i.preco_unitario,
+        custo: i.quantidade * (i.custo_unitario ?? 0),
+      })),
+    });
+  }
+  vendas.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
 
   return <RelatoriosVendasClient vendas={vendas} agoraIso={agora.toISOString()} />;
 }

@@ -48,12 +48,16 @@ function Kpi({ rotulo, valor, delta }: { rotulo: string; valor: string; delta: n
 
 /**
  * Relatórios de vendas: saíram da tela de Vendas (que agora é operação). Todas as origens
- * juntas — PDV e catálogo; marketplace entra na 8.9 — com comparação ao período anterior.
+ * juntas — PDV, catálogo e cada loja da Shopee, com filtro por origem — com comparação ao período anterior.
  */
 export function RelatoriosVendasClient({ vendas, agoraIso }: { vendas: VendaRelatorio[]; agoraIso: string }) {
   const [aba, setAba] = useState<Aba>("geral");
   const [dias, setDias] = useState<(typeof PERIODOS)[number]>(30);
   const [exportando, setExportando] = useState(false);
+  // PDV, Catálogo e cada loja da Shopee ("Shopee · Loja 1") são origens.
+  const [origem, setOrigem] = useState("");
+  const listaOrigens = useMemo(() => [...new Set(vendas.map((v) => v.origem))].sort(), [vendas]);
+  const daOrigem = useMemo(() => (origem ? vendas.filter((v) => v.origem === origem) : vendas), [vendas, origem]);
 
   const { atual, anterior, inicio, fim } = useMemo(() => {
     const fim = new Date(agoraIso);
@@ -63,12 +67,12 @@ export function RelatoriosVendasClient({ vendas, agoraIso }: { vendas: VendaRela
     const inicioAnterior = new Date(inicio);
     inicioAnterior.setDate(inicioAnterior.getDate() - dias);
     return {
-      atual: vendas.filter((v) => new Date(v.data) >= inicio),
-      anterior: vendas.filter((v) => new Date(v.data) >= inicioAnterior && new Date(v.data) < inicio),
+      atual: daOrigem.filter((v) => new Date(v.data) >= inicio),
+      anterior: daOrigem.filter((v) => new Date(v.data) >= inicioAnterior && new Date(v.data) < inicio),
       inicio,
       fim,
     };
-  }, [vendas, dias, agoraIso]);
+  }, [daOrigem, dias, agoraIso]);
 
   const t = totais(atual);
   const ta = totais(anterior);
@@ -163,6 +167,21 @@ export function RelatoriosVendasClient({ vendas, agoraIso }: { vendas: VendaRela
             {p === 365 ? "12 meses" : `${p} dias`}
           </Chip>
         ))}
+        {listaOrigens.length > 1 && (
+          <select
+            aria-label="Origem"
+            className="ml-auto h-8 rounded-md border border-border bg-surface-1 px-2 text-sm text-text-primary"
+            value={origem}
+            onChange={(e) => setOrigem(e.target.value)}
+          >
+            <option value="">Todas as origens</option>
+            {listaOrigens.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <Tabs tabs={ABAS} value={aba} onChange={setAba} className="mb-4" />

@@ -1,18 +1,21 @@
 import { createClient } from "@/lib/supabase/server";
 import { carregarPedidosVitrine } from "@/lib/pedidos-vitrine-servidor";
+import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
+import { credenciaisShopee } from "@/lib/marketplace/shopee-api";
+import { cofreDisponivel } from "@/lib/ia/cofre";
 import { VendasClient, type Venda } from "./VendasClient";
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;
 
-export default async function VendasPage({ searchParams }: { searchParams: Promise<{ pedido?: string }> }) {
-  const { pedido } = await searchParams;
+export default async function VendasPage({ searchParams }: { searchParams: Promise<{ pedido?: string; shopee?: string }> }) {
+  const { pedido, shopee } = await searchParams;
   const supabase = await createClient();
 
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - DIAS_JANELA);
 
-  const [vendasRes, clientesRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes] = await Promise.all([
+  const [vendasRes, clientesRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes] = await Promise.all([
     supabase
       .from("vendas")
       .select(
@@ -28,6 +31,11 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     supabase.from("clientes").select("id, nome, whatsapp, permite_fiado, limite_fiado").eq("status", "ativo").order("nome"),
     supabase.from("contas").select("id, nome").order("nome"),
     supabase.from("formas_pagamento").select("nome, tipo").order("nome"),
+    // Shopee (8.9): sem a 0046 volta `disponivel: false` e a aba explica.
+    carregarPedidosMarketplace(supabase, DIAS_JANELA),
+    supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
+    supabase.from("produtos").select("id, sku, nome, custo").order("nome"),
+    supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
   ]);
 
   if (vendasRes.error) throw new Error(vendasRes.error.message);
@@ -45,6 +53,16 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       contas={contasRes.data ?? []}
       formasPagamentoPdv={formasPdvRes.data ?? []}
       pedidoInicial={pedido && /^P-\d{1,8}$/.test(pedido) ? pedido : null}
+      marketplace={marketplace}
+      apiShopee={!!credenciaisShopee() && cofreDisponivel()}
+      avisoShopee={shopee && ["conectada", "erro", "desligada"].includes(shopee) ? shopee : null}
+      lojasMarketplace={((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => ({
+        id: l.id,
+        nome: l.nome,
+        canalNome: l.canais?.nome ?? "",
+      }))}
+      produtosMarketplace={(produtosRes.data ?? []).map((p) => ({ id: p.id, sku: p.sku, nome: p.nome, custo: Number(p.custo ?? 0) }))}
+      impostoPct={Number(perfilRes.data?.aliquota_das ?? 0) / 100}
     />
   );
 }
