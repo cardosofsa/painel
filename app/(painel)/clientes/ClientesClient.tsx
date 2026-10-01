@@ -19,6 +19,8 @@ import {
   removerCliente,
   alternarStatusCliente,
   type ClienteInput,
+  mesclarClientes,
+  ignorarDuplicado,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
@@ -29,6 +31,9 @@ export interface Cliente extends ClienteInput {
   id: string;
   compras: number;
   total_comprado: number;
+  /** 0043: de onde veio o cadastro e, se parecer repetido, de quem. */
+  origem?: "manual" | "vitrine" | "pdv" | "marketplace";
+  possivel_duplicado_de?: string | null;
 }
 
 const FORM_VAZIO: ClienteInput = {
@@ -74,6 +79,28 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
   }, [clientes, busca]);
 
   const comFiado = clientes.filter((c) => c.permite_fiado).length;
+  const porId = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
+  const duplicados = clientes.filter((c) => c.possivel_duplicado_de && porId.has(c.possivel_duplicado_de)).length;
+
+  async function juntar(c: Cliente) {
+    const original = c.possivel_duplicado_de ? porId.get(c.possivel_duplicado_de) : null;
+    if (!original) return;
+    const ok = await confirm({
+      title: "Juntar os dois cadastros?",
+      message: `As compras de "${c.nome}" (${c.whatsapp ?? "sem WhatsApp"}) passam para "${original.nome}" (${original.whatsapp ?? "sem WhatsApp"}), que fica com os dados que faltavam. O cadastro repetido é apagado.`,
+      confirmLabel: "Juntar",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      await executarComToast(mesclarClientes(original.id, c.id), { sucesso: "Cadastros juntados", erro: "Erro ao juntar" });
+    });
+  }
+
+  function naoE(c: Cliente) {
+    startTransition(async () => {
+      await executarComToast(ignorarDuplicado(c.id), { sucesso: "Ok, são pessoas diferentes", erro: "Erro ao atualizar" });
+    });
+  }
   const totalComprado = clientes.reduce((acc, c) => acc + c.total_comprado, 0);
 
   function abrirNovo() {
@@ -169,6 +196,12 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
         </Card>
       </div>
 
+      {duplicados > 0 && (
+        <p className="text-sm text-text-secondary border border-negative/30 bg-negative-soft rounded-md px-3 py-2 mb-4">
+          {duplicados} cadastro(s) parecem repetidos (mesmo nome, contato diferente). Confira na lista e escolha Juntar ou Não é.
+        </p>
+      )}
+
       <div className="mb-4">
         <input
           value={busca}
@@ -218,6 +251,20 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
                       {c.nome}
                     </div>
                     {c.documento ? <div className="text-xs text-text-tertiary font-mono">{c.documento}</div> : null}
+                    {c.origem === "vitrine" && <span className="text-[11px] text-accent">Veio de um pedido do catálogo</span>}
+                    {c.possivel_duplicado_de && porId.get(c.possivel_duplicado_de) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="rounded bg-negative-soft text-negative px-1.5 py-0.5 font-medium">
+                          Possível duplicado de {porId.get(c.possivel_duplicado_de)!.nome}
+                        </span>
+                        <button className="text-accent hover:underline" onClick={() => juntar(c)}>
+                          Juntar
+                        </button>
+                        <button className="text-text-tertiary hover:underline" onClick={() => naoE(c)}>
+                          Não é
+                        </button>
+                      </div>
+                    )}
                   </Td>
                   <Td mono>{c.whatsapp || "—"}</Td>
                   <Td>{[c.cidade, c.uf].filter(Boolean).join(" / ") || "—"}</Td>

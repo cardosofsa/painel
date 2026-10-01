@@ -24,13 +24,15 @@ export async function garantirClienteDoPedido(
 ): Promise<{ clienteId: string; criado: boolean } | null> {
   const { data: pedido, error } = await supabase
     .from("pedidos_vitrine")
-    .select(
-      "numero, cliente_nome, cliente_whatsapp, cliente_email, entrega_cep, entrega_logradouro, entrega_numero, entrega_bairro, entrega_cidade, entrega_uf",
-    )
+    // `*`: `cliente_id` só existe a partir da 0043.
+    .select("*")
     .eq("id", pedidoId)
     .maybeSingle();
   if (error) lancarErroSupabase(error);
   if (!pedido) return null;
+
+  // Desde a 0043 o banco já liga (ou cria, inativo) o cliente quando o pedido chega.
+  if (pedido.cliente_id) return { clienteId: pedido.cliente_id as string, criado: false };
 
   const alvo = telefoneNormalizado(pedido.cliente_whatsapp);
 

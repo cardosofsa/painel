@@ -37,6 +37,8 @@ export interface PedidoVitrine {
   cliente_whatsapp: string;
   /** Opcionais: o comprador pode não ter informado. Sempre exibidos como TEXTO. */
   cliente_email: string | null;
+  /** Cadastro ligado automaticamente na chegada do pedido (0043). */
+  cliente_id?: string | null;
   entrega: string | null;
   observacao: string | null;
   total: number;
@@ -80,7 +82,10 @@ export function PedidosVitrine({
   clientes,
   contas,
   formasPagamento,
+  pedidoInicial = null,
 }: {
+  /** Número (P-0001) vindo do link do WhatsApp: abre esse pedido direto. */
+  pedidoInicial?: string | null;
   pedidos: PedidoVitrine[];
   clientes: ClientePdv[];
   contas: ContaPdv[];
@@ -89,7 +94,7 @@ export function PedidosVitrine({
   const [, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [filtro, setFiltro] = useState<Filtro>("pendente");
-  const [aberto, setAberto] = useState<PedidoVitrine | null>(null);
+  const [aberto, setAberto] = useState<PedidoVitrine | null>(() => (pedidoInicial ? (pedidos.find((p) => p.numero === pedidoInicial) ?? null) : null));
   const [checkout, setCheckout] = useState<PedidoVitrine | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -293,9 +298,7 @@ export function PedidosVitrine({
             </div>
 
             {aberto.status === "convertido" ? (
-              <p className="text-sm text-text-secondary text-center py-2">
-                Este pedido já virou venda. Veja em Vendas.
-              </p>
+              <p className="text-sm text-text-secondary text-center py-2">Este pedido já virou venda: está na lista de vendas abaixo.</p>
             ) : (
               <div className="flex flex-col sm:flex-row gap-2">
                 <a
@@ -381,6 +384,7 @@ export function PedidosVitrine({
             setSalvando(false);
             if (r.ok) {
               setCheckout(null);
+              toast.success(`Venda ${r.dado.venda_numero} registrada: foi para Em separação.`);
               if (r.dado.cliente_criado) {
                 toast.success("Comprador cadastrado em Clientes (inativo)");
               }

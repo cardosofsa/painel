@@ -210,6 +210,10 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
       .eq("id", v.pedidoId);
     if (erroMarcar) lancarErroSupabase(erroMarcar);
 
+    // Pedido confirmado vai direto para a separação (acompanhamento de envio em Vendas).
+    const { error: erroEnvio } = await supabase.from("vendas").update({ status_envio: "separacao" }).eq("id", venda.venda_id);
+    if (erroEnvio) console.error("[pedido] status de envio:", erroEnvio.message);
+
     revalidarTudo();
     revalidatePath("/vendas");
     revalidatePath("/estoque");

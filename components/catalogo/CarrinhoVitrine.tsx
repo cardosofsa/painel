@@ -129,6 +129,7 @@ export function CarrinhoVitrine({
           nomeCliente: nome,
           observacao: observacao.trim() || null,
           entrega: enderecoEmLinha({ ...endereco }),
+          linkPainel: `${window.location.origin}/vendas?pedido=${encodeURIComponent(enviado.numero)}`,
         }),
         negocioWhatsapp,
       )

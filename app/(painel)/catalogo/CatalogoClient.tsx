@@ -21,11 +21,9 @@ import {
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
-import { Tabs, TabPanel, type TabItem } from "@/components/ui/Tabs";
-import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
 import { AparenciaModal } from "@/components/catalogo/AparenciaModal";
 import { PrecosCatalogoModal } from "@/components/catalogo/PrecosCatalogoModal";
-import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
+import Link from "next/link";
 
 export interface Catalogo {
   id: string;
@@ -36,26 +34,16 @@ export interface Catalogo {
   criado_em: string;
 }
 
-const ABAS_CATALOGO = [
-  { value: "catalogos", label: "Catálogos" },
-  { value: "pedidos", label: "Pedidos" },
-] as const satisfies readonly TabItem<"catalogos" | "pedidos">[];
-
 export function CatalogoClient({
   catalogos,
   totalProdutosElegiveis,
-  pedidos,
-  clientes,
-  contas,
-  formasPagamento,
+  pedidosPendentes,
   iaDisponivel,
 }: {
   catalogos: Catalogo[];
   totalProdutosElegiveis: number;
-  pedidos: PedidoVitrine[];
-  clientes: ClientePdv[];
-  contas: ContaPdv[];
-  formasPagamento: FormaPagamentoPdv[];
+  /** Pedidos da vitrine esperando confirmação. Eles moram em Vendas desde a 8.6. */
+  pedidosPendentes: number;
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
   iaDisponivel: boolean;
 }) {
@@ -64,11 +52,6 @@ export function CatalogoClient({
   const [modalCatalogo, setModalCatalogo] = useState<Catalogo | "novo" | null>(null);
   const [precosCatalogo, setPrecosCatalogo] = useState<Catalogo | null>(null);
   const [aparenciaCatalogo, setAparenciaCatalogo] = useState<Catalogo | null>(null);
-  // Abre direto nos pedidos quando há algo esperando: é o que o dono veio fazer.
-  const [aba, setAba] = useState<"catalogos" | "pedidos">(
-    pedidos.some((p) => p.status === "pendente") ? "pedidos" : "catalogos",
-  );
-  const pendentes = pedidos.filter((p) => p.status === "pendente").length;
 
   function linkPublico(slug: string) {
     return `${window.location.origin}/vitrine/${slug}`;
@@ -131,33 +114,21 @@ export function CatalogoClient({
       <PageHeader
         title="Catálogo"
         actions={
-          aba === "catalogos" ? (
-            <Button variant="primary" onClick={() => setModalCatalogo("novo")}>
-              + Novo Catálogo
-            </Button>
-          ) : undefined
+          <Button variant="primary" onClick={() => setModalCatalogo("novo")}>
+            + Novo Catálogo
+          </Button>
         }
       />
 
-      {/* Pedidos ficam AQUI dentro, não numa aba nova do sistema: uma aba nova em
-          `lib/acesso.ts` vira um id que nenhuma conta existente tem em
-          `perfis_acesso.abas`, e o recurso não apareceria para ninguém até o master
-          liberar conta por conta. */}
-      <Tabs
-        tabs={[
-          ABAS_CATALOGO[0],
-          { ...ABAS_CATALOGO[1], label: pendentes > 0 ? `Pedidos (${pendentes})` : ABAS_CATALOGO[1].label },
-        ]}
-        value={aba}
-        onChange={setAba}
-        className="mb-5"
-      />
+      {pedidosPendentes > 0 && (
+        <Link href="/vendas" className="flex items-center justify-between gap-3 rounded-lg border border-accent/40 bg-accent-soft px-4 py-3 mb-5 hover:border-accent">
+          <span className="text-sm text-text-primary">
+            <strong>{pedidosPendentes}</strong> pedido(s) da vitrine esperando confirmação
+          </span>
+          <span className="text-sm text-accent font-medium">Ver em Vendas ›</span>
+        </Link>
+      )}
 
-      <TabPanel key={aba} tabValue={aba}>
-      {aba === "pedidos" ? (
-        <PedidosVitrine pedidos={pedidos} clientes={clientes} contas={contas} formasPagamento={formasPagamento} />
-      ) : (
-      <>
       <Card className="mb-5">
         <p className="text-sm text-text-secondary">
           Cada catálogo é uma vitrine pública com um link próprio, pronta pra enviar ao cliente. Os produtos entram
@@ -245,9 +216,6 @@ export function CatalogoClient({
         onClose={() => setAparenciaCatalogo(null)}
       />
       {ConfirmDialog}
-      </>
-      )}
-      </TabPanel>
     </>
   );
 }

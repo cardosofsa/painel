@@ -148,6 +148,11 @@ export function textoPedidoVitrine(d: {
   observacao: string | null;
   /** Endereço já em uma linha, quando o cliente informou. */
   entrega?: string | null;
+  /**
+   * Link do painel para o DONO abrir e confirmar o pedido (/vendas?pedido=P-0001). Exige
+   * login: quem mais vir a mensagem só cai na tela de entrar.
+   */
+  linkPainel?: string | null;
 }): string {
   const linhas = [
     `Olá! Fiz um pedido pelo catálogo ${d.nomeCatalogo}.`,
@@ -158,7 +163,9 @@ export function textoPedidoVitrine(d: {
     `Total: ${formatBRL(d.total)}`,
     `Nome: ${d.nomeCliente}`,
   ];
+  if (d.entrega?.trim()) linhas.push(`Entrega: ${d.entrega.trim()}`);
   if (d.observacao?.trim()) linhas.push(`Observação: ${d.observacao.trim()}`);
+  if (d.linkPainel) linhas.push("", `Confirmar no painel: ${d.linkPainel}`);
   return linhas.join("\n");
 }
 

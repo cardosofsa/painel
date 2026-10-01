@@ -17,9 +17,8 @@ export default async function ClientesPage() {
   const [clientesRes, resumoRes] = await Promise.all([
     supabase
       .from("clientes")
-      .select(
-        "id, nome, whatsapp, email, documento, data_nascimento, cep, endereco, numero, bairro, complemento, cidade, uf, observacao, permite_fiado, limite_fiado, status",
-      )
+      // `*`: `origem` e `possivel_duplicado_de` só existem a partir da 0043.
+      .select("*")
       .order("nome"),
     supabase.rpc("resumo_vendas_por_cliente"),
   ]);

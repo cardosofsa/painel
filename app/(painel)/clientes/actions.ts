@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, clienteSchema } from "@/lib/validacao";
@@ -114,6 +115,32 @@ export async function removerCliente(id: string) {
     const { error } = await supabase.from("clientes").delete().eq("id", id);
     if (error) lancarErroSupabase(error);
     revalidateTudo();
+  });
+}
+
+/**
+ * Junta o cadastro duplicado no original (0043): vendas e pedidos passam para o que fica,
+ * os campos vazios dele são completados e o duplicado é apagado.
+ */
+export async function mesclarClientes(manterId: string, removerId: string) {
+  return comResultado(async () => {
+    const ids = validar(z.object({ manter: z.string().uuid(), remover: z.string().uuid() }), { manter: manterId, remover: removerId });
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("mesclar_clientes", { p_manter: ids.manter, p_remover: ids.remover });
+    if (error) lancarErroSupabase(error);
+    revalidatePath("/clientes");
+    revalidatePath("/vendas");
+  });
+}
+
+/** "Não é a mesma pessoa": tira o aviso de possível duplicado. */
+export async function ignorarDuplicado(id: string) {
+  return comResultado(async () => {
+    const v = validar(z.string().uuid(), id);
+    const supabase = await createClient();
+    const { error } = await supabase.from("clientes").update({ possivel_duplicado_de: null }).eq("id", v);
+    if (error) lancarErroSupabase(error);
+    revalidatePath("/clientes");
   });
 }
 

@@ -220,3 +220,15 @@ describe("linkPedidoWhatsapp", () => {
     expect(decodeURIComponent(linkPedidoWhatsapp(texto, null))).not.toContain("lista completa no pedido");
   });
 });
+
+describe("textoPedidoVitrine — entrega e link do painel (8.6)", () => {
+  const base = { numero: "P-0009", nomeCatalogo: "Loja", itens: [item()], total: 10, nomeCliente: "Ana", observacao: null };
+  it("inclui o endereço de entrega quando informado", () => {
+    expect(textoPedidoVitrine({ ...base, entrega: "Rua A, 10 - Centro, Recife/PE" })).toContain("Entrega: Rua A, 10 - Centro, Recife/PE");
+    expect(textoPedidoVitrine(base)).not.toContain("Entrega:");
+  });
+  it("termina com o link para o dono confirmar no painel", () => {
+    const t = textoPedidoVitrine({ ...base, linkPainel: "https://x.app/vendas?pedido=P-0009" });
+    expect(t.split("\n").at(-1)).toBe("Confirmar no painel: https://x.app/vendas?pedido=P-0009");
+  });
+});

@@ -1,26 +1,32 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Download, MessageCircle, Receipt } from "lucide-react";
+import Link from "next/link";
+import { BarChart3, Receipt, ScanBarcode } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
-import { SalesChart } from "@/components/charts/SalesChart";
-import { formatBRL, formatarDataCurta, hojeIsoLocal, dataLocal } from "@/lib/format";
-import { paraCsv, baixarArquivo } from "@/lib/csv";
+import { Tabs } from "@/components/ui/Tabs";
+import { BarraFiltros, FiltroSelect } from "@/components/ui/BarraFiltros";
+import { ExportarModal } from "@/components/ui/ExportarModal";
+import { formatBRL, formatarDataCurta } from "@/lib/format";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
+import { executarComToast } from "@/lib/acao-cliente";
+import { decomporVenda, origemVenda, situacaoVenda, ROTULO_ORIGEM, type StatusEnvio } from "@/lib/vendas-painel";
+import type { TabelaExport } from "@/lib/exportar";
 import { obterComprovante } from "./comprovante-actions";
 import { useComprovanteImagem } from "@/components/comprovante/useComprovanteImagem";
-import { cancelarVenda } from "./actions";
+import { atualizarStatusEnvio, cancelarVenda } from "./actions";
 import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
-import { executarComToast } from "@/lib/acao-cliente";
-import { Chip } from "@/components/ui/Chip";
+import { DetalheVendaModal } from "@/components/vendas/DetalheVendaModal";
+import { ValorComLucro } from "@/components/vendas/ValorComLucro";
+import { PedidosVitrine, type PedidoVitrine } from "@/components/catalogo/PedidosVitrine";
+import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
 
 export interface VendaItem {
   produto_nome: string;
@@ -39,6 +45,7 @@ export interface Venda {
   cliente_nome: string | null;
   forma_pagamento: string | null;
   status: "paga" | "fiado" | "cancelada";
+  status_envio?: StatusEnvio;
   subtotal: number;
   desconto: number;
   valor_entrega: number;
@@ -49,127 +56,95 @@ export interface Venda {
   venda_itens: VendaItem[];
 }
 
+type Aba = "pedidos" | "abertas" | "concluidas" | "canceladas" | "todas";
+
 const PERIODOS = [
-  { id: "hoje", label: "Hoje", dias: 0 },
-  { id: "7", label: "7 dias", dias: 7 },
-  { id: "30", label: "30 dias", dias: 30 },
-  { id: "90", label: "90 dias", dias: 90 },
+  { valor: "0", rotulo: "Hoje" },
+  { valor: "7", rotulo: "Últimos 7 dias" },
+  { valor: "30", rotulo: "Últimos 30 dias" },
 ] as const;
 
-type PeriodoId = (typeof PERIODOS)[number]["id"];
+const TOM_PAGTO: Record<Venda["status"], "positive" | "negative" | "neutral"> = { paga: "positive", fiado: "neutral", cancelada: "negative" };
+const ROTULO_PAGTO: Record<Venda["status"], string> = { paga: "Paga", fiado: "Fiado", cancelada: "Cancelada" };
 
-const ROTULO_STATUS: Record<Venda["status"], { label: string; tone: "positive" | "negative" | "neutral" }> = {
-  paga: { label: "Paga", tone: "positive" },
-  fiado: { label: "Fiado", tone: "neutral" },
-  cancelada: { label: "Cancelada", tone: "negative" },
-};
-
-function inicioDoPeriodo(periodo: PeriodoId): Date {
-  const inicio = new Date();
-  inicio.setHours(0, 0, 0, 0);
-  const dias = PERIODOS.find((p) => p.id === periodo)?.dias ?? 0;
-  if (dias > 0) inicio.setDate(inicio.getDate() - dias);
-  return inicio;
-}
-
+/**
+ * Vendas é OPERAÇÃO: o que precisa ser confirmado, separado, enviado ou recebido. Os
+ * números e gráficos saíram para /vendas/relatorios. Pedido do catálogo mora aqui (não no
+ * Catálogo): pedido de venda é venda, venha do PDV ou da vitrine.
+ */
 export function VendasClient({
   vendas,
   diasJanela,
   clientes,
   formasPagamento,
+  pedidos,
+  clientesPdv,
+  contas,
+  formasPagamentoPdv,
+  pedidoInicial,
 }: {
   vendas: Venda[];
   diasJanela: number;
   clientes: (ClienteOpcao & { whatsapp: string | null })[];
   formasPagamento: string[];
+  pedidos: PedidoVitrine[];
+  clientesPdv: ClientePdv[];
+  contas: ContaPdv[];
+  formasPagamentoPdv: FormaPagamentoPdv[];
+  pedidoInicial: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [periodo, setPeriodo] = useState<PeriodoId>("30");
+  const pedidosAbertos = pedidos.filter((p) => p.status === "pendente" || p.status === "aceito");
+  const [aba, setAba] = useState<Aba>(pedidoInicial || pedidosAbertos.length > 0 ? "pedidos" : "abertas");
   const [detalhe, setDetalhe] = useState<Venda | null>(null);
   const [editando, setEditando] = useState<Venda | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [periodo, setPeriodo] = useState("");
+  const [origem, setOrigem] = useState("");
   const { gerar: gerarImagem, oculto: comprovanteOculto } = useComprovanteImagem();
 
-  const doPeriodo = useMemo(() => {
-    const inicio = inicioDoPeriodo(periodo);
-    return vendas.filter((v) => new Date(v.data_venda) >= inicio);
-  }, [vendas, periodo]);
+  const vendasDoCatalogo = useMemo(() => new Set(pedidos.map((p) => p.venda_id).filter((id): id is string => !!id)), [pedidos]);
 
-  // Canceladas contam na lista (pro histórico) mas nunca nos números.
-  const validas = useMemo(() => doPeriodo.filter((v) => v.status !== "cancelada"), [doPeriodo]);
-
-  const faturamento = validas.reduce((acc, v) => acc + v.total, 0);
-  const lucro = validas.reduce((acc, v) => acc + v.lucro, 0);
-  const ticketMedio = validas.length > 0 ? faturamento / validas.length : 0;
-  const fiadoEmAberto = doPeriodo.filter((v) => v.status === "fiado").reduce((acc, v) => acc + v.total, 0);
-
-  const serie = useMemo(() => {
-    const porDia = new Map<string, number>();
-    const inicio = inicioDoPeriodo(periodo);
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-
-    // As duas chaves precisam usar a MESMA convenção de fuso. Com `toISOString()` (UTC), uma
-    // venda das 22h em Brasília vira 01h do dia seguinte e era somada no dia errado —
-    // justamente o horário de pico de um PDV. `sv-SE` dá o formato ISO em horário local.
-    for (let d = new Date(inicio); d <= hoje; d.setDate(d.getDate() + 1)) {
-      porDia.set(hojeIsoLocal(d), 0);
+  const contagem = useMemo(() => {
+    const c = { abertas: 0, concluidas: 0, canceladas: 0 };
+    for (const v of vendas) {
+      const s = situacaoVenda(v);
+      if (s === "aberta") c.abertas++;
+      else if (s === "concluida") c.concluidas++;
+      else c.canceladas++;
     }
-    for (const v of validas) {
-      const chave = hojeIsoLocal(new Date(v.data_venda));
-      porDia.set(chave, (porDia.get(chave) ?? 0) + v.total);
-    }
+    return c;
+  }, [vendas]);
 
-    return Array.from(porDia.entries()).map(([iso, valor]) => ({
-      dia: dataLocal(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-      vendas: valor,
-    }));
-  }, [validas, periodo]);
+  const filtradas = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    const inicio = new Date();
+    inicio.setHours(0, 0, 0, 0);
+    if (periodo) inicio.setDate(inicio.getDate() - Number(periodo));
+    return vendas.filter((v) => {
+      const s = situacaoVenda(v);
+      if (aba === "abertas" && s !== "aberta") return false;
+      if (aba === "concluidas" && s !== "concluida") return false;
+      if (aba === "canceladas" && s !== "cancelada") return false;
+      if (periodo && new Date(v.data_venda) < inicio) return false;
+      if (origem && origemVenda(v, vendasDoCatalogo) !== origem) return false;
+      if (t && !v.numero.toLowerCase().includes(t) && !(v.cliente_nome ?? "").toLowerCase().includes(t) && !v.venda_itens.some((i) => i.produto_nome.toLowerCase().includes(t))) return false;
+      return true;
+    });
+  }, [vendas, aba, busca, periodo, origem, vendasDoCatalogo]);
 
-  const topProdutos = useMemo(() => {
-    const agregado = new Map<string, { nome: string; quantidade: number; total: number; lucro: number }>();
-    for (const v of validas) {
-      for (const item of v.venda_itens) {
-        const atual = agregado.get(item.produto_nome) ?? { nome: item.produto_nome, quantidade: 0, total: 0, lucro: 0 };
-        atual.quantidade += item.quantidade;
-        atual.total += item.preco_unitario * item.quantidade;
-        atual.lucro += (item.preco_unitario - item.custo_unitario) * item.quantidade;
-        agregado.set(item.produto_nome, atual);
-      }
-    }
-    return Array.from(agregado.values())
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 8);
-  }, [validas]);
-
-  function exportarCsv() {
-    const colunas = ["Número", "Data", "Cliente", "Pagamento", "Status", "Subtotal", "Desconto", "Entrega", "Total", "Lucro"];
-    const linhas = doPeriodo.map((v) => ({
-      "Número": v.numero,
-      Data: new Date(v.data_venda).toLocaleString("pt-BR"),
-      Cliente: v.cliente_nome ?? "",
-      Pagamento: v.forma_pagamento ?? "",
-      Status: ROTULO_STATUS[v.status].label,
-      Subtotal: v.subtotal.toFixed(2),
-      Desconto: v.desconto.toFixed(2),
-      Entrega: v.valor_entrega.toFixed(2),
-      Total: v.total.toFixed(2),
-      Lucro: v.lucro.toFixed(2),
-    }));
-    baixarArquivo(`vendas-${periodo}.csv`, paraCsv(linhas, colunas));
-  }
+  const emSeparacao = vendas.filter((v) => v.status !== "cancelada" && v.status_envio === "separacao").length;
+  const enviadas = vendas.filter((v) => v.status !== "cancelada" && v.status_envio === "enviado").length;
+  const fiadoAberto = vendas.filter((v) => v.status === "fiado").reduce((s, v) => s + v.total, 0);
 
   function comprovanteLink(v: Venda) {
     const cliente = v.cliente_id ? clientes.find((c) => c.id === v.cliente_id) : null;
     return linkComprovanteWhatsapp(
       {
         numero: v.numero,
-        itens: v.venda_itens.map((i) => ({
-          nome: i.produto_nome,
-          quantidade: i.quantidade,
-          preco_unitario: i.preco_unitario,
-          garantia_dias: i.garantia_dias,
-        })),
+        itens: v.venda_itens.map((i) => ({ nome: i.produto_nome, quantidade: i.quantidade, preco_unitario: i.preco_unitario, garantia_dias: i.garantia_dias })),
         subtotal: v.subtotal,
         desconto: v.desconto,
         valorEntrega: v.valor_entrega,
@@ -186,261 +161,229 @@ export function VendasClient({
     if (r.ok) gerarImagem(r.dado);
   }
 
+  function mudarEnvio(v: Venda, status: StatusEnvio) {
+    startTransition(async () => {
+      await executarComToast(atualizarStatusEnvio(v.id, status), { erro: "Erro ao atualizar o envio" });
+    });
+  }
+
   async function cancelar(v: Venda) {
     const ok = await confirm({
       title: `Cancelar a venda ${v.numero}?`,
-      message:
-        "O estoque volta para os produtos e o valor é estornado do caixa. A venda fica registrada como cancelada — não é apagada.",
+      message: "O estoque volta para os produtos e o valor é estornado do caixa. A venda fica registrada como cancelada — não é apagada.",
       confirmLabel: "Cancelar venda",
     });
     if (!ok) return;
     startTransition(async () => {
       const r = await executarComToast(cancelarVenda(v.id), { sucesso: `Venda ${v.numero} cancelada`, erro: "Erro ao cancelar a venda" });
-      if (r.ok) {
-        setDetalhe(null);
-      }
+      if (r.ok) setDetalhe(null);
     });
   }
+
+  function tabela(escopo: string): TabelaExport<Venda> {
+    const fonte = escopo === "filtrados" ? filtradas : vendas;
+    return {
+      titulo: "Vendas",
+      subtitulo: escopo === "filtrados" ? "Lista filtrada" : `Últimos ${diasJanela} dias`,
+      colunas: [
+        { rotulo: "Número", valor: (v) => v.numero },
+        { rotulo: "Data", largura: 18, valor: (v) => new Date(v.data_venda).toLocaleString("pt-BR") },
+        { rotulo: "Cliente", largura: 22, valor: (v) => v.cliente_nome ?? "" },
+        { rotulo: "Origem", valor: (v) => ROTULO_ORIGEM[origemVenda(v, vendasDoCatalogo)] },
+        { rotulo: "Pagamento", valor: (v) => v.forma_pagamento ?? "" },
+        { rotulo: "Situação", valor: (v) => ROTULO_PAGTO[v.status] },
+        { rotulo: "Total", tipo: "moeda", valor: (v) => v.total },
+        { rotulo: "Custo", tipo: "moeda", valor: (v) => v.custo_total },
+        { rotulo: "Lucro", tipo: "moeda", valor: (v) => v.lucro },
+        { rotulo: "Margem", tipo: "percentual", valor: (v) => (v.total > 0 ? v.lucro / v.total : 0) },
+      ],
+      linhas: fonte,
+      total: ["Total", `${fonte.length} vendas`, null, null, null, null, fonte.filter((v) => v.status !== "cancelada").reduce((s, v) => s + v.total, 0), null, fonte.filter((v) => v.status !== "cancelada").reduce((s, v) => s + v.lucro, 0), null],
+    };
+  }
+
+  const abas = [
+    { value: "pedidos" as const, label: `Pedidos do catálogo${pedidosAbertos.length ? ` (${pedidosAbertos.length})` : ""}` },
+    { value: "abertas" as const, label: `Em aberto (${contagem.abertas})` },
+    { value: "concluidas" as const, label: "Concluídas" },
+    { value: "canceladas" as const, label: "Canceladas" },
+    { value: "todas" as const, label: "Todas" },
+  ];
 
   return (
     <>
       <PageHeader
         title="Vendas"
         actions={
-          <Button variant="secondary" onClick={exportarCsv} disabled={doPeriodo.length === 0}>
-            <Download size={14} />
-            Exportar CSV
-          </Button>
+          <>
+            <Link href="/vendas/relatorios">
+              <Button variant="secondary">
+                <BarChart3 size={14} /> Relatórios
+              </Button>
+            </Link>
+            <Button variant="secondary" onClick={() => setExportando(true)} disabled={vendas.length === 0}>
+              Exportar
+            </Button>
+            <Link href="/pdv">
+              <Button variant="primary">
+                <ScanBarcode size={14} /> Abrir PDV
+              </Button>
+            </Link>
+          </>
         }
       />
 
-      <div className="flex flex-wrap gap-2 mb-5">
-        {PERIODOS.map((p) => (
-          <Chip key={p.id} onClick={() => setPeriodo(p.id)} ativo={periodo === p.id}>
-            {p.label}
-          </Chip>
-        ))}
-      </div>
-
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>
-          <CardEyebrow>Faturamento</CardEyebrow>
-          <HeroMetric value={formatBRL(faturamento)} caption={`${validas.length} venda(s)`} accent />
+          <CardEyebrow>Pedidos a confirmar</CardEyebrow>
+          <HeroMetric value={String(pedidosAbertos.length)} caption={formatBRL(pedidosAbertos.reduce((s, p) => s + p.total, 0))} accent={pedidosAbertos.length > 0} />
         </Card>
         <Card>
-          <CardEyebrow>Lucro</CardEyebrow>
-          <HeroMetric
-            value={formatBRL(lucro)}
-            caption={faturamento > 0 ? `${((lucro / faturamento) * 100).toFixed(1)}% do faturamento` : undefined}
-          />
+          <CardEyebrow>Em separação</CardEyebrow>
+          <HeroMetric value={String(emSeparacao)} caption="para embalar" />
         </Card>
         <Card>
-          <CardEyebrow>Ticket Médio</CardEyebrow>
-          <HeroMetric value={formatBRL(ticketMedio)} />
+          <CardEyebrow>Enviadas</CardEyebrow>
+          <HeroMetric value={String(enviadas)} caption="a caminho do cliente" />
         </Card>
         <Card>
-          <CardEyebrow>Fiado no Período</CardEyebrow>
-          <HeroMetric value={formatBRL(fiadoEmAberto)} caption="Vira conta a receber" />
+          <CardEyebrow>Fiado em aberto</CardEyebrow>
+          <HeroMetric value={formatBRL(fiadoAberto)} caption="a receber" />
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
-        <Card className="lg:col-span-2">
-          <CardEyebrow>Faturamento por Dia</CardEyebrow>
-          <div className="mt-3">
-            <SalesChart data={serie} />
-          </div>
-        </Card>
+      <Tabs tabs={abas} value={aba} onChange={setAba} className="mb-4" />
 
-        <Card>
-          <CardEyebrow>Produtos Mais Vendidos</CardEyebrow>
-          {topProdutos.length === 0 ? (
-            <p className="text-sm text-text-tertiary mt-3">Nenhuma venda no período.</p>
-          ) : (
-            <div className="mt-3 space-y-2 max-h-56 overflow-y-auto">
-              {topProdutos.map((p) => (
-                <div key={p.nome} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="min-w-0">
-                    <div className="text-text-primary truncate">{p.nome}</div>
-                    <div className="text-xs text-text-tertiary">{p.quantidade} un.</div>
-                  </div>
-                  <div className="font-mono text-text-primary shrink-0">{formatBRL(p.total)}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
+      {aba === "pedidos" ? (
+        <PedidosVitrine pedidos={pedidos} clientes={clientesPdv} contas={contas} formasPagamento={formasPagamentoPdv} pedidoInicial={pedidoInicial} />
+      ) : (
+        <>
+          <BarraFiltros
+            busca={busca}
+            onBusca={setBusca}
+            placeholder="Nº, cliente ou produto…"
+            ativos={(periodo ? 1 : 0) + (origem ? 1 : 0)}
+            onLimpar={() => {
+              setBusca("");
+              setPeriodo("");
+              setOrigem("");
+            }}
+          >
+            <FiltroSelect rotulo="Período" valor={periodo} onChange={setPeriodo} todos={`Últimos ${diasJanela} dias`} opcoes={PERIODOS.map((p) => ({ valor: p.valor, rotulo: p.rotulo }))} />
+            <FiltroSelect
+              rotulo="Origem"
+              valor={origem}
+              onChange={setOrigem}
+              todos="Todas"
+              opcoes={[
+                { valor: "pdv", rotulo: "PDV" },
+                { valor: "catalogo", rotulo: "Catálogo" },
+              ]}
+            />
+          </BarraFiltros>
 
-      <Card padding="nenhum" className="overflow-hidden">
-        {doPeriodo.length === 0 ? (
-          <EmptyState
-            icon={Receipt}
-            title="Nenhuma venda no período"
-            description={`Vendas registradas no PDV aparecem aqui. A tela carrega os últimos ${diasJanela} dias.`}
-          />
-        ) : (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Número</Th>
-                <Th>Data</Th>
-                <Th>Cliente</Th>
-                <Th>Pagamento</Th>
-                <Th>Status</Th>
-                <Th align="right">Total</Th>
-                <Th align="right">Lucro</Th>
-                <Th align="right">Ações</Th>
-              </tr>
-            </Thead>
-            <tbody>
-              {doPeriodo.map((v) => (
-                <Tr key={v.id}>
-                  <Td mono>{v.numero}</Td>
-                  <Td>{formatarDataCurta(v.data_venda)}</Td>
-                  <Td>{v.cliente_nome ?? "—"}</Td>
-                  <Td>{v.forma_pagamento ?? "—"}</Td>
-                  <Td>
-                    <StatusChip label={ROTULO_STATUS[v.status].label} tone={ROTULO_STATUS[v.status].tone} />
-                  </Td>
-                  <Td align="right" mono>
-                    {formatBRL(v.total)}
-                  </Td>
-                  <Td align="right" mono>
-                    <span className={v.status === "cancelada" ? "text-text-tertiary" : ""}>{formatBRL(v.lucro)}</span>
-                  </Td>
-                  <Td align="right">
-                    <RowMenu
-                      actions={[
-                        { label: "Ver detalhes", onClick: () => setDetalhe(v) },
-                        ...(v.status === "cancelada"
-                          ? []
-                          : [
-                              { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
-                              { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
-                              { label: "Comprovante em PDF", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
-                              { label: "Editar", onClick: () => setEditando(v) },
-                              { label: "Cancelar venda", onClick: () => cancelar(v), destructive: true },
-                            ]),
-                      ]}
-                    />
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-
-      <Modal
-        open={!!detalhe}
-        onClose={() => setDetalhe(null)}
-        title={detalhe ? `Venda ${detalhe.numero}` : ""}
-        width="max-w-lg"
-      >
-        {detalhe && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm text-text-secondary">
-                {new Date(detalhe.data_venda).toLocaleString("pt-BR")}
-                {detalhe.cliente_nome ? ` · ${detalhe.cliente_nome}` : ""}
-              </div>
-              <StatusChip label={ROTULO_STATUS[detalhe.status].label} tone={ROTULO_STATUS[detalhe.status].tone} />
-            </div>
-
-            <div className="divide-y divide-border border-y border-border mb-4">
-              {detalhe.venda_itens.map((item, i) => (
-                <div key={`${item.produto_sku ?? item.produto_nome}-${i}`} className="py-2.5 flex justify-between gap-3 text-sm">
-                  <div className="min-w-0">
-                    <div className="text-text-primary">{item.produto_nome}</div>
-                    <div className="text-xs text-text-tertiary font-mono">
-                      {item.quantidade} × {formatBRL(item.preco_unitario)}
-                    </div>
-                  </div>
-                  <div className="font-mono text-text-primary shrink-0">
-                    {formatBRL(item.preco_unitario * item.quantidade)}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between text-text-secondary">
-                <span>Subtotal</span>
-                <span className="font-mono">{formatBRL(detalhe.subtotal)}</span>
-              </div>
-              {detalhe.desconto > 0 && (
-                <div className="flex justify-between text-negative">
-                  <span>Desconto</span>
-                  <span className="font-mono">− {formatBRL(detalhe.desconto)}</span>
-                </div>
-              )}
-              {detalhe.valor_entrega > 0 && (
-                <div className="flex justify-between text-text-secondary">
-                  <span>Entrega</span>
-                  <span className="font-mono">{formatBRL(detalhe.valor_entrega)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-text-primary font-semibold pt-1">
-                <span>Total</span>
-                <span className="font-mono">{formatBRL(detalhe.total)}</span>
-              </div>
-              <div className="flex justify-between text-text-secondary pt-2 border-t border-border mt-2">
-                <span>Custo da mercadoria</span>
-                <span className="font-mono">{formatBRL(detalhe.custo_total)}</span>
-              </div>
-              <div className="flex justify-between text-positive font-medium">
-                <span>Lucro</span>
-                <span className="font-mono">{formatBRL(detalhe.lucro)}</span>
-              </div>
-            </div>
-
-            {detalhe.observacao && (
-              <p className="text-sm text-text-secondary mt-4 pt-3 border-t border-border whitespace-pre-wrap">
-                {detalhe.observacao}
-              </p>
+          <Card padding="nenhum" className="overflow-visible">
+            {filtradas.length === 0 ? (
+              <EmptyState
+                icon={Receipt}
+                title={aba === "abertas" ? "Nada em aberto" : "Nenhuma venda aqui"}
+                description={aba === "abertas" ? "Vendas em separação, enviadas ou no fiado aparecem aqui." : `A tela carrega os últimos ${diasJanela} dias.`}
+              />
+            ) : (
+              <Table>
+                <Thead>
+                  <tr>
+                    <Th>Nº</Th>
+                    <Th>Data</Th>
+                    <Th>Cliente</Th>
+                    <Th>Origem</Th>
+                    <Th>Envio</Th>
+                    <Th>Pagamento</Th>
+                    <Th align="right">Valor</Th>
+                    <Th align="right"></Th>
+                  </tr>
+                </Thead>
+                <tbody>
+                  {filtradas.map((v) => {
+                    const org = origemVenda(v, vendasDoCatalogo);
+                    return (
+                      <Tr key={v.id}>
+                        <Td mono className="text-accent cursor-pointer" onClick={() => setDetalhe(v)}>
+                          {v.numero}
+                        </Td>
+                        <Td>{formatarDataCurta(v.data_venda)}</Td>
+                        <Td>
+                          <div className="max-w-[12rem] truncate">{v.cliente_nome ?? "—"}</div>
+                          <div className="text-[11px] text-text-tertiary truncate max-w-[12rem]">{v.venda_itens.map((i) => `${i.quantidade}× ${i.produto_nome}`).join(", ")}</div>
+                        </Td>
+                        <Td>
+                          <span className={`text-[11px] font-medium rounded px-1.5 py-0.5 ${org === "catalogo" ? "bg-accent-soft text-accent" : "bg-surface-2 text-text-secondary"}`}>{ROTULO_ORIGEM[org]}</span>
+                        </Td>
+                        <Td>
+                          {v.status === "cancelada" ? (
+                            <span className="text-text-tertiary">—</span>
+                          ) : (
+                            <select
+                              aria-label={`Envio da venda ${v.numero}`}
+                              className="bg-transparent border border-border rounded-md px-2 py-1 text-xs"
+                              value={v.status_envio ?? ""}
+                              onChange={(e) => mudarEnvio(v, (e.target.value || null) as StatusEnvio)}
+                            >
+                              <option value="">Sem envio</option>
+                              <option value="separacao">Em separação</option>
+                              <option value="enviado">Enviado</option>
+                              <option value="concluido">Entregue</option>
+                            </select>
+                          )}
+                        </Td>
+                        <Td>
+                          <StatusChip label={ROTULO_PAGTO[v.status]} tone={TOM_PAGTO[v.status]} />
+                          <div className="text-[11px] text-text-tertiary">{v.forma_pagamento ?? ""}</div>
+                        </Td>
+                        <Td align="right">
+                          <ValorComLucro valor={v.total} d={decomporVenda(v)} apagado={v.status === "cancelada"} />
+                        </Td>
+                        <Td align="right">
+                          <RowMenu
+                            actions={[
+                              { label: "Ver detalhes", onClick: () => setDetalhe(v) },
+                              ...(v.status === "cancelada"
+                                ? []
+                                : [
+                                    { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
+                                    { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
+                                    { label: "Comprovante em PDF", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
+                                    { label: "Editar", onClick: () => setEditando(v) },
+                                    { label: "Cancelar venda", onClick: () => cancelar(v), destructive: true },
+                                  ]),
+                            ]}
+                          />
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
             )}
+          </Card>
+        </>
+      )}
 
-            {detalhe.status !== "cancelada" && (
-              <div className="flex flex-col gap-2 mt-5">
-                <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => window.open(comprovanteLink(detalhe), "_blank")}
-                >
-                  <MessageCircle size={14} />
-                  Enviar comprovante
-                </Button>
-                <div className="flex gap-2">
-                  <Button variant="secondary" className="flex-1" onClick={() => comprovanteEmImagem(detalhe)}>
-                    Imagem
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={() => window.open(`/vendas/${detalhe.id}/comprovante`, "_blank")}
-                  >
-                    PDF
-                  </Button>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="secondary" className="flex-1" onClick={() => setEditando(detalhe)}>
-                    Editar
-                  </Button>
-                  <Button variant="destructive" className="flex-1" onClick={() => cancelar(detalhe)} loading={pending}>
-                    Cancelar venda
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
+      {detalhe && (
+        <DetalheVendaModal
+          venda={detalhe}
+          onClose={() => setDetalhe(null)}
+          onWhatsapp={() => window.open(comprovanteLink(detalhe), "_blank")}
+          onImagem={() => comprovanteEmImagem(detalhe)}
+          onEditar={() => setEditando(detalhe)}
+          onCancelar={() => cancelar(detalhe)}
+          cancelando={pending}
+        />
+      )}
 
       {/*
-        `key` no componente externo, não no `<Modal>` de dentro: os `useState` de
-        `EditarVendaModal` leem `venda` na montagem, que é `null` da primeira vez. Sem isso
-        o modal abria com desconto e entrega zerados e salvar gravava esses zeros.
+        `key` no componente externo: os `useState` de `EditarVendaModal` leem `venda` na
+        montagem. Sem isso o modal abria com desconto e entrega zerados.
       */}
       <EditarVendaModal
         key={editando?.id ?? "fechado"}
@@ -453,6 +396,18 @@ export function VendasClient({
           setDetalhe(null);
         }}
       />
+      {exportando && (
+        <ExportarModal
+          aberto
+          onClose={() => setExportando(false)}
+          titulo="Exportar vendas"
+          escopos={[
+            { id: "filtrados", rotulo: "Desta lista", quantidade: aba === "pedidos" ? 0 : filtradas.length },
+            { id: "todos", rotulo: `Últimos ${diasJanela} dias`, quantidade: vendas.length },
+          ]}
+          montar={tabela}
+        />
+      )}
       {ConfirmDialog}
       {comprovanteOculto}
     </>
