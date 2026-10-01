@@ -35,7 +35,7 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { AbaConta } from "@/components/configuracoes/AbaConta";
 import { AbaIA, type IaCadastrada } from "@/components/configuracoes/AbaIA";
 import type { EstadoTeste } from "@/lib/ia/teste";
-import { AbaCanais } from "@/components/configuracoes/AbaCanais";
+import { AbaCanais, type DadosMarketplaceCanais } from "@/components/configuracoes/AbaCanais";
 import { AbaDados } from "@/components/configuracoes/AbaDados";
 import { ContaModal, FormaPagamentoModal, ArmazemModal, ROTULO_TIPO_FORMA } from "@/components/configuracoes/ModaisCadastro";
 
@@ -107,7 +107,10 @@ export function ConfiguracoesClient({
   cofreOk,
   iaSistemaOk,
   teste,
+  marketplace,
 }: {
+  /** Conexões da API por loja e o estado da integração (Canais de venda). */
+  marketplace: DadosMarketplaceCanais;
   categorias: Categoria[];
   canais: Canal[];
   lojas: Loja[];
@@ -227,7 +230,7 @@ export function ConfiguracoesClient({
       <Tabs tabs={ABAS_TABS} value={aba} onChange={setAba} className="mb-6" />
 
       <TabPanel key={aba} tabValue={aba}>
-      {aba === "Canais de Venda" && <AbaCanais canais={canais} lojas={lojas} />}
+      {aba === "Canais de Venda" && <AbaCanais canais={canais} lojas={lojas} marketplace={marketplace} />}
 
       {aba === "Categorias" && (
         <Card>

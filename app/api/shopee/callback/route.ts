@@ -17,9 +17,11 @@ export async function GET(req: NextRequest) {
   const loja = p.get("loja") ?? "";
   const code = p.get("code") ?? "";
   const shopId = Number(p.get("shop_id"));
+  const volta = req.cookies.get("shopee_volta")?.value === "/configuracoes" ? "/configuracoes" : "/vendas";
   const destino = (s: string) => {
-    const res = NextResponse.redirect(new URL(`/vendas?shopee=${s}`, req.url));
+    const res = NextResponse.redirect(new URL(`${volta}?shopee=${s}`, req.url));
     res.cookies.delete({ name: "shopee_estado", path: "/api/shopee" });
+    res.cookies.delete({ name: "shopee_volta", path: "/api/shopee" });
     return res;
   };
 

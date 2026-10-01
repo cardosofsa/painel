@@ -1,7 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Store } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { PlugZap, Store } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { ConectarMarketplace } from "@/components/configuracoes/ConectarMarketplace";
+import { ConexaoLoja } from "@/components/configuracoes/ConexaoLoja";
+import { marcaDoNome } from "@/lib/marcas";
+import type { ConexaoResumo } from "@/lib/marketplace/pedidos-servidor";
 import { Card } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
@@ -37,8 +43,30 @@ function textoLimites(c: Canal): string {
  * Aba "Canais de Venda": canais, lojas, faixas de comissão e limites de texto. Saiu de
  * `ConfiguracoesClient` (582 linhas) com o próprio estado e os próprios modais.
  */
-export function AbaCanais({ canais, lojas }: { canais: Canal[]; lojas: Loja[] }) {
+export interface DadosMarketplaceCanais {
+  conexoes: ConexaoResumo[];
+  /** Variáveis da API que faltam no servidor (só nomes). */
+  faltando: string[];
+  ambiente: "teste" | "producao";
+  /** `?shopee=` da volta da autorização. */
+  aviso: string | null;
+}
+
+const AVISO_SHOPEE: Record<string, [string, "ok" | "erro"]> = {
+  conectada: ["Loja conectada à Shopee. Os pedidos passam a sincronizar sozinhos; use Sincronizar para puxar agora.", "ok"],
+  erro: ["Não foi possível conectar a loja à Shopee. Tente de novo.", "erro"],
+  desligada: ["A integração com a API da Shopee não está ligada neste servidor.", "erro"],
+};
+
+export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; lojas: Loja[]; marketplace: DadosMarketplaceCanais }) {
   const [pending, startTransition] = useTransition();
+  const [conectando, setConectando] = useState(false);
+  const apiLigada = marketplace.faltando.length === 0;
+
+  useEffect(() => {
+    const a = marketplace.aviso ? AVISO_SHOPEE[marketplace.aviso] : null;
+    if (a) (a[1] === "ok" ? toast.success : toast.error)(a[0]);
+  }, [marketplace.aviso]);
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalLoja, setModalLoja] = useState<{ loja: Loja | null; canal: Canal } | null>(null);
   const [modalFaixas, setModalFaixas] = useState<Canal | null>(null);
@@ -127,6 +155,19 @@ export function AbaCanais({ canais, lojas }: { canais: Canal[]; lojas: Loja[] })
 
   return (
     <>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <p className="text-sm text-text-secondary max-w-xl">
+          Canais, lojas e taxas de cada plataforma. As taxas mudam com frequência: edite aqui sempre que a plataforma mudar a tabela.
+        </p>
+        <Button variant="primary" onClick={() => setConectando(true)}>
+          <PlugZap size={14} /> Conectar marketplace
+        </Button>
+      </div>
+      {!apiLigada && canais.some((c) => marcaDoNome(c.nome) === "shopee") && (
+        <p className="text-xs text-text-tertiary mb-4 rounded-md border border-border bg-surface-1 px-3 py-2">
+          API da Shopee desligada neste servidor: falta <span className="font-mono">{marketplace.faltando.join(", ")}</span> na Vercel (e um Redeploy depois). A importação por planilha continua valendo.
+        </p>
+      )}
       <div className="space-y-4">
         {canais.map((c) => {
           const Icone = ICONES_CANAL[c.icone] ?? Store;
@@ -171,11 +212,14 @@ export function AbaCanais({ canais, lojas }: { canais: Canal[]; lojas: Loja[] })
                 </div>
               </div>
               <div className="space-y-2">
+                {marcaDoNome(c.nome) === "shopee" && apiLigada && marketplace.ambiente === "teste" && (
+                  <div className="text-[11px] text-text-tertiary">API em modo Sandbox (teste)</div>
+                )}
                 {lojasDoCanal.map((l) => {
                   const comissaoEfetiva = l.comissao_pct ?? c.comissao_pct_padrao;
                   const taxaFixaEfetiva = l.taxa_fixa ?? c.taxa_fixa_padrao;
                   return (
-                    <div key={l.id} className="flex items-center justify-between border border-border rounded-md p-3">
+                    <div key={l.id} className="flex flex-wrap items-center justify-between gap-3 border border-border rounded-md p-3">
                       <div className="flex items-center gap-3">
                         {l.logo_url ? (
                           <ImagemStorage src={l.logo_url} alt={l.nome} className="w-8 h-8 rounded-md object-cover border border-border" />
@@ -217,12 +261,24 @@ export function AbaCanais({ canais, lojas }: { canais: Canal[]; lojas: Loja[] })
                           </div>
                         </div>
                       </div>
-                      <RowMenu
-                        actions={[
-                          { label: "Editar", onClick: () => setModalLoja({ loja: l, canal: c }) },
-                          { label: "Remover", onClick: () => removerLojaHandler(l), destructive: true },
-                        ]}
-                      />
+                      <div className="flex flex-wrap items-center gap-2 justify-end">
+                        {marcaDoNome(c.nome) === "shopee" && (
+                          <ConexaoLoja lojaId={l.id} conexao={marketplace.conexoes.find((x) => x.loja_id === l.id)} apiLigada={apiLigada} />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => (c.tipo_taxa === "faixas" ? setModalFaixas(c) : setModalLoja({ loja: l, canal: c }))}
+                          className="text-xs text-accent hover:underline"
+                        >
+                          Editar taxas
+                        </button>
+                        <RowMenu
+                          actions={[
+                            { label: "Editar", onClick: () => setModalLoja({ loja: l, canal: c }) },
+                            { label: "Remover", onClick: () => removerLojaHandler(l), destructive: true },
+                          ]}
+                        />
+                      </div>
                     </div>
                   );
                 })}
@@ -268,6 +324,7 @@ export function AbaCanais({ canais, lojas }: { canais: Canal[]; lojas: Loja[] })
         salvando={pending}
       />
       <CanalModal open={modalCanal} onClose={() => setModalCanal(false)} onSave={salvarCanalHandler} salvando={pending} />
+      {conectando && <ConectarMarketplace onClose={() => setConectando(false)} canais={canais} lojas={lojas} faltando={marketplace.faltando} />}
       {ConfirmDialog}
     </>
   );

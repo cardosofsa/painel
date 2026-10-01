@@ -11,19 +11,22 @@ import { cofreDisponivel } from "@/lib/ia/cofre";
 export async function GET(req: NextRequest) {
   const loja = req.nextUrl.searchParams.get("loja") ?? "";
   const c = credenciaisShopee();
-  if (!c || !cofreDisponivel()) return NextResponse.redirect(new URL("/vendas?shopee=desligada", req.url));
-  if (!/^[0-9a-f-]{36}$/i.test(loja)) return NextResponse.redirect(new URL("/vendas?shopee=erro", req.url));
+  // Para onde voltar depois da autorização (só os dois destinos conhecidos).
+  const volta = req.nextUrl.searchParams.get("volta") === "configuracoes" ? "/configuracoes" : "/vendas";
+  if (!c || !cofreDisponivel()) return NextResponse.redirect(new URL(`${volta}?shopee=desligada`, req.url));
+  if (!/^[0-9a-f-]{36}$/i.test(loja)) return NextResponse.redirect(new URL(`${volta}?shopee=erro`, req.url));
 
   const supabase = await createClient();
   const { data } = await supabase.from("lojas_canal").select("id").eq("id", loja).maybeSingle();
-  if (!data) return NextResponse.redirect(new URL("/vendas?shopee=erro", req.url));
+  if (!data) return NextResponse.redirect(new URL(`${volta}?shopee=erro`, req.url));
 
   const estado = randomBytes(16).toString("hex");
-  const volta = new URL("/api/shopee/callback", req.url);
-  volta.searchParams.set("loja", loja);
-  volta.searchParams.set("estado", estado);
+  const retorno = new URL("/api/shopee/callback", req.url);
+  retorno.searchParams.set("loja", loja);
+  retorno.searchParams.set("estado", estado);
 
-  const res = NextResponse.redirect(urlAutorizacao(c, volta.toString()));
+  const res = NextResponse.redirect(urlAutorizacao(c, retorno.toString()));
   res.cookies.set("shopee_estado", estado, { httpOnly: true, secure: true, sameSite: "lax", maxAge: 600, path: "/api/shopee" });
+  res.cookies.set("shopee_volta", volta, { httpOnly: true, secure: true, sameSite: "lax", maxAge: 600, path: "/api/shopee" });
   return res;
 }
