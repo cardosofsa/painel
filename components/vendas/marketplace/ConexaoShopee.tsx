@@ -24,7 +24,9 @@ export function ConexaoShopee({
   conexoes,
   aviso,
   faltando,
+  ambiente,
 }: {
+  ambiente: "teste" | "producao";
   lojas: LojaMarketplace[];
   conexoes: ConexaoResumo[];
   aviso: string | null;
@@ -42,6 +44,7 @@ export function ConexaoShopee({
   const titulo = (
     <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-2">
       <PlugZap size={15} className="text-accent" /> API oficial da Shopee
+      {ambiente === "teste" && <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-surface-2 text-text-secondary">Sandbox (teste)</span>}
     </div>
   );
 

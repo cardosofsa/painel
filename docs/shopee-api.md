@@ -29,7 +29,8 @@ O código está pronto, mas desligado. Para ligar:
    | `SHOPEE_PARTNER_ID` | o Partner ID (só números) |
    | `SHOPEE_PARTNER_KEY` | a Partner Key (**nunca** cole em chat) |
    | `IA_CHAVE_COFRE` | já existe, se você usa IA própria. Senão, 32 bytes em base64: `openssl rand -base64 32` |
-   | `SHOPEE_AMBIENTE` | opcional: `teste` para o sandbox |
+   | `SHOPEE_AMBIENTE` | opcional: `teste` para o Sandbox v2 (`openplatform.sandbox.test-stable.shopee.sg`) |
+   | `SHOPEE_HOST` | opcional: troca o endereço da API, se a Shopee mudar de novo (ex.: `https://partner.test-stable.shopeemobile.com`, o sandbox antigo) |
 
    Para a sincronização diária automática, adicione também:
 
@@ -47,3 +48,12 @@ O código está pronto, mas desligado. Para ligar:
 - A autorização usa um `estado` aleatório em cookie, contra CSRF.
 - A rota do cron só roda com `Authorization: Bearer <CRON_SECRET>`.
 - Sem as variáveis, o quadro da API não aparece e o cron responde 204 sem fazer nada.
+
+### "Wrong sign" ao clicar em Conectar
+
+A Shopee recusou a assinatura. Confira, nesta ordem:
+
+1. **A chave foi copiada mascarada?** No app, clique no olho ao lado de *Test API Partner Key* antes de copiar. Cole de novo na Vercel, sem espaços.
+2. **ID e chave são do mesmo ambiente?** Test Partner_id com Test Key e `SHOPEE_AMBIENTE=teste`. Ou Live Partner_id com Live Key e sem `SHOPEE_AMBIENTE`.
+3. **Fez o Redeploy** depois de mudar qualquer variável?
+4. Se ainda falhar no sandbox, teste `SHOPEE_HOST=https://partner.test-stable.shopeemobile.com` (o endereço antigo do sandbox) e faça o Redeploy.

@@ -15,7 +15,8 @@ import { createHmac } from "node:crypto";
 import type { PedidoMarketplace, StatusMarketplace } from "./shopee-planilha";
 
 const HOST_PRODUCAO = "https://partner.shopeemobile.com";
-const HOST_TESTE = "https://partner.test-stable.shopeemobile.com";
+/** Sandbox v2 (contas de teste criadas em "Test Account-Sandbox v2" no Console). */
+const HOST_TESTE = "https://openplatform.sandbox.test-stable.shopee.sg";
 
 export interface CredenciaisShopee {
   partnerId: number;
@@ -23,21 +24,39 @@ export interface CredenciaisShopee {
   host: string;
 }
 
+/** Chave copiada com a tela ainda mascarada ("*****"), ou com espaço/quebra no meio. */
+function chaveInvalida(key: string): boolean {
+  return /[*\s]/.test(key) || key.length < 16;
+}
+
+/** `SHOPEE_HOST` (opcional) troca o endereço da API — a Shopee já mudou o do sandbox uma vez. */
+function hostDe(env: Record<string, string | undefined>): string {
+  const proprio = env.SHOPEE_HOST?.trim().replace(/\/+$/, "");
+  if (proprio && /^https:\/\/[a-z0-9.-]+$/i.test(proprio)) return proprio;
+  return env.SHOPEE_AMBIENTE?.trim() === "teste" ? HOST_TESTE : HOST_PRODUCAO;
+}
+
 /** null = integração desligada (sem as variáveis de ambiente). */
 export function credenciaisShopee(env: Record<string, string | undefined> = process.env): CredenciaisShopee | null {
   const id = Number(env.SHOPEE_PARTNER_ID);
   const key = env.SHOPEE_PARTNER_KEY?.trim();
-  if (!Number.isInteger(id) || id <= 0 || !key) return null;
-  return { partnerId: id, partnerKey: key, host: env.SHOPEE_AMBIENTE === "teste" ? HOST_TESTE : HOST_PRODUCAO };
+  if (!Number.isInteger(id) || id <= 0 || !key || chaveInvalida(key)) return null;
+  return { partnerId: id, partnerKey: key, host: hostDe(env) };
 }
 
 /** Quais variáveis da Shopee faltam ou estão inválidas (só os NOMES, nunca os valores). */
 export function faltandoShopee(env: Record<string, string | undefined> = process.env): string[] {
   const id = Number(env.SHOPEE_PARTNER_ID);
+  const key = env.SHOPEE_PARTNER_KEY?.trim() ?? "";
   return [
     ...(!Number.isInteger(id) || id <= 0 ? ["SHOPEE_PARTNER_ID"] : []),
-    ...(env.SHOPEE_PARTNER_KEY?.trim() ? [] : ["SHOPEE_PARTNER_KEY"]),
+    ...(!key ? ["SHOPEE_PARTNER_KEY"] : chaveInvalida(key) ? ["SHOPEE_PARTNER_KEY (parece mascarada ou com espaço: copie de novo depois de clicar no olho)"] : []),
   ];
+}
+
+/** Ambiente em uso, para a tela dizer se está no sandbox ou na Shopee de verdade. */
+export function ambienteShopee(env: Record<string, string | undefined> = process.env): "teste" | "producao" {
+  return hostDe(env) === HOST_PRODUCAO ? "producao" : "teste";
 }
 
 export function assinar(c: CredenciaisShopee, caminho: string, timestamp: number, accessToken = "", shopId: number | string = ""): string {

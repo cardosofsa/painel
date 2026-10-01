@@ -90,10 +90,12 @@ export function VendasClient({
   produtosMarketplace,
   impostoPct,
   faltandoShopee,
+  ambienteShopee,
   avisoShopee,
 }: {
   /** Variáveis de ambiente que faltam para a API da Shopee (só nomes). */
   faltandoShopee: string[];
+  ambienteShopee: "teste" | "producao";
   avisoShopee: string | null;
   marketplace: DadosMarketplace;
   lojasMarketplace: LojaMarketplace[];
@@ -276,7 +278,7 @@ export function VendasClient({
       {aba === "pedidos" ? (
         <PedidosVitrine pedidos={pedidos} clientes={clientesPdv} contas={contas} formasPagamento={formasPagamentoPdv} pedidoInicial={pedidoInicial} />
       ) : aba === "marketplace" ? (
-        <PedidosMarketplace dados={marketplace} lojas={lojasMarketplace} produtos={produtosMarketplace} impostoPct={impostoPct} faltandoApi={faltandoShopee} aviso={avisoShopee} />
+        <PedidosMarketplace dados={marketplace} lojas={lojasMarketplace} produtos={produtosMarketplace} impostoPct={impostoPct} faltandoApi={faltandoShopee} ambienteApi={ambienteShopee} aviso={avisoShopee} />
       ) : (
         <>
           <BarraFiltros

@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { assinar, credenciaisShopee, faltandoShopee, pedidoDaApi, statusDaApi, ufDoEstado, urlAutorizacao } from "./shopee-api";
+import { ambienteShopee, assinar, credenciaisShopee, faltandoShopee, pedidoDaApi, statusDaApi, ufDoEstado, urlAutorizacao } from "./shopee-api";
 
 const c = { partnerId: 123, partnerKey: "segredo", host: "https://partner.shopeemobile.com" };
 
@@ -9,14 +9,24 @@ describe("credenciaisShopee", () => {
     expect(credenciaisShopee({})).toBeNull();
     expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "abc", SHOPEE_PARTNER_KEY: "k" })).toBeNull();
   });
+  const K = "shpk4f6a0b1c2d3e4f5a6b7c8d9e";
   it("faltandoShopee diz só os nomes do que falta", () => {
     expect(faltandoShopee({})).toEqual(["SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY"]);
     expect(faltandoShopee({ SHOPEE_PARTNER_ID: " 123 ", SHOPEE_PARTNER_KEY: "" })).toEqual(["SHOPEE_PARTNER_KEY"]);
-    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "12a", SHOPEE_PARTNER_KEY: "k" })).toEqual(["SHOPEE_PARTNER_ID"]);
-    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: "k" })).toEqual([]);
+    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "12a", SHOPEE_PARTNER_KEY: K })).toEqual(["SHOPEE_PARTNER_ID"]);
+    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: K })).toEqual([]);
   });
-  it("lê id, chave e ambiente de teste", () => {
-    expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: "k", SHOPEE_AMBIENTE: "teste" })?.host).toContain("test-stable");
+  it("chave copiada mascarada ou com espaço no meio é recusada", () => {
+    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: "********************" })[0]).toMatch(/mascarada/);
+    expect(faltandoShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: "shpk4f6a0b1c 2d3e4f5a6b" })[0]).toMatch(/mascarada/);
+    expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: "****************" })).toBeNull();
+  });
+  it("lê id, chave e ambiente: sandbox v2, produção ou SHOPEE_HOST", () => {
+    expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: K, SHOPEE_AMBIENTE: "teste" })?.host).toBe("https://openplatform.sandbox.test-stable.shopee.sg");
+    expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: ` ${K} ` })?.host).toBe("https://partner.shopeemobile.com");
+    expect(credenciaisShopee({ SHOPEE_PARTNER_ID: "123", SHOPEE_PARTNER_KEY: K, SHOPEE_HOST: "https://outro.shopee.test/" })?.host).toBe("https://outro.shopee.test");
+    expect(ambienteShopee({ SHOPEE_AMBIENTE: "teste" })).toBe("teste");
+    expect(ambienteShopee({})).toBe("producao");
   });
 });
 

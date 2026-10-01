@@ -38,10 +38,12 @@ export function PedidosMarketplace({
   produtos,
   impostoPct,
   faltandoApi,
+  ambienteApi,
   aviso,
 }: {
   /** Variáveis que faltam para a API (vazio = ligada: mostra conectar/sincronizar). */
   faltandoApi: string[];
+  ambienteApi: "teste" | "producao";
   /** `?shopee=` da volta da autorização. */
   aviso: string | null;
   dados: DadosMarketplace;
@@ -101,7 +103,7 @@ export function PedidosMarketplace({
 
   return (
     <>
-      <ConexaoShopee lojas={lojas} conexoes={dados.conexoes} aviso={aviso} faltando={faltandoApi} />
+      <ConexaoShopee lojas={lojas} conexoes={dados.conexoes} aviso={aviso} faltando={faltandoApi} ambiente={ambienteApi} />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex flex-wrap gap-4 text-sm">
           <span className="text-text-secondary">
