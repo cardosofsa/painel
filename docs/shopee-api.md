@@ -57,3 +57,26 @@ A Shopee recusou a assinatura. Confira, nesta ordem:
 2. **ID e chave são do mesmo ambiente?** Test Partner_id com Test Key e `SHOPEE_AMBIENTE=teste`. Ou Live Partner_id com Live Key e sem `SHOPEE_AMBIENTE`.
 3. **Fez o Redeploy** depois de mudar qualquer variável?
 4. Se ainda falhar no sandbox, teste `SHOPEE_HOST=https://partner.test-stable.shopeemobile.com` (o endereço antigo do sandbox) e faça o Redeploy.
+
+## Sincronização automática a cada 15 minutos (Fase 9.6)
+
+O sistema sincroniza sozinho de três jeitos:
+
+1. **Ao abrir Vendas:** se alguma loja conectada estiver há mais de 10 minutos sem sincronizar, puxa em segundo plano.
+2. **A cada 15 minutos:** pelo agendador do Supabase (migração `0048`).
+3. **Uma vez por dia:** pelo cron da Vercel (`vercel.json`), como reserva.
+
+Para ligar o de 15 minutos:
+
+1. Na Vercel, configure `CRON_SECRET` (um texto aleatório longo) e `SUPABASE_SERVICE_ROLE_KEY`, e faça o Redeploy.
+2. No Supabase, em **SQL Editor**, rode uma vez, trocando os valores:
+
+   ```sql
+   select vault.create_secret('https://painel-liard-xi.vercel.app/api/cron/shopee', 'sertao_cron_url');
+   select vault.create_secret('O-MESMO-CRON_SECRET-DA-VERCEL', 'sertao_cron_secret');
+   ```
+
+3. Rode a migração `0048_sincronizacao_automatica.sql`. Se reclamar de `pg_cron` ou `pg_net`, habilite as duas em **Database → Extensions** e rode de novo.
+4. Para conferir, use `select * from cron.job;` (o job é `sertao-shopee-sincronizar`) e `select * from cron.job_run_details order by start_time desc limit 5;`.
+
+O segredo fica no Vault do Supabase, nunca no código.

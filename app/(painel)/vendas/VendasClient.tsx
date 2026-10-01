@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowDownUp, BarChart3, Link2, RefreshCw, ScanBarcode, Search, SlidersHorizontal, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -176,6 +177,24 @@ export function VendasClient({
   const [exportando, setExportando] = useState(false);
   const [vinculando, setVinculando] = useState(false);
 
+  // Sincroniza sozinho ao abrir Vendas se alguma loja conectada está há mais de 10 min sem
+  // sincronizar (o agendador de 15 min cobre o resto). Em segundo plano, sem travar a tela.
+  const router = useRouter();
+  const [sincronizandoSozinho, iniciarAuto] = useTransition();
+  const jaTentou = useRef(false);
+  useEffect(() => {
+    if (jaTentou.current || faltandoShopee.length > 0 || marketplace.conexoes.length === 0) return;
+    const limite = Date.now() - 10 * 60_000;
+    const velha = marketplace.conexoes.some((c) => !c.ultima_sincronizacao || new Date(c.ultima_sincronizacao).getTime() < limite);
+    if (!velha) return;
+    jaTentou.current = true;
+    iniciarAuto(async () => {
+      const r = await sincronizarTodasShopee().catch(() => null);
+      if (r?.ok && r.dado.novos > 0) toast.success(`${r.dado.novos} pedido(s) novo(s) da Shopee.`);
+      if (r?.ok) router.refresh();
+    });
+  }, [faltandoShopee.length, marketplace.conexoes, router]);
+
   useEffect(() => {
     if (avisoShopee === "conectada") toast.success("Loja conectada à Shopee.");
     else if (avisoShopee === "erro") toast.error("Não foi possível conectar a loja à Shopee.");
@@ -314,6 +333,7 @@ export function VendasClient({
     };
   }
 
+  const ultimaSync = marketplace.conexoes.map((c) => c.ultima_sincronizacao).filter((d): d is string => !!d).sort().at(-1) ?? null;
   const nExtras = contarExtras(extras);
   const visiveis = filtrados.slice(0, mostrar);
   const selecionaveis = visiveis.filter((p) => p.editavel && PROXIMA[p.etapa] && p.chave.startsWith("venda:"));
@@ -326,8 +346,13 @@ export function VendasClient({
         title="Vendas"
         actions={
           <>
-            <Button variant="secondary" loading={pending && processando === null} onClick={sincronizar} title="Puxa agora os pedidos das lojas conectadas à API">
-              <RefreshCw size={14} /> Sincronizar pedidos
+            <Button
+              variant="secondary"
+              loading={(pending && processando === null) || sincronizandoSozinho}
+              onClick={sincronizar}
+              title={ultimaSync ? `Última sincronização: ${new Date(ultimaSync).toLocaleString("pt-BR")}` : "Puxa agora os pedidos das lojas conectadas à API"}
+            >
+              <RefreshCw size={14} /> {sincronizandoSozinho ? "Sincronizando…" : "Sincronizar pedidos"}
             </Button>
             <Button variant="secondary" onClick={() => setImpExp(true)}>
               <ArrowDownUp size={14} /> Importar/Exportar
