@@ -105,6 +105,10 @@ export interface PedidoCentral {
   semCusto: boolean;
   /** Só em Para Reservar: o motivo (sub-aba). */
   motivoReserva: MotivoReserva | null;
+  /** 0053: anotações da equipe. Pedido oculto sai das etapas e fica em "Oculto". */
+  tags: string[];
+  observacaoInterna: string | null;
+  oculto: boolean;
   /** A etapa pode ser avançada aqui (pedidos do próprio sistema). */
   editavel: boolean;
 }
@@ -123,6 +127,10 @@ export interface VendaIn {
   logistica?: string | null;
   /** 0052: false = ainda só reservado (baixa ao passar para Imprimir). */
   estoque_baixado?: boolean;
+  /** 0053. */
+  tags?: string[] | null;
+  observacao_interna?: string | null;
+  ocultado_em?: string | null;
   total: number;
   custo_total: number;
   lucro: number;
@@ -167,6 +175,10 @@ export interface PedidoMktIn {
   custo_incompleto: boolean;
   logistica?: string | null;
   prazo_envio?: string | null;
+  /** 0053. */
+  tags?: string[] | null;
+  observacao_interna?: string | null;
+  ocultado_em?: string | null;
   pedidos_marketplace_itens: { sku: string | null; nome: string; variacao: string | null; quantidade: number; preco_unitario: number }[];
 }
 
@@ -250,6 +262,9 @@ export function montarCentral(entrada: {
       prazoEnvio: null,
       semCusto: false,
       motivoReserva: etapa === "reservar" ? "sem_estoque" : null,
+      tags: v.tags ?? [],
+      observacaoInterna: v.observacao_interna ?? null,
+      oculto: !!v.ocultado_em,
       editavel: etapa !== "cancelado",
     });
   }
@@ -284,6 +299,9 @@ export function montarCentral(entrada: {
       prazoEnvio: null,
       semCusto: false,
       motivoReserva: motivo,
+      tags: [],
+      observacaoInterna: null,
+      oculto: false,
       editavel: true,
     });
   }
@@ -322,6 +340,9 @@ export function montarCentral(entrada: {
       prazoEnvio: p.prazo_envio ?? null,
       semCusto: !cancelado && p.custo_incompleto,
       motivoReserva: naoMapeado ? "nao_mapeado" : null,
+      tags: p.tags ?? [],
+      observacaoInterna: p.observacao_interna ?? null,
+      oculto: !!p.ocultado_em,
       editavel: false,
     });
   }
@@ -356,6 +377,8 @@ export interface FiltrosCentral {
   valorMax: number | null;
   soPrejuizo: boolean;
   soSemCusto: boolean;
+  /** Só pedidos com esta tag (0053). */
+  tag: string;
 }
 
 export const FILTROS_VAZIOS: Omit<FiltrosCentral, "periodo"> = {
@@ -368,6 +391,7 @@ export const FILTROS_VAZIOS: Omit<FiltrosCentral, "periodo"> = {
   valorMax: null,
   soPrejuizo: false,
   soSemCusto: false,
+  tag: "",
 };
 
 /** Chave do filtro de canais: "pdv", "catalogo:<nome>" (ou "catalogo") e "loja:<id>". */
@@ -400,6 +424,7 @@ function passaFiltros(p: PedidoCentral, f: FiltrosCentral): boolean {
   if (f.valorMax != null && p.total > f.valorMax) return false;
   if (f.soPrejuizo && !(p.lucro < 0)) return false;
   if (f.soSemCusto && !p.semCusto) return false;
+  if (f.tag && !p.tags.some((t) => t.toLowerCase() === f.tag.toLowerCase())) return false;
   const t = normal(f.busca.trim());
   if (t) {
     const alvo = normal([p.numero, p.numeroExterno, p.cliente, p.loja, ...p.itens.flatMap((i) => [i.nome, i.sku])].filter(Boolean).join(" "));
@@ -419,23 +444,37 @@ function noRecorte(p: PedidoCentral, f: FiltrosCentral): boolean {
   return PENDENTES.has(p.etapa) || noPeriodo(p.data, f.periodo);
 }
 
-export function filtrarCentral(lista: PedidoCentral[], f: FiltrosCentral, etapa: Etapa | "todos"): PedidoCentral[] {
-  return lista.filter((p) => (etapa === "todos" || p.etapa === etapa) && noRecorte(p, f) && passaFiltros(p, f));
+/** "oculto" lista só os ocultos (de qualquer data); as outras abas nunca mostram oculto. */
+export function filtrarCentral(lista: PedidoCentral[], f: FiltrosCentral, etapa: Etapa | "todos" | "oculto"): PedidoCentral[] {
+  if (etapa === "oculto") return lista.filter((p) => p.oculto && passaFiltros(p, f));
+  return lista.filter((p) => !p.oculto && (etapa === "todos" || p.etapa === etapa) && noRecorte(p, f) && passaFiltros(p, f));
 }
 
-export function contarEtapas(lista: PedidoCentral[], f: FiltrosCentral): Record<Etapa | "todos", number> {
-  const c = Object.fromEntries([...ETAPAS.map((e) => [e.id, 0]), ["todos", 0]]) as Record<Etapa | "todos", number>;
+export function contarEtapas(lista: PedidoCentral[], f: FiltrosCentral): Record<Etapa | "todos" | "oculto", number> {
+  const c = Object.fromEntries([...ETAPAS.map((e) => [e.id, 0]), ["todos", 0], ["oculto", 0]]) as Record<Etapa | "todos" | "oculto", number>;
   for (const p of lista) {
-    if (!noRecorte(p, f) || !passaFiltros(p, f)) continue;
+    if (!passaFiltros(p, f)) continue;
+    if (p.oculto) {
+      c.oculto++;
+      continue;
+    }
+    if (!noRecorte(p, f)) continue;
     c[p.etapa]++;
     c.todos++;
   }
   return c;
 }
 
+/** Tags em uso (opções do filtro). */
+export function tagsEmUso(lista: PedidoCentral[]): string[] {
+  const m = new Map<string, string>();
+  for (const p of lista) for (const t of p.tags) if (!m.has(t.toLowerCase())) m.set(t.toLowerCase(), t);
+  return [...m.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
 /** Indicadores do período (só pedidos válidos: sem cancelados e sem pedido a confirmar). */
 export function indicadores(lista: PedidoCentral[], f: FiltrosCentral) {
-  const validos = lista.filter((p) => p.etapa !== "cancelado" && p.etapa !== "pagamento" && !p.chave.startsWith("catalogo:") && noPeriodo(p.data, f.periodo) && passaFiltros(p, f));
+  const validos = lista.filter((p) => !p.oculto && p.etapa !== "cancelado" && p.etapa !== "pagamento" && !p.chave.startsWith("catalogo:") && noPeriodo(p.data, f.periodo) && passaFiltros(p, f));
   const valor = validos.reduce((s, p) => s + p.total, 0);
   const lucro = validos.reduce((s, p) => s + p.lucro, 0);
   return { pedidos: validos.length, valor, lucro, margem: valor > 0 ? lucro / valor : 0, ticket: validos.length ? valor / validos.length : 0 };

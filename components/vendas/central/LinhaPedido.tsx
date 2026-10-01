@@ -1,6 +1,7 @@
 "use client";
 
-import { Lock, Store } from "lucide-react";
+import { Lock, MessageSquareText, Store } from "lucide-react";
+import { TagPedido } from "./TagPedido";
 import { Button } from "@/components/ui/Button";
 import { RowMenu, type RowMenuAction } from "@/components/ui/RowMenu";
 import { IconeMarca } from "@/components/ui/IconeMarca";
@@ -64,7 +65,7 @@ export function LinhaPedido({
       {/* Cabeçalho: nº e canal/loja */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border bg-surface-2/50 rounded-t-lg">
         <div className="flex items-center gap-2 min-w-0">
-          {p.editavel && p.chave.startsWith("venda:") && (
+          {!p.chave.startsWith("catalogo:") && (
             <input type="checkbox" aria-label={`Selecionar ${p.numero}`} checked={selecionado} onChange={(e) => onSelecionar(e.target.checked)} />
           )}
           <button type="button" onClick={onAbrir} className="font-mono text-sm font-semibold text-accent hover:underline">
@@ -73,6 +74,14 @@ export function LinhaPedido({
           {p.numeroExterno && p.numeroExterno !== p.numero && <span className="text-[11px] font-mono text-text-tertiary">pedido {p.numeroExterno}</span>}
           {p.etapa === "emitir" && <span className="text-[10px] rounded bg-surface-2 border border-border px-1.5 py-0.5 text-text-tertiary">NF-e não emitida</span>}
           {p.semCusto && <span className="text-[10px] rounded bg-negative-soft text-negative px-1.5 py-0.5">sem custo</span>}
+          {p.tags.map((t) => (
+            <TagPedido key={t} tag={t} />
+          ))}
+          {p.observacaoInterna && (
+            <span title={p.observacaoInterna} className="inline-flex items-center gap-1 text-[11px] text-text-secondary max-w-[16rem] truncate">
+              <MessageSquareText size={12} className="shrink-0 text-accent" /> {p.observacaoInterna}
+            </span>
+          )}
         </div>
         <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary min-w-0">
           <span className="truncate max-w-[14rem]">{nomeCanal}</span>
@@ -125,7 +134,7 @@ export function LinhaPedido({
 
         <div className="min-w-0">
           {p.logisticaFixa ? (
-            <span className="inline-flex items-center gap-1 text-xs text-text-primary" title="Definida pela plataforma">
+            <span className="flex min-w-0 items-center gap-1 text-xs text-text-primary" title={p.logistica ?? "Definida pela plataforma"}>
               <Lock size={11} className="text-text-tertiary shrink-0" /> <span className="truncate">{p.logistica ?? "Envio da plataforma"}</span>
             </span>
           ) : p.chave.startsWith("venda:") && !cancelado ? (
@@ -149,7 +158,7 @@ export function LinhaPedido({
         </div>
 
         <div className="col-span-2 md:col-span-1 flex md:flex-col items-center md:items-end justify-between gap-2">
-          <span className={`text-xs font-medium ${TOM_ETAPA[p.etapa]}`}>
+          <span className={`text-xs font-medium whitespace-nowrap ${TOM_ETAPA[p.etapa]}`}>
             {ROTULO_ETAPA[p.etapa]}
             {p.motivoReserva ? ` · ${ROTULO_MOTIVO[p.motivoReserva]}` : ""}
           </span>

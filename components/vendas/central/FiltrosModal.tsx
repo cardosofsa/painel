@@ -22,7 +22,8 @@ export function contarExtras(f: FiltrosExtras): number {
     (f.uf ? 1 : 0) +
     (f.valorMin != null || f.valorMax != null ? 1 : 0) +
     (f.soPrejuizo ? 1 : 0) +
-    (f.soSemCusto ? 1 : 0)
+    (f.soSemCusto ? 1 : 0) +
+    (f.tag ? 1 : 0)
   );
 }
 
@@ -33,7 +34,9 @@ export function FiltrosModal({
   onClose,
   ufs,
   logisticas,
+  tags = [],
 }: {
+  tags?: string[];
   inicial: FiltrosExtras;
   onAplicar: (f: FiltrosExtras) => void;
   onClose: () => void;
@@ -42,7 +45,7 @@ export function FiltrosModal({
 }) {
   const [f, setF] = useState<FiltrosExtras>(inicial);
   const num = (v: string) => (v.trim() === "" ? null : Math.max(0, Number(v.replace(",", ".")) || 0));
-  const vazio = { pagamento: FILTROS_VAZIOS.pagamento, logistica: "", uf: "", valorMin: null, valorMax: null, soPrejuizo: false, soSemCusto: false };
+  const vazio = { pagamento: FILTROS_VAZIOS.pagamento, logistica: "", uf: "", valorMin: null, valorMax: null, soPrejuizo: false, soSemCusto: false, tag: "" };
 
   return (
     <Modal open onClose={onClose} title="Filtrar pedidos" width="max-w-md">
@@ -92,6 +95,18 @@ export function FiltrosModal({
           <input className={inputClass} inputMode="decimal" value={f.valorMax ?? ""} onChange={(e) => setF((x) => ({ ...x, valorMax: num(e.target.value) }))} />
         </FormField>
       </div>
+      {tags.length > 0 && (
+        <FormField label="Tag">
+          <select className={inputClass} value={f.tag} onChange={(e) => setF((x) => ({ ...x, tag: e.target.value }))}>
+            <option value="">Todas</option>
+            {tags.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
       <div className="space-y-2 mb-4">
         <label className="flex items-center gap-2 text-sm text-text-secondary">
           <input type="checkbox" checked={f.soPrejuizo} onChange={(e) => setF((x) => ({ ...x, soPrejuizo: e.target.checked }))} /> Só pedidos com prejuízo

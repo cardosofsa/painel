@@ -6,8 +6,20 @@ import { ETAPAS, type Etapa } from "@/lib/pedidos-central";
  * Menu de etapas com contagem (como no ERP): coluna à esquerda no computador, barra
  * rolável no celular. "Aguardando pagamento" só aparece quando há algum.
  */
-export function MenuEtapas({ valor, onChange, contagem }: { valor: Etapa | "todos"; onChange: (e: Etapa | "todos") => void; contagem: Record<Etapa | "todos", number> }) {
-  const itens = [...ETAPAS.filter((e) => e.id !== "pagamento" || contagem.pagamento > 0), { id: "todos" as const, rotulo: "Todos", pendente: false }];
+export function MenuEtapas({
+  valor,
+  onChange,
+  contagem,
+}: {
+  valor: Etapa | "todos" | "oculto";
+  onChange: (e: Etapa | "todos" | "oculto") => void;
+  contagem: Record<Etapa | "todos" | "oculto", number>;
+}) {
+  const itens = [
+    ...ETAPAS.filter((e) => e.id !== "pagamento" || contagem.pagamento > 0),
+    { id: "todos" as const, rotulo: "Todos", pendente: false },
+    ...(contagem.oculto > 0 || valor === "oculto" ? [{ id: "oculto" as const, rotulo: "Oculto", pendente: false }] : []),
+  ];
   return (
     <nav aria-label="Etapas dos pedidos" className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible -mx-4 px-4 lg:mx-0 lg:px-0 pb-1 lg:pb-0">
       {itens.map((e) => {

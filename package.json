@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:sql": "node scripts/sql/reserva.mjs"
+    "test:sql": "node scripts/sql/reserva.mjs && node scripts/sql/anotacoes.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

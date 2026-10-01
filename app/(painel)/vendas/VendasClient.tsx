@@ -23,6 +23,7 @@ import {
   indicadores,
   montarCentral,
   opcoesFiltro,
+  tagsEmUso,
   ANTERIOR,
   PROXIMA,
   ROTULO_ETAPA,
@@ -54,6 +55,8 @@ import { PedidoCatalogoModal } from "@/components/vendas/central/PedidoCatalogoM
 import { DetalheMarketplaceModal } from "@/components/vendas/central/DetalheMarketplaceModal";
 import { VincularAnunciosModal } from "@/components/vendas/central/VincularAnunciosModal";
 import { ImportarExportarModal } from "@/components/vendas/central/ImportarExportarModal";
+import { AcoesMassa } from "@/components/vendas/central/AcoesMassa";
+import { AnotarModal } from "@/components/vendas/central/AnotarModal";
 import { ImportarShopeeModal, type LojaMarketplace, type ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
 
 export interface VendaItem {
@@ -98,6 +101,7 @@ const EXTRAS_VAZIOS: FiltrosExtras = {
   valorMax: null,
   soPrejuizo: false,
   soSemCusto: false,
+  tag: "",
 };
 
 /**
@@ -164,7 +168,7 @@ export function VendasClient({
   const [extras, setExtras] = useState<FiltrosExtras>(EXTRAS_VAZIOS);
   const filtros: FiltrosCentral = useMemo(() => ({ periodo, canais, busca, ...extras }), [periodo, canais, busca, extras]);
   const contagem = useMemo(() => contarEtapas(lista, filtros), [lista, filtros]);
-  const [etapa, setEtapa] = useState<Etapa | "todos">(() => {
+  const [etapa, setEtapa] = useState<Etapa | "todos" | "oculto">(() => {
     const c = contarEtapas(lista, { ...FILTROS_VAZIOS, periodo: periodoDoAtalho("hoje") });
     return c.emitir > 0 ? "emitir" : c.imprimir > 0 ? "imprimir" : "todos";
   });
@@ -193,6 +197,8 @@ export function VendasClient({
   const [importando, setImportando] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [vinculando, setVinculando] = useState(false);
+  const [anotando, setAnotando] = useState<{ chaves: string[]; inicial?: { observacao: string | null; tags: string[] } } | null>(null);
+  const tagsUsadas = useMemo(() => tagsEmUso(lista), [lista]);
 
   // Sincroniza sozinho ao abrir Vendas se alguma loja conectada está há mais de 10 min sem
   // sincronizar (o agendador de 15 min cobre o resto). Em segundo plano, sem travar a tela.
@@ -218,7 +224,7 @@ export function VendasClient({
     else if (avisoShopee === "desligada") toast.error("A API da Shopee não está ligada neste servidor.");
   }, [avisoShopee]);
 
-  function mudarEtapa(e: Etapa | "todos") {
+  function mudarEtapa(e: Etapa | "todos" | "oculto") {
     setEtapa(e);
     setMotivo("todos");
     setSelecionados(new Set());
@@ -308,7 +314,8 @@ export function VendasClient({
   }
 
   function acoesDe(p: PedidoCentral) {
-    if (p.origem === "marketplace") return [{ label: "Ver detalhes", onClick: () => abrir(p) }];
+    const anotar = { label: "Observação e tags…", onClick: () => setAnotando({ chaves: [p.chave], inicial: { observacao: p.observacaoInterna, tags: p.tags } }) };
+    if (p.origem === "marketplace") return [{ label: "Ver detalhes", onClick: () => abrir(p) }, anotar];
     if (p.chave.startsWith("catalogo:")) return [{ label: "Abrir pedido", onClick: () => abrir(p) }];
     const v = vendaPorId.get(p.id);
     if (!v) return [];
@@ -316,6 +323,7 @@ export function VendasClient({
     const voltar = ANTERIOR[p.etapa];
     return [
       { label: "Ver detalhes", onClick: () => setDetalhe(v) },
+      anotar,
       { label: "Imprimir (PDF)", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
       { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
       { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
@@ -328,7 +336,7 @@ export function VendasClient({
   function tabela(): TabelaExport<PedidoCentral> {
     return {
       titulo: "Pedidos",
-      subtitulo: `${etapa === "todos" ? "Todas as etapas" : ROTULO_ETAPA[etapa]} · ${rotuloPeriodo(periodo)}`,
+      subtitulo: `${etapa === "todos" ? "Todas as etapas" : etapa === "oculto" ? "Ocultos" : ROTULO_ETAPA[etapa]} · ${rotuloPeriodo(periodo)}`,
       colunas: [
         { rotulo: "Pedido", valor: (p) => p.numero },
         { rotulo: "Data", largura: 18, valor: (p) => new Date(p.data).toLocaleString("pt-BR") },
@@ -353,9 +361,12 @@ export function VendasClient({
   const nomesCatalogos = [...new Set(pedidos.map((p) => p.catalogo_nome).filter((n): n is string => !!n))].sort();
   const nExtras = contarExtras(extras);
   const visiveis = filtrados.slice(0, mostrar);
-  const selecionaveis = visiveis.filter((p) => p.editavel && PROXIMA[p.etapa] && p.chave.startsWith("venda:"));
+  // Seleciona qualquer pedido (menos o do catálogo ainda a aprovar, que é um por vez).
+  const selecionaveis = visiveis.filter((p) => !p.chave.startsWith("catalogo:"));
   const lotes = filtrados.filter((p) => selecionados.has(p.chave));
-  const proxLote = lotes[0] ? PROXIMA[lotes[0].etapa] : undefined;
+  // Ação da etapa em massa: só quando todos são vendas do sistema na mesma etapa.
+  const mesmaEtapa = lotes.length > 0 && lotes.every((p) => p.chave.startsWith("venda:") && p.etapa === lotes[0].etapa);
+  const proxLote = mesmaEtapa ? PROXIMA[lotes[0].etapa] : undefined;
 
   return (
     <>
@@ -446,29 +457,32 @@ export function VendasClient({
             </div>
           )}
 
-          {selecionaveis.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <label className="inline-flex items-center gap-2 text-text-secondary">
+          {lotes.length > 0 ? (
+            <AcoesMassa
+              selecionados={lotes}
+              onLimpar={() => setSelecionados(new Set())}
+              onAnotar={() => setAnotando({ chaves: lotes.filter((p) => !p.chave.startsWith("catalogo:")).map((p) => p.chave) })}
+              acaoEtapa={proxLote ? { rotulo: `${proxLote.acao} (${lotes.length})`, executar: () => avancar(lotes), carregando: processando === "massa" } : null}
+              verOcultos={etapa === "oculto"}
+            />
+          ) : (
+            selecionaveis.length > 0 && (
+              <label className="inline-flex items-center gap-2 text-sm text-text-secondary">
                 <input
                   type="checkbox"
-                  checked={selecionaveis.every((p) => selecionados.has(p.chave))}
+                  checked={false}
                   onChange={(e) => setSelecionados(e.target.checked ? new Set(selecionaveis.map((p) => p.chave)) : new Set())}
                 />
-                Selecionar todos desta página
+                Selecionar todos desta página (para imprimir lista de separação, romaneio…)
               </label>
-              {lotes.length > 0 && proxLote && (
-                <Button size="sm" variant="primary" loading={processando === "massa"} onClick={() => avancar(lotes)}>
-                  {proxLote.acao} {lotes.length} pedido(s)
-                </Button>
-              )}
-            </div>
+            )
           )}
 
           {filtrados.length === 0 ? (
             <Card>
               <EmptyState
                 icon={Search}
-                title={etapa === "todos" ? "Nenhum pedido no período" : `Nada em ${ROTULO_ETAPA[etapa]}`}
+                title={etapa === "todos" ? "Nenhum pedido no período" : `Nada em ${etapa === "oculto" ? "Oculto" : ROTULO_ETAPA[etapa]}`}
                 description={
                   faltandoShopee.length === 0 || marketplace.conexoes.length
                     ? "Mude o período, os canais ou os filtros."
@@ -532,7 +546,8 @@ export function VendasClient({
       />
       {catalogo && <PedidoCatalogoModal key={catalogo.id} pedido={catalogo} onClose={() => setCatalogo(null)} clientes={clientesPdv} contas={contas} formasPagamento={formasPagamentoPdv} />}
       {detalheMkt && <DetalheMarketplaceModal p={detalheMkt} bruto={marketplace.pedidos.find((x) => x.id === detalheMkt.id)} onClose={() => setDetalheMkt(null)} />}
-      {filtrando && <FiltrosModal inicial={extras} onAplicar={setExtras} onClose={() => setFiltrando(false)} ufs={ufs} logisticas={logisticas} />}
+      {filtrando && <FiltrosModal inicial={extras} onAplicar={setExtras} onClose={() => setFiltrando(false)} ufs={ufs} logisticas={logisticas} tags={tagsUsadas} />}
+      {anotando && <AnotarModal chaves={anotando.chaves} inicial={anotando.inicial} tagsSugeridas={tagsUsadas} onClose={() => setAnotando(null)} />}
       {impExp && <ImportarExportarModal onClose={() => setImpExp(false)} onImportarShopee={() => setImportando(true)} onExportar={() => setExportando(true)} podeImportar={marketplace.disponivel} />}
       {importando && <ImportarShopeeModal onClose={() => setImportando(false)} lojas={lojasMarketplace} produtos={produtosMarketplace} vinculos={marketplace.vinculos} impostoPct={impostoPct} />}
       {exportando && (
