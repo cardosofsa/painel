@@ -90,6 +90,8 @@ export const pedidoVitrineSchema = z.object({
   observacao: z.string().trim().max(MAX_OBSERVACAO, "Observação longa demais").nullable(),
   /** Gerado no navegador. Duplo-toque em "Finalizar" ou retry de rede não vira dois pedidos. */
   idempotencia: z.string().uuid(),
+  /** Forma escolhida no checkout (0051); a RPC confere se o catálogo aceita. */
+  forma_pagamento: z.string().trim().max(40).nullable().optional(),
   /** Tudo abaixo é opcional: o pedido sai mesmo sem e-mail e sem endereço. */
   email: z
     .string()
@@ -148,6 +150,8 @@ export function textoPedidoVitrine(d: {
   observacao: string | null;
   /** Endereço já em uma linha, quando o cliente informou. */
   entrega?: string | null;
+  /** Forma de pagamento escolhida no checkout. */
+  pagamento?: string | null;
   /**
    * Link do painel para o DONO abrir e confirmar o pedido (/vendas?pedido=P-0001). Exige
    * login: quem mais vir a mensagem só cai na tela de entrar.
@@ -163,6 +167,7 @@ export function textoPedidoVitrine(d: {
     `Total: ${formatBRL(d.total)}`,
     `Nome: ${d.nomeCliente}`,
   ];
+  if (d.pagamento?.trim()) linhas.push(`Pagamento: ${d.pagamento.trim()}`);
   if (d.entrega?.trim()) linhas.push(`Entrega: ${d.entrega.trim()}`);
   if (d.observacao?.trim()) linhas.push(`Observação: ${d.observacao.trim()}`);
   if (d.linkPainel) linhas.push("", `Confirmar no painel: ${d.linkPainel}`);

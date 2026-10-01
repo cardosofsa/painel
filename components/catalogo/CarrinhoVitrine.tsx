@@ -38,7 +38,10 @@ export function CarrinhoVitrine({
   onCompartilhar,
   salvoQuantidade,
   onRestaurar,
+  formasPagamento = [],
 }: {
+  /** Formas que o catálogo aceita (0051). Vazio = não pergunta. */
+  formasPagamento?: string[];
   aberto: boolean;
   onFechar: () => void;
   itens: ItemCarrinhoVitrine[];
@@ -61,6 +64,7 @@ export function CarrinhoVitrine({
   const [email, setEmail] = useState("");
   const [endereco, setEndereco] = useState<EnderecoForm>(ENDERECO_VAZIO);
   const [observacao, setObservacao] = useState("");
+  const [formaPagamento, setFormaPagamento] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   /**
    * Gerada uma vez por tentativa de checkout, não por clique: é o que faz duplo-toque em
@@ -95,6 +99,7 @@ export function CarrinhoVitrine({
           uf: endereco.uf ?? "",
           observacao: observacao.trim() || null,
           idempotencia,
+          forma_pagamento: formaPagamento,
           itens: itens.map((i) => ({ produto_id: i.produto_id, quantidade: i.quantidade })),
         }),
       });
@@ -128,6 +133,7 @@ export function CarrinhoVitrine({
           total: enviado.total,
           nomeCliente: nome,
           observacao: observacao.trim() || null,
+          pagamento: formaPagamento,
           entrega: enderecoEmLinha({ ...endereco }),
           linkPainel: `${window.location.origin}/vendas?pedido=${encodeURIComponent(enviado.numero)}`,
         }),
@@ -295,6 +301,25 @@ export function CarrinhoVitrine({
             />
           </div>
 
+          {formasPagamento.length > 0 && (
+            <FormField label="Como prefere pagar?" dica="A loja confirma o pagamento com você pelo WhatsApp antes de qualquer cobrança.">
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Forma de pagamento">
+                {formasPagamento.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    role="radio"
+                    aria-checked={formaPagamento === f}
+                    onClick={() => setFormaPagamento(f)}
+                    className={`text-sm rounded-md border px-3 py-1.5 ${formaPagamento === f ? "border-accent bg-accent-soft text-accent font-medium" : "border-border text-text-secondary hover:bg-surface-2"}`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </FormField>
+          )}
+
           <FormField label="Observação (opcional)">
             <textarea
               className={`${inputClass} h-20 py-2 resize-none`}
@@ -319,7 +344,7 @@ export function CarrinhoVitrine({
               className="flex-1"
               onClick={enviar}
               loading={enviando}
-              disabled={!nome.trim() || whatsapp.replace(/\D/g, "").length < 10}
+              disabled={!nome.trim() || whatsapp.replace(/\D/g, "").length < 10 || (formasPagamento.length > 0 && !formaPagamento)}
             >
               Enviar pedido
             </Button>

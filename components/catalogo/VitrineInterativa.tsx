@@ -49,9 +49,12 @@ export function VitrineInterativa({
   negocioWhatsapp,
   carrinhoInicial,
   produtoInicial = null,
+  formasPagamento = [],
 }: {
   /** Produto (variante) vindo do link compartilhado: abre o pop-up dele direto. */
   produtoInicial?: string | null;
+  /** Formas que o checkout oferece (0051); vazio = não pergunta. */
+  formasPagamento?: string[];
   nome: string;
   slug: string;
   itens: ItemVitrine[];
@@ -237,6 +240,7 @@ export function VitrineInterativa({
       />
 
       <CarrinhoVitrine
+        formasPagamento={formasPagamento}
         aberto={carrinhoAberto}
         onFechar={() => setCarrinhoAberto(false)}
         itens={carrinho}

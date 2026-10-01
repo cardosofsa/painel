@@ -13,6 +13,15 @@ const PATH = "/catalogo";
 export interface CatalogoInput {
   nome: string;
   tipo_preco: "varejo" | "atacado";
+  /** Formas que o checkout oferece ao comprador (0051). Vazio = não pergunta. */
+  formas_pagamento?: string[];
+}
+
+/** Sem a 0051 a coluna não existe (PGRST204): grava o resto e avisa. */
+function semFormas<T extends { formas_pagamento?: string[] }>(d: T): Omit<T, "formas_pagamento"> {
+  const copia = { ...d };
+  delete copia.formas_pagamento;
+  return copia;
 }
 
 export interface ProdutoPrecoCatalogo {
@@ -30,7 +39,10 @@ function gerarSlug() {
 export async function criarCatalogo(dados: CatalogoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
-    const { error } = await supabase.from("catalogos").insert({ ...validar(catalogoSchema, dados), slug: gerarSlug() });
+    const v = validar(catalogoSchema, dados);
+    const slug = gerarSlug();
+    let { error } = await supabase.from("catalogos").insert({ ...v, slug });
+    if (error?.code === "PGRST204") ({ error } = await supabase.from("catalogos").insert({ ...semFormas(v), slug }));
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
   });
@@ -39,7 +51,9 @@ export async function criarCatalogo(dados: CatalogoInput) {
 export async function atualizarCatalogo(id: string, dados: CatalogoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
-    const { error } = await supabase.from("catalogos").update(validar(catalogoSchema, dados)).eq("id", id);
+    const v = validar(catalogoSchema, dados);
+    let { error } = await supabase.from("catalogos").update(v).eq("id", id);
+    if (error?.code === "PGRST204") ({ error } = await supabase.from("catalogos").update(semFormas(v)).eq("id", id));
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
   });

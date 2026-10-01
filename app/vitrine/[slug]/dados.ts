@@ -61,3 +61,11 @@ export const buscarEmpresaPublica = cache(async (slug: string): Promise<EmpresaP
   if (error) return null;
   return data ?? null;
 });
+
+/** Formas de pagamento que o checkout deste catálogo oferece (0051). Sem a migração, nenhuma. */
+export const buscarFormasPagamentoPublicas = cache(async (slug: string): Promise<string[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("formas_pagamento_catalogo", { p_slug: slug });
+  if (error || !Array.isArray(data)) return [];
+  return (data as unknown[]).filter((f): f is string => typeof f === "string" && f.trim().length > 0).slice(0, 8);
+});

@@ -80,5 +80,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ erro: "Não foi possível registrar o pedido." }, { status: 400 });
   }
 
+  // Forma de pagamento (0051): a RPC só grava se o catálogo aceita e se a chave é deste
+  // checkout. Falha aqui (migração ausente) não derruba o pedido, que já foi criado.
+  if (dados.forma_pagamento) {
+    const { error: e2 } = await supabase.rpc("definir_pagamento_pedido_vitrine", { p_slug: dados.slug, p_idempotencia: dados.idempotencia, p_forma: dados.forma_pagamento });
+    if (e2) console.error("[vitrine] forma de pagamento:", e2.code, e2.message);
+  }
+
   return NextResponse.json({ numero: data.numero, total: data.total });
 }

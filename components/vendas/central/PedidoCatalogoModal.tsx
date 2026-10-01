@@ -139,6 +139,7 @@ export function PedidoCatalogoModal({
         formasPagamento={formasPagamento}
         contas={contas}
         salvando={salvando}
+        formaInicial={pedido.forma_pagamento ?? null}
         onConfirmar={(dados) => {
           setSalvando(true);
           startTransition(async () => {

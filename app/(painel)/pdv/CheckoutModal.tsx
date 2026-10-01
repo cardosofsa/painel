@@ -49,7 +49,10 @@ export function CheckoutModal({
   contas,
   salvando,
   onConfirmar,
+  formaInicial = null,
 }: {
+  /** Forma já escolhida (ex.: no checkout do catálogo): vem marcada se existir aqui. */
+  formaInicial?: string | null;
   aberto: boolean;
   onFechar: () => void;
   onVoltar: () => void;
@@ -74,7 +77,12 @@ export function CheckoutModal({
   // aqui — "Fiado" na lista de formas de pagamento existe só pra classificar linhas antigas
   // (0030), não pra aparecer como opção de tender no grid.
   const formasTender = formasPagamento.filter((f) => f.tipo !== "fiado");
-  const [formaPagamento, setFormaPagamento] = useState<string | null>(formasTender[0]?.nome ?? null);
+  const [formaPagamento, setFormaPagamento] = useState<string | null>(() => {
+    const n = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const alvo = formaInicial ? n(formaInicial) : "";
+    const achada = alvo ? formasTender.find((f) => n(f.nome) === alvo || n(f.nome).includes(alvo) || alvo.includes(n(f.nome))) : null;
+    return achada?.nome ?? formasTender[0]?.nome ?? null;
+  });
   const formaSelecionada = formasTender.find((f) => f.nome === formaPagamento) ?? null;
 
   const [entradaValor, setEntradaValor] = useState(0);

@@ -188,6 +188,8 @@ export const formaPagamentoSchema = z.object({
 export const catalogoSchema = z.object({
   nome: textoCurto,
   tipo_preco: z.enum(["varejo", "atacado"]),
+  // 0051; opcional para o código antigo e para quem ainda não aplicou a migração.
+  formas_pagamento: z.array(z.string().trim().min(1).max(40)).max(8).optional(),
 });
 
 export const precoOverrideSchema = z.object({

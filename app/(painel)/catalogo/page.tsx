@@ -8,7 +8,8 @@ export default async function CatalogoPage() {
   desde.setDate(desde.getDate() - 30);
   const desdeIso = desde.toISOString();
   const [catalogosRes, produtosRes, pendentesRes, visitasRes, pedidosRes] = await Promise.all([
-    supabase.from("catalogos").select("id, nome, slug, ativo, tipo_preco, criado_em").order("criado_em"),
+    // `*`: formas_pagamento só existe a partir da 0051.
+    supabase.from("catalogos").select("*").order("criado_em"),
     supabase.from("produtos").select("id", { count: "exact", head: true }).eq("ativo", true).gt("estoque", 0),
     // Os pedidos moram em Vendas desde a 8.6; aqui só o aviso de quantos esperam.
     supabase.from("pedidos_vitrine").select("id", { count: "exact", head: true }).in("status", ["pendente", "aceito"]),

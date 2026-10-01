@@ -33,7 +33,12 @@ export interface Catalogo {
   ativo: boolean;
   tipo_preco: "varejo" | "atacado";
   criado_em: string;
+  /** 0051. */
+  formas_pagamento?: string[];
 }
+
+/** Opções do checkout da vitrine (texto livre no banco; estas são as sugeridas). */
+const FORMAS_CHECKOUT = ["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro", "Boleto"];
 
 export function CatalogoClient({
   catalogos,
@@ -259,11 +264,15 @@ function CatalogoModal({
   onSave: (dados: CatalogoInput) => void;
   salvando: boolean;
 }) {
-  const base: CatalogoInput = catalogo && catalogo !== "novo" ? { nome: catalogo.nome, tipo_preco: catalogo.tipo_preco } : { nome: "", tipo_preco: "varejo" };
+  const base: CatalogoInput =
+    catalogo && catalogo !== "novo"
+      ? { nome: catalogo.nome, tipo_preco: catalogo.tipo_preco, formas_pagamento: catalogo.formas_pagamento ?? [] }
+      : { nome: "", tipo_preco: "varejo", formas_pagamento: ["Pix", "Cartão de crédito", "Dinheiro"] };
   const [nome, setNome] = useState(base.nome);
   const [tipoPreco, setTipoPreco] = useState<CatalogoInput["tipo_preco"]>(base.tipo_preco);
+  const [formas, setFormas] = useState<string[]>(base.formas_pagamento ?? []);
   const [inicial] = useState(base);
-  const sujo = useFormularioSujo({ nome, tipo_preco: tipoPreco }, inicial);
+  const sujo = useFormularioSujo({ nome, tipo_preco: tipoPreco, formas_pagamento: formas }, inicial);
 
   return (
     <Modal open={!!catalogo} onClose={onClose} title={catalogo === "novo" ? "Novo Catálogo" : "Editar Catálogo"} sujo={sujo}>
@@ -279,11 +288,29 @@ function CatalogoModal({
           <option value="atacado">Atacado</option>
         </select>
       </FormField>
+      <FormField label="Pagamento no checkout" dica="O comprador escolhe uma destas ao enviar o pedido. Nenhuma marcada = a vitrine não pergunta (combina pelo WhatsApp).">
+        <div className="flex flex-wrap gap-2">
+          {FORMAS_CHECKOUT.map((f) => {
+            const on = formas.includes(f);
+            return (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setFormas((x) => (on ? x.filter((y) => y !== f) : [...x, f]))}
+                className={`text-xs rounded-full border px-3 py-1 ${on ? "border-accent bg-accent-soft text-accent" : "border-border text-text-secondary hover:bg-surface-2"}`}
+              >
+                {f}
+              </button>
+            );
+          })}
+        </div>
+      </FormField>
       <div className="flex gap-2 mt-4">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
         </Button>
-        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome, tipo_preco: tipoPreco })} loading={salvando}>
+        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome, tipo_preco: tipoPreco, formas_pagamento: formas })} loading={salvando}>
           Salvar
         </Button>
       </div>
