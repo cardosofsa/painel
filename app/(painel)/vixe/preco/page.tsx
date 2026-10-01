@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
@@ -13,10 +14,7 @@ type Busca = { produto?: string; nome?: string; custo?: string; preco?: string; 
 export default async function VixePrecoPage({ searchParams }: { searchParams: Promise<Busca> }) {
   const busca = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: perfilAcesso } = await supabase.from("perfis_acesso").select("abas").eq("user_id", user?.id ?? "").maybeSingle();
+  const perfilAcesso = await acessoAtual();
 
   // Custos, taxas e concorrentes são dados da Precificação: sem essa aba, não aparecem aqui.
   if (!normalizarAbas(perfilAcesso?.abas ?? []).includes("precificacao")) {

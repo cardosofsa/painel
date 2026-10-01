@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
@@ -8,10 +9,7 @@ import { VixeTextos, type ClienteCobranca, type ProdutoTexto } from "@/component
 
 export default async function VixeTextosPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: perfilAcesso } = await supabase.from("perfis_acesso").select("abas").eq("user_id", user?.id ?? "").maybeSingle();
+  const perfilAcesso = await acessoAtual();
   const abas = normalizarAbas(perfilAcesso?.abas ?? []);
   const verProdutos = abas.includes("produtos") || abas.includes("precificacao") || abas.includes("catalogo");
   // Fiado é dado do Financeiro/Clientes: sem uma dessas abas, a ferramenta de cobrança some.

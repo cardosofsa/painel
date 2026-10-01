@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { contaLiberada, podeAcessarRota, rotaEhLivre } from "@/lib/acesso";
+import { contaLiberada, podeAcessarRota, rotaEhLivre, type StatusConta } from "@/lib/acesso";
+import { assinarAcesso, CABECALHO_ACESSO, COOKIE_ACESSO, lerAcesso, segredoAcesso, VALIDADE_ACESSO_MS } from "@/lib/acesso-cookie";
 
 /**
  * Casa o caminho exato ou um filho dele (`/vitrine` e `/vitrine/abc`, nunca
@@ -23,10 +24,16 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
    * renovados em `request.cookies`, que por baixo reescreve o cabeçalho `cookie`. Capturar
    * os headers uma vez lá em cima perderia a sessão renovada.
    */
+  // Quem é o usuário, para as páginas não irem de novo ao Auth e a `perfis_acesso`.
+  // SEMPRE reescrito aqui: o valor que vier do navegador é descartado.
+  let acessoParaPaginas: string | null = null;
+
   function proximaResposta() {
     const headers = new Headers(request.headers);
     headers.set("x-nonce", csp.nonce);
     headers.set("Content-Security-Policy", csp.politica);
+    headers.delete(CABECALHO_ACESSO);
+    if (acessoParaPaginas) headers.set(CABECALHO_ACESSO, acessoParaPaginas);
     return NextResponse.next({ request: { headers } });
   }
 
@@ -49,14 +56,16 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // `getClaims()` valida o JWT com a chave pública do projeto (ES256), sem ir ao servidor de
+  // Auth a cada navegação como o `getUser()` ia. Também renova a sessão vencida (setAll).
+  const { data: dadosClaims } = await supabase.auth.getClaims();
+  const claims = dadosClaims?.claims;
+  const user = claims?.sub ? { id: claims.sub, email: typeof claims.email === "string" ? claims.email : null } : null;
 
   /**
    * Redirect que PRESERVA os cookies de sessão.
    *
-   * `getUser()` acima pode renovar o token; quando isso acontece, o `setAll` grava os
+   * `getClaims()` acima pode renovar o token; quando isso acontece, o `setAll` grava os
    * cookies novos em `supabaseResponse`. Um `NextResponse.redirect()` cru cria uma resposta
    * nova e joga esses cookies fora — o navegador segue com o refresh token antigo que, com
    * rotação ligada, já foi invalidado. O sintoma é logout aleatório ou loop
@@ -125,14 +134,37 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
    * Controle de acesso do lado do servidor. É aqui que a liberação por aba vale de fato:
    * o menu lateral só esconde o link, mas a URL continua digitável. Este é o único ponto
    * do app que tem sessão e caminho ao mesmo tempo, por isso a checagem mora aqui — ao
-   * custo de uma consulta por navegação.
+   * custo de uma consulta a cada 2 min (o perfil fica num cookie assinado entre uma e outra).
    */
   if (user && !isPublicRoute) {
-    const { data: perfil } = await supabase
-      .from("perfis_acesso")
-      .select("papel, status, abas, expira_em")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    // Perfil do cookie assinado (vale 2 min); vencido ou ausente, busca no banco e renova.
+    const segredo = segredoAcesso();
+    let perfil: { papel: "master" | "usuario"; status: StatusConta; abas: string[]; expira_em: string | null } | null = null;
+    let renovarCookie = false;
+    const cache = segredo ? await lerAcesso(request.cookies.get(COOKIE_ACESSO)?.value, segredo, user.id) : null;
+    if (cache) perfil = { papel: cache.p, status: cache.s as StatusConta, abas: cache.a, expira_em: cache.e };
+    else {
+      const { data } = await supabase.from("perfis_acesso").select("papel, status, abas, expira_em").eq("user_id", user.id).maybeSingle();
+      perfil = data ? { papel: data.papel, status: data.status, abas: data.abas ?? [], expira_em: data.expira_em } : null;
+      // Só quem está liberado vai para o cache: quem espera aprovação vê a liberação na hora.
+      renovarCookie = !!(segredo && perfil && contaLiberada(perfil));
+    }
+
+    // Passa às páginas e ao layout quem é (id, e-mail, papel, abas), preservando os
+    // cookies que o Supabase acabou de gravar na resposta.
+    acessoParaPaginas = encodeURIComponent(JSON.stringify({ userId: user.id, email: user.email, papel: perfil?.papel ?? "usuario", abas: perfil?.abas ?? [] }));
+    const gravados = supabaseResponse.cookies.getAll();
+    supabaseResponse = proximaResposta();
+    for (const c of gravados) supabaseResponse.cookies.set(c);
+    if (renovarCookie && segredo && perfil) {
+      supabaseResponse.cookies.set(COOKIE_ACESSO, await assinarAcesso({ u: user.id, p: perfil.papel, s: perfil.status, e: perfil.expira_em, a: perfil.abas }, segredo), {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: Math.floor(VALIDADE_ACESSO_MS / 1000),
+      });
+    }
 
     const liberada = perfil ? contaLiberada(perfil) : false;
     const naTelaDeEspera = ehOuComeca(pathname, ["/aguardando"]);

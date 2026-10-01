@@ -25,9 +25,8 @@ interface LinhaProvedor {
 }
 
 export async function resolverProvedor(supabase: SupabaseClient): Promise<ProvedorResolvido> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: dadosClaims } = await supabase.auth.getClaims();
+  const user = dadosClaims?.claims?.sub ? { id: dadosClaims.claims.sub } : null;
 
   if (user) {
     // Tabela ausente (migração 0035 não aplicada) ou erro de leitura: cai na IA do sistema

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { hojeIsoLocal, formatarDataIso, dataLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
@@ -26,16 +27,10 @@ export default async function DashboardPage() {
   // negócio (vendas hoje/semana/mês, estoque baixo, vencimentos) ficaria toda zerada e sem
   // sentido para ela. Consulta pequena e cedo, antes do Promise.all grande de negócio, que
   // nem chega a rodar para master.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: perfil } = await supabase
-    .from("perfis_acesso")
-    .select("papel")
-    .eq("user_id", user?.id ?? "")
-    .maybeSingle();
+  // Papel vem do middleware (sem nova ida ao Auth nem a `perfis_acesso`).
+  const acesso = await acessoAtual();
 
-  if (perfil?.papel === "master") {
+  if (acesso?.papel === "master") {
     const [contasRes, historicoRes] = await Promise.all([
       supabase.rpc("admin_listar_contas"),
       supabase

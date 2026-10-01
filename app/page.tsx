@@ -16,10 +16,9 @@ import { createClient } from "@/lib/supabase/server";
  */
 export default async function Home() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
+  // getClaims valida o JWT localmente (ES256): a landing não espera o servidor de Auth.
+  const { data } = await supabase.auth.getClaims();
+  if (data?.claims?.sub) redirect("/dashboard");
 
   return (
     <div className="min-h-screen bg-background text-text-primary">

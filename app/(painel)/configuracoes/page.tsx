@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { cofreDisponivel } from "@/lib/ia/cofre";
 import { estadoDoTeste, type EstadoTesteBruto } from "@/lib/ia/teste";
 import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
@@ -17,20 +18,13 @@ import { MasterConfiguracoesClient } from "./MasterConfiguracoesClient";
 export default async function ConfiguracoesPage() {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   // Master não roda loja nenhuma por esta conta — categorias, canais, armazéns, formas de
-  // pagamento e perfil do negócio não fazem sentido pra ela. Consulta pequena e cedo, antes
-  // do Promise.all grande de dado de loja, que nem chega a rodar para master.
-  const { data: perfilAcesso } = await supabase
-    .from("perfis_acesso")
-    .select("papel")
-    .eq("user_id", user?.id ?? "")
-    .maybeSingle();
+  // pagamento e perfil do negócio não fazem sentido pra ela. Papel e e-mail vêm do
+  // middleware, antes do Promise.all grande de dado de loja, que nem chega a rodar para master.
+  const acesso = await acessoAtual();
+  const user = acesso ? { id: acesso.userId, email: acesso.email } : null;
 
-  if (perfilAcesso?.papel === "master") {
+  if (acesso?.papel === "master") {
     return <MasterConfiguracoesClient email={user?.email ?? ""} />;
   }
 

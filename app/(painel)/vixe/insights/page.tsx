@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
 import { hojeIsoLocal } from "@/lib/format";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
@@ -18,10 +19,7 @@ const JANELA_DIAS = 60;
 
 export default async function VixeInsightsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: perfilAcesso } = await supabase.from("perfis_acesso").select("abas").eq("user_id", user?.id ?? "").maybeSingle();
+  const perfilAcesso = await acessoAtual();
   const abas = normalizarAbas(perfilAcesso?.abas ?? []);
   const verVendas = abas.includes("vendas") || abas.includes("pdv") || abas.includes("financeiro");
   const verEstoque = abas.includes("estoque") || abas.includes("produtos");
