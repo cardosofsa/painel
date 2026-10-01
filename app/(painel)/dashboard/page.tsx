@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
+import { carregarVendasRelatorio } from "@/lib/relatorios-servidor";
 import { hojeIsoLocal, formatarDataIso, dataLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
@@ -83,6 +84,7 @@ export default async function DashboardPage() {
     precificacoesMesRes,
     compromissosRes,
     vendasRes,
+    vendasRelatorio,
   ] = await Promise.all([
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       supabase
@@ -118,6 +120,8 @@ export default async function DashboardPage() {
         .select("total, lucro, data_venda")
         .neq("status", "cancelada")
         .gte("data_venda", inicioVendas.toISOString()),
+      // Todas as origens (PDV, catálogo, Shopee) para o painel de vendas: este mês + o anterior.
+      carregarVendasRelatorio(supabase, 62),
     ]);
 
   if (contasRes.error) throw new Error(contasRes.error.message);
@@ -137,13 +141,13 @@ export default async function DashboardPage() {
   const somar = (desde: Date) =>
     vendasNaJanela.filter((v) => v.data >= desde).reduce((acc, v) => acc + v.total, 0);
 
+  // Resumo do mês com todas as origens (antes era só a tabela `vendas`, sem a Shopee).
+  const doMes = vendasRelatorio.filter((v) => new Date(v.data) >= inicioMesData);
   const vendas = {
     hoje: somar(inicioHoje),
     semana: somar(inicioSemana),
-    mes: somar(inicioMesData),
-    lucroMes: vendasNaJanela
-      .filter((v) => v.data >= inicioMesData)
-      .reduce((acc, v) => acc + v.lucro, 0),
+    mes: doMes.reduce((acc, v) => acc + v.total, 0),
+    lucroMes: doMes.reduce((acc, v) => acc + v.lucro, 0),
   };
 
   const resumoMes = {
@@ -183,6 +187,7 @@ export default async function DashboardPage() {
       resumoMes={resumoMes}
       vendas={vendas}
       compromissos={compromissos}
+      vendasRelatorio={vendasRelatorio}
     />
   );
 }

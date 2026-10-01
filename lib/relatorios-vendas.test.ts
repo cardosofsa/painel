@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { porChave, porProduto, serieDiaria, totais, variacao, type VendaRelatorio } from "./relatorios-vendas";
+import { porChave, porProduto, seriePorHora, serieDiaria, totais, variacao, type VendaRelatorio } from "./relatorios-vendas";
 
 const v = (id: string, data: string, total: number, lucro: number, itens: [string, number, number, number][], uf: string | null = null, origem = "pdv"): VendaRelatorio => ({
   id,
@@ -50,5 +50,16 @@ describe("relatórios de vendas", () => {
   it("variação sem base é null", () => {
     expect(variacao(10, 0)).toBeNull();
     expect(variacao(15, 10)).toBeCloseTo(0.5);
+  });
+});
+
+describe("seriePorHora", () => {
+  it("agrupa o dia nas 24 horas locais e ignora outros dias", () => {
+    const v = (data: Date, total: number) => ({ id: String(total), data: data.toISOString(), origem: "PDV", uf: null, total, custo: 0, lucro: 0, taxas: 0, itens: [] });
+    const s = seriePorHora([v(new Date(2026, 9, 1, 9, 10), 10), v(new Date(2026, 9, 1, 9, 50), 5), v(new Date(2026, 9, 1, 23, 59), 7), v(new Date(2026, 9, 2, 0, 1), 99)], "2026-10-01");
+    expect(s).toHaveLength(24);
+    expect(s[9]).toEqual({ hora: 9, valor: 15, pedidos: 2 });
+    expect(s[23]).toEqual({ hora: 23, valor: 7, pedidos: 1 });
+    expect(s.reduce((a, h) => a + h.pedidos, 0)).toBe(3);
   });
 });

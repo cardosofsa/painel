@@ -122,3 +122,16 @@ export function porChave<K extends "uf" | "origem">(vendas: VendaRelatorio[], ch
 export function variacao(atual: number, anterior: number): number | null {
   return anterior === 0 ? null : (atual - anterior) / Math.abs(anterior);
 }
+
+/** Vendas de UM dia (AAAA-MM-DD, local) por hora: valor e pedidos nas 24 horas. */
+export function seriePorHora(vendas: VendaRelatorio[], dia: string): { hora: number; valor: number; pedidos: number }[] {
+  const horas = Array.from({ length: 24 }, (_, hora) => ({ hora, valor: 0, pedidos: 0 }));
+  for (const v of vendas) {
+    const d = new Date(v.data);
+    if (d.toLocaleDateString("sv-SE") !== dia) continue;
+    const h = horas[d.getHours()];
+    h.valor += v.total;
+    h.pedidos++;
+  }
+  return horas;
+}

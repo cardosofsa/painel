@@ -14,6 +14,8 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL, hojeIsoLocal, formatarDataIso } from "@/lib/format";
 import { criarCompromisso, removerCompromisso, type CompromissoInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { PainelVendas } from "@/components/dashboard/PainelVendas";
+import type { VendaRelatorio } from "@/lib/relatorios-vendas";
 
 export interface Conta {
   id: string;
@@ -60,8 +62,11 @@ export function DashboardClient({
   vencimentos,
   resumoMes,
   vendas,
+  vendasRelatorio,
   compromissos,
 }: {
+  /** Vendas de todas as origens (PDV, catálogo, Shopee) dos últimos ~2 meses. */
+  vendasRelatorio: VendaRelatorio[];
   contas: Conta[];
   produtosBaixoEstoque: ProdutoBaixoEstoque[];
   pedidosPendentes: PedidoPendente[];
@@ -107,19 +112,11 @@ export function DashboardClient({
             </div>
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <Card>
-              <CardEyebrow>Vendas Hoje</CardEyebrow>
-              <HeroMetric value={formatBRL(vendas.hoje)} />
-            </Card>
-            <Card>
-              <CardEyebrow>Vendas Semana</CardEyebrow>
-              <HeroMetric value={formatBRL(vendas.semana)} caption="Últimos 7 dias" />
-            </Card>
-            <Card>
-              <CardEyebrow>Vendas Mês</CardEyebrow>
-              <HeroMetric value={formatBRL(vendas.mes)} />
-            </Card>
+          <PainelVendas vendas={vendasRelatorio} />
+
+          {/* Agenda logo depois das vendas: compromisso do dia não pode ficar no fim da página. */}
+          <div className="mb-5">
+            <AgendaCard compromissos={compromissos} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
@@ -229,9 +226,6 @@ export function DashboardClient({
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 mt-5">
-            <AgendaCard compromissos={compromissos} />
-          </div>
     </>
   );
 }
