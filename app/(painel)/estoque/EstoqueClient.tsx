@@ -55,7 +55,10 @@ export function EstoqueClient({
   movimentacoes,
   saldos,
   porArmazem,
+  reservado = {},
 }: {
+  /** produto → reservado em pedidos da esteira (0052). */
+  reservado?: Record<string, number>;
   produtos: ProdutoEstoque[];
   armazens: Armazem[];
   movimentacoes: Movimentacao[];
@@ -72,6 +75,7 @@ export function EstoqueClient({
   const nomeArmazem = useMemo(() => new Map(armazens.map((a) => [a.id, a.nome])), [armazens]);
 
   const totalUnidades = produtos.reduce((acc, p) => acc + p.estoque, 0);
+  const totalReservado = Object.values(reservado).reduce((a, n) => a + n, 0);
   const criticos = produtos.filter((p) => p.estoque <= p.estoque_minimo).length;
   const valorTotal = produtos.reduce((acc, p) => acc + p.estoque * p.custo, 0);
 
@@ -116,7 +120,11 @@ export function EstoqueClient({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>
           <CardEyebrow>Estoque Físico Total</CardEyebrow>
-          <HeroMetric value={`${totalUnidades} un.`} accent />
+          <HeroMetric
+            value={`${totalUnidades} un.`}
+            accent
+            caption={totalReservado > 0 ? `${totalReservado} reservado(s) em pedidos · ${totalUnidades - totalReservado} disponível(is)` : "nenhum reservado em pedidos"}
+          />
         </Card>
         <Link href="/estoque/valor" className="group block rounded-lg focus-visible:outline-2 focus-visible:outline-accent" aria-label="Ver detalhes do valor em estoque">
           <Card className="h-full group-hover:border-accent transition-colors">
@@ -194,9 +202,14 @@ export function EstoqueClient({
                           <div className="text-xs text-text-tertiary font-mono truncate">{p.sku}</div>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
-                          <span className="font-mono text-text-secondary">
+                          <span className="font-mono text-text-secondary text-right">
                             {quantidade} un.
                             {quantidade !== p.estoque && <span className="text-text-tertiary"> / {p.estoque}</span>}
+                            {(reservado[p.id] ?? 0) > 0 && (
+                              <span className="block text-[11px] text-accent" title="Reservado por pedidos que ainda não saíram (Para Enviar / Para Reservar)">
+                                {reservado[p.id]} reservado · {p.estoque - reservado[p.id]} disp.
+                              </span>
+                            )}
                           </span>
                           <StatusChip label={ok ? "OK" : "Repor"} tone={ok ? "positive" : "negative"} />
                         </div>

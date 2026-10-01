@@ -28,8 +28,26 @@ export async function atualizarAnuncios(supabase: SupabaseClient, conexao: Conex
   return linhas.length;
 }
 
-/** Saldo de cada produto no armazém que abastece a loja; sem armazém marcado, o total. */
+/**
+ * Saldo de cada produto no armazém que abastece a loja (sem armazém marcado, o total),
+ * MENOS o reservado por pedidos de OUTRAS origens (catálogo, outras lojas — 0052). Os
+ * pedidos da própria loja não descontam: a plataforma já tirou essas unidades do anúncio.
+ */
 export async function saldosDaLoja(supabase: SupabaseClient, userId: string, lojaId: string): Promise<Map<string, number>> {
+  const fisico = await saldosFisicosDaLoja(supabase, userId, lojaId);
+  const { data, error } = await supabase
+    .from("estoque_reservas")
+    .select("produto_id, quantidade, pedidos_marketplace(loja_id)")
+    .eq("user_id", userId);
+  if (error) return fisico;
+  for (const r of (data ?? []) as unknown as { produto_id: string; quantidade: number; pedidos_marketplace: { loja_id: string } | null }[]) {
+    if (r.pedidos_marketplace?.loja_id === lojaId) continue;
+    if (fisico.has(r.produto_id)) fisico.set(r.produto_id, Math.max(0, (fisico.get(r.produto_id) ?? 0) - Number(r.quantidade)));
+  }
+  return fisico;
+}
+
+async function saldosFisicosDaLoja(supabase: SupabaseClient, userId: string, lojaId: string): Promise<Map<string, number>> {
   const { data: armazens } = await supabase.from("armazens").select("*").eq("user_id", userId);
   const armazem = ((armazens ?? []) as { id: string; loja_ids?: string[] | null; criado_em?: string }[])
     .filter((a) => (a.loja_ids ?? []).includes(lojaId))

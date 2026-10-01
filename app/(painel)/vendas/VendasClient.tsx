@@ -23,10 +23,13 @@ import {
   indicadores,
   montarCentral,
   opcoesFiltro,
+  ANTERIOR,
   PROXIMA,
   ROTULO_ETAPA,
+  ROTULO_MOTIVO,
   type Etapa,
   type EtapaVenda,
+  type MotivoReserva,
   type FiltrosCentral,
   type PedidoCentral,
   type VendaIn,
@@ -119,7 +122,10 @@ export function VendasClient({
   impostoPct,
   faltandoShopee,
   avisoShopee,
+  disponivel,
 }: {
+  /** produto → disponível (físico − reservado). */
+  disponivel: Record<string, number>;
   vendas: Venda[];
   diasJanela: number;
   clientes: (ClienteOpcao & { whatsapp: string | null })[];
@@ -141,8 +147,15 @@ export function VendasClient({
   const { gerar: gerarImagem, oculto: comprovanteOculto } = useComprovanteImagem();
 
   const lista = useMemo(
-    () => montarCentral({ vendas: vendas as VendaIn[], pedidosCatalogo: pedidos, marketplace: marketplace.pedidos, lojas: lojasMarketplace }),
-    [vendas, pedidos, marketplace.pedidos, lojasMarketplace],
+    () =>
+      montarCentral({
+        vendas: vendas as VendaIn[],
+        pedidosCatalogo: pedidos,
+        marketplace: marketplace.pedidos,
+        lojas: lojasMarketplace,
+        disponivel: new Map(Object.entries(disponivel)),
+      }),
+    [vendas, pedidos, marketplace.pedidos, lojasMarketplace, disponivel],
   );
 
   const [periodo, setPeriodo] = useState<Periodo>(() => periodoDoAtalho("hoje"));
@@ -155,7 +168,11 @@ export function VendasClient({
     const c = contarEtapas(lista, { ...FILTROS_VAZIOS, periodo: periodoDoAtalho("hoje") });
     return c.emitir > 0 ? "emitir" : c.imprimir > 0 ? "imprimir" : "todos";
   });
-  const filtrados = useMemo(() => filtrarCentral(lista, filtros, etapa), [lista, filtros, etapa]);
+  const [motivo, setMotivo] = useState<MotivoReserva | "todos">("todos");
+  const filtrados = useMemo(() => {
+    const base = filtrarCentral(lista, filtros, etapa);
+    return etapa === "reservar" && motivo !== "todos" ? base.filter((p) => p.motivoReserva === motivo) : base;
+  }, [lista, filtros, etapa, motivo]);
   const [mostrar, setMostrar] = useState(POR_PAGINA);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [processando, setProcessando] = useState<string | null>(null);
@@ -203,6 +220,7 @@ export function VendasClient({
 
   function mudarEtapa(e: Etapa | "todos") {
     setEtapa(e);
+    setMotivo("todos");
     setSelecionados(new Set());
     setMostrar(POR_PAGINA);
   }
@@ -288,8 +306,6 @@ export function VendasClient({
       if (r.ok) setDetalhe(null);
     });
   }
-
-  const ANTERIOR: Partial<Record<Etapa, EtapaVenda>> = { imprimir: "emitir", enviar: "imprimir", enviado: "enviar", concluido: "enviado" };
 
   function acoesDe(p: PedidoCentral) {
     if (p.origem === "marketplace") return [{ label: "Ver detalhes", onClick: () => abrir(p) }];
@@ -412,6 +428,24 @@ export function VendasClient({
         </div>
 
         <div className="min-w-0 space-y-3">
+          {etapa === "reservar" && (
+            <div className="flex flex-wrap gap-1.5">
+              {(["todos", "nao_mapeado", "sem_estoque", "revisao"] as const).map((m) => {
+                const n = m === "todos" ? filtrarCentral(lista, filtros, "reservar").length : filtrarCentral(lista, filtros, "reservar").filter((p) => p.motivoReserva === m).length;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMotivo(m)}
+                    className={`text-xs rounded-md border px-2.5 py-1.5 ${motivo === m ? "border-accent bg-accent-soft text-accent font-medium" : "border-border text-text-secondary hover:bg-surface-2"}`}
+                  >
+                    {m === "todos" ? "Todos" : ROTULO_MOTIVO[m]} <span className="font-mono">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {selecionaveis.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <label className="inline-flex items-center gap-2 text-text-secondary">
@@ -458,6 +492,7 @@ export function VendasClient({
                 }
                 onAbrir={() => abrir(p)}
                 onAvancar={() => avancar([p])}
+                onVincular={() => setVinculando(true)}
                 onLogistica={(l) => mudarLogistica(p, l)}
                 acoes={acoesDe(p)}
                 processando={processando === p.chave}

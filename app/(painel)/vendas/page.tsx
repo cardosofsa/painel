@@ -15,7 +15,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - DIAS_JANELA);
 
-  const [vendasRes, clientesRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes] = await Promise.all([
+  const [vendasRes, clientesRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes, disponivelRes] = await Promise.all([
     supabase
       .from("vendas")
       // `*`: etapa e logística só existem a partir da 0047.
@@ -33,9 +33,14 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     // Shopee (8.9): sem a 0046 volta `disponivel: false` e a aba explica.
     carregarPedidosMarketplace(supabase, DIAS_JANELA),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
-    supabase.from("produtos").select("id, sku, nome, custo").order("nome"),
+    supabase.from("produtos").select("id, sku, nome, custo, estoque").order("nome"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
+    // Disponível = físico − reservado (0052). Sem a migração, cai para o físico.
+    supabase.from("estoque_disponivel").select("produto_id, disponivel"),
   ]);
+  const disponivel: Record<string, number> = disponivelRes.error
+    ? Object.fromEntries((produtosRes.data ?? []).map((p) => [p.id, Number(p.estoque ?? 0)]))
+    : Object.fromEntries((disponivelRes.data ?? []).map((d) => [d.produto_id as string, Number(d.disponivel)]));
 
   if (vendasRes.error) throw new Error(vendasRes.error.message);
   if (clientesRes.error) throw new Error(clientesRes.error.message);
@@ -62,6 +67,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       }))}
       produtosMarketplace={(produtosRes.data ?? []).map((p) => ({ id: p.id, sku: p.sku, nome: p.nome, custo: Number(p.custo ?? 0) }))}
       impostoPct={Number(perfilRes.data?.aliquota_das ?? 0) / 100}
+      disponivel={disponivel}
     />
   );
 }

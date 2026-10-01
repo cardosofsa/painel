@@ -177,8 +177,7 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
       clienteCriado = cliente?.criado ?? false;
     }
 
-    const { data: venda, error } = await supabase
-      .rpc("registrar_venda", {
+    const argumentos = {
         p_itens: vendaveis.map((i) => ({
           produto_id: i.produto_id,
           quantidade: i.quantidade,
@@ -199,8 +198,12 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
         p_taxa_maquineta_pct: v.taxa_maquineta_pct,
         p_parcelas_fiado: v.parcelas_fiado,
         p_dias_entre_parcelas: v.dias_entre_parcelas,
-      })
-      .maybeSingle<{ venda_id: string; venda_numero: string; venda_total: number; venda_lucro: number }>();
+      };
+    type Registrada = { venda_id: string; venda_numero: string; venda_total: number; venda_lucro: number };
+    // 0052: o pedido aprovado RESERVA o estoque e entra em Para Enviar (ou Para Reservar se
+    // faltar disponível); a baixa acontece ao passar para Imprimir. Sem a 0052, baixa na hora.
+    let { data: venda, error } = await supabase.rpc("registrar_venda", { ...argumentos, p_reservar: true }).maybeSingle<Registrada>();
+    if (error?.code === "PGRST202") ({ data: venda, error } = await supabase.rpc("registrar_venda", argumentos).maybeSingle<Registrada>());
     if (error) lancarErroSupabase(error);
     if (!venda) throw new Error("Erro ao registrar a venda.");
 
@@ -210,7 +213,8 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
       .eq("id", v.pedidoId);
     if (erroMarcar) lancarErroSupabase(erroMarcar);
 
-    // Pedido confirmado vai direto para a separação (acompanhamento de envio em Vendas).
+    // Pedido confirmado segue a esteira (com a 0052 a etapa já veio certa da RPC; o gatilho
+    // mantém Para Enviar / Para Reservar ao gravar 'separacao').
     const { error: erroEnvio } = await supabase.from("vendas").update({ status_envio: "separacao" }).eq("id", venda.venda_id);
     if (erroEnvio) console.error("[pedido] status de envio:", erroEnvio.message);
 

@@ -58,15 +58,15 @@ const lojas = [{ id: "l1", nome: "cardosoeshop", canalNome: "Shopee" }];
 describe("etapas", () => {
   it("venda: etapa da 0047; sem ela, deduz do status_envio; cancelada é cancelada", () => {
     expect(etapaDaVenda({ status: "paga", etapa: "emitir" })).toBe("emitir");
-    expect(etapaDaVenda({ status: "paga", status_envio: "separacao" })).toBe("imprimir");
+    expect(etapaDaVenda({ status: "paga", status_envio: "separacao" })).toBe("enviar");
     expect(etapaDaVenda({ status: "fiado", status_envio: "enviado" })).toBe("enviado");
     expect(etapaDaVenda({ status: "paga", status_envio: null })).toBe("concluido");
     expect(etapaDaVenda({ status: "cancelada", etapa: "emitir" })).toBe("cancelado");
   });
   it("marketplace: status da Shopee vira etapa", () => {
-    expect(etapaDoMarketplace("a_enviar", "READY_TO_SHIP")).toBe("imprimir");
-    expect(etapaDoMarketplace("a_enviar", "A Enviar")).toBe("imprimir");
-    expect(etapaDoMarketplace("a_enviar", "PROCESSED")).toBe("enviar");
+    expect(etapaDoMarketplace("a_enviar", "READY_TO_SHIP")).toBe("enviar");
+    expect(etapaDoMarketplace("a_enviar", "A Enviar")).toBe("enviar");
+    expect(etapaDoMarketplace("a_enviar", "PROCESSED")).toBe("imprimir");
     expect(etapaDoMarketplace("enviado", "SHIPPED")).toBe("enviado");
     expect(etapaDoMarketplace("concluido", "COMPLETED")).toBe("concluido");
     expect(etapaDoMarketplace("nao_pago", "UNPAID")).toBe("pagamento");
@@ -109,7 +109,7 @@ describe("montarCentral", () => {
   });
   it("marketplace: loja, canal, taxas, logística travada", () => {
     const m = lista.find((p) => p.chave === "mkt:m1")!;
-    expect(m).toMatchObject({ canal: "Shopee", loja: "cardosoeshop", taxas: 17, lucro: 20.54, logistica: "Shopee Xpress", logisticaFixa: true, editavel: false, etapa: "imprimir" });
+    expect(m).toMatchObject({ canal: "Shopee", loja: "cardosoeshop", taxas: 17, lucro: 20.54, logistica: "Shopee Xpress", logisticaFixa: true, editavel: false, etapa: "enviar" });
   });
 
   it("pendentes aparecem fora do período; concluídos respeitam o período", () => {
@@ -123,6 +123,28 @@ describe("montarCentral", () => {
     expect(r).toEqual(["a"]);
     expect(contarEtapas(antigas, f()).imprimir).toBe(1);
     expect(contarEtapas(antigas, f()).concluido).toBe(0);
+  });
+
+  it("Para Reservar: anúncio não mapeado, item apagado ou sem disponível", () => {
+    const r = montarCentral({
+      vendas: [venda({ id: "vr", etapa: "reservar" })],
+      pedidosCatalogo: [
+        { id: "ca", numero: "P-1", cliente_nome: "x", total: 10, status: "pendente", criado_em: "2026-10-01T10:00:00.000Z", venda_id: null, itens: [{ produto_id: null, produto_nome: "Apagado", quantidade: 1, preco_unitario: 10 }] },
+        { id: "cb", numero: "P-2", cliente_nome: "x", total: 10, status: "pendente", criado_em: "2026-10-01T10:00:00.000Z", venda_id: null, itens: [{ produto_id: "p1", produto_nome: "Fita", quantidade: 5, preco_unitario: 2 }] },
+        { id: "cc", numero: "P-3", cliente_nome: "x", total: 10, status: "pendente", criado_em: "2026-10-01T10:00:00.000Z", venda_id: null, itens: [{ produto_id: "p1", produto_nome: "Fita", quantidade: 1, preco_unitario: 10 }] },
+      ],
+      marketplace: [mkt({ id: "mn", custo_incompleto: true }), mkt({ id: "mp", numero: "X2", status_original: "PROCESSED", custo_incompleto: true })],
+      lojas,
+      disponivel: new Map([["p1", 3]]),
+    });
+    const de = (chave: string) => r.find((p) => p.chave === chave)!;
+    expect([de("venda:vr").etapa, de("venda:vr").motivoReserva]).toEqual(["reservar", "sem_estoque"]);
+    expect([de("catalogo:ca").etapa, de("catalogo:ca").motivoReserva]).toEqual(["reservar", "nao_mapeado"]);
+    expect([de("catalogo:cb").etapa, de("catalogo:cb").motivoReserva]).toEqual(["reservar", "sem_estoque"]);
+    expect([de("catalogo:cc").etapa, de("catalogo:cc").motivoReserva]).toEqual(["emitir", null]);
+    expect([de("mkt:mn").etapa, de("mkt:mn").motivoReserva]).toEqual(["reservar", "nao_mapeado"]);
+    // Já processado (a plataforma baixou): não volta para Reservar.
+    expect(de("mkt:mp").etapa).toBe("imprimir");
   });
 
   it("filtros: canal/loja, busca por SKU, UF, prejuízo, sem custo", () => {

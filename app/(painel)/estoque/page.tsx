@@ -5,7 +5,7 @@ import { EstoqueClient, type SaldoArmazem } from "./EstoqueClient";
 export default async function EstoquePage() {
   const supabase = await createClient();
 
-  const [produtosRes, armazensRes, movimentacoesRes, gruposRes, saldosRes] = await Promise.all([
+  const [produtosRes, armazensRes, movimentacoesRes, gruposRes, saldosRes, reservasRes] = await Promise.all([
     supabase
       .from("produtos")
       .select("id, sku, nome, custo, estoque, estoque_minimo, armazem_id, grupo_id, variante_nome, ativo")
@@ -15,7 +15,10 @@ export default async function EstoquePage() {
     supabase.from("estoque_movimentacoes").select("*").order("data_movimentacao", { ascending: false }).limit(50),
     supabase.from("produto_grupos").select("id, nome"),
     supabase.from("estoque_armazem").select("produto_id, armazem_id, quantidade"),
+    // Reservado por pedidos na esteira (0052); sem a migração, nada reservado.
+    supabase.from("estoque_disponivel").select("produto_id, reservado").gt("reservado", 0),
   ]);
+  const reservado: Record<string, number> = reservasRes.error ? {} : Object.fromEntries((reservasRes.data ?? []).map((r) => [r.produto_id as string, Number(r.reservado)]));
 
   if (produtosRes.error) throw new Error(produtosRes.error.message);
   if (armazensRes.error) throw new Error(armazensRes.error.message);
@@ -44,6 +47,7 @@ export default async function EstoquePage() {
       movimentacoes={movimentacoesRes.data ?? []}
       saldos={saldos}
       porArmazem={porArmazem}
+      reservado={reservado}
     />
   );
 }

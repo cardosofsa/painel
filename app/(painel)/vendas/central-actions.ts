@@ -10,12 +10,25 @@ import { sincronizarConexao, type ConexaoShopee } from "@/lib/marketplace/sincro
 import { credenciaisShopee } from "@/lib/marketplace/shopee-api";
 import { enviarEstoqueConexao } from "@/lib/marketplace/estoque-servidor";
 
-const ETAPAS_VENDA = ["emitir", "imprimir", "enviar", "enviado", "concluido"] as const;
+const ETAPAS_VENDA = ["reservar", "emitir", "enviar", "imprimir", "retirada", "enviado", "concluido"] as const;
+type EtapaVendaAcao = (typeof ETAPAS_VENDA)[number];
 /** Sem a 0047 a coluna `etapa` não existe: grava o equivalente em `status_envio`. */
-const ENVIO_DA_ETAPA: Record<(typeof ETAPAS_VENDA)[number], "separacao" | "enviado" | "concluido"> = {
+const ENVIO_DA_ETAPA: Record<EtapaVendaAcao, "separacao" | "enviado" | "concluido"> = {
+  reservar: "separacao",
   emitir: "separacao",
-  imprimir: "separacao",
   enviar: "separacao",
+  imprimir: "separacao",
+  retirada: "separacao",
+  enviado: "enviado",
+  concluido: "concluido",
+};
+/** Banco com 0047 mas sem 0052: só conhece emitir/imprimir/enviar/enviado/concluido (ordem antiga). */
+const ETAPA_0047: Record<EtapaVendaAcao, string> = {
+  reservar: "emitir",
+  emitir: "emitir",
+  enviar: "imprimir",
+  imprimir: "enviar",
+  retirada: "enviar",
   enviado: "enviado",
   concluido: "concluido",
 };
@@ -26,13 +39,21 @@ function revalidar() {
   revalidatePath("/dashboard");
 }
 
-/** Avança (ou volta) a etapa de uma ou várias vendas do sistema. */
-export async function definirEtapaVendas(ids: string[], etapa: (typeof ETAPAS_VENDA)[number]) {
+/**
+ * Avança (ou volta) a etapa de uma ou várias vendas do sistema. Com a 0052, pela RPC
+ * `avancar_etapa_vendas`: passar para Imprimir transforma a reserva em baixa, e sair de
+ * Para Reservar só acontece se houver disponível.
+ */
+export async function definirEtapaVendas(ids: string[], etapa: EtapaVendaAcao) {
   return comResultado(async () => {
     const v = validar(z.object({ ids: z.array(z.string().uuid()).min(1).max(500), etapa: z.enum(ETAPAS_VENDA) }), { ids, etapa });
     const supabase = await createClient();
-    let { error } = await supabase.from("vendas").update({ etapa: v.etapa }).in("id", v.ids).neq("status", "cancelada");
-    if (error?.code === "PGRST204") ({ error } = await supabase.from("vendas").update({ status_envio: ENVIO_DA_ETAPA[v.etapa] }).in("id", v.ids).neq("status", "cancelada"));
+    let { error } = await supabase.rpc("avancar_etapa_vendas", { p_ids: v.ids, p_etapa: v.etapa });
+    if (error?.code === "PGRST202" || error?.code === "42883") {
+      // Sem a 0052: grava direto, na grafia que o banco conhece.
+      ({ error } = await supabase.from("vendas").update({ etapa: ETAPA_0047[v.etapa] }).in("id", v.ids).neq("status", "cancelada"));
+      if (error?.code === "PGRST204") ({ error } = await supabase.from("vendas").update({ status_envio: ENVIO_DA_ETAPA[v.etapa] }).in("id", v.ids).neq("status", "cancelada"));
+    }
     if (error) lancarErroSupabase(error);
     revalidar();
     return v.ids.length;

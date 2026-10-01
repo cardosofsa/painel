@@ -3,24 +3,30 @@
  * confirmados e pedidos de marketplace numa lista só, com a mesma etapa de expedição.
  * PURO, coberto por `pedidos-central.test.ts`.
  *
- * Etapas: Para Emitir (aprovar) → Para Imprimir → Para Enviar → Enviado → Concluído;
- * à parte, Aguardando pagamento (marketplace não pago) e Cancelado.
- * - Venda do sistema: a etapa é `vendas.etapa` (0047); sem a migração, sai do `status_envio`.
- * - Pedido do catálogo a confirmar: Para Emitir (Aprovar abre o fechamento da venda).
+ * Etapas (como no ERP): Para Reservar (problema: não mapeado / sem estoque) → Para Emitir
+ * (aprovar) → Para Enviar → Para Imprimir (aqui a reserva vira baixa, 0052) → Para
+ * Retirada → Enviado → Concluído; à parte, Aguardando pagamento e Cancelado.
+ * - Venda do sistema: a etapa é `vendas.etapa`; sem a migração, sai do `status_envio`.
+ * - Pedido do catálogo a confirmar: Para Emitir (Aprovar abre o fechamento da venda), ou
+ *   Para Reservar se algum item não existe mais ou o disponível não cobre.
  * - Marketplace: a etapa sai do status da plataforma e NÃO é editada aqui.
  */
 
 import { noPeriodo, type Periodo } from "@/lib/periodo";
 import type { StatusMarketplace } from "@/lib/marketplace/shopee-planilha";
 
-export type Etapa = "pagamento" | "emitir" | "imprimir" | "enviar" | "enviado" | "concluido" | "cancelado";
+export type Etapa = "pagamento" | "reservar" | "emitir" | "enviar" | "imprimir" | "retirada" | "enviado" | "concluido" | "cancelado";
+/** Por que o pedido está em Para Reservar (sub-abas). */
+export type MotivoReserva = "nao_mapeado" | "sem_estoque" | "revisao";
 export type EtapaVenda = Exclude<Etapa, "pagamento" | "cancelado">;
 
 export const ETAPAS: { id: Etapa; rotulo: string; pendente: boolean }[] = [
   { id: "pagamento", rotulo: "Aguardando pagamento", pendente: true },
+  { id: "reservar", rotulo: "Para Reservar", pendente: true },
   { id: "emitir", rotulo: "Para Emitir", pendente: true },
-  { id: "imprimir", rotulo: "Para Imprimir", pendente: true },
   { id: "enviar", rotulo: "Para Enviar", pendente: true },
+  { id: "imprimir", rotulo: "Para Imprimir", pendente: true },
+  { id: "retirada", rotulo: "Para Retirada", pendente: true },
   { id: "enviado", rotulo: "Enviado", pendente: false },
   { id: "concluido", rotulo: "Concluído", pendente: false },
   { id: "cancelado", rotulo: "Cancelado", pendente: false },
@@ -30,10 +36,27 @@ export const ROTULO_ETAPA = Object.fromEntries(ETAPAS.map((e) => [e.id, e.rotulo
 
 /** Próxima etapa e o nome da ação que leva até ela (só pedidos do próprio sistema). */
 export const PROXIMA: Partial<Record<Etapa, { etapa: EtapaVenda; acao: string }>> = {
-  emitir: { etapa: "imprimir", acao: "Aprovar" },
-  imprimir: { etapa: "enviar", acao: "Marcar impresso" },
-  enviar: { etapa: "enviado", acao: "Marcar enviado" },
-  enviado: { etapa: "concluido", acao: "Concluir" },
+  reservar: { etapa: "enviar", acao: "Reservar" },
+  emitir: { etapa: "enviar", acao: "Aprovar" },
+  enviar: { etapa: "imprimir", acao: "Programar envio" },
+  imprimir: { etapa: "retirada", acao: "Marcar impresso" },
+  retirada: { etapa: "enviado", acao: "Marcar como enviado" },
+  enviado: { etapa: "concluido", acao: "Marcar entregue" },
+};
+
+/** Etapa anterior (para "Retornar para…"). */
+export const ANTERIOR: Partial<Record<Etapa, EtapaVenda>> = {
+  enviar: "emitir",
+  imprimir: "enviar",
+  retirada: "imprimir",
+  enviado: "retirada",
+  concluido: "enviado",
+};
+
+export const ROTULO_MOTIVO: Record<MotivoReserva, string> = {
+  nao_mapeado: "Não mapeado",
+  sem_estoque: "Sem estoque",
+  revisao: "Pendente revisão",
 };
 
 export const LOGISTICAS = ["Retirada", "Entrega própria", "Motoboy", "Correios", "Transportadora"] as const;
@@ -80,6 +103,8 @@ export interface PedidoCentral {
   prazoEnvio: string | null;
   /** Algum item sem produto vinculado (custo desconhecido). */
   semCusto: boolean;
+  /** Só em Para Reservar: o motivo (sub-aba). */
+  motivoReserva: MotivoReserva | null;
   /** A etapa pode ser avançada aqui (pedidos do próprio sistema). */
   editavel: boolean;
 }
@@ -96,6 +121,8 @@ export interface VendaIn {
   status_envio?: "separacao" | "enviado" | "concluido" | null;
   etapa?: EtapaVenda | null;
   logistica?: string | null;
+  /** 0052: false = ainda só reservado (baixa ao passar para Imprimir). */
+  estoque_baixado?: boolean;
   total: number;
   custo_total: number;
   lucro: number;
@@ -116,7 +143,7 @@ export interface PedidoCatalogoIn {
   venda_id: string | null;
   entrega_cidade?: string | null;
   entrega_uf?: string | null;
-  itens: { produto_nome: string; quantidade: number; preco_unitario: number }[];
+  itens: { produto_id?: string | null; produto_nome: string; quantidade: number; preco_unitario: number }[];
 }
 
 export interface PedidoMktIn {
@@ -155,19 +182,19 @@ export function etapaDaVenda(v: Pick<VendaIn, "status" | "etapa" | "status_envio
   if (v.status === "cancelada") return "cancelado";
   if (v.etapa) return v.etapa;
   // Sem a 0047: deduz do status_envio (sem envio = balcão, já concluída).
-  if (v.status_envio === "separacao") return "imprimir";
+  if (v.status_envio === "separacao") return "enviar";
   if (v.status_envio === "enviado") return "enviado";
   return "concluido";
 }
 
-/** Status da Shopee → etapa. "Processado"/PROCESSED (etiqueta pronta) já vai para Enviar. */
+/** Status da Shopee → etapa. A enviar = Para Enviar (programar); PROCESSED (etiqueta pronta) = Para Imprimir. */
 export function etapaDoMarketplace(status: StatusMarketplace, original: string | null): Etapa {
   switch (status) {
     case "nao_pago":
       return "pagamento";
     case "a_enviar": {
       const o = (original ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-      return /processed|processado|retry_ship|para enviar|organizado/.test(o) ? "enviar" : "imprimir";
+      return /processed|processado|retry_ship/.test(o) ? "imprimir" : "enviar";
     }
     case "enviado":
       return "enviado";
@@ -185,6 +212,8 @@ export function montarCentral(entrada: {
   pedidosCatalogo: PedidoCatalogoIn[];
   marketplace: PedidoMktIn[];
   lojas: LojaIn[];
+  /** produto → disponível (0052). Sem ele, não dá para saber "sem estoque" antes de aprovar. */
+  disponivel?: Map<string, number>;
 }): PedidoCentral[] {
   const lojas = new Map(entrada.lojas.map((l) => [l.id, l]));
   const vendaDoCatalogo = new Map(entrada.pedidosCatalogo.filter((p) => p.venda_id).map((p) => [p.venda_id as string, p]));
@@ -220,12 +249,14 @@ export function montarCentral(entrada: {
       logisticaFixa: false,
       prazoEnvio: null,
       semCusto: false,
+      motivoReserva: etapa === "reservar" ? "sem_estoque" : null,
       editavel: etapa !== "cancelado",
     });
   }
 
   for (const p of entrada.pedidosCatalogo) {
     if (p.status !== "pendente" && p.status !== "aceito") continue;
+    const motivo = motivoDoPedidoCatalogo(p, entrada.disponivel);
     lista.push({
       chave: `catalogo:${p.id}`,
       origem: "catalogo",
@@ -245,20 +276,24 @@ export function montarCentral(entrada: {
       custo: 0,
       taxas: 0,
       lucro: 0,
-      etapa: "emitir",
+      etapa: motivo ? "reservar" : "emitir",
       pagamento: "pendente",
       formaPagamento: null,
       logistica: null,
       logisticaFixa: false,
       prazoEnvio: null,
       semCusto: false,
+      motivoReserva: motivo,
       editavel: true,
     });
   }
 
   for (const p of entrada.marketplace) {
     const loja = lojas.get(p.loja_id);
-    const etapa = etapaDoMarketplace(p.status, p.status_original);
+    const etapaPlataforma = etapaDoMarketplace(p.status, p.status_original);
+    // Item sem produto antes de baixar: vai para Para Reservar (Não mapeado) até vincular.
+    const naoMapeado = p.custo_incompleto && etapaPlataforma === "enviar";
+    const etapa: Etapa = naoMapeado ? "reservar" : etapaPlataforma;
     const cancelado = etapa === "cancelado";
     lista.push({
       chave: `mkt:${p.id}`,
@@ -286,11 +321,25 @@ export function montarCentral(entrada: {
       logisticaFixa: true,
       prazoEnvio: p.prazo_envio ?? null,
       semCusto: !cancelado && p.custo_incompleto,
+      motivoReserva: naoMapeado ? "nao_mapeado" : null,
       editavel: false,
     });
   }
 
   return lista.sort((a, b) => b.data.localeCompare(a.data));
+}
+
+/** Pedido do catálogo ainda não aprovado tem problema? (item apagado, ou falta disponível). */
+export function motivoDoPedidoCatalogo(p: Pick<PedidoCatalogoIn, "itens">, disponivel?: Map<string, number>): MotivoReserva | null {
+  if (p.itens.some((i) => i.produto_id === null)) return "nao_mapeado";
+  if (!disponivel) return null;
+  const pedido = new Map<string, number>();
+  for (const i of p.itens) if (i.produto_id) pedido.set(i.produto_id, (pedido.get(i.produto_id) ?? 0) + i.quantidade);
+  for (const [id, qtd] of pedido) {
+    const d = disponivel.get(id);
+    if (d !== undefined && d < qtd) return "sem_estoque";
+  }
+  return null;
 }
 
 // ---------- Filtros ----------

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { RowMenu, type RowMenuAction } from "@/components/ui/RowMenu";
 import { IconeMarca } from "@/components/ui/IconeMarca";
 import { formatBRL } from "@/lib/format";
-import { LOGISTICAS, PROXIMA, ROTULO_ETAPA, type PedidoCentral } from "@/lib/pedidos-central";
+import { LOGISTICAS, PROXIMA, ROTULO_ETAPA, ROTULO_MOTIVO, type PedidoCentral } from "@/lib/pedidos-central";
 
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const dataHora = (iso: string | null) =>
@@ -13,6 +13,8 @@ const dataHora = (iso: string | null) =>
 
 const TOM_ETAPA: Record<PedidoCentral["etapa"], string> = {
   pagamento: "text-text-tertiary",
+  reservar: "text-negative",
+  retirada: "text-accent",
   emitir: "text-accent",
   imprimir: "text-accent",
   enviar: "text-accent",
@@ -34,6 +36,7 @@ export function LinhaPedido({
   onSelecionar,
   onAbrir,
   onAvancar,
+  onVincular,
   onLogistica,
   acoes,
   processando,
@@ -44,11 +47,15 @@ export function LinhaPedido({
   onAbrir: () => void;
   /** Ação da etapa (Aprovar, Marcar impresso...). */
   onAvancar: () => void;
+  /** Anúncio de marketplace sem produto: abre o vínculo. */
+  onVincular?: () => void;
   onLogistica: (l: string | null) => void;
   acoes: RowMenuAction[];
   processando: boolean;
 }) {
-  const proxima = p.editavel ? PROXIMA[p.etapa] : undefined;
+  const proximaBase = p.editavel ? PROXIMA[p.etapa] : undefined;
+  // Pedido do catálogo ainda não aprovado: a ação é sempre Aprovar (abre o fechamento).
+  const proxima = proximaBase && p.chave.startsWith("catalogo:") ? { ...proximaBase, acao: "Aprovar" } : proximaBase;
   const nomeCanal = p.loja ? `${p.canal} · ${p.loja}` : p.canal;
   const cancelado = p.etapa === "cancelado";
 
@@ -142,8 +149,16 @@ export function LinhaPedido({
         </div>
 
         <div className="col-span-2 md:col-span-1 flex md:flex-col items-center md:items-end justify-between gap-2">
-          <span className={`text-xs font-medium ${TOM_ETAPA[p.etapa]}`}>{ROTULO_ETAPA[p.etapa]}</span>
+          <span className={`text-xs font-medium ${TOM_ETAPA[p.etapa]}`}>
+            {ROTULO_ETAPA[p.etapa]}
+            {p.motivoReserva ? ` · ${ROTULO_MOTIVO[p.motivoReserva]}` : ""}
+          </span>
           <div className="flex items-center gap-1">
+            {p.motivoReserva === "nao_mapeado" && p.origem === "marketplace" && onVincular && (
+              <Button size="sm" variant="primary" onClick={onVincular}>
+                Vincular anúncio
+              </Button>
+            )}
             {proxima && (
               <Button size="sm" variant={p.etapa === "emitir" ? "primary" : "secondary"} loading={processando} onClick={onAvancar}>
                 {proxima.acao}
