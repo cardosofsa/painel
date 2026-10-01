@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
+import { IconeMarca } from "@/components/ui/IconeMarca";
 import { formatBRL } from "@/lib/format";
 import { executarComToast } from "@/lib/acao-cliente";
 import {
@@ -137,12 +138,15 @@ export function AbaCanais({ canais, lojas }: { canais: Canal[]; lojas: Loja[] })
                   rolagem horizontal — o único vazamento que sobrou nas 8 telas. */}
               <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: `${c.cor}1a`, color: c.cor }}
-                  >
-                    <Icone size={18} />
-                  </div>
+                  <IconeMarca
+                    nome={c.nome}
+                    tamanho={36}
+                    fallback={
+                      <div className="w-9 h-9 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: `${c.cor}1a`, color: c.cor }}>
+                        <Icone size={18} />
+                      </div>
+                    }
+                  />
                   <div className="min-w-0">
                     <div className="font-medium text-text-primary text-sm">{c.nome}</div>
                     {c.tipo_taxa === "faixas" && (
@@ -176,12 +180,15 @@ export function AbaCanais({ canais, lojas }: { canais: Canal[]; lojas: Loja[] })
                         {l.logo_url ? (
                           <ImagemStorage src={l.logo_url} alt={l.nome} className="w-8 h-8 rounded-md object-cover border border-border" />
                         ) : (
-                          <div
-                            className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: `${c.cor}1a`, color: c.cor }}
-                          >
-                            <Icone size={14} />
-                          </div>
+                          <IconeMarca
+                            nome={c.nome}
+                            tamanho={32}
+                            fallback={
+                              <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: `${c.cor}1a`, color: c.cor }}>
+                                <Icone size={14} />
+                              </div>
+                            }
+                          />
                         )}
                         <div>
                           <div className="text-sm font-medium text-text-primary">

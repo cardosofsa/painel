@@ -1,4 +1,5 @@
-import { AtSign, BookOpen, MapPin, MessageCircle, ShieldCheck } from "lucide-react";
+import { BookOpen, MapPin, MessageCircle, ShieldCheck } from "lucide-react";
+import { IconeMarca } from "@/components/ui/IconeMarca";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { VitrineInterativa } from "@/components/catalogo/VitrineInterativa";
@@ -70,7 +71,7 @@ export async function VitrinePublica({ slug, carrinho, produtoInicial = null }: 
                       )}
                       {insta && (
                         <a href={`https://instagram.com/${encodeURIComponent(insta)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-accent">
-                          <AtSign size={12} /> {insta}
+                          <IconeMarca marca="instagram" variante="cor" tamanho={12} /> {insta}
                         </a>
                       )}
                     </div>
@@ -108,7 +109,7 @@ export async function VitrinePublica({ slug, carrinho, produtoInicial = null }: 
           aria-label="Falar com a loja no WhatsApp"
           className="fixed right-4 bottom-20 sm:bottom-6 z-30 w-12 h-12 rounded-full bg-[#25D366] text-white shadow-elev-2 flex items-center justify-center hover:scale-105 transition-transform"
         >
-          <MessageCircle size={22} />
+          <IconeMarca marca="whatsapp" variante="cor" tamanho={24} cor="#FFFFFF" fallback={<MessageCircle size={22} />} />
         </a>
       )}
     </div>

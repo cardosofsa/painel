@@ -6,6 +6,7 @@ import { ArrowDownRight, ArrowLeft, ArrowUpRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow } from "@/components/ui/Card";
+import { IconeMarca } from "@/components/ui/IconeMarca";
 import { Tabs } from "@/components/ui/Tabs";
 import { Chip } from "@/components/ui/Chip";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
@@ -130,7 +131,12 @@ export function RelatoriosVendasClient({ vendas, agoraIso }: { vendas: VendaRela
       <tbody>
         {linhas.map((l) => (
           <Tr key={l.chave}>
-            <Td>{l.chave}</Td>
+            <Td>
+              <span className="inline-flex items-center gap-2">
+                <IconeMarca nome={l.chave} tamanho={18} />
+                {l.chave}
+              </span>
+            </Td>
             <Td align="right" mono>
               {l.pedidos}
             </Td>
