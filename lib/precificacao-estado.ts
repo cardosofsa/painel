@@ -53,6 +53,7 @@ export type {
   PrecificacaoProps,
 } from "@/lib/precificacao-tipos";
 import { useConfirm } from "@/components/ui/ConfirmModal";
+import { useExtrasPrecificacao } from "@/lib/precificacao-extras";
 
 /**
  * Chave de lista para item ainda não salvo (insumo do kit, concorrente sem produto
@@ -278,6 +279,28 @@ export function usePrecificacao({
     [resultado, concorrentes, taxas],
   );
 
+  /** Abaixo disso a venda dá prejuízo (lucro zero com as mesmas taxas). */
+  const precoMinimoViavel = useMemo(() => {
+    const r =
+      usaFaixas && lojaSelecionada
+        ? resolverComFaixas(custoTotal, "lucro", 0, taxasBaseFaixas, lojaSelecionada.faixas).resultado
+        : resolverPorLucro(custoTotal, 0, taxas);
+    return r.viavel && Number.isFinite(r.precoVenda) ? Math.ceil(r.precoVenda * 100) / 100 : null;
+  }, [usaFaixas, lojaSelecionada, custoTotal, taxasBaseFaixas, taxas]);
+
+  const extras = useExtrasPrecificacao({
+    resultado,
+    nomeProduto,
+    canal: lojaSelecionada ? lojaSelecionada.canalNome : null,
+    comissaoPct: taxaVariavelPctEfetiva,
+    tarifa: taxaFixaEfetiva,
+    impostoPct: impostoPct / 100,
+    precoMinimoViavel,
+    zonaMorta,
+    analiseConcorrencia,
+    qtdConcorrentes: concorrentes.filter((c) => c.preco > 0).length,
+  });
+
   async function adicionarConcorrente() {
     if (!novoConcorrenteNome.trim()) return toast.error("Informe o nome do concorrente.");
     if (novoConcorrentePreco === "" || novoConcorrentePreco <= 0) {
@@ -321,7 +344,7 @@ export function usePrecificacao({
   function resumoAtual(): ResumoExport {
     return {
       titulo: nomeAnuncio.trim() || nomeProduto || "Produto",
-      imagemUrl: produtos.find((p) => p.id === produtoId)?.imagem_url ?? null,
+      imagemUrl: extras.imagemPropria ?? produtos.find((p) => p.id === produtoId)?.imagem_url ?? null,
       precoVenda: resultado.precoVenda,
       custoTotal: resultado.custoTotal,
       taxaVariavelValor: resultado.taxaVariavelValor,
@@ -366,7 +389,7 @@ export function usePrecificacao({
           : 0;
     return {
       titulo: h.titulo_anuncio || h.produto_nome,
-      imagemUrl: h.produto_id ? (produtos.find((p) => p.id === h.produto_id)?.imagem_url ?? null) : null,
+      imagemUrl: h.imagem_url ?? (h.produto_id ? (produtos.find((p) => p.id === h.produto_id)?.imagem_url ?? null) : null),
       precoVenda: h.preco_calculado,
       custoTotal: h.custo,
       taxaVariavelValor: h.preco_calculado * h.taxa_variavel_pct,
@@ -440,6 +463,7 @@ export function usePrecificacao({
       setCustoProduto(h.custo);
       setComponentes([]);
     }
+    extras.carregarExtras(h);
     setVisao("individual");
     toast.success("Precificação carregada no formulário");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -569,6 +593,7 @@ export function usePrecificacao({
           preco_calculado: resultado.precoVenda,
           lucro: resultado.lucroLiquido,
           origem: "individual",
+          ...extras.extrasParaSalvar(),
         }),
         { sucesso: "Anúncio salvo no histórico", erro: "Erro ao salvar precificação" },
       );
@@ -689,6 +714,11 @@ export function usePrecificacao({
     setPendenteImagem,
     salvar,
     pending,
+    precoMinimoViavel,
+    resultadoNoPreco,
+
+    // anúncio pago, foto própria e estratégia da Vixe (8.8)
+    ...extras,
 
     // histórico — precificações
     filtroHistoricoTexto,

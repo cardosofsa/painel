@@ -7,6 +7,7 @@ import { GeradorIA } from "@/components/ia/GeradorIA";
 import { limiteEfetivo, LIMITE_DESCRICAO_ANUNCIO } from "@/lib/ia/prompts";
 import { gerarDescricaoAnuncioIA, gerarTituloAnuncioIA } from "@/app/(painel)/precificacao/actions";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
+import { FotoPrecificacao } from "@/components/precificacao/FotoPrecificacao";
 import type { EstadoPrecificacao, ProdutoOpcao } from "@/lib/precificacao-estado";
 
 /**
@@ -89,6 +90,7 @@ export function PainelEntradas({
             </div>
           )}
         </div>
+        <FotoPrecificacao propria={estado.imagemPropria} doProduto={produtoVinculado?.imagem_url ?? null} onChange={estado.setImagemPropria} />
         <label className="block text-xs font-medium text-text-secondary mb-1.5">Nome do Anúncio</label>
         <input
           value={nomeAnuncio}

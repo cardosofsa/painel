@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { PrecificacaoClient } from "./PrecificacaoClient";
-import type { LojaOpcao, AnuncioSalvo } from "@/lib/precificacao-estado";
+import type { LojaOpcao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
 import type { Concorrente } from "@/lib/pricing";
 
 export default async function PrecificacaoPage() {
@@ -11,9 +11,8 @@ export default async function PrecificacaoPage() {
     await Promise.all([
     supabase
       .from("precificacoes")
-      .select(
-        "id, produto_id, produto_nome, canal, titulo_anuncio, descricao_anuncio, loja_id, componentes, taxa_extra_valor, taxa_extra_tipo, custo, taxa_variavel_pct, taxa_fixa, taxa_adicional_pct, imposto_pct, margem_pct, preco_calculado, lucro, criado_em, origem",
-      )
+      // `*`: anuncio, estrategia e imagem_url só existem a partir da 0045.
+      .select("*")
       .order("criado_em", { ascending: false })
       .limit(50),
     supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id").order("nome"),
@@ -104,7 +103,7 @@ export default async function PrecificacaoPage() {
 
   return (
     <PrecificacaoClient
-      historico={historicoRes.data ?? []}
+      historico={(historicoRes.data ?? []) as PrecificacaoHist[]}
       produtos={produtos}
       aliquotaDasPadrao={perfilRes.data?.aliquota_das ?? 6}
       empresa={{ nome: perfilRes.data?.nome_negocio?.trim() || null, logoUrl: perfilRes.data?.logo_url ?? null }}

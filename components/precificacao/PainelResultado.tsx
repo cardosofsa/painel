@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { IconeLampiao } from "@/components/ui/IconeLampiao";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +10,7 @@ import { pctPorModo } from "@/lib/pricing";
 import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";
 import { precoPsicologico, DetalhamentoPrecificacao, SimuladorPreco } from "@/components/precificacao/resultado-compartilhado";
 import type { EstadoPrecificacao, ProdutoOpcao, LojaOpcao } from "@/lib/precificacao-estado";
+import { ID_ESTRATEGIA_VIXE } from "@/components/precificacao/PainelEstrategiaVixe";
 
 /**
  * Resultado calculado, Faixa de Venda, gráfico de Composição do Preço e Estratégia
@@ -180,18 +180,13 @@ export function PainelResultado({
           Salvar Anúncio
         </Button>
         {resultado.viavel && nomeProduto.trim() && (
-          <Link
-            href={`/vixe/preco?${new URLSearchParams({
-              nome: nomeProduto.trim(),
-              custo: resultado.custoTotal.toFixed(2),
-              preco: resultado.precoVenda.toFixed(2),
-              ...(produtoVinculado ? { produto: produtoVinculado.id } : {}),
-              ...(lojaId ? { loja: lojaId } : {}),
-            }).toString()}`}
-            className="flex items-center justify-center gap-1.5 text-sm text-accent hover:underline mt-3"
+          <button
+            type="button"
+            onClick={() => document.getElementById(ID_ESTRATEGIA_VIXE)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="w-full flex items-center justify-center gap-1.5 text-sm text-accent hover:underline mt-3"
           >
-            <IconeLampiao size={14} /> Analisar este preço com a Vixe
-          </Link>
+            <IconeLampiao size={14} /> Estratégia da Vixe para este preço
+          </button>
         )}
       </Card>
 

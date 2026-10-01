@@ -4,6 +4,7 @@
  */
 
 import type { ComponenteKit, Concorrente, FaixaComissao } from "@/lib/pricing";
+import type { DiagnosticoPreco } from "@/lib/ia/prompts-preco";
 
 export interface PrecificacaoHist {
   id: string;
@@ -27,6 +28,10 @@ export interface PrecificacaoHist {
   lucro: number;
   criado_em: string;
   origem: "individual" | "em_massa";
+  /** 0045; ausentes antes da migração e em linhas antigas. */
+  anuncio?: { tipo: "percentual" | "valor"; valor: number; margem_alvo_pct: number | null } | null;
+  estrategia?: DiagnosticoPreco | null;
+  imagem_url?: string | null;
 }
 
 export interface LojaOpcao {

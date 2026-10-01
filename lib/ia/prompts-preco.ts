@@ -38,6 +38,8 @@ export interface ContextoPrecoIA {
   concorrencia?: { min: number; max: number; media: number; diferencaPct: number; quantidade: number } | null;
   precoPsicologico?: number | null;
   instrucaoExtra?: string | null;
+  /** Anúncio pago por venda (0045), quando o dono informou. */
+  anuncio?: { gastoPorVenda: number; roasEmpate: number | null; roasAtual: number | null; lucroDepois: number } | null;
 }
 
 export interface Estrategia {
@@ -77,6 +79,12 @@ export function montarPromptPreco(ctx: ContextoPrecoIA): string {
       "Concorrentes cadastrados",
       ctx.concorrencia
         ? `${ctx.concorrencia.quantidade}, de ${brl(ctx.concorrencia.min)} a ${brl(ctx.concorrencia.max)}, média ${brl(ctx.concorrencia.media)}; o preço atual está ${pct(Math.abs(ctx.concorrencia.diferencaPct))} ${ctx.concorrencia.diferencaPct >= 0 ? "acima" : "abaixo"} da média`
+        : null,
+    ],
+    [
+      "Anúncio pago",
+      ctx.anuncio
+        ? `gasta ${brl(ctx.anuncio.gastoPorVenda)} por venda${ctx.anuncio.roasAtual != null ? ` (ROAS ${ctx.anuncio.roasAtual.toFixed(2).replace(".", ",")})` : ""}; ROAS mínimo sem prejuízo ${ctx.anuncio.roasEmpate != null ? ctx.anuncio.roasEmpate.toFixed(2).replace(".", ",") : "nenhum (sem lucro)"}; lucro depois do anúncio ${brl(ctx.anuncio.lucroDepois)}`
         : null,
     ],
     ["Preço psicológico mais próximo", ctx.precoPsicologico != null ? brl(ctx.precoPsicologico) : null],
@@ -190,6 +198,8 @@ export function hashContextoPreco(ctx: ContextoPrecoIA): string {
       ctx.zonaMorta ? `${n(ctx.zonaMorta.inicio)}-${n(ctx.zonaMorta.fim)}` : "",
       ctx.concorrencia ? `${n(ctx.concorrencia.min)}-${n(ctx.concorrencia.max)}-${n(ctx.concorrencia.media)}` : "",
       ctx.instrucaoExtra ?? "",
+      // Só entra quando há anúncio: o cache das consultas antigas continua valendo.
+      ...(ctx.anuncio ? [`ads:${n(ctx.anuncio.gastoPorVenda)}`] : []),
     ].join("\u0001"),
   );
 }

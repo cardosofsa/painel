@@ -36,12 +36,23 @@ export interface PrecificacaoInput {
   preco_calculado: number;
   lucro: number;
   origem: "individual" | "em_massa";
+  /** 0045 (opcionais). */
+  anuncio?: { tipo: "percentual" | "valor"; valor: number; margem_alvo_pct: number | null } | null;
+  estrategia?: { diagnostico: string; estrategias: { tipo: string; titulo: string; detalhe: string }[]; precoSugerido: number | null; motivoPreco: string | null } | null;
+  imagem_url?: string | null;
 }
 
 export async function salvarPrecificacao(dados: PrecificacaoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
-    const { error } = await supabase.from("precificacoes").insert(validar(precificacaoSchema, dados));
+    const v = validar(precificacaoSchema, dados);
+    let { error } = await supabase.from("precificacoes").insert(v);
+    // Sem a 0045 as colunas novas não existem (PGRST204): grava o resto, como antes.
+    if (error?.code === "PGRST204") {
+      const base: Record<string, unknown> = { ...v };
+      for (const c of ["anuncio", "estrategia", "imagem_url"]) delete base[c];
+      ({ error } = await supabase.from("precificacoes").insert(base));
+    }
     if (error) lancarErroSupabase(error);
     revalidatePath("/precificacao");
     revalidatePath("/produtos");

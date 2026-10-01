@@ -111,6 +111,21 @@ export const precificacaoSchema = z.object({
   preco_calculado: dinheiro,
   lucro: z.number().finite().min(-10_000_000).max(10_000_000),
   origem: z.enum(["individual", "em_massa"]),
+  // 0045; opcionais: a calculadora em massa não manda.
+  anuncio: z
+    .object({ tipo: z.enum(["percentual", "valor"]), valor: z.number().finite().min(0).max(1_000_000), margem_alvo_pct: fracao.nullable() })
+    .nullable()
+    .optional(),
+  estrategia: z
+    .object({
+      diagnostico: z.string().max(1000),
+      estrategias: z.array(z.object({ tipo: z.string().max(30), titulo: z.string().max(80), detalhe: z.string().max(400) })).max(5),
+      precoSugerido: z.number().finite().min(0).max(10_000_000).nullable(),
+      motivoPreco: z.string().max(400).nullable(),
+    })
+    .nullable()
+    .optional(),
+  imagem_url: z.string().trim().url("Imagem inválida").max(1000).nullable().optional(),
 });
 
 export const lojaSchema = z.object({
@@ -615,6 +630,9 @@ export const iaPrecoSchema = z.object({
     .nullish(),
   precoPsicologico: valorPreco.nullish(),
   instrucaoExtra: z.string().trim().max(300, "Instrução longa demais").nullish(),
+  anuncio: z
+    .object({ gastoPorVenda: valorPreco, roasEmpate: z.number().finite().min(0).max(100_000).nullable(), roasAtual: z.number().finite().min(0).max(100_000).nullable(), lucroDepois: z.number().finite().min(-10_000_000).max(10_000_000) })
+    .nullish(),
 });
 
 /** Ferramentas de texto da Vixe (7.7). Cada uma valida só o que manda para a IA. */

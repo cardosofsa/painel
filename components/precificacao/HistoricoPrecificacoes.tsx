@@ -203,7 +203,29 @@ export function HistoricoPrecificacoes({
                       %)
                     </span>
                   </div>
+                  {historicoDetalhe.anuncio && historicoDetalhe.anuncio.valor > 0 && (
+                    <div className="flex justify-between text-xs text-text-tertiary">
+                      <span>Anúncio pago por venda</span>
+                      <span className="font-mono">
+                        {historicoDetalhe.anuncio.tipo === "percentual" ? `${historicoDetalhe.anuncio.valor}% do preço` : formatBRL(historicoDetalhe.anuncio.valor)}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {historicoDetalhe.estrategia && (
+                  <div className="rounded-md border border-border p-3 text-sm space-y-2">
+                    <div className="text-xs font-medium text-text-tertiary uppercase">Estratégia da Vixe (salva)</div>
+                    {historicoDetalhe.estrategia.diagnostico && <p className="text-text-primary">{historicoDetalhe.estrategia.diagnostico}</p>}
+                    <ul className="list-disc pl-4 space-y-1 text-text-secondary">
+                      {historicoDetalhe.estrategia.estrategias.map((e) => (
+                        <li key={e.titulo}>
+                          <span className="text-text-primary font-medium">{e.titulo}:</span> {e.detalhe}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <Button

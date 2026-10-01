@@ -15,6 +15,8 @@ import { PainelTaxas } from "@/components/precificacao/PainelTaxas";
 import { PainelModo } from "@/components/precificacao/PainelModo";
 import { PainelConcorrentes } from "@/components/precificacao/PainelConcorrentes";
 import { PainelResultado } from "@/components/precificacao/PainelResultado";
+import { PainelEstrategiaVixe } from "@/components/precificacao/PainelEstrategiaVixe";
+import { PainelAnuncio } from "@/components/precificacao/PainelAnuncio";
 import { HistoricoPrecificacoes } from "@/components/precificacao/HistoricoPrecificacoes";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
 import {
@@ -103,13 +105,15 @@ export function PrecificacaoClient({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-5">
               <PainelEntradas estado={estado} produtos={produtos} iaDisponivel={iaDisponivel} />
-              <PainelTaxas estado={estado} lojas={lojas} />
+              <PainelTaxas estado={estado} lojas={lojas} iaDisponivel={iaDisponivel} />
               <PainelModo estado={estado} />
               <PainelConcorrentes estado={estado} />
             </div>
 
             <div className="space-y-5">
               <PainelResultado estado={estado} produtoVinculado={estado.produtoVinculado} lojas={lojas} />
+              <PainelEstrategiaVixe estado={estado} iaDisponivel={iaDisponivel} />
+              <PainelAnuncio estado={estado} />
             </div>
           </div>
 

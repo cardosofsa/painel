@@ -7,13 +7,14 @@ import { Chip } from "@/components/ui/Chip";
 import { formatBRL } from "@/lib/format";
 import { formatarFaixaLabel, type ZonaMorta } from "@/lib/pricing";
 import type { EstadoPrecificacao, LojaOpcao } from "@/lib/precificacao-estado";
+import { ID_ESTRATEGIA_VIXE } from "@/components/precificacao/PainelEstrategiaVixe";
 
 /**
  * Manual ou por loja cadastrada, mais a Taxa Adicional e o Imposto/DAS. Extraído de
  * `PrecificacaoClient.tsx` sem mudança de comportamento — ver comentário em
  * `PainelEntradas.tsx` sobre por que recebe o `estado` inteiro.
  */
-export function PainelTaxas({ estado, lojas }: { estado: EstadoPrecificacao; lojas: LojaOpcao[] }) {
+export function PainelTaxas({ estado, lojas, iaDisponivel = false }: { estado: EstadoPrecificacao; lojas: LojaOpcao[]; iaDisponivel?: boolean }) {
   const {
     modoTaxas,
     setModoTaxas,
@@ -130,7 +131,18 @@ export function PainelTaxas({ estado, lojas }: { estado: EstadoPrecificacao; loj
               <p className="text-xs text-text-tertiary mt-2 bg-surface-2 rounded-md p-2">
                 Faixa aplicada: {formatarFaixaLabel(faixaShopee)} · comissão {faixaShopee.comissaoPct}% + {formatBRL(faixaShopee.tarifaFixa)}
               </p>
-              <AvisoZonaMorta zona={zonaMorta} onAplicar={aplicarPrecoMelhor} />
+              <AvisoZonaMorta
+                zona={zonaMorta}
+                onAplicar={aplicarPrecoMelhor}
+                onEstrategia={
+                  iaDisponivel
+                    ? () => {
+                        document.getElementById(ID_ESTRATEGIA_VIXE)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        estado.pedirEstrategia("margem");
+                      }
+                    : null
+                }
+              />
             </>
           )
         ) : (
@@ -156,7 +168,16 @@ export function PainelTaxas({ estado, lojas }: { estado: EstadoPrecificacao; loj
  * venda, e nada na tela contava isso. Só aparece quando há zona morta de verdade — alerta
  * que vive na tela vira ruído e para de ser lido.
  */
-function AvisoZonaMorta({ zona, onAplicar }: { zona: ZonaMorta | null; onAplicar: (preco: number) => void }) {
+function AvisoZonaMorta({
+  zona,
+  onAplicar,
+  onEstrategia,
+}: {
+  zona: ZonaMorta | null;
+  onAplicar: (preco: number) => void;
+  /** Pede à Vixe uma estratégia para sair da zona morta (null sem IA). */
+  onEstrategia: (() => void) | null;
+}) {
   if (!zona) return null;
 
   return (
@@ -173,13 +194,16 @@ function AvisoZonaMorta({ zona, onAplicar }: { zona: ZonaMorta | null; onAplicar
             Vendendo a {formatBRL(zona.precoMelhor)} sobram <strong>{formatBRL(zona.ganhoLiquido)} a mais</strong> por
             venda.
           </p>
-          <button
-            type="button"
-            onClick={() => onAplicar(zona.precoMelhor)}
-            className="mt-2 text-accent hover:underline font-medium"
-          >
-            Usar {formatBRL(zona.precoMelhor)}
-          </button>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            <button type="button" onClick={() => onAplicar(zona.precoMelhor)} className="text-accent hover:underline font-medium">
+              Usar {formatBRL(zona.precoMelhor)}
+            </button>
+            {onEstrategia && (
+              <button type="button" onClick={onEstrategia} className="text-accent hover:underline font-medium">
+                Pedir estratégia à Vixe
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
