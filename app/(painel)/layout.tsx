@@ -27,7 +27,8 @@ export default async function PainelLayout({ children }: { children: React.React
     // aplicada), o erro é ignorado e o sino aparece vazio — não derruba o painel.
     supabase
       .from("alertas")
-      .select("id, mensagem, produto_id, criado_em")
+      // `*`: tipo, link e canal (pedidos novos) só existem a partir da 0050.
+      .select("*")
       .eq("status", "novo")
       .order("criado_em", { ascending: false })
       .limit(30),

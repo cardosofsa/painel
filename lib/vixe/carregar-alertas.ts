@@ -102,7 +102,8 @@ async function estoque(supabase: SupabaseClient): Promise<AlertaVixe[]> {
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - 30);
   const [alertasRes, produtosRes, saidasRes] = await Promise.all([
-    supabase.from("alertas").select("id, mensagem, produto_id").eq("status", "novo").order("criado_em", { ascending: false }).limit(100),
+    // Só os de estoque: pedido novo (0050) também mora em `alertas`, mas é aviso do sino.
+    supabase.from("alertas").select("id, mensagem, produto_id").eq("status", "novo").eq("tipo", "estoque_minimo").order("criado_em", { ascending: false }).limit(100),
     supabase.from("produtos").select("id, nome, estoque").eq("ativo", true),
     supabase.from("estoque_movimentacoes").select("produto_id, quantidade").eq("tipo", "saida").gte("data_movimentacao", hojeIsoLocal(inicio)),
   ]);

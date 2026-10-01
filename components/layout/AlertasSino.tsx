@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, ShoppingCart, Check } from "lucide-react";
+import { Bell, ShoppingCart, Check, ArrowRight, Package } from "lucide-react";
+import { IconeMarca } from "@/components/ui/IconeMarca";
 import { executarComToast } from "@/lib/acao-cliente";
 import { marcarAlertaLido, marcarTodosAlertasLidos } from "@/app/(painel)/alertas-actions";
 
@@ -11,11 +12,16 @@ export interface AlertaSino {
   mensagem: string;
   produto_id: string | null;
   criado_em: string;
+  /** 0050: estoque_minimo (padrão), pedido_catalogo ou pedido_marketplace. */
+  tipo?: string;
+  link?: string | null;
+  canal?: string | null;
 }
 
 /**
- * Sino da barra do topo: alertas pendentes de estoque mínimo. Cada um tem duas saídas —
- * marcar como lido (ignora) ou abrir um pedido de compra já com o produto preenchido.
+ * Sino da barra do topo: pedidos novos (catálogo, Shopee) e estoque mínimo. Pedido leva ao
+ * pedido em Vendas; estoque abre um pedido de compra com o produto preenchido. Os dois
+ * podem ser só marcados como lidos.
  */
 export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
   const router = useRouter();
@@ -54,13 +60,21 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
     });
   }
 
+  function abrirPedido(a: AlertaSino) {
+    setAberto(false);
+    startTransition(async () => {
+      await marcarAlertaLido(a.id);
+      router.push(a.link || "/vendas");
+    });
+  }
+
   const total = alertas.length;
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setAberto((v) => !v)}
-        aria-label={total > 0 ? `${total} alerta(s) de estoque` : "Sem alertas"}
+        aria-label={total > 0 ? `${total} aviso(s)` : "Sem avisos"}
         className="relative w-8 h-8 rounded-md flex items-center justify-center text-text-secondary hover:bg-surface-2 hover:text-text-primary"
       >
         <Bell size={16} />
@@ -74,7 +88,7 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
       {aberto && (
         <div className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-2rem))] bg-surface-1 border border-border rounded-md shadow-elev-2 text-sm z-30">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-            <span className="font-medium text-text-primary">Alertas</span>
+            <span className="font-medium text-text-primary">Avisos</span>
             {total > 1 && (
               <button onClick={todosLidos} disabled={pending} className="text-xs text-accent hover:underline disabled:opacity-50">
                 Marcar todos como lidos
@@ -82,13 +96,35 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
             )}
           </div>
           {total === 0 ? (
-            <p className="px-3 py-6 text-center text-text-tertiary">Nenhum alerta por enquanto.</p>
+            <p className="px-3 py-6 text-center text-text-tertiary">Nenhum aviso por enquanto.</p>
           ) : (
             <ul className="max-h-96 overflow-y-auto divide-y divide-border">
-              {alertas.map((a) => (
+              {alertas.map((a) => {
+                const pedido = a.tipo === "pedido_catalogo" || a.tipo === "pedido_marketplace";
+                return (
                 <li key={a.id} className="px-3 py-2.5">
-                  <p className="text-text-primary leading-snug">{a.mensagem}</p>
+                  <div className="flex items-start gap-2">
+                    {pedido ? (
+                      <IconeMarca nome={a.canal} tamanho={18} className="mt-0.5" fallback={<Package size={16} className="text-accent shrink-0 mt-0.5" />} />
+                    ) : (
+                      <ShoppingCart size={15} className="text-negative shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-text-primary leading-snug">{a.mensagem}</p>
+                      <p className="text-[11px] text-text-tertiary mt-0.5">{new Date(a.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</p>
+                    </div>
+                  </div>
                   <div className="flex gap-2 mt-2">
+                    {pedido ? (
+                      <button
+                        onClick={() => abrirPedido(a)}
+                        disabled={pending}
+                        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-accent text-accent-on text-xs font-medium hover:bg-accent-hover disabled:opacity-50"
+                      >
+                        <ArrowRight size={12} />
+                        Abrir pedido
+                      </button>
+                    ) : (
                     <button
                       onClick={() => criarPedido(a)}
                       disabled={pending || !a.produto_id}
@@ -97,6 +133,7 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
                       <ShoppingCart size={12} />
                       Adicionar pedido de compra
                     </button>
+                    )}
                     <button
                       onClick={() => lido(a.id)}
                       disabled={pending}
@@ -107,7 +144,8 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
                     </button>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>
