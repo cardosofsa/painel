@@ -11,7 +11,7 @@ import type { LojaIn } from "@/lib/pedidos-central";
  * "Canais de venda": todos, ou canal e loja(s) marcados. Valores: "pdv", "catalogo" e
  * "loja:<id>". Marcar o canal marca todas as lojas dele.
  */
-export function FiltroCanais({ valor, onChange, lojas }: { valor: string[]; onChange: (v: string[]) => void; lojas: LojaIn[] }) {
+export function FiltroCanais({ valor, onChange, lojas, catalogos = [] }: { valor: string[]; onChange: (v: string[]) => void; lojas: LojaIn[]; catalogos?: string[] }) {
   const porCanal = new Map<string, LojaIn[]>();
   for (const l of lojas) porCanal.set(l.canalNome || "Outros", [...(porCanal.get(l.canalNome || "Outros") ?? []), l]);
   const rotulo =
@@ -22,6 +22,8 @@ export function FiltroCanais({ valor, onChange, lojas }: { valor: string[]; onCh
           ? "PDV"
           : valor[0] === "catalogo"
             ? "Catálogo"
+            : valor[0].startsWith("catalogo:")
+              ? valor[0].slice("catalogo:".length)
             : (lojas.find((l) => `loja:${l.id}` === valor[0])?.nome ?? "1 loja")
         : `${valor.length} selecionados`;
 
@@ -35,12 +37,12 @@ export function FiltroCanais({ valor, onChange, lojas }: { valor: string[]; onCh
         </>
       }
     >
-      {(fechar) => <Painel inicial={valor} porCanal={porCanal} onAplicar={(v) => (onChange(v), fechar())} />}
+      {(fechar) => <Painel inicial={valor} porCanal={porCanal} catalogos={catalogos} onAplicar={(v) => (onChange(v), fechar())} />}
     </Popover>
   );
 }
 
-function Painel({ inicial, porCanal, onAplicar }: { inicial: string[]; porCanal: Map<string, LojaIn[]>; onAplicar: (v: string[]) => void }) {
+function Painel({ inicial, porCanal, catalogos, onAplicar }: { inicial: string[]; porCanal: Map<string, LojaIn[]>; catalogos: string[]; onAplicar: (v: string[]) => void }) {
   const [sel, setSel] = useState<Set<string>>(new Set(inicial));
   const alternar = (k: string, on: boolean) =>
     setSel((s) => {
@@ -54,7 +56,14 @@ function Painel({ inicial, porCanal, onAplicar }: { inicial: string[]; porCanal:
     <div>
       <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
         <Item rotulo="PDV (balcão)" marcado={sel.has("pdv")} onChange={(v) => alternar("pdv", v)} />
-        <Item rotulo="Catálogo" marcado={sel.has("catalogo")} onChange={(v) => alternar("catalogo", v)} />
+        <Item rotulo="Catálogo (todos)" marcado={sel.has("catalogo")} onChange={(v) => alternar("catalogo", v)} />
+        {catalogos.length > 1 && (
+          <div className="pl-6 space-y-0.5">
+            {catalogos.map((c) => (
+              <Item key={c} rotulo={c} marcado={sel.has(`catalogo:${c}`)} onChange={(v) => alternar(`catalogo:${c}`, v)} />
+            ))}
+          </div>
+        )}
         {[...porCanal.entries()].map(([canal, ls]) => {
           const todas = ls.every((l) => sel.has(`loja:${l.id}`));
           return (

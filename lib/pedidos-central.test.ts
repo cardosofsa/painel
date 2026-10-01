@@ -78,8 +78,8 @@ describe("montarCentral", () => {
   const lista = montarCentral({
     vendas: [venda({ id: "v1", etapa: "emitir" }), venda({ id: "v2", numero: "V-0002", etapa: "concluido" })],
     pedidosCatalogo: [
-      { id: "c1", numero: "P-0009", cliente_nome: "Bia", total: 59.7, status: "pendente", criado_em: "2026-10-01T10:00:00.000Z", venda_id: null, itens: [{ produto_nome: "Kit", quantidade: 1, preco_unitario: 59.7 }] },
-      { id: "c2", numero: "P-0008", cliente_nome: "Ana", total: 100, status: "convertido", criado_em: "2026-09-30T10:00:00.000Z", venda_id: "v1", entrega_uf: "pe", itens: [] },
+      { id: "c1", numero: "P-0009", catalogo_nome: "Atacado", cliente_nome: "Bia", total: 59.7, status: "pendente", criado_em: "2026-10-01T10:00:00.000Z", venda_id: null, itens: [{ produto_nome: "Kit", quantidade: 1, preco_unitario: 59.7 }] },
+      { id: "c2", numero: "P-0008", catalogo_nome: "Varejo", cliente_nome: "Ana", total: 100, status: "convertido", criado_em: "2026-09-30T10:00:00.000Z", venda_id: "v1", entrega_uf: "pe", itens: [] },
     ],
     marketplace: [mkt({})],
     lojas,
@@ -94,6 +94,13 @@ describe("montarCentral", () => {
     expect(v1.numeroExterno).toBe("P-0008");
     expect(v1.uf).toBe("PE");
   });
+  it("mostra de qual catálogo veio, e filtra por catálogo ou pelo grupo", () => {
+    expect(lista.find((p) => p.chave === "catalogo:c1")!.loja).toBe("Atacado");
+    expect(lista.find((p) => p.chave === "venda:v1")!.loja).toBe("Varejo");
+    expect(filtrarCentral(lista, f({ canais: ["catalogo:Atacado"] }), "todos").map((p) => p.chave)).toEqual(["catalogo:c1"]);
+    expect(filtrarCentral(lista, f({ canais: ["catalogo"] }), "todos").map((p) => p.chave).sort()).toEqual(["catalogo:c1", "venda:v1"]);
+  });
+
   it("pedido do catálogo a confirmar está em Para Emitir e pode ser aprovado", () => {
     const c1 = lista.find((p) => p.chave === "catalogo:c1")!;
     expect(c1.etapa).toBe("emitir");

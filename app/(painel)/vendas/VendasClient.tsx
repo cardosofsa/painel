@@ -334,6 +334,7 @@ export function VendasClient({
   }
 
   const ultimaSync = marketplace.conexoes.map((c) => c.ultima_sincronizacao).filter((d): d is string => !!d).sort().at(-1) ?? null;
+  const nomesCatalogos = [...new Set(pedidos.map((p) => p.catalogo_nome).filter((n): n is string => !!n))].sort();
   const nExtras = contarExtras(extras);
   const visiveis = filtrados.slice(0, mostrar);
   const selecionaveis = visiveis.filter((p) => p.editavel && PROXIMA[p.etapa] && p.chave.startsWith("venda:"));
@@ -373,7 +374,7 @@ export function VendasClient({
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <SeletorPeriodo valor={periodo} onChange={(p) => (setPeriodo(p), setMostrar(POR_PAGINA))} limiteDias={diasJanela} />
-        <FiltroCanais valor={canais} onChange={setCanais} lojas={lojasMarketplace} />
+        <FiltroCanais valor={canais} onChange={setCanais} lojas={lojasMarketplace} catalogos={nomesCatalogos} />
         <div className="relative flex-1 min-w-[12rem] max-w-md">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
           <input className={`${inputClass} pl-9`} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nº do pedido, cliente, produto ou SKU…" aria-label="Buscar pedidos" />

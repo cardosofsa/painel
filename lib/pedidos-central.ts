@@ -107,6 +107,8 @@ export interface VendaIn {
 export interface PedidoCatalogoIn {
   id: string;
   numero: string;
+  /** De qual catálogo veio (há contas com vários). */
+  catalogo_nome?: string | null;
   cliente_nome: string;
   total: number;
   status: "pendente" | "aceito" | "recusado" | "convertido";
@@ -204,7 +206,7 @@ export function montarCentral(entrada: {
       cidade: v.clientes?.cidade ?? ped?.entrega_cidade ?? null,
       uf: (v.clientes?.uf ?? ped?.entrega_uf ?? null)?.toUpperCase() ?? null,
       canal: catalogo ? "Catálogo" : "PDV",
-      loja: null,
+      loja: catalogo ? (ped?.catalogo_nome ?? null) : null,
       lojaId: null,
       itens: v.venda_itens.map((i) => ({ nome: i.produto_nome, sku: i.produto_sku, quantidade: i.quantidade, preco: Number(i.preco_unitario) })),
       total: Number(v.total),
@@ -236,7 +238,7 @@ export function montarCentral(entrada: {
       cidade: p.entrega_cidade ?? null,
       uf: p.entrega_uf?.toUpperCase() ?? null,
       canal: "Catálogo",
-      loja: null,
+      loja: p.catalogo_nome ?? null,
       lojaId: null,
       itens: p.itens.map((i) => ({ nome: i.produto_nome, sku: null, quantidade: i.quantidade, preco: Number(i.preco_unitario) })),
       total: Number(p.total),
@@ -319,8 +321,18 @@ export const FILTROS_VAZIOS: Omit<FiltrosCentral, "periodo"> = {
   soSemCusto: false,
 };
 
-export function chaveCanal(p: Pick<PedidoCentral, "origem" | "lojaId">): string {
-  return p.origem === "marketplace" ? `loja:${p.lojaId}` : p.origem;
+/** Chave do filtro de canais: "pdv", "catalogo:<nome>" (ou "catalogo") e "loja:<id>". */
+export function chaveCanal(p: Pick<PedidoCentral, "origem" | "lojaId" | "loja">): string {
+  if (p.origem === "marketplace") return `loja:${p.lojaId}`;
+  if (p.origem === "catalogo") return p.loja ? `catalogo:${p.loja}` : "catalogo";
+  return p.origem;
+}
+
+function passaCanal(p: PedidoCentral, canais: string[]): boolean {
+  if (!canais.length) return true;
+  const k = chaveCanal(p);
+  // "catalogo" (o grupo inteiro) cobre todos os catálogos.
+  return canais.includes(k) || (p.origem === "catalogo" && canais.includes("catalogo"));
 }
 
 const normal = (s: string) =>
@@ -331,7 +343,7 @@ const normal = (s: string) =>
 
 /** Filtros que NÃO dependem da etapa nem do período. */
 function passaFiltros(p: PedidoCentral, f: FiltrosCentral): boolean {
-  if (f.canais.length && !f.canais.includes(chaveCanal(p))) return false;
+  if (!passaCanal(p, f.canais)) return false;
   if (f.pagamento.length && !f.pagamento.includes(p.pagamento)) return false;
   if (f.logistica && normal(p.logistica ?? "") !== normal(f.logistica)) return false;
   if (f.uf && (p.uf ?? "") !== f.uf.toUpperCase()) return false;
