@@ -263,7 +263,7 @@ export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; loj
                       </div>
                       <div className="flex flex-wrap items-center gap-2 justify-end">
                         {marcaDoNome(c.nome) === "shopee" && (
-                          <ConexaoLoja lojaId={l.id} conexao={marketplace.conexoes.find((x) => x.loja_id === l.id)} apiLigada={apiLigada} />
+                          <ConexaoLoja lojaId={l.id} nomeLoja={l.nome} conexao={marketplace.conexoes.find((x) => x.loja_id === l.id)} apiLigada={apiLigada} />
                         )}
                         <button
                           type="button"

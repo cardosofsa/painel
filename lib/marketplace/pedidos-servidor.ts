@@ -44,6 +44,21 @@ export interface ConexaoResumo {
   loja_id: string;
   ultima_sincronizacao: string | null;
   ultimo_erro: string | null;
+  /** 0049; undefined antes da migração. */
+  estoque_auto?: boolean;
+}
+
+/**
+ * Só o que a tela pode ver da conexão — os tokens (mesmo cifrados) nunca vão ao navegador.
+ * `select("*")` no banco porque as colunas de estoque (0049) podem não existir ainda.
+ */
+export function resumoConexoes(linhas: Record<string, unknown>[] | null | undefined): ConexaoResumo[] {
+  return (linhas ?? []).map((c) => ({
+    loja_id: String(c.loja_id),
+    ultima_sincronizacao: (c.ultima_sincronizacao as string | null) ?? null,
+    ultimo_erro: (c.ultimo_erro as string | null) ?? null,
+    ...(typeof c.estoque_auto === "boolean" ? { estoque_auto: c.estoque_auto } : {}),
+  }));
 }
 
 export interface DadosMarketplace {
@@ -67,7 +82,7 @@ export async function carregarPedidosMarketplace(supabase: SupabaseClient, dias 
       .order("criado_em_plataforma", { ascending: false, nullsFirst: false })
       .limit(3000),
     supabase.from("marketplace_vinculos").select("loja_id, sku_externo, produto_id"),
-    supabase.from("marketplace_conexoes").select("loja_id, ultima_sincronizacao, ultimo_erro"),
+    supabase.from("marketplace_conexoes").select("*"),
   ]);
   if (pedidosRes.error) return { disponivel: false, pedidos: [], vinculos: [], conexoes: [] };
   const num = (v: unknown) => Number(v ?? 0);
@@ -91,6 +106,6 @@ export async function carregarPedidosMarketplace(supabase: SupabaseClient, dias 
       })),
     })),
     vinculos: vinculosRes.error ? [] : (vinculosRes.data ?? []),
-    conexoes: conexoesRes.error ? [] : (conexoesRes.data ?? []),
+    conexoes: conexoesRes.error ? [] : resumoConexoes(conexoesRes.data),
   };
 }

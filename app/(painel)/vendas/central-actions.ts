@@ -8,6 +8,7 @@ import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 import { sincronizarConexao, type ConexaoShopee } from "@/lib/marketplace/sincronizar";
 import { credenciaisShopee } from "@/lib/marketplace/shopee-api";
+import { enviarEstoqueConexao } from "@/lib/marketplace/estoque-servidor";
 
 const ETAPAS_VENDA = ["emitir", "imprimir", "enviar", "enviado", "concluido"] as const;
 /** Sem a 0047 a coluna `etapa` não existe: grava o equivalente em `status_envio`. */
@@ -57,7 +58,7 @@ export async function sincronizarTodasShopee() {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("marketplace_conexoes")
-      .select("id, user_id, loja_id, shop_id, access_token_cifrado, refresh_token_cifrado, expira_em, ultima_sincronizacao");
+      .select("*");
     if (error) throw new Error("Nenhuma loja conectada (falta a migração 0046?).");
     const conexoes = (data ?? []) as ConexaoShopee[];
     if (!conexoes.length) throw new Error("Nenhuma loja conectada à API. Conecte em Configurações → Canais de venda.");
@@ -69,6 +70,8 @@ export async function sincronizarTodasShopee() {
         const r = await sincronizarConexao(supabase, c, "dono");
         pedidos += r.pedidos;
         novos += r.resultado.novos ?? 0;
+        const e = await enviarEstoqueConexao(supabase, c).catch(() => ({ enviados: 0, erros: [] as string[] }));
+        erros.push(...e.erros);
       } catch (e) {
         erros.push(e instanceof Error ? e.message : "erro");
       }

@@ -80,3 +80,12 @@ Para ligar o de 15 minutos:
 4. Para conferir, use `select * from cron.job;` (o job é `sertao-shopee-sincronizar`) e `select * from cron.job_run_details order by start_time desc limit 5;`.
 
 O segredo fica no Vault do Supabase, nunca no código.
+
+## Estoque do SERTÃO nos anúncios (Fase 9.7, migração 0049)
+
+- **Permissão:** precisa da permissão **Product** no app da Shopee. Confira em Console → App → Permissões antes do Go-Live.
+- **Ligar:** em Configurações → Canais de venda, na loja conectada, clique em **Enviar estoque**. A prévia "Shopee → SERTÃO" mostra o que muda em cada anúncio. **Confirmar e ligar o automático** envia tudo na hora.
+- **Depois de ligado:** cada venda no PDV, pedido baixado, compra recebida ou ajuste marca o anúncio como pendente. O envio acontece na hora (PDV), em toda sincronização e a cada 15 minutos.
+- **Saldo enviado:** é o do armazém que tem a loja em "Lojas abastecidas". Sem armazém marcado, vai o total do produto.
+- **Casamento anúncio × produto:** é feito pelo SKU, da variação ou do anúncio, ou pelo vínculo feito em Vendas → Vincular anúncios.
+- **Desligar:** clique no selo "Estoque automático" da loja.

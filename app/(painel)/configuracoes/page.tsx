@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { cofreDisponivel } from "@/lib/ia/cofre";
 import { ambienteShopee, faltandoShopee } from "@/lib/marketplace/shopee-api";
+import { resumoConexoes } from "@/lib/marketplace/pedidos-servidor";
 import { estadoDoTeste, type EstadoTesteBruto } from "@/lib/ia/teste";
 import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
 import {
@@ -60,7 +61,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         .select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp, pin_admin_hash, logo_url, telefone, email, instagram, cep, endereco, numero, bairro, cidade, uf")
         .maybeSingle(),
       // API dos marketplaces por loja (0046). Só as colunas sem token; sem a tabela, vazio.
-      supabase.from("marketplace_conexoes").select("loja_id, ultima_sincronizacao, ultimo_erro"),
+      supabase.from("marketplace_conexoes").select("*"),
     ]);
 
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
@@ -147,7 +148,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       iaSistemaOk={Boolean(process.env.GEMINI_API_KEY)}
       teste={teste}
       marketplace={{
-        conexoes: conexoesRes.error ? [] : (conexoesRes.data ?? []),
+        conexoes: conexoesRes.error ? [] : resumoConexoes(conexoesRes.data),
         faltando: [...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])],
         ambiente: ambienteShopee(),
         aviso: shopee && ["conectada", "erro", "desligada"].includes(shopee) ? shopee : null,

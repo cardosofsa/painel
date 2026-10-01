@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cifrar, decifrar } from "@/lib/ia/cofre";
-import { buscarPedidos, credenciaisShopee, renovarToken } from "./shopee-api";
+import { buscarPedidos, credenciaisShopee, renovarToken, type CredenciaisShopee } from "./shopee-api";
 import { montarPedidosParaGravar } from "./margem";
 
 /**
@@ -19,33 +19,41 @@ export interface ConexaoShopee {
   refresh_token_cifrado: string | null;
   expira_em: string | null;
   ultima_sincronizacao: string | null;
+  /** 0049: estoque do SERTÃO enviado sozinho para os anúncios desta loja. */
+  estoque_auto?: boolean;
+  /** 0049: quando o dono conferiu a prévia e ativou (sem isso, nada é enviado). */
+  estoque_confirmado_em?: string | null;
+  anuncios_atualizados_em?: string | null;
 }
 
 /** AAD do cofre: o token de uma loja não decifra na linha de outra. */
 export const aadToken = (userId: string, lojaId: string) => `${userId}:shopee:${lojaId}`;
+
+/** Credenciais, token válido (renova e regrava cifrado se venceu) e shop_id da conexão. */
+export async function tokenDaConexao(supabase: SupabaseClient, conexao: ConexaoShopee): Promise<{ c: CredenciaisShopee; token: string; shopId: number }> {
+  const c = credenciaisShopee();
+  if (!c) throw new Error("A integração com a Shopee não está ligada neste sistema (faltam SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY).");
+  if (!conexao.access_token_cifrado || !conexao.refresh_token_cifrado) throw new Error("Loja sem autorização. Conecte de novo.");
+  const aad = aadToken(conexao.user_id, conexao.loja_id);
+  const shopId = Number(conexao.shop_id);
+  let token = decifrar(conexao.access_token_cifrado, aad);
+  if (!conexao.expira_em || new Date(conexao.expira_em).getTime() < Date.now()) {
+    const novos = await renovarToken(c, decifrar(conexao.refresh_token_cifrado, aad), shopId);
+    token = novos.accessToken;
+    const cifrados = { access_token_cifrado: cifrar(novos.accessToken, aad), refresh_token_cifrado: cifrar(novos.refreshToken, aad), expira_em: novos.expiraEm };
+    await supabase.from("marketplace_conexoes").update(cifrados).eq("id", conexao.id);
+    Object.assign(conexao, cifrados);
+  }
+  return { c, token, shopId };
+}
 
 export async function sincronizarConexao(
   supabase: SupabaseClient,
   conexao: ConexaoShopee,
   modo: "dono" | "servico",
 ): Promise<{ pedidos: number; resultado: Record<string, number> }> {
-  const c = credenciaisShopee();
-  if (!c) throw new Error("A integração com a Shopee não está ligada neste sistema (faltam SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY).");
-  if (!conexao.access_token_cifrado || !conexao.refresh_token_cifrado) throw new Error("Loja sem autorização. Conecte de novo.");
-
-  const aad = aadToken(conexao.user_id, conexao.loja_id);
-  const shopId = Number(conexao.shop_id);
-  let token = decifrar(conexao.access_token_cifrado, aad);
-
   try {
-    if (!conexao.expira_em || new Date(conexao.expira_em).getTime() < Date.now()) {
-      const novos = await renovarToken(c, decifrar(conexao.refresh_token_cifrado, aad), shopId);
-      token = novos.accessToken;
-      await supabase
-        .from("marketplace_conexoes")
-        .update({ access_token_cifrado: cifrar(novos.accessToken, aad), refresh_token_cifrado: cifrar(novos.refreshToken, aad), expira_em: novos.expiraEm })
-        .eq("id", conexao.id);
-    }
+    const { c, token, shopId } = await tokenDaConexao(supabase, conexao);
 
     // Um dia de folga sobre a última sincronização (pedido que mudou de status perto da virada).
     const desde = conexao.ultima_sincronizacao ? new Date(new Date(conexao.ultima_sincronizacao).getTime() - 86_400_000) : new Date(Date.now() - 15 * 86_400_000);

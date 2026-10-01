@@ -1,0 +1,116 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { buscarAnuncios, enviarEstoque } from "./shopee-api";
+import { agruparPorItem, casarAnuncios, diferencasEstoque, type AnuncioSalvo, type DiferencaEstoque } from "./estoque-shopee";
+import { tokenDaConexao, type ConexaoShopee } from "./sincronizar";
+
+/**
+ * Estoque do SERTÃO → anúncios da Shopee, por loja conectada. Código de SERVIDOR; funciona
+ * com a sessão do dono e com a service key do cron (sempre filtra por `user_id`).
+ */
+
+/** Relê a listagem da Shopee de tempos em tempos (anúncio novo, SKU trocado). */
+const LISTAGEM_VALE_MS = 6 * 60 * 60 * 1000;
+
+export async function atualizarAnuncios(supabase: SupabaseClient, conexao: ConexaoShopee): Promise<number> {
+  const { c, token, shopId } = await tokenDaConexao(supabase, conexao);
+  const anuncios = await buscarAnuncios(c, token, shopId);
+  const [produtosRes, vinculosRes] = await Promise.all([
+    supabase.from("produtos").select("id, sku, custo").eq("user_id", conexao.user_id),
+    supabase.from("marketplace_vinculos").select("sku_externo, produto_id").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id),
+  ]);
+  const produtos = (produtosRes.data ?? []).map((p) => ({ id: p.id as string, sku: p.sku as string | null, custo: Number(p.custo ?? 0) }));
+  const linhas = casarAnuncios(anuncios, produtos, vinculosRes.data ?? []).map((l) => ({ ...l, user_id: conexao.user_id, loja_id: conexao.loja_id, atualizado_em: new Date().toISOString() }));
+  for (let i = 0; i < linhas.length; i += 500) {
+    const { error } = await supabase.from("marketplace_anuncios").upsert(linhas.slice(i, i + 500), { onConflict: "loja_id,item_id,model_id" });
+    if (error) throw new Error(error.message);
+  }
+  await supabase.from("marketplace_conexoes").update({ anuncios_atualizados_em: new Date().toISOString() }).eq("id", conexao.id);
+  return linhas.length;
+}
+
+/** Saldo de cada produto no armazém que abastece a loja; sem armazém marcado, o total. */
+export async function saldosDaLoja(supabase: SupabaseClient, userId: string, lojaId: string): Promise<Map<string, number>> {
+  const { data: armazens } = await supabase.from("armazens").select("*").eq("user_id", userId);
+  const armazem = ((armazens ?? []) as { id: string; loja_ids?: string[] | null; criado_em?: string }[])
+    .filter((a) => (a.loja_ids ?? []).includes(lojaId))
+    .sort((a, b) => (a.criado_em ?? "").localeCompare(b.criado_em ?? ""))[0];
+  if (armazem) {
+    const { data, error } = await supabase.from("estoque_armazem").select("produto_id, quantidade").eq("user_id", userId).eq("armazem_id", armazem.id);
+    if (!error) return new Map((data ?? []).map((r) => [r.produto_id as string, Number(r.quantidade)]));
+  }
+  const { data } = await supabase.from("produtos").select("id, estoque").eq("user_id", userId);
+  return new Map((data ?? []).map((p) => [p.id as string, Number(p.estoque)]));
+}
+
+async function anunciosDaLoja(supabase: SupabaseClient, conexao: ConexaoShopee, soPendentes: boolean): Promise<(AnuncioSalvo & { id: string; pendente: boolean })[]> {
+  let q = supabase.from("marketplace_anuncios").select("id, item_id, model_id, sku, nome, produto_id, estoque_shopee, estoque_enviado, pendente").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id);
+  if (soPendentes) q = q.eq("pendente", true);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as (AnuncioSalvo & { id: string; pendente: boolean })[];
+}
+
+/** Prévia "SERTÃO × Shopee" (relê a listagem para mostrar o estoque de agora na Shopee). */
+export async function previaEstoque(supabase: SupabaseClient, conexao: ConexaoShopee): Promise<{ total: number; semVinculo: number; diferencas: DiferencaEstoque[] }> {
+  await atualizarAnuncios(supabase, conexao);
+  const anuncios = await anunciosDaLoja(supabase, conexao, false);
+  // Na prévia vale o que a Shopee mostra AGORA, não o último envio.
+  const comoEsta = anuncios.map((a) => ({ ...a, estoque_enviado: null }));
+  const saldos = await saldosDaLoja(supabase, conexao.user_id, conexao.loja_id);
+  return { total: anuncios.length, semVinculo: anuncios.filter((a) => !a.produto_id).length, diferencas: diferencasEstoque(comoEsta, saldos) };
+}
+
+/**
+ * Envia o estoque. Por padrão só os anúncios pendentes e só se a loja ativou o envio
+ * automático (com a prévia confirmada). `tudo` (ativação) envia todos os vinculados.
+ */
+export async function enviarEstoqueConexao(supabase: SupabaseClient, conexao: ConexaoShopee, opcoes: { tudo?: boolean } = {}): Promise<{ enviados: number; erros: string[] }> {
+  if (!opcoes.tudo && !(conexao.estoque_auto && conexao.estoque_confirmado_em)) return { enviados: 0, erros: [] };
+  const velha = !conexao.anuncios_atualizados_em || Date.now() - new Date(conexao.anuncios_atualizados_em).getTime() > LISTAGEM_VALE_MS;
+  if (velha) await atualizarAnuncios(supabase, conexao);
+
+  const anuncios = await anunciosDaLoja(supabase, conexao, !opcoes.tudo);
+  if (!anuncios.length) return { enviados: 0, erros: [] };
+  const saldos = await saldosDaLoja(supabase, conexao.user_id, conexao.loja_id);
+  const diffs = diferencasEstoque(anuncios, saldos);
+  const { c, token, shopId } = await tokenDaConexao(supabase, conexao);
+
+  let enviados = 0;
+  const erros: string[] = [];
+  const porChave = new Map(anuncios.map((a) => [`${a.item_id}:${a.model_id}`, a.id]));
+  for (const g of agruparPorItem(diffs)) {
+    try {
+      await enviarEstoque(c, token, shopId, g.itemId, g.estoques);
+      for (const e of g.estoques) {
+        const id = porChave.get(`${g.itemId}:${e.modelId}`);
+        if (id) await supabase.from("marketplace_anuncios").update({ estoque_enviado: e.quantidade, estoque_shopee: e.quantidade, enviado_em: new Date().toISOString(), pendente: false, ultimo_erro: null }).eq("id", id);
+        enviados++;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message.slice(0, 300) : "erro";
+      erros.push(`Anúncio ${g.itemId}: ${msg}`);
+      for (const est of g.estoques) {
+        const id = porChave.get(`${g.itemId}:${est.modelId}`);
+        if (id) await supabase.from("marketplace_anuncios").update({ ultimo_erro: msg }).eq("id", id);
+      }
+    }
+  }
+  // Pendentes sem diferença (saldo voltou ao mesmo) deixam de ser pendentes.
+  const enviadosChaves = new Set(diffs.map((d) => `${d.itemId}:${d.modelId}`));
+  const semMudanca = anuncios.filter((a) => a.pendente && !enviadosChaves.has(`${a.item_id}:${a.model_id}`)).map((a) => a.id);
+  if (semMudanca.length) await supabase.from("marketplace_anuncios").update({ pendente: false }).in("id", semMudanca);
+  return { enviados, erros };
+}
+
+/** Depois de venda no PDV, baixa de pedido etc.: envia o pendente das lojas com envio automático. */
+export async function empurrarEstoquePendente(supabase: SupabaseClient): Promise<void> {
+  const { data, error } = await supabase.from("marketplace_conexoes").select("*").eq("estoque_auto", true);
+  if (error || !data?.length) return;
+  for (const conexao of data as ConexaoShopee[]) {
+    try {
+      await enviarEstoqueConexao(supabase, conexao);
+    } catch (e) {
+      console.error("[estoque shopee]", e instanceof Error ? e.message : e);
+    }
+  }
+}

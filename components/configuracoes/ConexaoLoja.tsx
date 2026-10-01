@@ -1,28 +1,33 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { PlugZap, RefreshCw } from "lucide-react";
+import { Boxes, PlugZap, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { executarComToast } from "@/lib/acao-cliente";
 import type { ConexaoResumo } from "@/lib/marketplace/pedidos-servidor";
-import { desconectarShopee, sincronizarShopee } from "@/app/(painel)/vendas/marketplace-actions";
+import { definirEstoqueAutomatico, desconectarShopee, sincronizarShopee } from "@/app/(painel)/vendas/marketplace-actions";
+import { EstoqueShopeeModal } from "@/components/configuracoes/EstoqueShopeeModal";
 
 /**
  * Situação da API de UMA loja da Shopee, dentro do cartão da loja em Canais de venda:
- * conectada (última sincronização ou erro), Sincronizar agora, Desconectar; ou Conectar.
+ * conectada (última sincronização ou erro), Sincronizar, estoque automático e Desconectar;
+ * ou Conectar.
  */
 export function ConexaoLoja({
   lojaId,
+  nomeLoja,
   conexao,
   apiLigada,
 }: {
   lojaId: string;
+  nomeLoja: string;
   conexao: ConexaoResumo | undefined;
   /** O servidor tem as credenciais da Shopee (senão o aviso fica no topo da aba). */
   apiLigada: boolean;
 }) {
   const [pending, startTransition] = useTransition();
+  const [previa, setPrevia] = useState(false);
   if (!apiLigada) return null;
 
   if (!conexao) {
@@ -47,6 +52,25 @@ export function ConexaoLoja({
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive mr-1 align-middle" />
         {situacao.texto}
       </span>
+      {conexao.estoque_auto !== undefined &&
+        (conexao.estoque_auto ? (
+          <button
+            type="button"
+            title="O estoque do SERTÃO é enviado sozinho para os anúncios desta loja. Clique para desligar."
+            className="inline-flex items-center gap-1 text-[11px] rounded-full bg-positive-soft text-positive px-2 py-0.5"
+            onClick={() =>
+              startTransition(async () => {
+                await executarComToast(definirEstoqueAutomatico(lojaId, false), { sucesso: "Envio automático de estoque desligado", erro: "Erro ao desligar" });
+              })
+            }
+          >
+            <Boxes size={11} /> Estoque automático
+          </button>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={() => setPrevia(true)}>
+            <Boxes size={13} /> Enviar estoque
+          </Button>
+        ))}
       <Button
         variant="secondary"
         size="sm"
@@ -67,6 +91,7 @@ export function ConexaoLoja({
       >
         Desconectar
       </Button>
+      {previa && <EstoqueShopeeModal lojaId={lojaId} nomeLoja={nomeLoja} onClose={() => setPrevia(false)} />}
     </div>
   );
 }

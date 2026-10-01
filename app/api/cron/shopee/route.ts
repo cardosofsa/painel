@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { credenciaisShopee } from "@/lib/marketplace/shopee-api";
 import { sincronizarConexao, type ConexaoShopee } from "@/lib/marketplace/sincronizar";
+import { enviarEstoqueConexao } from "@/lib/marketplace/estoque-servidor";
 
 export const maxDuration = 60;
 
@@ -23,15 +24,17 @@ export async function GET(req: NextRequest) {
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, service, { auth: { persistSession: false } });
   const { data, error } = await supabase
     .from("marketplace_conexoes")
-    .select("id, user_id, loja_id, shop_id, access_token_cifrado, refresh_token_cifrado, expira_em, ultima_sincronizacao")
+    .select("*")
     .eq("plataforma", "shopee");
   if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
 
-  const resumo: { loja: string; ok: boolean; pedidos?: number; erro?: string }[] = [];
+  const resumo: { loja: string; ok: boolean; pedidos?: number; estoque?: number; erro?: string }[] = [];
   for (const conexao of (data ?? []) as ConexaoShopee[]) {
     try {
       const r = await sincronizarConexao(supabase, conexao, "servico");
-      resumo.push({ loja: conexao.loja_id, ok: true, pedidos: r.pedidos });
+      // Depois dos pedidos (que baixam estoque), o estoque vai para os anúncios (0049).
+      const e = await enviarEstoqueConexao(supabase, conexao).catch(() => ({ enviados: 0, erros: [] as string[] }));
+      resumo.push({ loja: conexao.loja_id, ok: true, pedidos: r.pedidos, estoque: e.enviados });
     } catch (e) {
       resumo.push({ loja: conexao.loja_id, ok: false, erro: e instanceof Error ? e.message : "erro" });
     }

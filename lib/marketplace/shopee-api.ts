@@ -266,3 +266,74 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
   }
   return pedidos;
 }
+
+// ---------- Produtos: anúncios e estoque (Fase 9.7) ----------
+
+async function postLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, corpo: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const ts = agora();
+  const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
+  const r = await fetch(`${c.host}${caminho}?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), cache: "no-store" });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok || j.error) throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
+  return (j.response ?? {}) as Record<string, unknown>;
+}
+
+/** Um anúncio vendável: o item sem variação (model_id 0) ou cada variação dele. */
+export interface AnuncioShopee {
+  itemId: number;
+  modelId: number;
+  sku: string | null;
+  /** SKU do item pai (para casar quando a variação não tem SKU próprio). */
+  skuPrincipal: string | null;
+  nome: string;
+  estoque: number;
+}
+
+interface EstoqueApi {
+  stock_info_v2?: { seller_stock?: { stock?: number }[]; summary_info?: { total_available_stock?: number } };
+}
+
+function estoqueDe(x: EstoqueApi): number {
+  const s = x.stock_info_v2;
+  const vendedor = s?.seller_stock?.reduce((t, v) => t + (v.stock ?? 0), 0);
+  return Math.max(0, Math.round(vendedor ?? s?.summary_info?.total_available_stock ?? 0));
+}
+
+/** Todos os anúncios ativos da loja, com as variações e o estoque atual na Shopee. */
+export async function buscarAnuncios(c: CredenciaisShopee, token: string, shopId: number): Promise<AnuncioShopee[]> {
+  const ids: number[] = [];
+  let offset = 0;
+  for (let pagina = 0; pagina < 50; pagina++) {
+    const r = await getLoja(c, "/api/v2/product/get_item_list", token, shopId, { offset: String(offset), page_size: "100", item_status: "NORMAL" });
+    for (const i of (r.item as { item_id: number }[] | undefined) ?? []) ids.push(i.item_id);
+    if (!r.has_next_page) break;
+    offset = Number(r.next_offset ?? offset + 100);
+  }
+  const anuncios: AnuncioShopee[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const r = await getLoja(c, "/api/v2/product/get_item_base_info", token, shopId, { item_id_list: ids.slice(i, i + 50).join(",") });
+    for (const item of (r.item_list as (EstoqueApi & { item_id: number; item_name?: string; item_sku?: string; has_model?: boolean })[] | undefined) ?? []) {
+      const nome = item.item_name?.trim() || `Anúncio ${item.item_id}`;
+      const skuPai = item.item_sku?.trim() || null;
+      if (!item.has_model) {
+        anuncios.push({ itemId: item.item_id, modelId: 0, sku: skuPai, skuPrincipal: skuPai, nome, estoque: estoqueDe(item) });
+        continue;
+      }
+      const m = await getLoja(c, "/api/v2/product/get_model_list", token, shopId, { item_id: String(item.item_id) });
+      const variacoes = (m.tier_variation as { option_list?: { option?: string }[] }[] | undefined) ?? [];
+      for (const model of (m.model as (EstoqueApi & { model_id: number; model_sku?: string; tier_index?: number[] })[] | undefined) ?? []) {
+        const rotulo = (model.tier_index ?? []).map((t, n) => variacoes[n]?.option_list?.[t]?.option).filter(Boolean).join(" · ");
+        anuncios.push({ itemId: item.item_id, modelId: model.model_id, sku: model.model_sku?.trim() || null, skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, estoque: estoqueDe(model) });
+      }
+    }
+  }
+  return anuncios;
+}
+
+/** Atualiza o estoque de um item (todas as variações de uma vez). */
+export async function enviarEstoque(c: CredenciaisShopee, token: string, shopId: number, itemId: number, estoques: { modelId: number; quantidade: number }[]): Promise<void> {
+  await postLoja(c, "/api/v2/product/update_stock", token, shopId, {
+    item_id: itemId,
+    stock_list: estoques.map((e) => ({ model_id: e.modelId, seller_stock: [{ stock: Math.max(0, Math.floor(e.quantidade)) }] })),
+  });
+}

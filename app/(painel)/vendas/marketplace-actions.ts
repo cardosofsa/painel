@@ -9,6 +9,8 @@ import { comResultado } from "@/lib/acao";
 import { pedidosMarketplaceSchema, vinculosMarketplaceSchema } from "@/lib/marketplace/validacao";
 import type { PedidoParaGravar, VinculoSku } from "@/lib/marketplace/margem";
 import { sincronizarConexao, type ConexaoShopee } from "@/lib/marketplace/sincronizar";
+import { enviarEstoqueConexao, previaEstoque } from "@/lib/marketplace/estoque-servidor";
+import type { DiferencaEstoque } from "@/lib/marketplace/estoque-shopee";
 
 const SEM_MIGRACAO = "Os pedidos da Shopee precisam da migração 0046. Aplique no Supabase e tente de novo.";
 const faltaMigracao = (code?: string) => code === "PGRST202" || code === "PGRST205" || code === "42P01" || code === "42883";
@@ -102,7 +104,7 @@ export async function sincronizarShopee(lojaId: string) {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("marketplace_conexoes")
-      .select("id, user_id, loja_id, shop_id, access_token_cifrado, refresh_token_cifrado, expira_em, ultima_sincronizacao")
+      .select("*")
       .eq("loja_id", loja)
       .maybeSingle();
     if (error) {
@@ -111,6 +113,7 @@ export async function sincronizarShopee(lojaId: string) {
     }
     if (!data) throw new Error("Esta loja ainda não está conectada à API da Shopee.");
     const r = await sincronizarConexao(supabase, data as ConexaoShopee, "dono");
+    await enviarEstoqueConexao(supabase, data as ConexaoShopee).catch(() => undefined);
     revalidar();
     return { pedidos: r.pedidos, novos: r.resultado.novos ?? 0, atualizados: r.resultado.atualizados ?? 0 };
   });
@@ -124,5 +127,49 @@ export async function desconectarShopee(lojaId: string) {
     const { error } = await supabase.from("marketplace_conexoes").delete().eq("loja_id", loja);
     if (error) lancarErroSupabase(error);
     revalidar();
+  });
+}
+
+async function conexaoDaLoja(lojaId: string) {
+  const loja = validar(z.string().uuid(), lojaId);
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("marketplace_conexoes").select("*").eq("loja_id", loja).maybeSingle();
+  if (error) {
+    if (faltaMigracao(error.code)) throw new Error(SEM_MIGRACAO);
+    lancarErroSupabase(error);
+  }
+  if (!data) throw new Error("Esta loja ainda não está conectada à API da Shopee.");
+  return { supabase, conexao: data as ConexaoShopee };
+}
+
+/** Prévia "SERTÃO × Shopee" antes de ligar o envio automático de estoque (0049). */
+export async function previaEstoqueShopee(lojaId: string) {
+  return comResultado(async (): Promise<{ total: number; semVinculo: number; diferencas: DiferencaEstoque[] }> => {
+    const { supabase, conexao } = await conexaoDaLoja(lojaId);
+    if (!("estoque_auto" in conexao)) throw new Error("O envio de estoque para a Shopee precisa da migração 0049.");
+    return previaEstoque(supabase, conexao);
+  });
+}
+
+/** Liga (enviando tudo agora) ou desliga o envio automático do estoque desta loja. */
+export async function definirEstoqueAutomatico(lojaId: string, ativo: boolean) {
+  return comResultado(async () => {
+    const { supabase, conexao } = await conexaoDaLoja(lojaId);
+    if (!("estoque_auto" in conexao)) throw new Error("O envio de estoque para a Shopee precisa da migração 0049.");
+    const agora = new Date().toISOString();
+    const { error } = await supabase
+      .from("marketplace_conexoes")
+      .update(ativo ? { estoque_auto: true, estoque_confirmado_em: agora } : { estoque_auto: false })
+      .eq("id", conexao.id);
+    if (error) lancarErroSupabase(error);
+    let enviados = 0;
+    let erros: string[] = [];
+    if (ativo) {
+      const r = await enviarEstoqueConexao(supabase, { ...conexao, estoque_auto: true, estoque_confirmado_em: agora }, { tudo: true });
+      enviados = r.enviados;
+      erros = r.erros;
+    }
+    revalidatePath("/configuracoes");
+    return { enviados, erros };
   });
 }

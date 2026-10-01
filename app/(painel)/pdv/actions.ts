@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { empurrarEstoquePendente } from "@/lib/marketplace/estoque-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, vendaSchema } from "@/lib/validacao";
@@ -79,6 +81,9 @@ export async function registrarVenda(dados: VendaInput) {
     revalidatePath("/financeiro");
     revalidatePath("/dashboard");
     revalidatePath("/clientes");
+
+    // Estoque novo para os anúncios das lojas com envio automático (0049), depois da resposta.
+    after(() => empurrarEstoquePendente(supabase).catch(() => undefined));
 
     return registrada;
   });
