@@ -114,6 +114,8 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     "/manifest.webmanifest",
     // Cron da Vercel (sem sessão): a rota exige o CRON_SECRET no cabeçalho.
     "/api/cron",
+    // Notificações do Mercado Livre (sem sessão): a rota relê o pedido na API, não confia no corpo.
+    "/api/mercadolivre/notificacoes",
   ]);
 
   /**

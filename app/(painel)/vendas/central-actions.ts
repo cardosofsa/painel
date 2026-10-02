@@ -8,6 +8,7 @@ import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 import { sincronizarConexao, type ConexaoShopee } from "@/lib/marketplace/sincronizar";
 import { credenciaisShopee } from "@/lib/marketplace/shopee-api";
+import { credenciaisML } from "@/lib/marketplace/mercadolivre-api";
 import { enviarEstoqueConexao } from "@/lib/marketplace/estoque-servidor";
 
 const ETAPAS_VENDA = ["reservar", "emitir", "enviar", "imprimir", "retirada", "enviado", "concluido"] as const;
@@ -75,7 +76,7 @@ export async function definirLogisticaVenda(id: string, logistica: string | null
 /** "Sincronizar pedidos": todas as lojas conectadas à API, uma por vez. */
 export async function sincronizarTodasShopee() {
   return comResultado(async () => {
-    if (!credenciaisShopee()) throw new Error("A API da Shopee não está ligada neste servidor. Use Importar planilha ou configure em Canais de venda.");
+    if (!credenciaisShopee() && !credenciaisML()) throw new Error("Nenhuma API de marketplace está ligada neste servidor. Use Importar planilha ou configure em Canais de venda.");
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("marketplace_conexoes")

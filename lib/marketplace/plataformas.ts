@@ -2,7 +2,7 @@ import type { IdMarca } from "@/lib/marcas";
 
 /**
  * Plataformas que o assistente "Conectar marketplace" (Configurações → Canais de venda)
- * oferece. Só a Shopee tem integração pronta; as outras aparecem como "em breve".
+ * oferece. Shopee e Mercado Livre (10.8) têm integração; as outras aparecem como "em breve".
  */
 export interface Plataforma {
   id: IdMarca;
@@ -31,7 +31,7 @@ export const PLATAFORMAS: Plataforma[] = [
     canal: { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D", limite_titulo: 100, limite_descricao: 5000 },
     faixas: FAIXAS_SHOPEE_PADRAO,
   },
-  { id: "mercadolivre", nome: "Mercado Livre", disponivel: false, canal: { nome: "Mercado Livre", tipo_taxa: "fixo", icone: "ShoppingCart", cor: "#FFE600", limite_titulo: 60, limite_descricao: 10000 }, faixas: [] },
+  { id: "mercadolivre", nome: "Mercado Livre", disponivel: true, canal: { nome: "Mercado Livre", tipo_taxa: "fixo", icone: "ShoppingCart", cor: "#FFE600", limite_titulo: 60, limite_descricao: 10000 }, faixas: [] },
   { id: "amazon", nome: "Amazon", disponivel: false, canal: { nome: "Amazon", tipo_taxa: "fixo", icone: "ShoppingCart", cor: "#FF9900", limite_titulo: 200, limite_descricao: null }, faixas: [] },
   { id: "shein", nome: "Shein", disponivel: false, canal: { nome: "Shein", tipo_taxa: "fixo", icone: "ShoppingBag", cor: "#000000", limite_titulo: null, limite_descricao: null }, faixas: [] },
   { id: "tiktok", nome: "TikTok Shop", disponivel: false, canal: { nome: "TikTok Shop", tipo_taxa: "fixo", icone: "ShoppingBag", cor: "#000000", limite_titulo: null, limite_descricao: null }, faixas: [] },

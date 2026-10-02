@@ -99,6 +99,7 @@ export function VendasClient({
   produtosMarketplace,
   impostoPct,
   faltandoShopee,
+  plataformasLigadas = [],
   avisoShopee,
   disponivel,
   freteConectado = false,
@@ -120,6 +121,8 @@ export function VendasClient({
   produtosMarketplace: ProdutoMarketplace[];
   impostoPct: number;
   faltandoShopee: string[];
+  /** Plataformas com API ligada neste servidor (10.8: Shopee e/ou Mercado Livre). */
+  plataformasLigadas?: string[];
   avisoShopee: string | null;
 }) {
   const [pending, startTransition] = useTransition();
@@ -156,7 +159,8 @@ export function VendasClient({
     if (etapa === "enviar" && sub !== "todos") return daEtapa.filter((p) => p.origem === "marketplace" && subEnvio(p) === sub);
     return daEtapa;
   }, [daEtapa, etapa, motivo, sub]);
-  const lojasApi = useMemo(() => new Set(faltandoShopee.length ? [] : marketplace.conexoes.map((c) => c.loja_id)), [faltandoShopee.length, marketplace.conexoes]);
+  const conexoesLigadas = useMemo(() => marketplace.conexoes.filter((c) => plataformasLigadas.includes(c.plataforma)), [marketplace.conexoes, plataformasLigadas]);
+  const lojasApi = useMemo(() => new Map(conexoesLigadas.map((c) => [c.loja_id, c.plataforma])), [conexoesLigadas]);
   const envio = useEnvioShopee({ lojasApi });
   const [mostrar, setMostrar] = useState(POR_PAGINA);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
@@ -182,7 +186,7 @@ export function VendasClient({
   const [anotando, setAnotando] = useState<{ chaves: string[]; inicial?: { observacao: string | null; tags: string[] } } | null>(null);
   const tagsUsadas = useMemo(() => tagsEmUso(lista), [lista]);
 
-  const { sincronizar, sincronizandoSozinho, sincronizando } = useSincronizarShopee({ faltandoShopee, conexoes: marketplace.conexoes, avisoShopee });
+  const { sincronizar, sincronizandoSozinho, sincronizando } = useSincronizarShopee({ conexoes: conexoesLigadas, avisoShopee });
 
   function mudarEtapa(e: Etapa | "todos" | "oculto") {
     setEtapa(e);

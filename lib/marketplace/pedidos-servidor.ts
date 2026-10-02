@@ -42,6 +42,8 @@ export interface PedidoMarketplaceSalvo {
 
 export interface ConexaoResumo {
   loja_id: string;
+  /** 'shopee' | 'mercadolivre' (10.8). */
+  plataforma: string;
   ultima_sincronizacao: string | null;
   ultimo_erro: string | null;
   /** 0049; undefined antes da migração. */
@@ -55,6 +57,7 @@ export interface ConexaoResumo {
 export function resumoConexoes(linhas: Record<string, unknown>[] | null | undefined): ConexaoResumo[] {
   return (linhas ?? []).map((c) => ({
     loja_id: String(c.loja_id),
+    plataforma: String(c.plataforma ?? "shopee"),
     ultima_sincronizacao: (c.ultima_sincronizacao as string | null) ?? null,
     ultimo_erro: (c.ultimo_erro as string | null) ?? null,
     ...(typeof c.estoque_auto === "boolean" ? { estoque_auto: c.estoque_auto } : {}),

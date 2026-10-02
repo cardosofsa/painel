@@ -8,7 +8,7 @@ import type { ConexaoResumo } from "@/lib/marketplace/pedidos-servidor";
 import { sincronizarTodasShopee } from "@/app/(painel)/vendas/central-actions";
 
 /** Botão "Sincronizar pedidos", sincronização automática ao abrir Vendas e avisos da conexão. */
-export function useSincronizarShopee({ faltandoShopee, conexoes, avisoShopee }: { faltandoShopee: string[]; conexoes: ConexaoResumo[]; avisoShopee: string | null }) {
+export function useSincronizarShopee({ conexoes, avisoShopee }: { /** Só as conexões de plataformas com API ligada. */ conexoes: ConexaoResumo[]; avisoShopee: string | null }) {
   const [sincronizando, startTransition] = useTransition();
   // Sincroniza sozinho ao abrir Vendas se alguma loja conectada está há mais de 10 min sem
   // sincronizar (o agendador de 15 min cobre o resto). Em segundo plano, sem travar a tela.
@@ -16,17 +16,17 @@ export function useSincronizarShopee({ faltandoShopee, conexoes, avisoShopee }: 
   const [sincronizandoSozinho, iniciarAuto] = useTransition();
   const jaTentou = useRef(false);
   useEffect(() => {
-    if (jaTentou.current || faltandoShopee.length > 0 || conexoes.length === 0) return;
+    if (jaTentou.current || conexoes.length === 0) return;
     const limite = Date.now() - 10 * 60_000;
     const velha = conexoes.some((c) => !c.ultima_sincronizacao || new Date(c.ultima_sincronizacao).getTime() < limite);
     if (!velha) return;
     jaTentou.current = true;
     iniciarAuto(async () => {
       const r = await sincronizarTodasShopee().catch(() => null);
-      if (r?.ok && r.dado.novos > 0) toast.success(`${r.dado.novos} pedido(s) novo(s) da Shopee.`);
+      if (r?.ok && r.dado.novos > 0) toast.success(`${r.dado.novos} pedido(s) novo(s) dos marketplaces.`);
       if (r?.ok) router.refresh();
     });
-  }, [faltandoShopee.length, conexoes, router]);
+  }, [conexoes, router]);
 
   useEffect(() => {
     if (avisoShopee === "conectada") toast.success("Loja conectada à Shopee.");

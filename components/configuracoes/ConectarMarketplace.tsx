@@ -22,13 +22,13 @@ export function ConectarMarketplace({
   onClose,
   canais,
   lojas,
-  faltando,
+  faltando: faltandoPorPlataforma,
 }: {
   onClose: () => void;
   canais: Canal[];
   lojas: Loja[];
-  /** Variáveis da API que faltam no servidor (só nomes). */
-  faltando: string[];
+  /** Variáveis da API que faltam no servidor, por plataforma (só nomes). */
+  faltando: Record<string, string[]>;
 }) {
   const [pending, startTransition] = useTransition();
   const [passo, setPasso] = useState<Passo>("plataforma");
@@ -37,6 +37,7 @@ export function ConectarMarketplace({
   const [lojaId, setLojaId] = useState<string | "nova">("nova");
   const [nomeLoja, setNomeLoja] = useState("");
 
+  const faltando = faltandoPorPlataforma[plataforma?.id ?? "shopee"] ?? [];
   const canaisDaPlataforma = plataforma ? canais.filter((c) => marcaDoNome(c.nome) === plataforma.id) : [];
   const lojasDoCanal = canalId === "novo" ? [] : lojas.filter((l) => l.canal_id === canalId);
 
@@ -60,10 +61,10 @@ export function ConectarMarketplace({
         }),
         { erro: "Erro ao preparar a loja" },
       );
-      // Segue para a autorização na Shopee; ela volta para Configurações.
+      // Segue para a autorização na plataforma; ela volta para Configurações.
       // Navegação completa: é rota de API que redireciona para fora (até a Shopee), não página.
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      if (r.ok) window.location.assign(`${window.location.origin}/api/shopee/conectar?loja=${r.dado.lojaId}&volta=configuracoes`);
+      if (r.ok) window.location.assign(`${window.location.origin}/api/${plataforma.id === "mercadolivre" ? "mercadolivre" : "shopee"}/conectar?loja=${r.dado.lojaId}&volta=configuracoes`);
     });
   }
 
@@ -93,9 +94,9 @@ export function ConectarMarketplace({
               </button>
             ))}
           </div>
-          {faltando.length > 0 && (
+          {faltandoPorPlataforma.shopee?.length > 0 && faltandoPorPlataforma.mercadolivre?.length > 0 && (
             <p className="text-xs text-negative mt-3">
-              A API está desligada neste servidor (falta: <span className="font-mono">{faltando.join(", ")}</span>). Dá para preparar o canal e a loja agora, mas a conexão só funciona depois de configurar e fazer o Redeploy.
+              As APIs estão desligadas neste servidor (falta: <span className="font-mono">{[...new Set([...faltandoPorPlataforma.shopee, ...faltandoPorPlataforma.mercadolivre])].join(", ")}</span>). Dá para preparar o canal e a loja agora, mas a conexão só funciona depois de configurar e fazer o Redeploy.
             </p>
           )}
         </>
@@ -129,13 +130,18 @@ export function ConectarMarketplace({
             <Opcao ativa={lojaId === "nova"} onClick={() => setLojaId("nova")} titulo="Nova loja" detalhe="Cadastra a loja e já conecta" />
           </div>
           {lojaId === "nova" && (
-            <FormField label="Nome da loja" dica="Como você reconhece a loja (ex.: o nome dela na Shopee).">
+            <FormField label="Nome da loja" dica="Como você reconhece a loja (ex.: o nome dela na plataforma).">
               <input className={inputClass} maxLength={120} value={nomeLoja} onChange={(e) => setNomeLoja(e.target.value)} placeholder="Ex: cardosoeshop" autoFocus />
             </FormField>
           )}
           <p className="text-xs text-text-tertiary mt-3">
             Ao continuar, você entra com o login DESTA loja na {plataforma.nome} e autoriza o SERTÃO a ler pedidos e atualizar estoque. Depois volta para cá.
           </p>
+          {faltando.length > 0 && (
+            <p className="text-xs text-negative mt-2">
+              A API da {plataforma.nome} está desligada neste servidor (falta: <span className="font-mono">{faltando.join(", ")}</span>). A loja fica pronta, e a conexão funciona depois de configurar e fazer o Redeploy.
+            </p>
+          )}
           <Button variant="primary" className="w-full mt-3" loading={pending} disabled={lojaId === "nova" && nomeLoja.trim().length < 2} onClick={conectar}>
             Conectar com a {plataforma.nome}
           </Button>

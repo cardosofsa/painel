@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { cifrar, decifrar } from "@/lib/ia/cofre";
-import { buscarPedidos, credenciaisShopee, renovarToken, type CredenciaisShopee } from "./shopee-api";
 import { montarPedidosParaGravar } from "./margem";
+import { apiDaConexao } from "./conexao-api";
+import type { ConexaoShopee } from "./tokens";
+
+export { aadToken, aadTokenML, tokenDaConexao, tokenML, type ConexaoShopee } from "./tokens";
 
 /**
  * Sincroniza UMA loja conectada à API da Shopee: renova o token se preciso, busca os
@@ -10,54 +12,19 @@ import { montarPedidosParaGravar } from "./margem";
  * (service key, com `userId` explícito e a RPC `_servico`).
  */
 
-export interface ConexaoShopee {
-  id: string;
-  user_id: string;
-  loja_id: string;
-  shop_id: string;
-  access_token_cifrado: string | null;
-  refresh_token_cifrado: string | null;
-  expira_em: string | null;
-  ultima_sincronizacao: string | null;
-  /** 0049: estoque do SERTÃO enviado sozinho para os anúncios desta loja. */
-  estoque_auto?: boolean;
-  /** 0049: quando o dono conferiu a prévia e ativou (sem isso, nada é enviado). */
-  estoque_confirmado_em?: string | null;
-  anuncios_atualizados_em?: string | null;
-}
-
-/** AAD do cofre: o token de uma loja não decifra na linha de outra. */
-export const aadToken = (userId: string, lojaId: string) => `${userId}:shopee:${lojaId}`;
-
-/** Credenciais, token válido (renova e regrava cifrado se venceu) e shop_id da conexão. */
-export async function tokenDaConexao(supabase: SupabaseClient, conexao: ConexaoShopee): Promise<{ c: CredenciaisShopee; token: string; shopId: number }> {
-  const c = credenciaisShopee();
-  if (!c) throw new Error("A integração com a Shopee não está ligada neste sistema (faltam SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY).");
-  if (!conexao.access_token_cifrado || !conexao.refresh_token_cifrado) throw new Error("Loja sem autorização. Conecte de novo.");
-  const aad = aadToken(conexao.user_id, conexao.loja_id);
-  const shopId = Number(conexao.shop_id);
-  let token = decifrar(conexao.access_token_cifrado, aad);
-  if (!conexao.expira_em || new Date(conexao.expira_em).getTime() < Date.now()) {
-    const novos = await renovarToken(c, decifrar(conexao.refresh_token_cifrado, aad), shopId);
-    token = novos.accessToken;
-    const cifrados = { access_token_cifrado: cifrar(novos.accessToken, aad), refresh_token_cifrado: cifrar(novos.refreshToken, aad), expira_em: novos.expiraEm };
-    await supabase.from("marketplace_conexoes").update(cifrados).eq("id", conexao.id);
-    Object.assign(conexao, cifrados);
-  }
-  return { c, token, shopId };
-}
-
 export async function sincronizarConexao(
   supabase: SupabaseClient,
   conexao: ConexaoShopee,
   modo: "dono" | "servico",
+  /** Só estes pedidos (notificação do Mercado Livre); sem isso, tudo desde a última vez. */
+  apenas?: string[],
 ): Promise<{ pedidos: number; resultado: Record<string, number> }> {
   try {
-    const { c, token, shopId } = await tokenDaConexao(supabase, conexao);
+    const api = await apiDaConexao(supabase, conexao);
 
     // Um dia de folga sobre a última sincronização (pedido que mudou de status perto da virada).
     const desde = conexao.ultima_sincronizacao ? new Date(new Date(conexao.ultima_sincronizacao).getTime() - 86_400_000) : new Date(Date.now() - 15 * 86_400_000);
-    const pedidos = await buscarPedidos(c, token, shopId, desde);
+    const pedidos = await api.buscarPedidos(apenas?.length ? null : desde, apenas);
 
     let resultado: Record<string, number> = {};
     if (pedidos.length) {
@@ -85,7 +52,7 @@ export async function sincronizarConexao(
       }
     } else resultado = { novos: 0, atualizados: 0 };
 
-    await supabase.from("marketplace_conexoes").update({ ultima_sincronizacao: new Date().toISOString(), ultimo_erro: null }).eq("id", conexao.id);
+    if (!apenas?.length) await supabase.from("marketplace_conexoes").update({ ultima_sincronizacao: new Date().toISOString(), ultimo_erro: null }).eq("id", conexao.id);
     return { pedidos: pedidos.length, resultado };
   } catch (e) {
     const msg = e instanceof Error ? e.message.slice(0, 300) : "Erro desconhecido";

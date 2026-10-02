@@ -33,7 +33,7 @@ function avisarFalhas(falhas: { numero: string; erro: string }[]) {
  * Envio da Shopee pelo SERTÃO (Fase 10.5): Para Enviar → "Programar envio" (coleta ou
  * postagem) e Para Imprimir → "Imprimir etiquetas" (um PDF só). Só para lojas ligadas à API.
  */
-export function useEnvioShopee({ lojasApi }: { lojasApi: Set<string> }) {
+export function useEnvioShopee({ lojasApi }: { /** loja → plataforma ('shopee' | 'mercadolivre'), só com API ligada. */ lojasApi: Map<string, string> }) {
   const [pending, startTransition] = useTransition();
   const [programando, setProgramando] = useState<PedidoCentral[] | null>(null);
   const [modo, setModo] = useState<Modo>("dropoff");
@@ -41,7 +41,8 @@ export function useEnvioShopee({ lojasApi }: { lojasApi: Set<string> }) {
   /** Pedido em que a ação da Shopee vale (marketplace, loja com API, etapa certa). */
   function acaoDe(p: PedidoCentral): string | null {
     if (p.origem !== "marketplace" || !p.lojaId || !lojasApi.has(p.lojaId)) return null;
-    if (p.etapa === "enviar") return p.envio?.programado && !p.envio.erro ? null : "Programar envio";
+    // Mercado Livre: não há "programar"; a etiqueta sai quando o ML libera (Para Imprimir).
+    if (p.etapa === "enviar") return lojasApi.get(p.lojaId) === "mercadolivre" || (p.envio?.programado && !p.envio.erro) ? null : "Programar envio";
     if (p.etapa === "imprimir") return "Imprimir etiqueta";
     return null;
   }

@@ -19,7 +19,9 @@ export function ConexaoLoja({
   nomeLoja,
   conexao,
   apiLigada,
+  plataforma = "shopee",
 }: {
+  plataforma?: "shopee" | "mercadolivre";
   lojaId: string;
   nomeLoja: string;
   conexao: ConexaoResumo | undefined;
@@ -32,7 +34,7 @@ export function ConexaoLoja({
 
   if (!conexao) {
     return (
-      <a href={`/api/shopee/conectar?loja=${lojaId}&volta=configuracoes`} className="shrink-0">
+      <a href={`/api/${plataforma}/conectar?loja=${lojaId}&volta=configuracoes`} className="shrink-0">
         <Button variant="secondary" size="sm">
           <PlugZap size={13} /> Conectar API
         </Button>

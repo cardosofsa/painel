@@ -5,7 +5,9 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
-import { sincronizarConexao, tokenDaConexao, type ConexaoShopee } from "@/lib/marketplace/sincronizar";
+import { sincronizarConexao, tokenDaConexao, tokenML, type ConexaoShopee } from "@/lib/marketplace/sincronizar";
+import { plataformaDa } from "@/lib/marketplace/conexao-api";
+import { envioDoPedidoML, etiquetasML } from "@/lib/marketplace/mercadolivre-api";
 import { baixarEtiquetas, montarShipOrder, parametroEnvio, programarEnvio, rastreio, type ModoEnvio } from "@/lib/marketplace/shopee-envio";
 
 /**
@@ -60,7 +62,7 @@ function revalidar() {
   revalidatePath("/estoque");
 }
 
-const SEM_API = "Loja sem conexão com a API da Shopee: programe pela Central do Vendedor ou conecte em Configurações → Canais de venda.";
+const SEM_API = "Loja sem conexão com a API: use a central da plataforma ou conecte em Configurações → Canais de venda.";
 
 export async function programarEnvioShopee(ids: string[], modo: ModoEnvio) {
   return comResultado(async () => {
@@ -76,6 +78,10 @@ export async function programarEnvioShopee(ids: string[], modo: ModoEnvio) {
     for (const g of grupos) {
       if (!g.conexao) {
         falhas.push(...g.pedidos.map((p) => ({ numero: p.numero, erro: SEM_API })));
+        continue;
+      }
+      if (plataformaDa(g.conexao) === "mercadolivre") {
+        falhas.push(...g.pedidos.map((p) => ({ numero: p.numero, erro: "No Mercado Livre o envio não precisa ser programado: a etiqueta sai em Para Imprimir." })));
         continue;
       }
       const { c, token, shopId } = await tokenDaConexao(supabase, g.conexao);
@@ -115,6 +121,27 @@ export async function etiquetasShopee(ids: string[]) {
     for (const g of grupos) {
       if (!g.conexao) {
         falhas.push(...g.pedidos.map((p) => ({ numero: p.numero, erro: SEM_API })));
+        continue;
+      }
+      if (plataformaDa(g.conexao) === "mercadolivre") {
+        // Mercado Livre: etiqueta por envio (shipment), todas num PDF.
+        const { token } = await tokenML(supabase, g.conexao);
+        const envios: { pedido: PedidoEnvio; envio: number }[] = [];
+        for (const p of g.pedidos) {
+          const envio = await envioDoPedidoML(token, p.numero).catch(() => null);
+          if (envio) envios.push({ pedido: p, envio });
+          else falhas.push({ numero: p.numero, erro: "Pedido sem envio pelo Mercado Envios (envio próprio)." });
+        }
+        if (!envios.length) continue;
+        try {
+          const pdf = await etiquetasML(token, [...new Set(envios.map((e) => e.envio))]);
+          arquivos.push({ nome: `etiquetas-ml-${new Date().toISOString().slice(0, 10)}-${arquivos.length + 1}.pdf`, base64: Buffer.from(pdf).toString("base64") });
+          await registrar(supabase, envios.map((e) => ({ id: e.pedido.id, impressa: true })));
+          impressas += envios.length;
+        } catch (e) {
+          const erro = (e instanceof Error ? e.message : "Erro na etiqueta").replace(/^Mercado Livre: /, "");
+          falhas.push(...envios.map((x) => ({ numero: x.pedido.numero, erro })));
+        }
         continue;
       }
       const { c, token, shopId } = await tokenDaConexao(supabase, g.conexao);

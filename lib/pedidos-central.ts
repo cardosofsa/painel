@@ -222,6 +222,8 @@ export function etapaDoMarketplace(status: StatusMarketplace, original: string |
       return "pagamento";
     case "a_enviar": {
       const o = (original ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+      // Mercado Livre (10.8): etiqueta já impressa na plataforma = pronto para a coleta.
+      if (/printed/.test(o)) return "retirada";
       return /processed|processado|retry_ship/.test(o) ? "imprimir" : "enviar";
     }
     case "enviado":

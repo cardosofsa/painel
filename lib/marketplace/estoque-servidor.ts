@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buscarAnuncios, enviarEstoque } from "./shopee-api";
 import { agruparPorItem, casarAnuncios, diferencasEstoque, type AnuncioSalvo, type DiferencaEstoque } from "./estoque-shopee";
-import { tokenDaConexao, type ConexaoShopee } from "./sincronizar";
+import type { ConexaoShopee } from "./tokens";
+import { apiDaConexao } from "./conexao-api";
 
 /**
  * Estoque do SERTÃO → anúncios da Shopee, por loja conectada. Código de SERVIDOR; funciona
@@ -12,8 +12,7 @@ import { tokenDaConexao, type ConexaoShopee } from "./sincronizar";
 const LISTAGEM_VALE_MS = 6 * 60 * 60 * 1000;
 
 export async function atualizarAnuncios(supabase: SupabaseClient, conexao: ConexaoShopee): Promise<number> {
-  const { c, token, shopId } = await tokenDaConexao(supabase, conexao);
-  const anuncios = await buscarAnuncios(c, token, shopId);
+  const anuncios = await (await apiDaConexao(supabase, conexao)).buscarAnuncios();
   const [produtosRes, vinculosRes] = await Promise.all([
     supabase.from("produtos").select("id, sku, custo").eq("user_id", conexao.user_id),
     supabase.from("marketplace_vinculos").select("sku_externo, produto_id").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id),
@@ -91,14 +90,14 @@ export async function enviarEstoqueConexao(supabase: SupabaseClient, conexao: Co
   if (!anuncios.length) return { enviados: 0, erros: [] };
   const saldos = await saldosDaLoja(supabase, conexao.user_id, conexao.loja_id);
   const diffs = diferencasEstoque(anuncios, saldos);
-  const { c, token, shopId } = await tokenDaConexao(supabase, conexao);
+  const api = await apiDaConexao(supabase, conexao);
 
   let enviados = 0;
   const erros: string[] = [];
   const porChave = new Map(anuncios.map((a) => [`${a.item_id}:${a.model_id}`, a.id]));
   for (const g of agruparPorItem(diffs)) {
     try {
-      await enviarEstoque(c, token, shopId, g.itemId, g.estoques);
+      await api.enviarEstoque(g.itemId, g.estoques);
       for (const e of g.estoques) {
         const id = porChave.get(`${g.itemId}:${e.modelId}`);
         if (id) await supabase.from("marketplace_anuncios").update({ estoque_enviado: e.quantidade, estoque_shopee: e.quantidade, enviado_em: new Date().toISOString(), pendente: false, ultimo_erro: null }).eq("id", id);

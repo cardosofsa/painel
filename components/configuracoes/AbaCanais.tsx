@@ -47,6 +47,8 @@ export interface DadosMarketplaceCanais {
   conexoes: ConexaoResumo[];
   /** Variáveis da API que faltam no servidor (só nomes). */
   faltando: string[];
+  /** Idem, Mercado Livre (10.8). */
+  faltandoML: string[];
   ambiente: "teste" | "producao";
   /** `?shopee=` da volta da autorização. */
   aviso: string | null;
@@ -56,6 +58,9 @@ const AVISO_SHOPEE: Record<string, [string, "ok" | "erro"]> = {
   conectada: ["Loja conectada à Shopee. Os pedidos passam a sincronizar sozinhos; use Sincronizar para puxar agora.", "ok"],
   erro: ["Não foi possível conectar a loja à Shopee. Tente de novo.", "erro"],
   desligada: ["A integração com a API da Shopee não está ligada neste servidor.", "erro"],
+  ml_conectada: ["Conta conectada ao Mercado Livre. Os pedidos passam a sincronizar sozinhos; use Sincronizar para puxar agora.", "ok"],
+  ml_erro: ["Não foi possível conectar ao Mercado Livre. Tente de novo.", "erro"],
+  ml_desligada: ["A integração com o Mercado Livre não está ligada neste servidor (faltam ML_CLIENT_ID e ML_CLIENT_SECRET).", "erro"],
 };
 
 export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; lojas: Loja[]; marketplace: DadosMarketplaceCanais }) {
@@ -265,6 +270,15 @@ export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; loj
                         {marcaDoNome(c.nome) === "shopee" && (
                           <ConexaoLoja lojaId={l.id} nomeLoja={l.nome} conexao={marketplace.conexoes.find((x) => x.loja_id === l.id)} apiLigada={apiLigada} />
                         )}
+                        {marcaDoNome(c.nome) === "mercadolivre" && (
+                          <ConexaoLoja
+                            lojaId={l.id}
+                            nomeLoja={l.nome}
+                            conexao={marketplace.conexoes.find((x) => x.loja_id === l.id)}
+                            apiLigada={marketplace.faltandoML.length === 0}
+                            plataforma="mercadolivre"
+                          />
+                        )}
                         <button
                           type="button"
                           onClick={() => (c.tipo_taxa === "faixas" ? setModalFaixas(c) : setModalLoja({ loja: l, canal: c }))}
@@ -324,7 +338,7 @@ export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; loj
         salvando={pending}
       />
       <CanalModal open={modalCanal} onClose={() => setModalCanal(false)} onSave={salvarCanalHandler} salvando={pending} />
-      {conectando && <ConectarMarketplace onClose={() => setConectando(false)} canais={canais} lojas={lojas} faltando={marketplace.faltando} />}
+      {conectando && <ConectarMarketplace onClose={() => setConectando(false)} canais={canais} lojas={lojas} faltando={{ shopee: marketplace.faltando, mercadolivre: marketplace.faltandoML }} />}
       {ConfirmDialog}
     </>
   );
