@@ -10,7 +10,6 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { ExportarModal } from "@/components/ui/ExportarModal";
-import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { executarComToast } from "@/lib/acao-cliente";
 import { periodoAnterior, periodoDoAtalho, rotuloPeriodo, type Periodo } from "@/lib/periodo";
 import {
@@ -21,7 +20,6 @@ import {
   montarCentral,
   opcoesFiltro,
   tagsEmUso,
-  ANTERIOR,
   PROXIMA,
   ROTULO_ETAPA,
   ROTULO_MOTIVO,
@@ -35,7 +33,6 @@ import {
   type PedidoCentral,
   type VendaIn,
 } from "@/lib/pedidos-central";
-import type { TabelaExport } from "@/lib/exportar";
 import type { DadosMarketplace } from "@/lib/marketplace/pedidos-servidor";
 import type { PedidoVitrine } from "@/lib/pedidos-vitrine-tipos";
 import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv/tipos";
@@ -61,6 +58,8 @@ import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { useEnvioShopee } from "@/components/vendas/central/useEnvioShopee";
 import { EtiquetaFreteModal } from "@/components/vendas/central/EtiquetaFreteModal";
 import { ConfirmarImpressaoModal } from "@/components/vendas/central/ConfirmarImpressaoModal";
+import { DevolucaoModal } from "@/components/vendas/DevolucaoModal";
+import { comprovanteLink, montarAcoesPedido, tabelaPedidos } from "@/components/vendas/central/acoesPedido";
 import { ImportarShopeeModal, type LojaMarketplace, type ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
 
 import type { Venda } from "./tipos-venda";
@@ -185,6 +184,7 @@ export function VendasClient({
   const [vinculando, setVinculando] = useState(false);
   const [etiquetando, setEtiquetando] = useState<PedidoCentral | null>(null);
   const [imprimindo, setImprimindo] = useState<PedidoCentral[] | null>(null);
+  const [devolvendo, setDevolvendo] = useState<Venda | null>(null);
   const [anotando, setAnotando] = useState<{ chaves: string[]; inicial?: { observacao: string | null; tags: string[] } } | null>(null);
   const tagsUsadas = useMemo(() => tagsEmUso(lista), [lista]);
 
@@ -244,23 +244,6 @@ export function VendasClient({
     });
   }
 
-  function comprovanteLink(v: Venda) {
-    const cliente = v.cliente_id ? clientes.find((c) => c.id === v.cliente_id) : null;
-    return linkComprovanteWhatsapp(
-      {
-        numero: v.numero,
-        itens: v.venda_itens.map((i) => ({ nome: i.produto_nome, quantidade: i.quantidade, preco_unitario: i.preco_unitario, garantia_dias: i.garantia_dias })),
-        subtotal: v.subtotal,
-        desconto: v.desconto,
-        valorEntrega: v.valor_entrega,
-        total: v.total,
-        formaPagamento: v.forma_pagamento,
-        clienteNome: v.cliente_nome,
-      },
-      cliente?.whatsapp ?? null,
-    );
-  }
-
   async function comprovanteEmImagem(v: Venda) {
     const r = await executarComToast(obterComprovante(v.id), { erro: "Erro ao carregar o comprovante" });
     if (r.ok) gerarImagem(r.dado);
@@ -280,54 +263,24 @@ export function VendasClient({
   }
 
   function acoesDe(p: PedidoCentral) {
-    const anotar = { label: "Observação e tags…", onClick: () => setAnotando({ chaves: [p.chave], inicial: { observacao: p.observacaoInterna, tags: p.tags } }) };
-    if (p.origem === "marketplace")
-      return [
-        { label: "Ver detalhes", onClick: () => abrir(p) },
-        anotar,
-        ...(p.etapa === "retirada" && p.envio?.impressa ? [{ label: "Voltar para Para Imprimir", onClick: () => envio.voltarParaImprimir(p) }] : []),
-      ];
-    if (p.chave.startsWith("catalogo:")) return [{ label: "Abrir pedido", onClick: () => abrir(p) }];
-    const v = vendaPorId.get(p.id);
-    if (!v) return [];
-    if (p.etapa === "cancelado") return [{ label: "Ver detalhes", onClick: () => setDetalhe(v) }];
-    const voltar = ANTERIOR[p.etapa];
-    return [
-      { label: "Ver detalhes", onClick: () => setDetalhe(v) },
-      anotar,
-      { label: "Imprimir (PDF)", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
-      ...(freteConectado && ["reservar", "emitir", "enviar", "imprimir"].includes(p.etapa) ? [{ label: "Comprar etiqueta (Melhor Envio)…", onClick: () => setEtiquetando(p) }] : []),
-      { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
-      { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
-      ...(voltar ? [{ label: `Voltar para ${ROTULO_ETAPA[voltar]}`, onClick: () => voltarEtapa(p, voltar) }] : []),
-      { label: "Editar", onClick: () => setEditando(v) },
-      { label: "Cancelar venda", onClick: () => cancelar(v), destructive: true },
-    ];
+    return montarAcoesPedido(p, {
+      venda: vendaPorId.get(p.id),
+      freteConectado,
+      abrir: () => abrir(p),
+      anotar: () => setAnotando({ chaves: [p.chave], inicial: { observacao: p.observacaoInterna, tags: p.tags } }),
+      voltarParaImprimir: () => envio.voltarParaImprimir(p),
+      detalhe: setDetalhe,
+      etiqueta: () => setEtiquetando(p),
+      whatsapp: (v) => window.open(comprovanteLink(v, clientes), "_blank"),
+      imagem: comprovanteEmImagem,
+      voltarEtapa: (para) => voltarEtapa(p, para),
+      devolver: setDevolvendo,
+      editar: setEditando,
+      cancelar,
+    });
   }
 
-  function tabela(): TabelaExport<PedidoCentral> {
-    return {
-      titulo: "Pedidos",
-      subtitulo: `${etapa === "todos" ? "Todas as etapas" : etapa === "oculto" ? "Ocultos" : ROTULO_ETAPA[etapa]} · ${rotuloPeriodo(periodo)}`,
-      colunas: [
-        { rotulo: "Pedido", valor: (p) => p.numero },
-        { rotulo: "Data", largura: 18, valor: (p) => new Date(p.data).toLocaleString("pt-BR") },
-        { rotulo: "Canal", valor: (p) => p.canal },
-        { rotulo: "Loja", valor: (p) => p.loja ?? "" },
-        { rotulo: "Cliente", largura: 22, valor: (p) => p.cliente ?? "" },
-        { rotulo: "UF", valor: (p) => p.uf ?? "" },
-        { rotulo: "Produtos", largura: 40, valor: (p) => p.itens.map((i) => `${i.quantidade}x ${i.nome}`).join("; ") },
-        { rotulo: "Etapa", valor: (p) => ROTULO_ETAPA[p.etapa] },
-        { rotulo: "Logística", valor: (p) => p.logistica ?? "" },
-        { rotulo: "Valor", tipo: "moeda", valor: (p) => p.total },
-        { rotulo: "Taxas", tipo: "moeda", valor: (p) => p.taxas },
-        { rotulo: "Custo", tipo: "moeda", valor: (p) => p.custo },
-        { rotulo: "Lucro", tipo: "moeda", valor: (p) => p.lucro },
-        { rotulo: "Margem", tipo: "percentual", valor: (p) => (p.total > 0 ? p.lucro / p.total : 0) },
-      ],
-      linhas: filtrados,
-    };
-  }
+  const tabela = () => tabelaPedidos(filtrados, etapa === "todos" ? "Todas as etapas" : etapa === "oculto" ? "Ocultos" : ROTULO_ETAPA[etapa], rotuloPeriodo(periodo));
 
   const ultimaSync = marketplace.conexoes.map((c) => c.ultima_sincronizacao).filter((d): d is string => !!d).sort().at(-1) ?? null;
   const nomesCatalogos = [...new Set(pedidos.map((p) => p.catalogo_nome).filter((n): n is string => !!n))].sort();
@@ -504,7 +457,7 @@ export function VendasClient({
         <DetalheVendaModal
           venda={detalhe}
           onClose={() => setDetalhe(null)}
-          onWhatsapp={() => window.open(comprovanteLink(detalhe), "_blank")}
+          onWhatsapp={() => window.open(comprovanteLink(detalhe, clientes), "_blank")}
           onImagem={() => comprovanteEmImagem(detalhe)}
           onEditar={() => setEditando(detalhe)}
           onCancelar={() => cancelar(detalhe)}
@@ -527,6 +480,16 @@ export function VendasClient({
       {detalheMkt && <DetalheMarketplaceModal p={detalheMkt} bruto={marketplace.pedidos.find((x) => x.id === detalheMkt.id)} onClose={() => setDetalheMkt(null)} />}
       {filtrando && <FiltrosModal inicial={extras} onAplicar={setExtras} onClose={() => setFiltrando(false)} ufs={ufs} logisticas={logisticas} tags={tagsUsadas} />}
       {envio.modal(() => setSelecionados(new Set()))}
+      {devolvendo && (
+        <DevolucaoModal
+          vendaId={devolvendo.id}
+          numero={devolvendo.numero}
+          totalRestante={Number(devolvendo.total)}
+          fiado={devolvendo.status === "fiado"}
+          contas={contas}
+          onClose={() => setDevolvendo(null)}
+        />
+      )}
       {imprimindo && (
         <ConfirmarImpressaoModal
           numeros={imprimindo.map((p) => p.numero)}

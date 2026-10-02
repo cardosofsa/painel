@@ -2,7 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { PdvClient } from "./PdvClient";
 import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 
-export default async function PdvPage() {
+export default async function PdvPage({ searchParams }: { searchParams: Promise<{ troca?: string; credito?: string }> }) {
+  const { troca, credito } = await searchParams;
+  // Troca (11.3): a devolução gerou crédito; ele entra como desconto da nova venda.
+  const valorCredito = Number(credito);
+  const creditoTroca = troca && /^D-\d{1,8}$/.test(troca) && Number.isFinite(valorCredito) && valorCredito > 0 ? { numero: troca, valor: Math.round(valorCredito * 100) / 100 } : null;
   const supabase = await createClient();
 
   const [produtosRes, gruposRes, categoriasRes, clientesRes, formasRes, contasRes, reservasRes] = await Promise.all([
@@ -61,6 +65,7 @@ export default async function PdvPage() {
       formasPagamento={(formasRes.data ?? []) as FormaPagamentoPdv[]}
       contas={(contasRes.data ?? []) as ContaPdv[]}
       freteConectado={!!freteRes.data?.token_cifrado}
+      creditoTroca={creditoTroca}
     />
   );
 }

@@ -38,8 +38,11 @@ export function PdvClient({
   formasPagamento,
   contas,
   freteConectado = false,
+  creditoTroca = null,
 }: {
   freteConectado?: boolean;
+  /** Crédito de uma troca (11.3): entra como desconto em R$. */
+  creditoTroca?: { numero: string; valor: number } | null;
   produtos: ProdutoPdv[];
   clientes: ClientePdv[];
   formasPagamento: FormaPagamentoPdv[];
@@ -47,7 +50,9 @@ export function PdvClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [estado, setEstado] = useState<EstadoCarrinho>(CARRINHO_VAZIO);
+  const [estado, setEstado] = useState<EstadoCarrinho>(() =>
+    creditoTroca ? { ...CARRINHO_VAZIO, descontoEntrada: creditoTroca.valor, observacao: `Troca ${creditoTroca.numero} (crédito de R$ ${creditoTroca.valor.toFixed(2).replace(".", ",")})` } : CARRINHO_VAZIO,
+  );
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
   const [checkoutAberto, setCheckoutAberto] = useState(false);
   const [recibo, setRecibo] = useState<DadosComprovante | null>(null);
@@ -242,6 +247,11 @@ export function PdvClient({
   return (
     <>
       <PageHeader title="PDV" />
+      {creditoTroca && (
+        <p className="mb-4 rounded-md border border-accent/40 bg-accent-soft px-3 py-2 text-sm text-accent">
+          Troca {creditoTroca.numero}: crédito de {formatBRL(creditoTroca.valor)} já entra como desconto desta venda. Adicione os produtos novos.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 pb-20 lg:pb-0">
         <GradeProdutos produtos={produtos} quantidadeNoCarrinho={quantidadeNoCarrinho} onAdicionar={adicionar} />
