@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ShoppingCart } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -12,7 +12,9 @@ import { GradeProdutos } from "./GradeProdutos";
 import { Carrinho, calcularDesconto, calcularSubtotal, type EstadoCarrinho } from "./Carrinho";
 import { CheckoutModal, type DadosCheckout } from "./CheckoutModal";
 import { ReciboModal } from "./ReciboModal";
-import { registrarVenda } from "./actions";
+import { registrarVenda, type VendaInput } from "./actions";
+import { useFilaOffline } from "./useFilaOffline";
+import { ehErroDeRede } from "@/lib/pdv-offline";
 import {
   rotuloProduto,
   type ClientePdv,
@@ -22,7 +24,6 @@ import {
   type ProdutoPdv,
 } from "./tipos";
 import type { DadosComprovante } from "@/lib/comprovante";
-import { executarComToast } from "@/lib/acao-cliente";
 
 const CARRINHO_VAZIO: EstadoCarrinho = {
   itens: [],
@@ -39,7 +40,10 @@ export function PdvClient({
   contas,
   freteConectado = false,
   creditoTroca = null,
+  userId = null,
 }: {
+  /** Dono das vendas guardadas sem internet (11.4). */
+  userId?: string | null;
   freteConectado?: boolean;
   /** Crédito de uma troca (11.3): entra como desconto em R$. */
   creditoTroca?: { numero: string; valor: number } | null;
@@ -50,6 +54,12 @@ export function PdvClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
+  const offline = useFilaOffline(userId);
+  // Estoque na tela já descontando o que foi vendido sem internet e ainda não subiu.
+  const produtosNaTela = useMemo(
+    () => (offline.reservado.size ? produtos.map((p) => ({ ...p, estoque: Math.max(0, p.estoque - (offline.reservado.get(p.id) ?? 0)) })) : produtos),
+    [produtos, offline.reservado],
+  );
   const [estado, setEstado] = useState<EstadoCarrinho>(() =>
     creditoTroca ? { ...CARRINHO_VAZIO, descontoEntrada: creditoTroca.valor, observacao: `Troca ${creditoTroca.numero} (crédito de R$ ${creditoTroca.valor.toFixed(2).replace(".", ",")})` } : CARRINHO_VAZIO,
   );
@@ -166,34 +176,53 @@ export function PdvClient({
   }
 
   function confirmarVenda(dados: DadosCheckout) {
+    const venda: VendaInput = {
+      itens: estado.itens.map((i) => ({
+        produto_id: i.produto_id,
+        quantidade: i.quantidade,
+        preco_unitario: i.preco_unitario,
+        garantia_dias: i.garantia_dias,
+      })),
+      status: dados.status,
+      cliente_id: dados.cliente_id,
+      conta_id: dados.conta_id,
+      forma_pagamento: dados.forma_pagamento,
+      desconto,
+      valor_entrega: estado.valorEntrega,
+      observacao: estado.observacao.trim() || null,
+      data_vencimento: dados.data_vencimento,
+      entrada_valor: dados.entrada_valor,
+      entrada_forma: dados.entrada_forma,
+      forma_pagamento_2: dados.forma_pagamento_2,
+      parcelas_cartao: dados.parcelas_cartao,
+      taxa_maquineta_pct: dados.taxa_maquineta_pct,
+      parcelas_fiado: dados.parcelas_fiado,
+      dias_entre_parcelas: dados.dias_entre_parcelas,
+    };
+    // Sem internet: guarda no aparelho e segue vendendo (sobe quando a conexão voltar).
+    async function guardarOffline() {
+      const ok = await offline.enfileirar(venda, {
+        total: subtotal - desconto + estado.valorEntrega,
+        itens: estado.itens.map((i) => ({ produto_id: i.produto_id, nome: i.nome, quantidade: i.quantidade })),
+      });
+      if (!ok) return void toast.error("Sem internet e não foi possível guardar a venda neste aparelho.");
+      toast.success("Sem internet: venda guardada neste aparelho. Ela sobe sozinha quando a conexão voltar.");
+      setEstado(CARRINHO_VAZIO);
+      setCheckoutAberto(false);
+      setVendaSeq((n) => n + 1);
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) return void guardarOffline();
+
     startTransition(async () => {
-      const r = await executarComToast(
-        registrarVenda({
-          itens: estado.itens.map((i) => ({
-            produto_id: i.produto_id,
-            quantidade: i.quantidade,
-            preco_unitario: i.preco_unitario,
-            garantia_dias: i.garantia_dias,
-          })),
-          status: dados.status,
-          cliente_id: dados.cliente_id,
-          conta_id: dados.conta_id,
-          forma_pagamento: dados.forma_pagamento,
-          desconto,
-          valor_entrega: estado.valorEntrega,
-          observacao: estado.observacao.trim() || null,
-          data_vencimento: dados.data_vencimento,
-          entrada_valor: dados.entrada_valor,
-          entrada_forma: dados.entrada_forma,
-          forma_pagamento_2: dados.forma_pagamento_2,
-          parcelas_cartao: dados.parcelas_cartao,
-          taxa_maquineta_pct: dados.taxa_maquineta_pct,
-          parcelas_fiado: dados.parcelas_fiado,
-          dias_entre_parcelas: dados.dias_entre_parcelas,
-        }),
-        // Sem `sucesso` aqui: o toast precisa do número e do lucro que só vêm na resposta.
-        { erro: "Erro ao registrar a venda" },
-      );
+      let r: Awaited<ReturnType<typeof registrarVenda>>;
+      try {
+        r = await registrarVenda(venda);
+      } catch (e) {
+        if (ehErroDeRede(e)) return void (await guardarOffline());
+        console.error("[pdv] venda:", e);
+        return void toast.error("Erro ao registrar a venda");
+      }
+      if (!r.ok) return void toast.error(r.erro);
       if (r.ok) {
         const venda = r.dado;
         const cliente = clientes.find((c) => c.id === dados.cliente_id) ?? null;
@@ -247,6 +276,7 @@ export function PdvClient({
   return (
     <>
       <PageHeader title="PDV" />
+      {offline.barra}
       {creditoTroca && (
         <p className="mb-4 rounded-md border border-accent/40 bg-accent-soft px-3 py-2 text-sm text-accent">
           Troca {creditoTroca.numero}: crédito de {formatBRL(creditoTroca.valor)} já entra como desconto desta venda. Adicione os produtos novos.
@@ -254,7 +284,7 @@ export function PdvClient({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 pb-20 lg:pb-0">
-        <GradeProdutos produtos={produtos} quantidadeNoCarrinho={quantidadeNoCarrinho} onAdicionar={adicionar} />
+        <GradeProdutos produtos={produtosNaTela} quantidadeNoCarrinho={quantidadeNoCarrinho} onAdicionar={adicionar} />
 
         {/* Desktop: carrinho sempre visível ao lado. */}
         <Card className="hidden lg:flex flex-col sticky top-4 h-[calc(100vh-8rem)]">{carrinho}</Card>

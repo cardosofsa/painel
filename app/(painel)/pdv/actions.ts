@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { after } from "next/server";
 import { empurrarEstoquePendente } from "@/lib/marketplace/estoque-servidor";
 import { createClient } from "@/lib/supabase/server";
@@ -102,5 +103,45 @@ export async function obterFiadoEmUsoCliente(clienteId: string) {
     const { data, error } = await supabase.rpc("fiado_em_uso_cliente", { p_cliente_id: clienteId });
     if (error) lancarErroSupabase(error);
     return Number(data ?? 0);
+  });
+}
+
+/**
+ * Venda feita SEM internet (11.4), enviada quando a conexão volta. A `chave` gerada no
+ * aparelho garante uma venda só, mesmo reenviando (0060); `feitaEm` mantém a hora real.
+ */
+export async function registrarVendaOffline(chave: string, feitaEm: string, dados: VendaInput) {
+  return comResultado(async (): Promise<VendaRegistrada & { ja_enviada: boolean }> => {
+    const supabase = await createClient();
+    const venda = validar(vendaSchema, dados);
+    const k = validar(z.string().uuid(), chave);
+    const quando = validar(z.string().datetime({ offset: true }), feitaEm);
+    const { data, error } = await supabase.rpc("registrar_venda_offline", {
+      p_chave: k,
+      p_feita_em: quando,
+      p_itens: venda.itens,
+      p_status: venda.status,
+      p_cliente_id: venda.cliente_id,
+      p_conta_id: venda.conta_id,
+      p_forma_pagamento: venda.forma_pagamento,
+      p_desconto: venda.desconto,
+      p_valor_entrega: venda.valor_entrega,
+      p_observacao: venda.observacao,
+      p_data_vencimento: venda.data_vencimento,
+      p_entrada_valor: venda.entrada_valor,
+      p_entrada_forma: venda.entrada_forma,
+      p_forma_pagamento_2: venda.forma_pagamento_2,
+      p_parcelas_cartao: venda.parcelas_cartao,
+      p_taxa_maquineta_pct: venda.taxa_maquineta_pct,
+      p_parcelas_fiado: venda.parcelas_fiado,
+      p_dias_entre_parcelas: venda.dias_entre_parcelas,
+    });
+    if (error?.code === "PGRST202") throw new Error("Vendas offline precisam da migração 0060.");
+    if (error) lancarErroSupabase(error);
+    const r = (data as (VendaRegistrada & { ja_enviada: boolean })[] | null)?.[0];
+    if (!r) throw new Error("A venda não retornou confirmação do banco.");
+    for (const p of ["/pdv", "/vendas", "/produtos", "/estoque", "/financeiro", "/dashboard", "/clientes"]) revalidatePath(p);
+    after(() => empurrarEstoquePendente(supabase).catch(() => undefined));
+    return r;
   });
 }

@@ -36,6 +36,8 @@ export function TopBar({ nomeNegocio, alertas }: { nomeNegocio: string | null; a
 
   async function sair() {
     const supabase = createClient();
+    // A página do PDV guardada para uso sem internet tem dados da loja (11.4).
+    navigator.serviceWorker?.controller?.postMessage({ tipo: "limpar" });
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();

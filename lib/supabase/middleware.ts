@@ -112,6 +112,8 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     "/api/csp-report",
     // Instalar o app no celular: o navegador busca o manifesto sem sessão.
     "/manifest.webmanifest",
+    // Service worker do PDV sem internet (11.4): o navegador busca sem sessão.
+    "/sw.js",
     // Cron da Vercel (sem sessão): a rota exige o CRON_SECRET no cabeçalho.
     "/api/cron",
     // Notificações do Mercado Livre (sem sessão): a rota relê o pedido na API, não confia no corpo.

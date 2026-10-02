@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PdvClient } from "./PdvClient";
+import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 
 export default async function PdvPage({ searchParams }: { searchParams: Promise<{ troca?: string; credito?: string }> }) {
@@ -66,6 +67,7 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
       contas={(contasRes.data ?? []) as ContaPdv[]}
       freteConectado={!!freteRes.data?.token_cifrado}
       creditoTroca={creditoTroca}
+      userId={(await acessoAtual())?.userId ?? null}
     />
   );
 }
