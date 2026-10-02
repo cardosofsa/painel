@@ -23,6 +23,8 @@ export interface PedidoVitrine {
   entrega_uf?: string | null;
   /** Forma de pagamento escolhida no checkout (0048); ausente antes. */
   forma_pagamento?: string | null;
+  /** Frete escolhido no checkout (0055); entra como valor de entrega ao aprovar. */
+  frete?: { servico: string; servicoId: number | null; valor: number; prazoDias: number | null } | null;
   observacao: string | null;
   total: number;
   status: "pendente" | "aceito" | "recusado" | "convertido";

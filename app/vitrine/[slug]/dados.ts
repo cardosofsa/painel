@@ -63,6 +63,13 @@ export const buscarEmpresaPublica = cache(async (slug: string): Promise<EmpresaP
 });
 
 /** Formas de pagamento que o checkout deste catálogo oferece (0051). Sem a migração, nenhuma. */
+/** O catálogo cota frete no checkout? (0055). Sem a migração, não. */
+export const buscarFreteVitrine = cache(async (slug: string): Promise<boolean> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("vitrine_tem_frete", { p_slug: slug });
+  return !error && data === true;
+});
+
 export const buscarFormasPagamentoPublicas = cache(async (slug: string): Promise<string[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("formas_pagamento_catalogo", { p_slug: slug });

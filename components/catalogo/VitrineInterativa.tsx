@@ -50,7 +50,10 @@ export function VitrineInterativa({
   carrinhoInicial,
   produtoInicial = null,
   formasPagamento = [],
+  freteAtivo = false,
 }: {
+  /** Cota frete no checkout (0055). */
+  freteAtivo?: boolean;
   /** Produto (variante) vindo do link compartilhado: abre o pop-up dele direto. */
   produtoInicial?: string | null;
   /** Formas que o checkout oferece (0051); vazio = não pergunta. */
@@ -241,6 +244,7 @@ export function VitrineInterativa({
 
       <CarrinhoVitrine
         formasPagamento={formasPagamento}
+        freteAtivo={freteAtivo}
         aberto={carrinhoAberto}
         onFechar={() => setCarrinhoAberto(false)}
         itens={carrinho}

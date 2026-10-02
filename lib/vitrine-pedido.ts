@@ -130,6 +130,21 @@ export const pedidoVitrineSchema = z.object({
     )
     .min(1, "O carrinho está vazio")
     .max(MAX_ITENS, `No máximo ${MAX_ITENS} produtos diferentes por pedido`),
+  /** Frete escolhido (0055): a cotação assinada por /api/vitrine/frete, conferida no servidor. */
+  frete: z
+    .object({
+      slug: z.string().max(64),
+      cep: z.string().max(8),
+      servicoId: z.number().int(),
+      servico: z.string().max(80),
+      valor: z.number().finite().min(0).max(100_000),
+      prazoDias: z.number().int().nullable(),
+      gratis: z.boolean(),
+      expira: z.number(),
+      assinatura: z.string().max(100),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type PedidoVitrineInput = z.infer<typeof pedidoVitrineSchema>;
@@ -152,6 +167,8 @@ export function textoPedidoVitrine(d: {
   entrega?: string | null;
   /** Forma de pagamento escolhida no checkout. */
   pagamento?: string | null;
+  /** Frete escolhido no checkout (entra somado no total da mensagem). */
+  frete?: { servico: string; valor: number; prazoDias: number | null } | null;
   /**
    * Link do painel para o DONO abrir e confirmar o pedido (/vendas?pedido=P-0001). Exige
    * login: quem mais vir a mensagem só cai na tela de entrar.
@@ -164,7 +181,8 @@ export function textoPedidoVitrine(d: {
     `Pedido ${d.numero}`,
     ...d.itens.map((i) => `${i.quantidade}x ${i.nome} — ${formatBRL(i.preco * i.quantidade)}`),
     "",
-    `Total: ${formatBRL(d.total)}`,
+    ...(d.frete ? [`Frete (${d.frete.servico}${d.frete.prazoDias ? `, ${d.frete.prazoDias} dia(s)` : ""}): ${d.frete.valor ? formatBRL(d.frete.valor) : "grátis"}`] : []),
+    `Total: ${formatBRL(d.total + (d.frete?.valor ?? 0))}`,
     `Nome: ${d.nomeCliente}`,
   ];
   if (d.pagamento?.trim()) linhas.push(`Pagamento: ${d.pagamento.trim()}`);

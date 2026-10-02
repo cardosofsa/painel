@@ -42,6 +42,9 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     ? Object.fromEntries((produtosRes.data ?? []).map((p) => [p.id, Number(p.estoque ?? 0)]))
     : Object.fromEntries((disponivelRes.data ?? []).map((d) => [d.produto_id as string, Number(d.disponivel)]));
 
+  // 0055: "Comprar etiqueta" só aparece com o Melhor Envio conectado.
+  const freteRes = await supabase.from("frete_conexoes").select("token_cifrado").maybeSingle();
+
   if (vendasRes.error) throw new Error(vendasRes.error.message);
   if (clientesRes.error) throw new Error(clientesRes.error.message);
   if (formasRes.error) throw new Error(formasRes.error.message);
@@ -68,6 +71,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       produtosMarketplace={(produtosRes.data ?? []).map((p) => ({ id: p.id, sku: p.sku, nome: p.nome, custo: Number(p.custo ?? 0) }))}
       impostoPct={Number(perfilRes.data?.aliquota_das ?? 0) / 100}
       disponivel={disponivel}
+      freteConectado={!!freteRes.data?.token_cifrado}
     />
   );
 }

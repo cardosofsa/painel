@@ -218,6 +218,16 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
     const { error: erroEnvio } = await supabase.from("vendas").update({ status_envio: "separacao" }).eq("id", venda.venda_id);
     if (erroEnvio) console.error("[pedido] status de envio:", erroEnvio.message);
 
+    // Frete escolhido no checkout (0055) acompanha a venda: serviço para comprar a etiqueta.
+    const { data: fretePedido } = await supabase.from("pedidos_vitrine").select("*").eq("id", v.pedidoId).maybeSingle();
+    if (fretePedido?.frete_servico) {
+      const { error: erroFrete } = await supabase
+        .from("vendas")
+        .update({ frete_servico: fretePedido.frete_servico, frete_servico_id: fretePedido.frete_servico_id, logistica: fretePedido.frete_servico })
+        .eq("id", venda.venda_id);
+      if (erroFrete) console.error("[pedido] frete:", erroFrete.message);
+    }
+
     revalidarTudo();
     revalidatePath("/vendas");
     revalidatePath("/estoque");

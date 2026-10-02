@@ -51,12 +51,16 @@ export default async function PdvPage() {
     };
   });
 
+  // 0055: só para saber se mostra "Cotar frete" (o token nunca sai do servidor).
+  const freteRes = await supabase.from("frete_conexoes").select("token_cifrado").maybeSingle();
+
   return (
     <PdvClient
       produtos={produtos}
       clientes={(clientesRes.data ?? []) as ClientePdv[]}
       formasPagamento={(formasRes.data ?? []) as FormaPagamentoPdv[]}
       contas={(contasRes.data ?? []) as ContaPdv[]}
+      freteConectado={!!freteRes.data?.token_cifrado}
     />
   );
 }

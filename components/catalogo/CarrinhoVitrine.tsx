@@ -10,6 +10,7 @@ import { CamposEndereco, type EnderecoForm } from "@/components/clientes/CamposE
 import { formatBRL } from "@/lib/format";
 import { buscarCepPublico } from "@/lib/cep-publico";
 import { enderecoEmLinha } from "@/lib/comprovante";
+import { FreteVitrine, type OpcaoFrete } from "./FreteVitrine";
 import {
   MAX_QTD,
   MAX_OBSERVACAO,
@@ -39,7 +40,10 @@ export function CarrinhoVitrine({
   salvoQuantidade,
   onRestaurar,
   formasPagamento = [],
+  freteAtivo = false,
 }: {
+  /** O catálogo cota frete no checkout (0055). */
+  freteAtivo?: boolean;
   /** Formas que o catálogo aceita (0051). Vazio = não pergunta. */
   formasPagamento?: string[];
   aberto: boolean;
@@ -65,6 +69,7 @@ export function CarrinhoVitrine({
   const [endereco, setEndereco] = useState<EnderecoForm>(ENDERECO_VAZIO);
   const [observacao, setObservacao] = useState("");
   const [formaPagamento, setFormaPagamento] = useState<string | null>(null);
+  const [frete, setFrete] = useState<OpcaoFrete | null>(null);
   const [enviando, setEnviando] = useState(false);
   /**
    * Gerada uma vez por tentativa de checkout, não por clique: é o que faz duplo-toque em
@@ -76,7 +81,7 @@ export function CarrinhoVitrine({
    * carrinho no `onEnviado`, e a mensagem do WhatsApp é montada depois disso — lendo a
    * lista viva, ela sairia vazia.
    */
-  const [enviado, setEnviado] = useState<{ numero: string; total: number; itens: ItemCarrinhoVitrine[] } | null>(null);
+  const [enviado, setEnviado] = useState<{ numero: string; total: number; itens: ItemCarrinhoVitrine[]; frete: { servico: string; valor: number; prazoDias: number | null } | null } | null>(null);
 
   const total = totalCarrinho(itens);
 
@@ -100,6 +105,7 @@ export function CarrinhoVitrine({
           observacao: observacao.trim() || null,
           idempotencia,
           forma_pagamento: formaPagamento,
+          frete,
           itens: itens.map((i) => ({ produto_id: i.produto_id, quantidade: i.quantidade })),
         }),
       });
@@ -113,7 +119,7 @@ export function CarrinhoVitrine({
         return;
       }
 
-      setEnviado({ numero: corpo.numero, total: corpo.total, itens });
+      setEnviado({ numero: corpo.numero, total: corpo.total, itens, frete: corpo.frete ?? null });
       onEnviado();
     } catch {
       toast.error("Sem conexão. Tente de novo.");
@@ -131,6 +137,7 @@ export function CarrinhoVitrine({
           nomeCatalogo,
           itens: enviado.itens,
           total: enviado.total,
+          frete: enviado.frete,
           nomeCliente: nome,
           observacao: observacao.trim() || null,
           pagamento: formaPagamento,
@@ -152,7 +159,7 @@ export function CarrinhoVitrine({
         <div className="text-center">
           <div className="font-mono text-2xl font-semibold text-accent mb-1">{enviado.numero}</div>
           <p className="text-sm text-text-secondary mb-1">
-            Total de {formatBRL(enviado.total)}. Já avisamos a loja.
+            Total de {formatBRL(enviado.total + (enviado.frete?.valor ?? 0))}{enviado.frete ? ` com frete (${enviado.frete.servico})` : ""}. Já avisamos a loja.
           </p>
           <p className="text-xs text-text-tertiary mb-5">
             Mande a mensagem abaixo para combinar pagamento e entrega.
@@ -297,8 +304,13 @@ export function CarrinhoVitrine({
               valor={endereco}
               comComplemento={false}
               buscar={buscarCepPublico}
-              onChange={(patch) => setEndereco((prev) => ({ ...prev, ...patch }))}
+              onChange={(patch) => {
+                setEndereco((prev) => ({ ...prev, ...patch }));
+                // CEP trocado: a cotação anterior não vale mais (é assinada para aquele CEP).
+                if ("cep" in patch) setFrete(null);
+              }}
             />
+            {freteAtivo && <FreteVitrine slug={slug} cep={endereco.cep} itens={itens} subtotal={total} escolhido={frete} onEscolher={setFrete} />}
           </div>
 
           {formasPagamento.length > 0 && (
@@ -331,8 +343,8 @@ export function CarrinhoVitrine({
           </FormField>
 
           <div className="flex items-center justify-between py-3 border-t border-border mb-3">
-            <span className="text-sm text-text-secondary">Total</span>
-            <span className="font-mono text-lg font-semibold text-text-primary">{formatBRL(total)}</span>
+            <span className="text-sm text-text-secondary">Total{frete ? ` com frete (${frete.gratis ? "grátis" : formatBRL(frete.valor)})` : ""}</span>
+            <span className="font-mono text-lg font-semibold text-text-primary">{formatBRL(total + (frete?.valor ?? 0))}</span>
           </div>
 
           <div className="flex gap-2">

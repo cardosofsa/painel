@@ -80,6 +80,12 @@ export function PedidoCatalogoModal({
           {pedido.cliente_email && <Linha rotulo="E-mail" valor={pedido.cliente_email} />}
           {pedido.forma_pagamento && <Linha rotulo="Pagamento escolhido" valor={pedido.forma_pagamento} />}
           {pedido.entrega && <Linha rotulo="Entrega" valor={pedido.entrega} />}
+          {pedido.frete && (
+            <Linha
+              rotulo="Frete escolhido"
+              valor={`${pedido.frete.servico}${pedido.frete.prazoDias ? ` · ${pedido.frete.prazoDias} dia(s)` : ""} · ${pedido.frete.valor ? formatBRL(pedido.frete.valor) : "grátis"}`}
+            />
+          )}
           {pedido.observacao && (
             <div className="pt-2">
               <div className="text-text-secondary mb-1">Observação</div>
@@ -151,7 +157,7 @@ export function PedidoCatalogoModal({
                 conta_id: dados.conta_id,
                 forma_pagamento: dados.forma_pagamento,
                 desconto: 0,
-                valor_entrega: 0,
+                valor_entrega: pedido.frete?.valor ?? 0,
                 data_vencimento: dados.data_vencimento,
                 entrada_valor: dados.entrada_valor,
                 entrada_forma: dados.entrada_forma,

@@ -59,6 +59,7 @@ import { AcoesMassa } from "@/components/vendas/central/AcoesMassa";
 import { AnotarModal } from "@/components/vendas/central/AnotarModal";
 import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { useEnvioShopee } from "@/components/vendas/central/useEnvioShopee";
+import { EtiquetaFreteModal } from "@/components/vendas/central/EtiquetaFreteModal";
 import { ImportarShopeeModal, type LojaMarketplace, type ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
 
 import type { Venda } from "./tipos-venda";
@@ -100,7 +101,9 @@ export function VendasClient({
   faltandoShopee,
   avisoShopee,
   disponivel,
+  freteConectado = false,
 }: {
+  freteConectado?: boolean;
   /** produto → disponível (físico − reservado). */
   disponivel: Record<string, number>;
   vendas: Venda[];
@@ -175,6 +178,7 @@ export function VendasClient({
   const [importando, setImportando] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [vinculando, setVinculando] = useState(false);
+  const [etiquetando, setEtiquetando] = useState<PedidoCentral | null>(null);
   const [anotando, setAnotando] = useState<{ chaves: string[]; inicial?: { observacao: string | null; tags: string[] } } | null>(null);
   const tagsUsadas = useMemo(() => tagsEmUso(lista), [lista]);
 
@@ -276,6 +280,7 @@ export function VendasClient({
       { label: "Ver detalhes", onClick: () => setDetalhe(v) },
       anotar,
       { label: "Imprimir (PDF)", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
+      ...(freteConectado && ["reservar", "emitir", "enviar", "imprimir"].includes(p.etapa) ? [{ label: "Comprar etiqueta (Melhor Envio)…", onClick: () => setEtiquetando(p) }] : []),
       { label: "Enviar comprovante", onClick: () => window.open(comprovanteLink(v), "_blank") },
       { label: "Comprovante em imagem", onClick: () => comprovanteEmImagem(v) },
       ...(voltar ? [{ label: `Voltar para ${ROTULO_ETAPA[voltar]}`, onClick: () => voltarEtapa(p, voltar) }] : []),
@@ -505,6 +510,7 @@ export function VendasClient({
       {detalheMkt && <DetalheMarketplaceModal p={detalheMkt} bruto={marketplace.pedidos.find((x) => x.id === detalheMkt.id)} onClose={() => setDetalheMkt(null)} />}
       {filtrando && <FiltrosModal inicial={extras} onAplicar={setExtras} onClose={() => setFiltrando(false)} ufs={ufs} logisticas={logisticas} tags={tagsUsadas} />}
       {envio.modal(() => setSelecionados(new Set()))}
+      {etiquetando && <EtiquetaFreteModal vendaId={etiquetando.id} numero={etiquetando.numero} onClose={() => setEtiquetando(null)} />}
       {anotando && <AnotarModal chaves={anotando.chaves} inicial={anotando.inicial} tagsSugeridas={tagsUsadas} onClose={() => setAnotando(null)} />}
       {impExp && <ImportarExportarModal onClose={() => setImpExp(false)} onImportarShopee={() => setImportando(true)} onExportar={() => setExportando(true)} podeImportar={marketplace.disponivel} />}
       {importando && <ImportarShopeeModal onClose={() => setImportando(false)} lojas={lojasMarketplace} produtos={produtosMarketplace} vinculos={marketplace.vinculos} impostoPct={impostoPct} />}

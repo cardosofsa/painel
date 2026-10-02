@@ -5,6 +5,7 @@ import { ambienteShopee, faltandoShopee } from "@/lib/marketplace/shopee-api";
 import { resumoConexoes } from "@/lib/marketplace/pedidos-servidor";
 import { estadoDoTeste, type EstadoTesteBruto } from "@/lib/ia/teste";
 import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
+import type { FreteConfig } from "@/components/configuracoes/AbaFrete";
 import {
   ConfiguracoesClient,
   type Categoria,
@@ -133,6 +134,21 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   const { data: testeBruto } = await supabase.rpc("ia_estado_teste").maybeSingle<EstadoTesteBruto>();
   const teste = testeBruto ? estadoDoTeste(testeBruto, new Date()) : null;
 
+  // Frete (0055). Nunca manda o token: só se existe. Tabela ausente = null (a aba explica).
+  const freteRes = await supabase.from("frete_conexoes").select("*").maybeSingle();
+  const fr = freteRes.data as Record<string, unknown> | null;
+  const frete: FreteConfig | null = freteRes.error
+    ? null
+    : {
+        conectado: !!fr?.token_cifrado,
+        ambiente: fr?.ambiente === "sandbox" ? "sandbox" : "producao",
+        cep_origem: (fr?.cep_origem as string | null) ?? "",
+        servicos: (fr?.servicos as number[] | null) ?? [],
+        acrescimo: Number(fr?.acrescimo ?? 0),
+        frete_gratis_acima: fr?.frete_gratis_acima == null ? null : Number(fr.frete_gratis_acima),
+        na_vitrine: !!fr?.na_vitrine,
+      };
+
   return (
     <ConfiguracoesClient
       categorias={categorias}
@@ -147,6 +163,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       cofreOk={cofreDisponivel()}
       iaSistemaOk={Boolean(process.env.GEMINI_API_KEY)}
       teste={teste}
+      frete={frete}
       marketplace={{
         conexoes: conexoesRes.error ? [] : resumoConexoes(conexoesRes.data),
         faltando: [...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])],

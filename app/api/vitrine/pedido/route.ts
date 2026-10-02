@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { pedidoVitrineSchema } from "@/lib/vitrine-pedido";
 import { traduzirErroSupabase } from "@/lib/erros";
+import { clienteServico } from "@/lib/supabase/servico";
+import { conferirCotacao } from "@/lib/frete/assinatura";
+import { conexaoFrete } from "@/lib/frete/servidor";
 
 /**
  * Recebe o carrinho da vitrine pública e cria o pedido.
@@ -87,5 +90,36 @@ export async function POST(request: NextRequest) {
     if (e2) console.error("[vitrine] forma de pagamento:", e2.code, e2.message);
   }
 
-  return NextResponse.json({ numero: data.numero, total: data.total });
+  const frete = await gravarFrete(dados, data).catch((e) => {
+    console.error("[vitrine] frete do pedido:", e instanceof Error ? e.message : e);
+    return null;
+  });
+
+  return NextResponse.json({ numero: data.numero, total: data.total, frete });
+}
+
+/**
+ * Frete escolhido (0055). Só grava com a assinatura da cotação válida, do mesmo catálogo e
+ * CEP; frete grátis ainda exige o total recalculado pela RPC acima do mínimo. Grava com a
+ * service key porque pedidos_vitrine não aceita escrita anônima. Falha não derruba o pedido.
+ */
+async function gravarFrete(dados: ReturnType<typeof pedidoVitrineSchema.parse>, pedido: { numero: string; total: number }) {
+  const f = dados.frete;
+  const segredo = process.env.IA_CHAVE_COFRE;
+  const servico = clienteServico();
+  if (!f || !segredo || !servico) return null;
+  if (f.slug !== dados.slug || f.cep !== dados.cep || !conferirCotacao(f, segredo)) return null;
+  const { data: cat } = await servico.from("catalogos").select("id, user_id").eq("slug", dados.slug).maybeSingle();
+  if (!cat) return null;
+  if (f.gratis) {
+    const c = await conexaoFrete(servico, cat.user_id as string);
+    if (c?.frete_gratis_acima == null || Number(pedido.total) < c.frete_gratis_acima) return null;
+  }
+  const { error } = await servico
+    .from("pedidos_vitrine")
+    .update({ frete_servico: f.servico, frete_servico_id: f.servicoId, frete_valor: f.valor, frete_prazo_dias: f.prazoDias })
+    .eq("catalogo_id", cat.id)
+    .eq("idempotencia", dados.idempotencia);
+  if (error) throw new Error(error.message);
+  return { servico: f.servico, valor: f.valor, prazoDias: f.prazoDias };
 }

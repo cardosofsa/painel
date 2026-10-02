@@ -8,6 +8,7 @@ import { inputClass } from "@/components/ui/Modal";
 import { formatBRL } from "@/lib/format";
 import type { ItemCarrinho } from "./tipos";
 import { Chip } from "@/components/ui/Chip";
+import { CotarFretePdv } from "./CotarFretePdv";
 
 export type DescontoTipo = "valor" | "percentual";
 
@@ -39,7 +40,10 @@ export function Carrinho({
   onRemover,
   onLimpar,
   onFinalizar,
+  freteConectado = false,
 }: {
+  /** Melhor Envio conectado (0055): mostra "Cotar" na entrega. */
+  freteConectado?: boolean;
   estado: EstadoCarrinho;
   onEstado: (parcial: Partial<EstadoCarrinho>) => void;
   onAlterarQuantidade: (produtoId: string, quantidade: number) => void;
@@ -241,6 +245,7 @@ export function Carrinho({
             className={inputClass}
           />
         )}
+        {mostrarEntrega && freteConectado && <CotarFretePdv itens={estado.itens} subtotal={subtotal} onEscolher={(valor) => onEstado({ valorEntrega: valor })} />}
 
         {mostrarObservacao && (
           <textarea

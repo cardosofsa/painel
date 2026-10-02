@@ -21,6 +21,10 @@ interface LinhaPedido {
   entrega_uf: string | null;
   observacao: string | null;
   forma_pagamento?: string | null;
+  frete_servico?: string | null;
+  frete_servico_id?: number | null;
+  frete_valor?: number | null;
+  frete_prazo_dias?: number | null;
   total: number;
   status: PedidoVitrine["status"];
   criado_em: string;
@@ -64,6 +68,7 @@ export async function carregarPedidosVitrine(supabase: Supabase, limite = 200): 
     entrega_cidade: p.entrega_cidade,
     entrega_uf: p.entrega_uf,
     forma_pagamento: p.forma_pagamento ?? null,
+    frete: p.frete_servico ? { servico: p.frete_servico, servicoId: p.frete_servico_id ?? null, valor: Number(p.frete_valor ?? 0), prazoDias: p.frete_prazo_dias ?? null } : null,
     observacao: p.observacao,
     total: Number(p.total),
     status: p.status,

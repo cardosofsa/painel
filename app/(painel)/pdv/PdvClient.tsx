@@ -37,7 +37,9 @@ export function PdvClient({
   clientes,
   formasPagamento,
   contas,
+  freteConectado = false,
 }: {
+  freteConectado?: boolean;
   produtos: ProdutoPdv[];
   clientes: ClientePdv[];
   formasPagamento: FormaPagamentoPdv[];
@@ -233,6 +235,7 @@ export function PdvClient({
       onRemover={removerItem}
       onLimpar={limpar}
       onFinalizar={abrirCheckout}
+      freteConectado={freteConectado}
     />
   );
 
