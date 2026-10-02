@@ -10,6 +10,7 @@ import { History } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { CalculadoraEmMassa } from "@/components/precificacao/CalculadoraEmMassa";
 import { VariacoesView } from "@/components/precificacao/VariacoesView";
+import { KitsView } from "@/components/precificacao/KitsView";
 import { PainelEntradas } from "@/components/precificacao/PainelEntradas";
 import { PainelTaxas } from "@/components/precificacao/PainelTaxas";
 import { PainelModo } from "@/components/precificacao/PainelModo";
@@ -33,9 +34,10 @@ export type { PrecificacaoHist, LojaOpcao, AnuncioSalvo, ProdutoOpcao, VariacaoS
 const ABAS_PRECIFICACAO = [
   { value: "individual", label: "Individual" },
   { value: "variacoes", label: "Variações" },
+  { value: "kits", label: "Kits" },
   { value: "massa", label: "Em Massa" },
   { value: "historico", label: "Histórico" },
-] as const satisfies readonly TabItem<"individual" | "variacoes" | "massa" | "historico">[];
+] as const satisfies readonly TabItem<"individual" | "variacoes" | "kits" | "massa" | "historico">[];
 
 /**
  * Calculadora de Precificação.
@@ -85,6 +87,8 @@ export function PrecificacaoClient({
       <Tabs tabs={ABAS_PRECIFICACAO} value={visao} onChange={setVisao} className="mb-5" />
 
       {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} setVisao={setVisao} empresa={empresa} />}
+
+      {visao === "kits" && <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} />}
 
       {visao === "variacoes" && (
         <VariacoesView

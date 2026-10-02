@@ -46,16 +46,17 @@ export async function salvarPrecificacao(dados: PrecificacaoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
     const v = validar(precificacaoSchema, dados);
-    let { error } = await supabase.from("precificacoes").insert(v);
+    let { data, error } = await supabase.from("precificacoes").insert(v).select("id").single();
     // Sem a 0045 as colunas novas não existem (PGRST204): grava o resto, como antes.
     if (error?.code === "PGRST204") {
       const base: Record<string, unknown> = { ...v };
       for (const c of ["anuncio", "estrategia", "imagem_url"]) delete base[c];
-      ({ error } = await supabase.from("precificacoes").insert(base));
+      ({ data, error } = await supabase.from("precificacoes").insert(base).select("id").single());
     }
     if (error) lancarErroSupabase(error);
     revalidatePath("/precificacao");
     revalidatePath("/produtos");
+    return { id: (data?.id as string | undefined) ?? null };
   });
 }
 

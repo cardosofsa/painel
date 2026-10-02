@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MoreVertical } from "lucide-react";
 
@@ -11,10 +11,8 @@ export interface RowMenuAction {
   icon?: ReactNode;
 }
 
-const MENU_WIDTH = 176; // w-44
-
-const ITEM_HEIGHT = 36;
-const MENU_PADDING = 8;
+const MENU_WIDTH = 232;
+const MARGEM = 8;
 
 export function RowMenu({ actions }: { actions: RowMenuAction[] }) {
   const [aberto, setAberto] = useState(false);
@@ -28,20 +26,30 @@ export function RowMenu({ actions }: { actions: RowMenuAction[] }) {
     setMontado(true);
   }, []);
 
+  /**
+   * Posição pela altura REAL do menu (medida depois de abrir): abre para baixo se couber,
+   * senão para cima; se não couber em nenhum lado, fica colado na margem com rolagem.
+   */
   function calcularPosicao() {
     const rect = botaoRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const left = Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8);
-    const alturaMenu = actions.length * ITEM_HEIGHT + MENU_PADDING;
-    const cabeAbaixo = rect.bottom + 4 + alturaMenu <= window.innerHeight;
-    const top = cabeAbaixo ? rect.bottom + 4 : Math.max(8, rect.top - alturaMenu - 4);
-    setPos({ top, left: Math.max(8, left) });
+    const altura = menuRef.current?.offsetHeight ?? 0;
+    const left = Math.max(MARGEM, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - MARGEM));
+    const cabeAbaixo = rect.bottom + 4 + altura <= window.innerHeight - MARGEM;
+    const cabeAcima = rect.top - 4 - altura >= MARGEM;
+    const top = cabeAbaixo ? rect.bottom + 4 : cabeAcima ? rect.top - 4 - altura : MARGEM;
+    setPos({ top, left });
   }
 
   function abrir() {
     calcularPosicao();
     setAberto(true);
   }
+
+  // Remede com o menu já na tela (a 1ª posição usa altura 0).
+  useLayoutEffect(() => {
+    if (aberto) calcularPosicao();
+  }, [aberto, actions.length]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -85,8 +93,8 @@ export function RowMenu({ actions }: { actions: RowMenuAction[] }) {
           <div
             ref={menuRef}
             onClick={(e) => e.stopPropagation()}
-            style={{ position: "fixed", top: pos.top, left: pos.left, width: MENU_WIDTH }}
-            className="bg-surface-1 border border-border rounded-md shadow-elev-2 py-1 text-sm z-50"
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: MENU_WIDTH, maxHeight: `calc(100vh - ${MARGEM * 2}px)` }}
+            className="bg-surface-1 border border-border rounded-md shadow-elev-2 py-1 text-sm z-50 overflow-y-auto"
           >
             {actions.map((a) => (
               <button
@@ -95,7 +103,7 @@ export function RowMenu({ actions }: { actions: RowMenuAction[] }) {
                   a.onClick();
                   setAberto(false);
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2 ${
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left whitespace-nowrap overflow-hidden text-ellipsis hover:bg-surface-2 ${
                   a.destructive ? "text-negative" : "text-text-secondary hover:text-text-primary"
                 }`}
               >

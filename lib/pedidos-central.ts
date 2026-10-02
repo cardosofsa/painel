@@ -39,7 +39,7 @@ export const PROXIMA: Partial<Record<Etapa, { etapa: EtapaVenda; acao: string }>
   reservar: { etapa: "enviar", acao: "Reservar" },
   emitir: { etapa: "enviar", acao: "Aprovar" },
   enviar: { etapa: "imprimir", acao: "Programar envio" },
-  imprimir: { etapa: "retirada", acao: "Marcar impresso" },
+  imprimir: { etapa: "retirada", acao: "Imprimir" },
   retirada: { etapa: "enviado", acao: "Marcar como enviado" },
   enviado: { etapa: "concluido", acao: "Marcar entregue" },
 };

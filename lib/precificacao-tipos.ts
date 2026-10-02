@@ -88,7 +88,7 @@ export interface ProdutoOpcao {
   tipo?: "produto" | "insumo" | "embalagem" | null;
 }
 
-export type VisaoPrecificacao = "individual" | "variacoes" | "massa" | "historico";
+export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "historico";
 
 export interface PrecificacaoProps {
   historico: PrecificacaoHist[];

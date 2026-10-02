@@ -533,6 +533,9 @@ export function ProdutosClient({
                 <Th>
                   <input type="checkbox" checked={todosSelecionadosNaPagina} onChange={alternarSelecaoTodos} className="w-4 h-4 accent-accent" />
                 </Th>
+                <Th>
+                  <span className="sr-only">Foto</span>
+                </Th>
                 <Th>SKU</Th>
                 <Th>Produto</Th>
                 <Th>Armazém</Th>
@@ -554,8 +557,13 @@ export function ProdutosClient({
                       className="w-4 h-4 accent-accent"
                     />
                   </Td>
+                  <Td className="cursor-pointer w-14 pr-0" onClick={() => setDetalheId(p.id)}>
+                    <ProductThumb src={p.imagem_url} sku={p.sku} />
+                  </Td>
                   <Td className="cursor-pointer" onClick={() => setDetalheId(p.id)}>
-                    <ProductThumb src={p.imagem_url} sku={p.sku} mostrarSku />
+                    <span className="font-mono text-xs text-text-secondary whitespace-nowrap truncate block max-w-[10rem]" title={p.sku}>
+                      {p.sku}
+                    </span>
                   </Td>
                   <Td className="cursor-pointer" onClick={() => setDetalheId(p.id)}>
                     <div className={p.ativo ? "text-text-primary font-medium" : "text-text-tertiary line-through"}>

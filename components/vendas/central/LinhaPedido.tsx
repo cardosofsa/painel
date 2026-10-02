@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, MessageSquareText, Store } from "lucide-react";
+import { Lock, MessageSquareText, Printer, Store } from "lucide-react";
 import { TagPedido } from "./TagPedido";
 import { Button } from "@/components/ui/Button";
 import { RowMenu, type RowMenuAction } from "@/components/ui/RowMenu";
@@ -42,7 +42,10 @@ export function LinhaPedido({
   acoes,
   processando,
   acaoExtra,
+  mostrarEtapa = false,
 }: {
+  /** Nome da etapa na linha: só nas listas que misturam etapas (Todos, Oculto). */
+  mostrarEtapa?: boolean;
   /** Ação da plataforma (Programar envio, Imprimir etiqueta) no lugar da ação da etapa. */
   acaoExtra?: { rotulo: string; onClick: () => void; carregando: boolean };
   p: PedidoCentral;
@@ -60,7 +63,7 @@ export function LinhaPedido({
   const proximaBase = p.editavel ? PROXIMA[p.etapa] : undefined;
   // Pedido do catálogo ainda não aprovado: a ação é sempre Aprovar (abre o fechamento).
   const proxima = proximaBase && p.chave.startsWith("catalogo:") ? { ...proximaBase, acao: "Aprovar" } : proximaBase;
-  const nomeCanal = p.loja ? `${p.canal} · ${p.loja}` : p.canal;
+  const nomeCanal = p.loja && p.loja.trim().toLowerCase() !== p.canal.trim().toLowerCase() ? `${p.canal} · ${p.loja}` : p.canal;
   const cancelado = p.etapa === "cancelado";
 
   return (
@@ -74,7 +77,13 @@ export function LinhaPedido({
           <button type="button" onClick={onAbrir} className="font-mono text-sm font-semibold text-accent hover:underline">
             #{p.numero}
           </button>
-          {p.numeroExterno && p.numeroExterno !== p.numero && <span className="text-[11px] font-mono text-text-tertiary">pedido {p.numeroExterno}</span>}
+          {p.numeroExterno && p.numeroExterno !== p.numero && (
+            <span className="text-[11px] font-mono text-text-tertiary" title={p.origem === "marketplace" ? "Nº na plataforma" : "Nº do pedido do catálogo"}>
+              ({p.numeroExterno})
+            </span>
+          )}
+          {mostrarEtapa && <span className={`text-[10px] rounded border border-border px-1.5 py-0.5 ${TOM_ETAPA[p.etapa]}`}>{ROTULO_ETAPA[p.etapa]}</span>}
+          {p.motivoReserva && <span className="text-[10px] rounded bg-negative-soft text-negative px-1.5 py-0.5">{ROTULO_MOTIVO[p.motivoReserva]}</span>}
           {p.etapa === "emitir" && <span className="text-[10px] rounded bg-surface-2 border border-border px-1.5 py-0.5 text-text-tertiary">NF-e não emitida</span>}
           {p.semCusto && <span className="text-[10px] rounded bg-negative-soft text-negative px-1.5 py-0.5">sem custo</span>}
           {p.tags.map((t) => (
@@ -150,7 +159,8 @@ export function LinhaPedido({
           ) : p.chave.startsWith("venda:") && !cancelado ? (
             <select
               aria-label={`Logística do pedido ${p.numero}`}
-              className="w-full bg-transparent border border-border rounded-md px-2 py-1 text-xs"
+              title="Logística (clique para trocar)"
+              className="w-auto max-w-full bg-transparent border border-transparent hover:border-border focus:border-border rounded-md px-1.5 py-1 -ml-1.5 text-xs text-text-primary cursor-pointer outline-none"
               value={p.logistica ?? ""}
               onChange={(e) => onLogistica(e.target.value || null)}
             >
@@ -167,11 +177,7 @@ export function LinhaPedido({
           )}
         </div>
 
-        <div className="col-span-2 md:col-span-1 flex md:flex-col items-center md:items-end justify-between gap-2">
-          <span className={`text-xs font-medium whitespace-nowrap ${TOM_ETAPA[p.etapa]}`}>
-            {ROTULO_ETAPA[p.etapa]}
-            {p.motivoReserva ? ` · ${ROTULO_MOTIVO[p.motivoReserva]}` : ""}
-          </span>
+        <div className="col-span-2 md:col-span-1 flex items-center justify-end self-center">
           <div className="flex items-center gap-1">
             {p.motivoReserva === "nao_mapeado" && p.origem === "marketplace" && onVincular && (
               <Button size="sm" variant="primary" onClick={onVincular}>
@@ -184,7 +190,8 @@ export function LinhaPedido({
               </Button>
             )}
             {proxima && !acaoExtra && (
-              <Button size="sm" variant={p.etapa === "emitir" ? "primary" : "secondary"} loading={processando} onClick={onAvancar}>
+              <Button size="sm" variant="primary" loading={processando} onClick={onAvancar} className="whitespace-nowrap">
+                {p.etapa === "imprimir" && <Printer size={13} />}
                 {proxima.acao}
               </Button>
             )}
