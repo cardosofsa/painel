@@ -12,6 +12,7 @@ const SEGMENTOS: { href: string; rotulo: string; pronto: boolean }[] = [
   { href: "/vixe/preco", rotulo: "Preço", pronto: true },
   { href: "/vixe/textos", rotulo: "Textos", pronto: true },
   { href: "/vixe/insights", rotulo: "Insights", pronto: true },
+  { href: "/vixe/radar", rotulo: "Radar", pronto: true },
 ];
 
 export function SegmentosVixe() {
