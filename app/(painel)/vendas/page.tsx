@@ -43,6 +43,24 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     ? Object.fromEntries((produtosRes.data ?? []).map((p) => [p.id, Number(p.estoque ?? 0)]))
     : Object.fromEntries((disponivelRes.data ?? []).map((d) => [d.produto_id as string, Number(d.disponivel)]));
 
+  // 0062: padrão da etapa Emitir e as notas de cada venda (sem a migração: comprovante, sem notas).
+  const [fiscalRes, notasRes] = await Promise.all([
+    supabase.from("fiscal_config").select("*").maybeSingle(),
+    supabase.from("notas_fiscais").select("venda_id, tipo, status, numero, danfe_url, mensagem, criado_em").gte("criado_em", inicio.toISOString()).order("criado_em"),
+  ]);
+  const fiscal = {
+    ligada: !!fiscalRes.data?.token_cifrado,
+    padraoPdv: (fiscalRes.data?.padrao_pdv as "comprovante" | "nfe" | "perguntar" | undefined) ?? "comprovante",
+    padraoCatalogo: (fiscalRes.data?.padrao_catalogo as "comprovante" | "nfe" | "perguntar" | undefined) ?? "perguntar",
+  };
+  const notas: Record<string, { tipo: "comprovante" | "nfe"; status: "pendente" | "processando" | "autorizada" | "rejeitada" | "cancelada"; numero: string | null; danfe: string | null; mensagem: string | null }> = {};
+  for (const n of notasRes.error ? [] : (notasRes.data ?? [])) {
+    // A última vale; NF-e tem prioridade sobre comprovante.
+    const atual = notas[n.venda_id as string];
+    if (atual?.tipo === "nfe" && n.tipo === "comprovante") continue;
+    notas[n.venda_id as string] = { tipo: n.tipo, status: n.status, numero: n.numero, danfe: n.danfe_url, mensagem: n.mensagem };
+  }
+
   // 0055: "Comprar etiqueta" só aparece com o Melhor Envio conectado.
   const freteRes = await supabase.from("frete_conexoes").select("token_cifrado").maybeSingle();
 
@@ -74,6 +92,8 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       impostoPct={Number(perfilRes.data?.aliquota_das ?? 0) / 100}
       disponivel={disponivel}
       freteConectado={!!freteRes.data?.token_cifrado}
+      fiscal={fiscal}
+      notas={notas}
     />
   );
 }

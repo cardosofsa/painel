@@ -39,6 +39,10 @@ export function montarAcoesPedido(
     devolver: (v: Venda) => void;
     editar: (v: Venda) => void;
     cancelar: (v: Venda) => void;
+    /** 11.7 */
+    nota?: { tipo: string; status: string; danfe: string | null };
+    emitirNfe?: () => void;
+    atualizarNfe?: () => void;
   },
 ): RowMenuAction[] {
   const anotar = { label: "Observação e tags…", onClick: c.anotar };
@@ -57,6 +61,9 @@ export function montarAcoesPedido(
     { label: "Ver detalhes", onClick: () => c.detalhe(v) },
     anotar,
     { label: "Imprimir (PDF)", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
+    ...(c.nota?.tipo === "nfe" && c.nota.danfe ? [{ label: "Ver DANFE (NF-e)", onClick: () => window.open(c.nota!.danfe as string, "_blank", "noopener") }] : []),
+    ...(c.nota?.tipo === "nfe" && c.nota.status === "processando" && c.atualizarNfe ? [{ label: "Atualizar NF-e", onClick: c.atualizarNfe }] : []),
+    ...(c.emitirNfe && !(c.nota?.tipo === "nfe" && ["autorizada", "processando"].includes(c.nota.status)) && p.etapa !== "emitir" ? [{ label: "Emitir NF-e…", onClick: c.emitirNfe }] : []),
     ...(c.freteConectado && ["reservar", "emitir", "enviar", "imprimir"].includes(p.etapa) ? [{ label: "Comprar etiqueta (Melhor Envio)…", onClick: c.etiqueta }] : []),
     { label: "Enviar comprovante", onClick: () => c.whatsapp(v) },
     { label: "Comprovante em imagem", onClick: () => c.imagem(v) },

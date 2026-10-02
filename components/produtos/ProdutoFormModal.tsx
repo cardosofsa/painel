@@ -399,6 +399,28 @@ export function ProdutoFormModal({
           )}
         </FormField>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="NCM (para NF-e)" dica="8 dígitos. Pergunte ao contador ou consulte a tabela NCM.">
+            <input
+              className={inputClass}
+              inputMode="numeric"
+              maxLength={10}
+              value={form.ncm ?? ""}
+              placeholder="00000000"
+              onChange={(e) => setForm({ ...form, ncm: e.target.value.replace(/\D/g, "").slice(0, 8) || null })}
+            />
+          </FormField>
+          <FormField label="Origem da mercadoria">
+            <select className={inputClass} value={form.origem_fiscal ?? 0} onChange={(e) => setForm({ ...form, origem_fiscal: Number(e.target.value) })}>
+              <option value={0}>0 · Nacional</option>
+              <option value={1}>1 · Importada (importação direta)</option>
+              <option value={2}>2 · Importada (mercado interno)</option>
+              <option value={3}>3 · Nacional com 40%+ importado</option>
+              <option value={5}>5 · Nacional com até 40% importado</option>
+              <option value={8}>8 · Nacional com 70%+ importado</option>
+            </select>
+          </FormField>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Estoque Atual" dica={form.e_kit ? "Kit: calculado pelos itens da composição." : undefined}>
             <input
               type="number"

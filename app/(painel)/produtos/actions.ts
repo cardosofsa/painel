@@ -49,6 +49,9 @@ export interface ProdutoInput {
   ativo: boolean;
   /** 0058: vende como kit (estoque calculado pelos componentes). */
   e_kit?: boolean;
+  /** 0062: NCM (8 dígitos) e origem da mercadoria, para a NF-e. */
+  ncm?: string | null;
+  origem_fiscal?: number;
   grupo_id: string | null;
   variante_nome: string | null;
   loja_ids: string[];
@@ -75,6 +78,13 @@ function paraGravar<T extends { e_kit?: boolean; estoque?: number }>(p: T, edica
   const copia = { ...p };
   if (edicao) delete copia.estoque;
   else copia.estoque = 0;
+  return copia;
+}
+
+/** Colunas das migrações 0058/0062: fora do payload quando o banco ainda não as tem. */
+function semColunasNovas<T extends Record<string, unknown>>(p: T): T {
+  const copia = { ...p };
+  for (const k of ["e_kit", "ncm", "origem_fiscal"]) delete copia[k];
   return copia;
 }
 
@@ -123,12 +133,8 @@ export async function criarProduto(dados: ProdutoInput) {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
     let { data, error } = await supabase.from("produtos").insert(semEnvioVazio(paraGravar(produto, false))).select("id").single();
-    // Sem a 0058 a coluna e_kit não existe: grava sem ela.
-    if (error?.code === "PGRST204" && "e_kit" in produto) {
-      const { e_kit: _ignorado, ...semKit } = produto;
-      void _ignorado;
-      ({ data, error } = await supabase.from("produtos").insert(semEnvioVazio(semKit)).select("id").single());
-    }
+    // Sem a 0058/0062 as colunas novas não existem: grava sem elas.
+    if (error?.code === "PGRST204") ({ data, error } = await supabase.from("produtos").insert(semEnvioVazio(semColunasNovas(paraGravar(produto, false)))).select("id").single());
     if (error) lancarErroSupabase(error);
     if (!data) throw new Error("Erro ao criar produto.");
     await sincronizarLojasProduto(supabase, data.id, loja_ids);
@@ -141,11 +147,7 @@ export async function atualizarProduto(id: string, dados: ProdutoInput) {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
     let { error } = await supabase.from("produtos").update(semEnvioVazio(paraGravar(produto, true))).eq("id", id);
-    if (error?.code === "PGRST204" && "e_kit" in produto) {
-      const { e_kit: _ignorado, ...semKit } = produto;
-      void _ignorado;
-      ({ error } = await supabase.from("produtos").update(semEnvioVazio(semKit)).eq("id", id));
-    }
+    if (error?.code === "PGRST204") ({ error } = await supabase.from("produtos").update(semEnvioVazio(semColunasNovas(paraGravar(produto, true)))).eq("id", id));
     if (error) lancarErroSupabase(error);
     await sincronizarLojasProduto(supabase, id, loja_ids);
     revalidateTudo();

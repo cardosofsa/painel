@@ -83,6 +83,8 @@ export default async function ProdutosPage() {
 
   const produtos: Produto[] = (produtosRes.data ?? []).map((p) => ({
     e_kit: !!p.e_kit,
+    ncm: (p.ncm as string | null) ?? null,
+    origem_fiscal: Number(p.origem_fiscal ?? 0),
     id: p.id,
     sku: p.sku,
     nome: p.nome,

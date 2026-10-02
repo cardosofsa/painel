@@ -8,6 +8,7 @@ import { estadoDoTeste, type EstadoTesteBruto } from "@/lib/ia/teste";
 import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
 import type { FreteConfig } from "@/components/configuracoes/AbaFrete";
 import type { DadosPlano } from "@/components/configuracoes/AbaPlano";
+import { FISCAL_PADRAO, type FiscalConfigTela } from "@/components/configuracoes/AbaFiscal";
 import type { Plano, ResumoAssinatura } from "@/lib/planos";
 import {
   ConfiguracoesClient,
@@ -149,6 +150,15 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           resumo: assinaturaRes.data as ResumoAssinatura,
         };
 
+  // Fiscal (0062). Nunca manda o token: só se existe.
+  const fiscalRes = await supabase.from("fiscal_config").select("*").maybeSingle();
+  const fx = fiscalRes.data as Record<string, unknown> | null;
+  const fiscal: FiscalConfigTela | null = fiscalRes.error
+    ? null
+    : fx
+      ? ({ ...FISCAL_PADRAO, ...Object.fromEntries(Object.keys(FISCAL_PADRAO).filter((k) => k in fx).map((k) => [k, fx[k]])), ligada: !!fx.token_cifrado } as FiscalConfigTela)
+      : FISCAL_PADRAO;
+
   // Frete (0055). Nunca manda o token: só se existe. Tabela ausente = null (a aba explica).
   const freteRes = await supabase.from("frete_conexoes").select("*").maybeSingle();
   const fr = freteRes.data as Record<string, unknown> | null;
@@ -180,6 +190,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       teste={teste}
       frete={frete}
       plano={plano}
+      fiscal={fiscal}
       marketplace={{
         conexoes: conexoesRes.error ? [] : resumoConexoes(conexoesRes.data),
         faltando: [...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])],

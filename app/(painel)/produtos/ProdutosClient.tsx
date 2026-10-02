@@ -293,6 +293,8 @@ export function ProdutosClient({
       variante_nome: p.variante_nome,
       loja_ids: p.loja_ids,
       e_kit: p.e_kit ?? false,
+      ncm: p.ncm ?? null,
+      origem_fiscal: p.origem_fiscal ?? 0,
     };
     setForm(dados);
     setFormOriginal(dados);

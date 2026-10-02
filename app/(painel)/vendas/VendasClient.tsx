@@ -57,8 +57,9 @@ import { AnotarModal } from "@/components/vendas/central/AnotarModal";
 import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { useEnvioShopee } from "@/components/vendas/central/useEnvioShopee";
 import { EtiquetaFreteModal } from "@/components/vendas/central/EtiquetaFreteModal";
-import { ConfirmarImpressaoModal } from "@/components/vendas/central/ConfirmarImpressaoModal";
+import { useImpressao } from "@/components/vendas/central/useImpressao";
 import { DevolucaoModal } from "@/components/vendas/DevolucaoModal";
+import { useEmissao, type FiscalResumo, type NotaResumo } from "@/components/vendas/central/useEmissao";
 import { comprovanteLink, montarAcoesPedido, tabelaPedidos } from "@/components/vendas/central/acoesPedido";
 import { ImportarShopeeModal, type LojaMarketplace, type ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
 
@@ -103,8 +104,12 @@ export function VendasClient({
   avisoShopee,
   disponivel,
   freteConectado = false,
+  fiscal = { ligada: false, padraoPdv: "comprovante", padraoCatalogo: "perguntar" },
+  notas = {},
 }: {
   freteConectado?: boolean;
+  fiscal?: FiscalResumo;
+  notas?: Record<string, NotaResumo>;
   /** produto → disponível (físico − reservado). */
   disponivel: Record<string, number>;
   vendas: Venda[];
@@ -183,8 +188,9 @@ export function VendasClient({
   const [exportando, setExportando] = useState(false);
   const [vinculando, setVinculando] = useState(false);
   const [etiquetando, setEtiquetando] = useState<PedidoCentral | null>(null);
-  const [imprimindo, setImprimindo] = useState<PedidoCentral[] | null>(null);
+  const impressao = useImpressao();
   const [devolvendo, setDevolvendo] = useState<Venda | null>(null);
+  const emissao = useEmissao(fiscal, (p) => p.origem === "catalogo");
   const [anotando, setAnotando] = useState<{ chaves: string[]; inicial?: { observacao: string | null; tags: string[] } } | null>(null);
   const tagsUsadas = useMemo(() => tagsEmUso(lista), [lista]);
 
@@ -204,19 +210,13 @@ export function VendasClient({
     else setDetalhe(vendaPorId.get(p.id) ?? null);
   }
 
-  /** Para Imprimir: abre a impressão (um ou vários) e depois pergunta se saiu. */
-  function imprimir(ps: PedidoCentral[]) {
-    const vendas = ps.filter((p) => p.chave.startsWith("venda:") && p.etapa === "imprimir");
-    if (!vendas.length) return;
-    window.open(`/vendas/imprimir?ids=${vendas.map((p) => p.id).join(",")}`, "_blank");
-    setImprimindo(vendas);
-  }
-
   function avancar(ps: PedidoCentral[], confirmado = false) {
     if (!ps.length) return;
     const p0 = ps[0];
     if (p0.chave.startsWith("catalogo:")) return abrir(p0);
-    if (p0.etapa === "imprimir" && !confirmado) return imprimir(ps);
+    if (p0.etapa === "imprimir" && !confirmado) return impressao.imprimir(ps);
+    // Emitir (11.7): comprovante do sistema ou NF-e.
+    if (p0.etapa === "emitir" && p0.chave.startsWith("venda:")) return emissao.abrir(ps);
     const prox = PROXIMA[p0.etapa];
     if (!prox) return;
     const ids = ps.filter((p) => p.chave.startsWith("venda:") && p.etapa === p0.etapa).map((p) => p.id);
@@ -226,7 +226,7 @@ export function VendasClient({
       setProcessando(null);
       if (r.ok) {
         setSelecionados(new Set());
-        setImprimindo(null);
+        impressao.fechar();
         toast.success(`${ids.length} pedido(s) em ${ROTULO_ETAPA[prox.etapa]}.`);
       }
     });
@@ -277,6 +277,9 @@ export function VendasClient({
       devolver: setDevolvendo,
       editar: setEditando,
       cancelar,
+      nota: notas[p.id],
+      emitirNfe: () => emissao.abrir([{ ...p, etapa: "emitir" }]),
+      atualizarNfe: () => emissao.atualizar(p),
     });
   }
 
@@ -442,6 +445,7 @@ export function VendasClient({
                 acoes={acoesDe(p)}
                 processando={processando === p.chave}
                 mostrarEtapa={etapa === "todos" || etapa === "oculto"}
+                nota={notas[p.id]}
               />
             ))
           )}
@@ -480,6 +484,7 @@ export function VendasClient({
       {detalheMkt && <DetalheMarketplaceModal p={detalheMkt} bruto={marketplace.pedidos.find((x) => x.id === detalheMkt.id)} onClose={() => setDetalheMkt(null)} />}
       {filtrando && <FiltrosModal inicial={extras} onAplicar={setExtras} onClose={() => setFiltrando(false)} ufs={ufs} logisticas={logisticas} tags={tagsUsadas} />}
       {envio.modal(() => setSelecionados(new Set()))}
+      {emissao.modal(() => setSelecionados(new Set()))}
       {devolvendo && (
         <DevolucaoModal
           vendaId={devolvendo.id}
@@ -490,15 +495,7 @@ export function VendasClient({
           onClose={() => setDevolvendo(null)}
         />
       )}
-      {imprimindo && (
-        <ConfirmarImpressaoModal
-          numeros={imprimindo.map((p) => p.numero)}
-          onImprimirDeNovo={() => window.open(`/vendas/imprimir?ids=${imprimindo.map((p) => p.id).join(",")}`, "_blank")}
-          onConfirmar={() => avancar(imprimindo, true)}
-          onClose={() => setImprimindo(null)}
-          carregando={processando !== null}
-        />
-      )}
+      {impressao.modal((ps) => avancar(ps, true), processando !== null)}
       {etiquetando && <EtiquetaFreteModal vendaId={etiquetando.id} numero={etiquetando.numero} onClose={() => setEtiquetando(null)} />}
       {anotando && <AnotarModal chaves={anotando.chaves} inicial={anotando.inicial} tagsSugeridas={tagsUsadas} onClose={() => setAnotando(null)} />}
       {impExp && <ImportarExportarModal onClose={() => setImpExp(false)} onImportarShopee={() => setImportando(true)} onExportar={() => setExportando(true)} podeImportar={marketplace.disponivel} />}

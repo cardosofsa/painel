@@ -43,7 +43,10 @@ export function LinhaPedido({
   processando,
   acaoExtra,
   mostrarEtapa = false,
+  nota,
 }: {
+  /** 11.7: comprovante/NF-e emitido para esta venda. */
+  nota?: { tipo: "comprovante" | "nfe"; status: string; numero: string | null; mensagem: string | null };
   /** Nome da etapa na linha: só nas listas que misturam etapas (Todos, Oculto). */
   mostrarEtapa?: boolean;
   /** Ação da plataforma (Programar envio, Imprimir etiqueta) no lugar da ação da etapa. */
@@ -84,7 +87,16 @@ export function LinhaPedido({
           )}
           {mostrarEtapa && <span className={`text-[10px] rounded border border-border px-1.5 py-0.5 ${TOM_ETAPA[p.etapa]}`}>{ROTULO_ETAPA[p.etapa]}</span>}
           {p.motivoReserva && <span className="text-[10px] rounded bg-negative-soft text-negative px-1.5 py-0.5">{ROTULO_MOTIVO[p.motivoReserva]}</span>}
-          {p.etapa === "emitir" && <span className="text-[10px] rounded bg-surface-2 border border-border px-1.5 py-0.5 text-text-tertiary">NF-e não emitida</span>}
+          {nota?.tipo === "nfe" ? (
+            <span
+              title={nota.mensagem ?? undefined}
+              className={`text-[10px] rounded px-1.5 py-0.5 ${nota.status === "autorizada" ? "bg-positive-soft text-positive" : nota.status === "rejeitada" ? "bg-negative-soft text-negative" : "bg-surface-2 text-text-secondary"}`}
+            >
+              {nota.status === "autorizada" ? `NF-e ${nota.numero ?? ""}`.trim() : nota.status === "rejeitada" ? "NF-e rejeitada" : nota.status === "cancelada" ? "NF-e cancelada" : "NF-e processando"}
+            </span>
+          ) : (
+            p.etapa === "emitir" && <span className="text-[10px] rounded bg-surface-2 border border-border px-1.5 py-0.5 text-text-tertiary">Emitir: comprovante ou NF-e</span>
+          )}
           {p.semCusto && <span className="text-[10px] rounded bg-negative-soft text-negative px-1.5 py-0.5">sem custo</span>}
           {p.tags.map((t) => (
             <TagPedido key={t} tag={t} />
