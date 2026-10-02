@@ -9,6 +9,7 @@ import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
 import type { FreteConfig } from "@/components/configuracoes/AbaFrete";
 import type { DadosPlano } from "@/components/configuracoes/AbaPlano";
 import { FISCAL_PADRAO, type FiscalConfigTela } from "@/components/configuracoes/AbaFiscal";
+import type { DadosEquipe, OperadorTela } from "@/components/configuracoes/AbaEquipe";
 import type { Plano, ResumoAssinatura } from "@/lib/planos";
 import {
   ConfiguracoesClient,
@@ -150,6 +151,20 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           resumo: assinaturaRes.data as ResumoAssinatura,
         };
 
+  // Equipe (0063): operadores sem o hash do PIN (a coluna nem é legível pela API).
+  const [opsRes, negocioRes] = await Promise.all([
+    supabase.from("operadores").select("id, nome, abas, comissao_pct, comissao_base, ativo").order("nome"),
+    supabase.from("perfil_negocio").select("*").maybeSingle(),
+  ]);
+  const neg = negocioRes.data as Record<string, unknown> | null;
+  const equipe: DadosEquipe | null = opsRes.error
+    ? null
+    : {
+        operadores: ((opsRes.data ?? []) as OperadorTela[]).map((o) => ({ ...o, comissao_pct: Number(o.comissao_pct) })),
+        exigir: !!neg?.exigir_operador,
+        temPinAdmin: !!neg?.pin_admin_hash,
+      };
+
   // Fiscal (0062). Nunca manda o token: só se existe.
   const fiscalRes = await supabase.from("fiscal_config").select("*").maybeSingle();
   const fx = fiscalRes.data as Record<string, unknown> | null;
@@ -191,6 +206,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       frete={frete}
       plano={plano}
       fiscal={fiscal}
+      equipe={equipe}
       marketplace={{
         conexoes: conexoesRes.error ? [] : resumoConexoes(conexoesRes.data),
         faltando: [...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])],

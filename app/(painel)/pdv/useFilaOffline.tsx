@@ -21,7 +21,7 @@ function assinarConexao(avisar: () => void) {
   };
 }
 
-export function useFilaOffline(userId: string | null) {
+export function useFilaOffline(userId: string | null, operadorId: string | null = null) {
   const online = useSyncExternalStore(assinarConexao, () => navigator.onLine, () => true);
   const [fila, setFila] = useState<VendaOffline[]>([]);
   const [enviando, setEnviando] = useState(false);
@@ -42,7 +42,7 @@ export function useFilaOffline(userId: string | null) {
     let ok = 0;
     for (const v of pendentes) {
       try {
-        const r = await registrarVendaOffline(v.chave, v.feitaEm, v.dados as unknown as VendaInput);
+        const r = await registrarVendaOffline(v.chave, v.feitaEm, v.dados as unknown as VendaInput, v.operadorId ?? null);
         if (r.ok) {
           await removerVendaOffline(v.chave);
           ok++;
@@ -88,7 +88,7 @@ export function useFilaOffline(userId: string | null) {
   async function enfileirar(dados: VendaInput, resumo: VendaOffline["resumo"]): Promise<boolean> {
     if (!userId) return false;
     try {
-      await guardarVendaOffline({ chave: crypto.randomUUID(), userId, feitaEm: new Date().toISOString(), dados: dados as unknown as Record<string, unknown>, resumo, erro: null });
+      await guardarVendaOffline({ chave: crypto.randomUUID(), userId, feitaEm: new Date().toISOString(), dados: dados as unknown as Record<string, unknown>, resumo, erro: null, operadorId: operadorId && operadorId !== "dono" ? operadorId : null });
       await recarregar();
       return true;
     } catch {

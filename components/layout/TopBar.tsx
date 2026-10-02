@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sun, Moon, LogOut, Settings, Menu } from "lucide-react";
+import { Sun, Moon, LogOut, Settings, Menu, UserRound } from "lucide-react";
 import Link from "next/link";
+import { sairOperador } from "@/app/(painel)/operador/actions";
 import { useTheme } from "./ThemeContext";
 import { useSidebarMobile } from "./SidebarMobileContext";
 import { createClient } from "@/lib/supabase/client";
@@ -13,7 +14,18 @@ function todayLabel() {
   return new Date().toLocaleDateString("pt-BR");
 }
 
-export function TopBar({ nomeNegocio, alertas }: { nomeNegocio: string | null; alertas: AlertaSino[] }) {
+export function TopBar({
+  nomeNegocio,
+  alertas,
+  operador = null,
+  exigeOperador = false,
+}: {
+  nomeNegocio: string | null;
+  alertas: AlertaSino[];
+  /** 11.8: quem está operando (turno). */
+  operador?: string | null;
+  exigeOperador?: boolean;
+}) {
   const { theme, toggleTheme } = useTheme();
   const { alternar: alternarSidebar } = useSidebarMobile();
   const router = useRouter();
@@ -38,6 +50,8 @@ export function TopBar({ nomeNegocio, alertas }: { nomeNegocio: string | null; a
     const supabase = createClient();
     // A página do PDV guardada para uso sem internet tem dados da loja (11.4).
     navigator.serviceWorker?.controller?.postMessage({ tipo: "limpar" });
+    // Encerra o turno do operador junto (11.8).
+    await sairOperador().catch(() => undefined);
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
@@ -66,6 +80,11 @@ export function TopBar({ nomeNegocio, alertas }: { nomeNegocio: string | null; a
       <span className="hidden sm:inline text-sm text-text-tertiary">{todayLabel()}</span>
 
       <div className="flex-1" />
+      {(operador || exigeOperador) && (
+        <Link href="/operador" className="hidden sm:inline-flex items-center gap-1.5 mr-1 rounded-full border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-surface-2" title="Trocar quem está operando">
+          <UserRound size={13} className="text-accent" /> {operador ?? "Ninguém operando"} · trocar
+        </Link>
+      )}
 
       <AlertasSino alertas={alertas} />
 

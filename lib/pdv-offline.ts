@@ -12,6 +12,8 @@ export interface VendaOffline {
   feitaEm: string;
   /** O mesmo corpo de `registrarVenda` (VendaInput). */
   dados: Record<string, unknown>;
+  /** 11.8: operador do turno na hora da venda. */
+  operadorId?: string | null;
   /** Para mostrar e descontar o estoque na tela enquanto não sobe. */
   resumo: { total: number; itens: { produto_id: string; nome: string; quantidade: number }[] };
   erro?: string | null;

@@ -38,9 +38,14 @@ export default async function PainelLayout({ children }: { children: React.React
     <SidebarMobileProvider>
       <GuardaNumericos />
       <div className="flex min-h-screen bg-background">
-        <Sidebar abas={acesso?.abas ?? ABAS_OBRIGATORIAS} ehMaster={acesso?.papel === "master"} />
+        <Sidebar abas={acesso?.abas ?? ABAS_OBRIGATORIAS} ehMaster={acesso?.papel === "master"} abasOperador={acesso?.operador && acesso.operador.id !== "dono" ? acesso.operador.abas : null} />
         <div className="flex-1 flex flex-col min-w-0">
-          <TopBar nomeNegocio={perfilNegocioRes.data?.nome_negocio ?? null} alertas={alertasRes.data ?? []} />
+          <TopBar
+            nomeNegocio={perfilNegocioRes.data?.nome_negocio ?? null}
+            alertas={alertasRes.data ?? []}
+            operador={acesso?.operador?.nome ?? null}
+            exigeOperador={!!acesso?.exigeOperador}
+          />
           <main className="flex-1 p-4 sm:p-6 print:p-0 max-w-[1700px] w-full mx-auto">{children}</main>
         </div>
       </div>

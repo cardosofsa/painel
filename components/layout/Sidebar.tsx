@@ -9,7 +9,7 @@ import { NAV_ITEMS, GRUPOS_NAV } from "./navigation";
 import { normalizarAbas } from "@/lib/acesso";
 import { useSidebarMobile } from "./SidebarMobileContext";
 
-export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean }) {
+export function Sidebar({ abas, ehMaster, abasOperador = null }: { abas: string[]; ehMaster: boolean; /** 11.8: turno de operador — só as telas dele. */ abasOperador?: string[] | null }) {
   const pathname = usePathname();
   const [recolhida, setRecolhida] = useState(false);
   const { aberta, fechar } = useSidebarMobile();
@@ -19,7 +19,7 @@ export function Sidebar({ abas, ehMaster }: { abas: string[]; ehMaster: boolean 
   // pelo array `abas` salvo no banco. Só "Configurações" aparece (versão enxuta, só
   // conta/senha — ver MasterConfiguracoesClient.tsx), porque toda conta precisa de um jeito
   // de trocar a própria senha. Quem barra de verdade rota por URL é o middleware.
-  const liberadas = normalizarAbas(abas);
+  const liberadas = abasOperador ? normalizarAbas(abas).filter((a) => abasOperador.includes(a)) : normalizarAbas(abas);
 
   // Os grupos são só apresentação (ver comentário em `navigation.ts`): cada um filtra pelas
   // abas liberadas e some da tela quando fica vazio, em vez de aparecer com um título sem

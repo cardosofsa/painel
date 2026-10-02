@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { marcarOperador } from "@/lib/operador-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar } from "@/lib/validacao";
@@ -206,6 +207,7 @@ export async function converterPedidoEmVenda(dados: z.input<typeof converterSche
     if (error?.code === "PGRST202") ({ data: venda, error } = await supabase.rpc("registrar_venda", argumentos).maybeSingle<Registrada>());
     if (error) lancarErroSupabase(error);
     if (!venda) throw new Error("Erro ao registrar a venda.");
+    await marcarOperador(supabase, venda.venda_id);
 
     const { error: erroMarcar } = await supabase
       .from("pedidos_vitrine")

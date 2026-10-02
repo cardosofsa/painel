@@ -41,7 +41,10 @@ export function PdvClient({
   freteConectado = false,
   creditoTroca = null,
   userId = null,
+  operadorId = null,
 }: {
+  /** 11.8: turno atual (vai com a venda guardada sem internet). */
+  operadorId?: string | null;
   /** Dono das vendas guardadas sem internet (11.4). */
   userId?: string | null;
   freteConectado?: boolean;
@@ -54,7 +57,7 @@ export function PdvClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const offline = useFilaOffline(userId);
+  const offline = useFilaOffline(userId, operadorId);
   // Estoque na tela já descontando o que foi vendido sem internet e ainda não subiu.
   const produtosNaTela = useMemo(
     () => (offline.reservado.size ? produtos.map((p) => ({ ...p, estoque: Math.max(0, p.estoque - (offline.reservado.get(p.id) ?? 0)) })) : produtos),

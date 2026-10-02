@@ -68,6 +68,7 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
       freteConectado={!!freteRes.data?.token_cifrado}
       creditoTroca={creditoTroca}
       userId={(await acessoAtual())?.userId ?? null}
+      operadorId={(await acessoAtual())?.operador?.id ?? null}
     />
   );
 }

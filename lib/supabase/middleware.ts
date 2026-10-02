@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { contaLiberada, podeAcessarRota, rotaEhLivre, type StatusConta } from "@/lib/acesso";
 import { assinarAcesso, CABECALHO_ACESSO, COOKIE_ACESSO, lerAcesso, segredoAcesso, VALIDADE_ACESSO_MS } from "@/lib/acesso-cookie";
+import { COOKIE_OPERADOR, lerOperador, operadorPodeRota, telaInicialOperador } from "@/lib/operador-cookie";
 
 /**
  * Casa o caminho exato ou um filho dele (`/vitrine` e `/vitrine/abc`, nunca
@@ -147,25 +148,40 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
   if (user && !isPublicRoute) {
     // Perfil do cookie assinado (vale 2 min); vencido ou ausente, busca no banco e renova.
     const segredo = segredoAcesso();
-    let perfil: { papel: "master" | "usuario"; status: StatusConta; abas: string[]; expira_em: string | null } | null = null;
+    let perfil: { papel: "master" | "usuario"; status: StatusConta; abas: string[]; expira_em: string | null; exige?: boolean } | null = null;
     let renovarCookie = false;
     const cache = segredo ? await lerAcesso(request.cookies.get(COOKIE_ACESSO)?.value, segredo, user.id) : null;
-    if (cache) perfil = { papel: cache.p, status: cache.s as StatusConta, abas: cache.a, expira_em: cache.e };
+    if (cache) perfil = { papel: cache.p, status: cache.s as StatusConta, abas: cache.a, expira_em: cache.e, exige: !!cache.q };
     else {
-      const { data } = await supabase.from("perfis_acesso").select("papel, status, abas, expira_em").eq("user_id", user.id).maybeSingle();
-      perfil = data ? { papel: data.papel, status: data.status, abas: data.abas ?? [], expira_em: data.expira_em } : null;
+      const [{ data }, { data: negocio }] = await Promise.all([
+        supabase.from("perfis_acesso").select("papel, status, abas, expira_em").eq("user_id", user.id).maybeSingle(),
+        // `*`: exigir_operador só existe a partir da 0063.
+        supabase.from("perfil_negocio").select("*").eq("user_id", user.id).maybeSingle(),
+      ]);
+      perfil = data ? { papel: data.papel, status: data.status, abas: data.abas ?? [], expira_em: data.expira_em, exige: !!(negocio as { exigir_operador?: boolean } | null)?.exigir_operador } : null;
       // Só quem está liberado vai para o cache: quem espera aprovação vê a liberação na hora.
       renovarCookie = !!(segredo && perfil && contaLiberada(perfil));
     }
 
     // Passa às páginas e ao layout quem é (id, e-mail, papel, abas), preservando os
     // cookies que o Supabase acabou de gravar na resposta.
-    acessoParaPaginas = encodeURIComponent(JSON.stringify({ userId: user.id, email: user.email, papel: perfil?.papel ?? "usuario", abas: perfil?.abas ?? [] }));
+    // Operador (11.8): quem está operando, pelo cookie assinado do turno.
+    const operador = segredo ? await lerOperador(request.cookies.get(COOKIE_OPERADOR)?.value, segredo, user.id) : null;
+    acessoParaPaginas = encodeURIComponent(
+      JSON.stringify({
+        userId: user.id,
+        email: user.email,
+        papel: perfil?.papel ?? "usuario",
+        abas: perfil?.abas ?? [],
+        operador: operador ? { id: operador.o, nome: operador.n, abas: operador.a } : null,
+        exigeOperador: !!perfil?.exige,
+      }),
+    );
     const gravados = supabaseResponse.cookies.getAll();
     supabaseResponse = proximaResposta();
     for (const c of gravados) supabaseResponse.cookies.set(c);
     if (renovarCookie && segredo && perfil) {
-      supabaseResponse.cookies.set(COOKIE_ACESSO, await assinarAcesso({ u: user.id, p: perfil.papel, s: perfil.status, e: perfil.expira_em, a: perfil.abas }, segredo), {
+      supabaseResponse.cookies.set(COOKIE_ACESSO, await assinarAcesso({ u: user.id, p: perfil.papel, s: perfil.status, e: perfil.expira_em, a: perfil.abas, q: !!perfil.exige }, segredo), {
         httpOnly: true,
         secure: true,
         sameSite: "lax",
@@ -194,6 +210,14 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
 
     if (!podeAcessarRota(perfil?.abas ?? [], pathname)) {
       return redirecionarPara("/dashboard");
+    }
+
+    // Operadores (11.8): o turno limita as telas; a loja pode exigir alguém operando.
+    if (perfil?.papel !== "master") {
+      const naTelaOperador = ehOuComeca(pathname, ["/operador"]);
+      if (operador && !operadorPodeRota(operador.a, pathname)) return redirecionarPara(telaInicialOperador(operador.a));
+      // O dono também "entra" (turno assinado com o id "dono" e todas as telas).
+      if (!operador && perfil?.exige && !naTelaOperador) return redirecionarPara("/operador");
     }
   }
 

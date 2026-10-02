@@ -24,6 +24,8 @@ export interface AcessoCacheado {
   e: string | null;
   /** abas liberadas. */
   a: string[];
+  /** 11.8: a loja exige operador (perfil_negocio.exigir_operador). */
+  q?: boolean;
   /** quando este cookie deixa de valer (ms). */
   x: number;
 }
@@ -84,4 +86,7 @@ export interface AcessoRequisicao {
   email: string | null;
   papel: "master" | "usuario";
   abas: string[];
+  /** 11.8: quem está operando (null = o dono) e se a loja exige operador. */
+  operador?: { id: string; nome: string; abas: string[] } | null;
+  exigeOperador?: boolean;
 }

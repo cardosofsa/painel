@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, vendaSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
+import { marcarOperador } from "@/lib/operador-servidor";
 
 export interface VendaInput {
   itens: { produto_id: string; quantidade: number; preco_unitario: number; garantia_dias?: number | null }[];
@@ -74,6 +75,7 @@ export async function registrarVenda(dados: VendaInput) {
 
     const registrada = (data as VendaRegistrada[] | null)?.[0];
     if (!registrada) throw new Error("A venda não retornou confirmação do banco. Confira em Vendas antes de repetir.");
+    await marcarOperador(supabase, registrada.venda_id);
 
     revalidatePath("/pdv");
     revalidatePath("/vendas");
@@ -110,7 +112,7 @@ export async function obterFiadoEmUsoCliente(clienteId: string) {
  * Venda feita SEM internet (11.4), enviada quando a conexão volta. A `chave` gerada no
  * aparelho garante uma venda só, mesmo reenviando (0060); `feitaEm` mantém a hora real.
  */
-export async function registrarVendaOffline(chave: string, feitaEm: string, dados: VendaInput) {
+export async function registrarVendaOffline(chave: string, feitaEm: string, dados: VendaInput, operadorId: string | null = null) {
   return comResultado(async (): Promise<VendaRegistrada & { ja_enviada: boolean }> => {
     const supabase = await createClient();
     const venda = validar(vendaSchema, dados);
@@ -140,6 +142,8 @@ export async function registrarVendaOffline(chave: string, feitaEm: string, dado
     if (error) lancarErroSupabase(error);
     const r = (data as (VendaRegistrada & { ja_enviada: boolean })[] | null)?.[0];
     if (!r) throw new Error("A venda não retornou confirmação do banco.");
+    // Quem vendeu é o turno da HORA da venda (guardado no aparelho), não o de agora.
+    if (!r.ja_enviada) await marcarOperador(supabase, r.venda_id, operadorId ? validar(z.string().uuid(), operadorId) : null);
     for (const p of ["/pdv", "/vendas", "/produtos", "/estoque", "/financeiro", "/dashboard", "/clientes"]) revalidatePath(p);
     after(() => empurrarEstoquePendente(supabase).catch(() => undefined));
     return r;
