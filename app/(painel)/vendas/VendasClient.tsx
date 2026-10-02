@@ -1,18 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowDownUp, BarChart3, Link2, RefreshCw, ScanBarcode, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDownUp, BarChart3, Link2, RefreshCw, ScanBarcode, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { ExportarModal } from "@/components/ui/ExportarModal";
-import { SeletorPeriodo } from "@/components/ui/SeletorPeriodo";
-import { inputClass } from "@/components/ui/Modal";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { executarComToast } from "@/lib/acao-cliente";
 import { periodoAnterior, periodoDoAtalho, rotuloPeriodo, type Periodo } from "@/lib/periodo";
@@ -28,6 +25,9 @@ import {
   PROXIMA,
   ROTULO_ETAPA,
   ROTULO_MOTIVO,
+  ROTULO_SUB_ENVIO,
+  subEnvio,
+  type SubEnvio,
   type Etapa,
   type EtapaVenda,
   type MotivoReserva,
@@ -35,7 +35,6 @@ import {
   type PedidoCentral,
   type VendaIn,
 } from "@/lib/pedidos-central";
-import type { StatusEnvio } from "@/lib/vendas-painel";
 import type { TabelaExport } from "@/lib/exportar";
 import type { DadosMarketplace } from "@/lib/marketplace/pedidos-servidor";
 import type { PedidoVitrine } from "@/lib/pedidos-vitrine-tipos";
@@ -43,12 +42,13 @@ import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "@/app/(painel)/pdv
 import { obterComprovante } from "./comprovante-actions";
 import { useComprovanteImagem } from "@/components/comprovante/useComprovanteImagem";
 import { cancelarVenda } from "./actions";
-import { definirEtapaVendas, definirLogisticaVenda, sincronizarTodasShopee } from "./central-actions";
+import { definirEtapaVendas, definirLogisticaVenda } from "./central-actions";
+import { useSincronizarShopee } from "@/components/vendas/central/useSincronizarShopee";
 import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
 import { DetalheVendaModal } from "@/components/vendas/DetalheVendaModal";
 import { LinhaPedido } from "@/components/vendas/central/LinhaPedido";
 import { MenuEtapas } from "@/components/vendas/central/MenuEtapas";
-import { FiltroCanais } from "@/components/vendas/central/FiltroCanais";
+import { BarraFiltros } from "@/components/vendas/central/BarraFiltros";
 import { FiltrosModal, contarExtras, type FiltrosExtras } from "@/components/vendas/central/FiltrosModal";
 import { KpisVendas } from "@/components/vendas/central/KpisVendas";
 import { PedidoCatalogoModal } from "@/components/vendas/central/PedidoCatalogoModal";
@@ -57,39 +57,12 @@ import { VincularAnunciosModal } from "@/components/vendas/central/VincularAnunc
 import { ImportarExportarModal } from "@/components/vendas/central/ImportarExportarModal";
 import { AcoesMassa } from "@/components/vendas/central/AcoesMassa";
 import { AnotarModal } from "@/components/vendas/central/AnotarModal";
+import { SubAbas } from "@/components/vendas/central/SubAbas";
+import { useEnvioShopee } from "@/components/vendas/central/useEnvioShopee";
 import { ImportarShopeeModal, type LojaMarketplace, type ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
 
-export interface VendaItem {
-  produto_nome: string;
-  produto_sku: string | null;
-  quantidade: number;
-  preco_unitario: number;
-  custo_unitario: number;
-  garantia_dias: number | null;
-}
-
-export interface Venda {
-  id: string;
-  numero: string;
-  cliente_id: string | null;
-  data_venda: string;
-  cliente_nome: string | null;
-  forma_pagamento: string | null;
-  status: "paga" | "fiado" | "cancelada";
-  status_envio?: StatusEnvio;
-  /** 0047. */
-  etapa?: EtapaVenda | null;
-  logistica?: string | null;
-  clientes?: { cidade: string | null; uf: string | null } | null;
-  subtotal: number;
-  desconto: number;
-  valor_entrega: number;
-  total: number;
-  custo_total: number;
-  lucro: number;
-  observacao: string | null;
-  venda_itens: VendaItem[];
-}
+import type { Venda } from "./tipos-venda";
+export type { Venda, VendaItem } from "./tipos-venda";
 
 const POR_PAGINA = 40;
 
@@ -173,10 +146,15 @@ export function VendasClient({
     return c.emitir > 0 ? "emitir" : c.imprimir > 0 ? "imprimir" : "todos";
   });
   const [motivo, setMotivo] = useState<MotivoReserva | "todos">("todos");
+  const [sub, setSub] = useState<SubEnvio | "todos">("todos");
+  const daEtapa = useMemo(() => filtrarCentral(lista, filtros, etapa), [lista, filtros, etapa]);
   const filtrados = useMemo(() => {
-    const base = filtrarCentral(lista, filtros, etapa);
-    return etapa === "reservar" && motivo !== "todos" ? base.filter((p) => p.motivoReserva === motivo) : base;
-  }, [lista, filtros, etapa, motivo]);
+    if (etapa === "reservar" && motivo !== "todos") return daEtapa.filter((p) => p.motivoReserva === motivo);
+    if (etapa === "enviar" && sub !== "todos") return daEtapa.filter((p) => p.origem === "marketplace" && subEnvio(p) === sub);
+    return daEtapa;
+  }, [daEtapa, etapa, motivo, sub]);
+  const lojasApi = useMemo(() => new Set(faltandoShopee.length ? [] : marketplace.conexoes.map((c) => c.loja_id)), [faltandoShopee.length, marketplace.conexoes]);
+  const envio = useEnvioShopee({ lojasApi });
   const [mostrar, setMostrar] = useState(POR_PAGINA);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [processando, setProcessando] = useState<string | null>(null);
@@ -200,33 +178,12 @@ export function VendasClient({
   const [anotando, setAnotando] = useState<{ chaves: string[]; inicial?: { observacao: string | null; tags: string[] } } | null>(null);
   const tagsUsadas = useMemo(() => tagsEmUso(lista), [lista]);
 
-  // Sincroniza sozinho ao abrir Vendas se alguma loja conectada está há mais de 10 min sem
-  // sincronizar (o agendador de 15 min cobre o resto). Em segundo plano, sem travar a tela.
-  const router = useRouter();
-  const [sincronizandoSozinho, iniciarAuto] = useTransition();
-  const jaTentou = useRef(false);
-  useEffect(() => {
-    if (jaTentou.current || faltandoShopee.length > 0 || marketplace.conexoes.length === 0) return;
-    const limite = Date.now() - 10 * 60_000;
-    const velha = marketplace.conexoes.some((c) => !c.ultima_sincronizacao || new Date(c.ultima_sincronizacao).getTime() < limite);
-    if (!velha) return;
-    jaTentou.current = true;
-    iniciarAuto(async () => {
-      const r = await sincronizarTodasShopee().catch(() => null);
-      if (r?.ok && r.dado.novos > 0) toast.success(`${r.dado.novos} pedido(s) novo(s) da Shopee.`);
-      if (r?.ok) router.refresh();
-    });
-  }, [faltandoShopee.length, marketplace.conexoes, router]);
-
-  useEffect(() => {
-    if (avisoShopee === "conectada") toast.success("Loja conectada à Shopee.");
-    else if (avisoShopee === "erro") toast.error("Não foi possível conectar a loja à Shopee.");
-    else if (avisoShopee === "desligada") toast.error("A API da Shopee não está ligada neste servidor.");
-  }, [avisoShopee]);
+  const { sincronizar, sincronizandoSozinho, sincronizando } = useSincronizarShopee({ faltandoShopee, conexoes: marketplace.conexoes, avisoShopee });
 
   function mudarEtapa(e: Etapa | "todos" | "oculto") {
     setEtapa(e);
     setMotivo("todos");
+    setSub("todos");
     setSelecionados(new Set());
     setMostrar(POR_PAGINA);
   }
@@ -267,17 +224,6 @@ export function VendasClient({
     });
   }
 
-  function sincronizar() {
-    startTransition(async () => {
-      const r = await executarComToast(sincronizarTodasShopee(), { erro: "Erro ao sincronizar" });
-      if (r.ok) {
-        const d = r.dado;
-        toast.success(`${d.lojas} loja(s): ${d.pedidos} pedido(s) lido(s), ${d.novos} novo(s).`);
-        if (d.erros.length) toast.error(d.erros.join(" · "));
-      }
-    });
-  }
-
   function comprovanteLink(v: Venda) {
     const cliente = v.cliente_id ? clientes.find((c) => c.id === v.cliente_id) : null;
     return linkComprovanteWhatsapp(
@@ -315,7 +261,12 @@ export function VendasClient({
 
   function acoesDe(p: PedidoCentral) {
     const anotar = { label: "Observação e tags…", onClick: () => setAnotando({ chaves: [p.chave], inicial: { observacao: p.observacaoInterna, tags: p.tags } }) };
-    if (p.origem === "marketplace") return [{ label: "Ver detalhes", onClick: () => abrir(p) }, anotar];
+    if (p.origem === "marketplace")
+      return [
+        { label: "Ver detalhes", onClick: () => abrir(p) },
+        anotar,
+        ...(p.etapa === "retirada" && p.envio?.impressa ? [{ label: "Voltar para Para Imprimir", onClick: () => envio.voltarParaImprimir(p) }] : []),
+      ];
     if (p.chave.startsWith("catalogo:")) return [{ label: "Abrir pedido", onClick: () => abrir(p) }];
     const v = vendaPorId.get(p.id);
     if (!v) return [];
@@ -376,7 +327,7 @@ export function VendasClient({
           <>
             <Button
               variant="secondary"
-              loading={(pending && processando === null) || sincronizandoSozinho}
+              loading={sincronizando || sincronizandoSozinho}
               onClick={sincronizar}
               title={ultimaSync ? `Última sincronização: ${new Date(ultimaSync).toLocaleString("pt-BR")}` : "Puxa agora os pedidos das lojas conectadas à API"}
             >
@@ -399,30 +350,24 @@ export function VendasClient({
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <SeletorPeriodo valor={periodo} onChange={(p) => (setPeriodo(p), setMostrar(POR_PAGINA))} limiteDias={diasJanela} />
-        <FiltroCanais valor={canais} onChange={setCanais} lojas={lojasMarketplace} catalogos={nomesCatalogos} />
-        <div className="relative flex-1 min-w-[12rem] max-w-md">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
-          <input className={`${inputClass} pl-9`} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nº do pedido, cliente, produto ou SKU…" aria-label="Buscar pedidos" />
-        </div>
-        <Button variant={nExtras ? "primary" : "secondary"} onClick={() => setFiltrando(true)}>
-          <SlidersHorizontal size={14} /> Filtrar{nExtras ? ` (${nExtras})` : ""}
-        </Button>
-        {(nExtras > 0 || canais.length > 0 || busca) && (
-          <button
-            type="button"
-            className="text-xs text-text-secondary hover:text-text-primary inline-flex items-center gap-1"
-            onClick={() => {
-              setCanais([]);
-              setBusca("");
-              setExtras(EXTRAS_VAZIOS);
-            }}
-          >
-            <X size={12} /> Limpar filtros
-          </button>
-        )}
-      </div>
+      <BarraFiltros
+        periodo={periodo}
+        onPeriodo={(p) => (setPeriodo(p), setMostrar(POR_PAGINA))}
+        diasJanela={diasJanela}
+        canais={canais}
+        onCanais={setCanais}
+        lojas={lojasMarketplace}
+        catalogos={nomesCatalogos}
+        busca={busca}
+        onBusca={setBusca}
+        nExtras={nExtras}
+        onFiltrar={() => setFiltrando(true)}
+        onLimpar={() => {
+          setCanais([]);
+          setBusca("");
+          setExtras(EXTRAS_VAZIOS);
+        }}
+      />
 
       <KpisVendas atual={kpiAtual} anterior={kpiAnterior} rotuloAnterior="anterior" />
 
@@ -440,21 +385,26 @@ export function VendasClient({
 
         <div className="min-w-0 space-y-3">
           {etapa === "reservar" && (
-            <div className="flex flex-wrap gap-1.5">
-              {(["todos", "nao_mapeado", "sem_estoque", "revisao"] as const).map((m) => {
-                const n = m === "todos" ? filtrarCentral(lista, filtros, "reservar").length : filtrarCentral(lista, filtros, "reservar").filter((p) => p.motivoReserva === m).length;
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMotivo(m)}
-                    className={`text-xs rounded-md border px-2.5 py-1.5 ${motivo === m ? "border-accent bg-accent-soft text-accent font-medium" : "border-border text-text-secondary hover:bg-surface-2"}`}
-                  >
-                    {m === "todos" ? "Todos" : ROTULO_MOTIVO[m]} <span className="font-mono">{n}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <SubAbas
+              valor={motivo}
+              onChange={setMotivo}
+              itens={(["todos", "nao_mapeado", "sem_estoque", "revisao"] as const).map((m) => ({
+                id: m,
+                rotulo: m === "todos" ? "Todos" : ROTULO_MOTIVO[m],
+                n: m === "todos" ? daEtapa.length : daEtapa.filter((p) => p.motivoReserva === m).length,
+              }))}
+            />
+          )}
+          {etapa === "enviar" && daEtapa.some((p) => p.origem === "marketplace" && p.lojaId && lojasApi.has(p.lojaId)) && (
+            <SubAbas
+              valor={sub}
+              onChange={setSub}
+              itens={(["todos", "programar", "programando", "falha"] as const).map((m) => ({
+                id: m,
+                rotulo: m === "todos" ? "Todos" : ROTULO_SUB_ENVIO[m],
+                n: m === "todos" ? daEtapa.length : daEtapa.filter((p) => p.origem === "marketplace" && subEnvio(p) === m).length,
+              }))}
+            />
           )}
 
           {lotes.length > 0 ? (
@@ -462,7 +412,13 @@ export function VendasClient({
               selecionados={lotes}
               onLimpar={() => setSelecionados(new Set())}
               onAnotar={() => setAnotando({ chaves: lotes.filter((p) => !p.chave.startsWith("catalogo:")).map((p) => p.chave) })}
-              acaoEtapa={proxLote ? { rotulo: `${proxLote.acao} (${lotes.length})`, executar: () => avancar(lotes), carregando: processando === "massa" } : null}
+              acaoEtapa={
+                proxLote
+                  ? { rotulo: `${proxLote.acao} (${lotes.length})`, executar: () => avancar(lotes), carregando: processando === "massa" }
+                  : envio.acaoEmMassa(lotes)
+                    ? { rotulo: `${envio.acaoEmMassa(lotes)} (${lotes.length})`, executar: () => envio.executar(lotes, () => setSelecionados(new Set())), carregando: envio.ocupado }
+                    : null
+              }
               verOcultos={etapa === "oculto"}
             />
           ) : (
@@ -507,6 +463,7 @@ export function VendasClient({
                 onAbrir={() => abrir(p)}
                 onAvancar={() => avancar([p])}
                 onVincular={() => setVinculando(true)}
+                acaoExtra={envio.acaoDe(p) ? { rotulo: envio.acaoDe(p) as string, onClick: () => envio.executar([p]), carregando: envio.ocupado } : undefined}
                 onLogistica={(l) => mudarLogistica(p, l)}
                 acoes={acoesDe(p)}
                 processando={processando === p.chave}
@@ -547,6 +504,7 @@ export function VendasClient({
       {catalogo && <PedidoCatalogoModal key={catalogo.id} pedido={catalogo} onClose={() => setCatalogo(null)} clientes={clientesPdv} contas={contas} formasPagamento={formasPagamentoPdv} />}
       {detalheMkt && <DetalheMarketplaceModal p={detalheMkt} bruto={marketplace.pedidos.find((x) => x.id === detalheMkt.id)} onClose={() => setDetalheMkt(null)} />}
       {filtrando && <FiltrosModal inicial={extras} onAplicar={setExtras} onClose={() => setFiltrando(false)} ufs={ufs} logisticas={logisticas} tags={tagsUsadas} />}
+      {envio.modal(() => setSelecionados(new Set()))}
       {anotando && <AnotarModal chaves={anotando.chaves} inicial={anotando.inicial} tagsSugeridas={tagsUsadas} onClose={() => setAnotando(null)} />}
       {impExp && <ImportarExportarModal onClose={() => setImpExp(false)} onImportarShopee={() => setImportando(true)} onExportar={() => setExportando(true)} podeImportar={marketplace.disponivel} />}
       {importando && <ImportarShopeeModal onClose={() => setImportando(false)} lojas={lojasMarketplace} produtos={produtosMarketplace} vinculos={marketplace.vinculos} impostoPct={impostoPct} />}

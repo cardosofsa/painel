@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  subEnvio,
   contarEtapas,
   etapaDaVenda,
   etapaDoMarketplace,
@@ -145,6 +146,24 @@ describe("montarCentral", () => {
     expect([de("mkt:mn").etapa, de("mkt:mn").motivoReserva]).toEqual(["reservar", "nao_mapeado"]);
     // Já processado (a plataforma baixou): não volta para Reservar.
     expect(de("mkt:mp").etapa).toBe("imprimir");
+  });
+
+  it("envio pelo SERTÃO (0054): sub-abas de Para Enviar e etiqueta baixada vai para Retirada", () => {
+    const r = montarCentral({
+      vendas: [],
+      pedidosCatalogo: [],
+      marketplace: [
+        mkt({ id: "a" }),
+        mkt({ id: "b", numero: "B", envio_programado_em: "2026-10-01T10:00:00.000Z" }),
+        mkt({ id: "c", numero: "C", envio_erro: "Sem horário" }),
+        mkt({ id: "d", numero: "D", status_original: "PROCESSED", etiqueta_impressa_em: "2026-10-01T11:00:00.000Z", rastreio: "BR1" }),
+      ],
+      lojas,
+    });
+    const de = (id: string) => r.find((p) => p.chave === `mkt:${id}`)!;
+    expect(["a", "b", "c"].map((id) => subEnvio(de(id)))).toEqual(["programar", "programando", "falha"]);
+    expect(de("d").etapa).toBe("retirada");
+    expect(de("d").envio?.rastreio).toBe("BR1");
   });
 
   it("filtros: canal/loja, busca por SKU, UF, prejuízo, sem custo", () => {

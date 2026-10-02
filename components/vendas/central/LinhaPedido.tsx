@@ -41,7 +41,10 @@ export function LinhaPedido({
   onLogistica,
   acoes,
   processando,
+  acaoExtra,
 }: {
+  /** Ação da plataforma (Programar envio, Imprimir etiqueta) no lugar da ação da etapa. */
+  acaoExtra?: { rotulo: string; onClick: () => void; carregando: boolean };
   p: PedidoCentral;
   selecionado: boolean;
   onSelecionar: (v: boolean) => void;
@@ -77,6 +80,13 @@ export function LinhaPedido({
           {p.tags.map((t) => (
             <TagPedido key={t} tag={t} />
           ))}
+          {p.envio?.erro && p.etapa === "enviar" && (
+            <span title={p.envio.erro} className="text-[11px] text-negative max-w-[18rem] truncate">
+              Falha ao programar: {p.envio.erro}
+            </span>
+          )}
+          {p.envio?.programado && !p.envio.erro && p.etapa === "enviar" && <span className="text-[11px] text-text-tertiary">Envio programado, esperando a Shopee</span>}
+          {p.envio?.rastreio && <span className="text-[11px] font-mono text-text-secondary">Rastreio {p.envio.rastreio}</span>}
           {p.observacaoInterna && (
             <span title={p.observacaoInterna} className="inline-flex items-center gap-1 text-[11px] text-text-secondary max-w-[16rem] truncate">
               <MessageSquareText size={12} className="shrink-0 text-accent" /> {p.observacaoInterna}
@@ -168,7 +178,12 @@ export function LinhaPedido({
                 Vincular anúncio
               </Button>
             )}
-            {proxima && (
+            {acaoExtra && (
+              <Button size="sm" variant="primary" loading={acaoExtra.carregando} onClick={acaoExtra.onClick}>
+                {acaoExtra.rotulo}
+              </Button>
+            )}
+            {proxima && !acaoExtra && (
               <Button size="sm" variant={p.etapa === "emitir" ? "primary" : "secondary"} loading={processando} onClick={onAvancar}>
                 {proxima.acao}
               </Button>

@@ -111,6 +111,17 @@ export interface PedidoCentral {
   oculto: boolean;
   /** A etapa pode ser avançada aqui (pedidos do próprio sistema). */
   editavel: boolean;
+  /** Marketplace (0054): envio programado pelo SERTÃO, falha, rastreio e etiqueta baixada. */
+  envio?: { programado: boolean; erro: string | null; rastreio: string | null; impressa: boolean };
+}
+
+export type SubEnvio = "programar" | "programando" | "falha";
+export const ROTULO_SUB_ENVIO: Record<SubEnvio, string> = { programar: "Para programar", programando: "Programando", falha: "Falha" };
+
+/** Sub-aba de Para Enviar (como no ERP): falha ao programar, já programado ou a programar. */
+export function subEnvio(p: Pick<PedidoCentral, "envio">): SubEnvio {
+  if (p.envio?.erro) return "falha";
+  return p.envio?.programado ? "programando" : "programar";
 }
 
 // ---------- Entradas (o que as páginas já carregam) ----------
@@ -179,6 +190,11 @@ export interface PedidoMktIn {
   tags?: string[] | null;
   observacao_interna?: string | null;
   ocultado_em?: string | null;
+  /** 0054. */
+  rastreio?: string | null;
+  envio_programado_em?: string | null;
+  envio_erro?: string | null;
+  etiqueta_impressa_em?: string | null;
   pedidos_marketplace_itens: { sku: string | null; nome: string; variacao: string | null; quantidade: number; preco_unitario: number }[];
 }
 
@@ -311,7 +327,8 @@ export function montarCentral(entrada: {
     const etapaPlataforma = etapaDoMarketplace(p.status, p.status_original);
     // Item sem produto antes de baixar: vai para Para Reservar (Não mapeado) até vincular.
     const naoMapeado = p.custo_incompleto && etapaPlataforma === "enviar";
-    const etapa: Etapa = naoMapeado ? "reservar" : etapaPlataforma;
+    // Etiqueta já baixada pelo SERTÃO (0054): pronto, esperando a coleta.
+    const etapa: Etapa = naoMapeado ? "reservar" : etapaPlataforma === "imprimir" && p.etiqueta_impressa_em ? "retirada" : etapaPlataforma;
     const cancelado = etapa === "cancelado";
     lista.push({
       chave: `mkt:${p.id}`,
@@ -344,6 +361,7 @@ export function montarCentral(entrada: {
       observacaoInterna: p.observacao_interna ?? null,
       oculto: !!p.ocultado_em,
       editavel: false,
+      envio: { programado: !!p.envio_programado_em, erro: p.envio_erro ?? null, rastreio: p.rastreio ?? null, impressa: !!p.etiqueta_impressa_em },
     });
   }
 

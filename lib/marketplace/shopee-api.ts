@@ -110,7 +110,7 @@ export async function renovarToken(c: CredenciaisShopee, refreshToken: string, s
   return tokensDe(await postPublico(c, "/api/v2/auth/access_token/get", { refresh_token: refreshToken, shop_id: shopId }));
 }
 
-async function getLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, params: Record<string, string>): Promise<Record<string, unknown>> {
+export async function getLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, params: Record<string, string>): Promise<Record<string, unknown>> {
   const ts = agora();
   const q = new URLSearchParams({ ...params, partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
   const r = await fetch(`${c.host}${caminho}?${q}`, { cache: "no-store" });
@@ -269,7 +269,7 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
 
 // ---------- Produtos: anúncios e estoque (Fase 9.7) ----------
 
-async function postLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, corpo: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function postLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, corpo: Record<string, unknown>): Promise<Record<string, unknown>> {
   const ts = agora();
   const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
   const r = await fetch(`${c.host}${caminho}?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), cache: "no-store" });
@@ -336,4 +336,16 @@ export async function enviarEstoque(c: CredenciaisShopee, token: string, shopId:
     item_id: itemId,
     stock_list: estoques.map((e) => ({ model_id: e.modelId, seller_stock: [{ stock: Math.max(0, Math.floor(e.quantidade)) }] })),
   });
+}
+
+/** POST que devolve um ARQUIVO (etiqueta em PDF). Erro da Shopee vem como JSON. */
+export async function postLojaArquivo(c: CredenciaisShopee, caminho: string, token: string, shopId: number, corpo: Record<string, unknown>): Promise<Uint8Array> {
+  const ts = agora();
+  const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
+  const r = await fetch(`${c.host}${caminho}?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), cache: "no-store" });
+  if ((r.headers.get("content-type") ?? "").includes("json") || !r.ok) {
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
+  }
+  return new Uint8Array(await r.arrayBuffer());
 }
