@@ -82,8 +82,8 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
       );
       if (!s.ok) return;
       if (!criarProduto || !s.dado.id) return void toast.success("Kit salvo em Precificações salvas.");
-      const p = await executarComToast(criarProdutoDePrecificacao(s.dado.id), { erro: "Kit salvo, mas não deu para criar o produto" });
-      if (p.ok) toast.success(`Produto "${nomeFinal}" criado com os itens na composição. Ajuste SKU e estoque em Produtos.`);
+      const p = await executarComToast(criarProdutoDePrecificacao(s.dado.id, { kit: true }), { erro: "Kit salvo, mas não deu para criar o produto" });
+      if (p.ok) toast.success(`Kit "${nomeFinal}" criado: vender o kit baixa cada item, e o estoque dele é quantos dá para montar.`);
     });
   }
 
@@ -204,7 +204,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           <Button variant="secondary" className="w-full" disabled={!r.resultado.viavel || !itens.length || pending} onClick={() => salvar(false)}>
             Só salvar a precificação
           </Button>
-          <p className="text-[11px] text-text-tertiary">O produto nasce com os itens na composição (custo certo) e o preço do kit. Estoque e SKU você ajusta em Produtos.</p>
+          <p className="text-[11px] text-text-tertiary">O kit nasce com os itens na composição: o custo é a soma deles e o estoque é quantos kits dá para montar. Vender o kit baixa cada item.</p>
         </Card>
       </div>
     </div>

@@ -82,6 +82,7 @@ export default async function ProdutosPage() {
   }
 
   const produtos: Produto[] = (produtosRes.data ?? []).map((p) => ({
+    e_kit: !!p.e_kit,
     id: p.id,
     sku: p.sku,
     nome: p.nome,

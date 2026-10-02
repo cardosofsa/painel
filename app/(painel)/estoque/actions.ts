@@ -6,6 +6,12 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar, movimentacaoEstoqueSchema, entradaEstoqueComCustoSchema, movimentacaoArmazemSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 
+/** Kit (0058) não tem estoque próprio: a movimentação manual é nos componentes. */
+async function recusarKit(supabase: Awaited<ReturnType<typeof createClient>>, produtoId: string) {
+  const { data } = await supabase.from("produtos").select("*").eq("id", produtoId).maybeSingle();
+  if (data?.e_kit) throw new Error("Este produto é um kit: o estoque vem dos itens da composição. Movimente os componentes.");
+}
+
 /** Só pra saída: entrada passou a exigir custo, ver `registrarEntradaComCusto` abaixo. */
 export async function registrarMovimentacaoEstoque(dados: {
   produtoId: string;
@@ -16,6 +22,7 @@ export async function registrarMovimentacaoEstoque(dados: {
   return comResultado(async () => {
     const supabase = await createClient();
     const v = validar(movimentacaoEstoqueSchema, dados);
+    await recusarKit(supabase, v.produtoId);
 
     const { error } = await supabase.rpc("registrar_movimentacao_estoque", {
       p_produto_id: v.produtoId,
@@ -44,6 +51,7 @@ export async function registrarEntradaComCusto(dados: {
   return comResultado(async () => {
     const supabase = await createClient();
     const v = validar(entradaEstoqueComCustoSchema, dados);
+    await recusarKit(supabase, v.produtoId);
 
     const { error } = await supabase.rpc("registrar_entrada_com_custo", {
       p_produto_id: v.produtoId,
@@ -77,6 +85,7 @@ export async function movimentarEstoqueArmazem(dados: {
   return comResultado(async () => {
     const supabase = await createClient();
     const v = validar(movimentacaoArmazemSchema, dados);
+    await recusarKit(supabase, v.produtoId);
     const { error } =
       v.tipo === "transferencia"
         ? await supabase.rpc("transferir_estoque", {

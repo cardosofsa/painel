@@ -47,6 +47,8 @@ export interface ProdutoInput {
   largura_cm?: number | null;
   comprimento_cm?: number | null;
   ativo: boolean;
+  /** 0058: vende como kit (estoque calculado pelos componentes). */
+  e_kit?: boolean;
   grupo_id: string | null;
   variante_nome: string | null;
   loja_ids: string[];
@@ -61,6 +63,18 @@ function semEnvioVazio<T extends Record<string, unknown>>(p: T): T {
   if (chaves.some((k) => p[k] != null)) return p;
   const copia = { ...p };
   for (const k of chaves) delete copia[k];
+  return copia;
+}
+
+/**
+ * Kit (0058) não tem estoque próprio: o número do formulário NÃO vai para o banco — gravar
+ * o estoque de um kit seria lido como venda/entrada e mexeria nos componentes.
+ */
+function paraGravar<T extends { e_kit?: boolean; estoque?: number }>(p: T, edicao: boolean): T {
+  if (!p.e_kit) return p;
+  const copia = { ...p };
+  if (edicao) delete copia.estoque;
+  else copia.estoque = 0;
   return copia;
 }
 
@@ -108,7 +122,13 @@ export async function criarProduto(dados: ProdutoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
-    const { data, error } = await supabase.from("produtos").insert(semEnvioVazio(produto)).select("id").single();
+    let { data, error } = await supabase.from("produtos").insert(semEnvioVazio(paraGravar(produto, false))).select("id").single();
+    // Sem a 0058 a coluna e_kit não existe: grava sem ela.
+    if (error?.code === "PGRST204" && "e_kit" in produto) {
+      const { e_kit: _ignorado, ...semKit } = produto;
+      void _ignorado;
+      ({ data, error } = await supabase.from("produtos").insert(semEnvioVazio(semKit)).select("id").single());
+    }
     if (error) lancarErroSupabase(error);
     if (!data) throw new Error("Erro ao criar produto.");
     await sincronizarLojasProduto(supabase, data.id, loja_ids);
@@ -120,7 +140,12 @@ export async function atualizarProduto(id: string, dados: ProdutoInput) {
   return comResultado(async () => {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
-    const { error } = await supabase.from("produtos").update(semEnvioVazio(produto)).eq("id", id);
+    let { error } = await supabase.from("produtos").update(semEnvioVazio(paraGravar(produto, true))).eq("id", id);
+    if (error?.code === "PGRST204" && "e_kit" in produto) {
+      const { e_kit: _ignorado, ...semKit } = produto;
+      void _ignorado;
+      ({ error } = await supabase.from("produtos").update(semEnvioVazio(semKit)).eq("id", id));
+    }
     if (error) lancarErroSupabase(error);
     await sincronizarLojasProduto(supabase, id, loja_ids);
     revalidateTudo();

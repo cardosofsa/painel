@@ -128,7 +128,7 @@ export async function vincularProdutoPrecificacao(precificacaoId: string, produt
  * `custo_base` (a linha sentinela `ID_CUSTO_PRODUTO`) e `insumos` (o resto), e vincula a
  * precificação ao produto recém-criado — pra ela continuar aparecendo no resumo por canal.
  */
-export async function criarProdutoDePrecificacao(precificacaoId: string) {
+export async function criarProdutoDePrecificacao(precificacaoId: string, opcoes: { kit?: boolean } = {}) {
   return comResultado(async () => {
     const supabase = await createClient();
     const { data: h, error: erroBusca } = await supabase
@@ -142,9 +142,7 @@ export async function criarProdutoDePrecificacao(precificacaoId: string) {
     const doProduto = componentes.find((c) => c.id === ID_CUSTO_PRODUTO);
     const insumos = componentes.filter((c) => c.id !== ID_CUSTO_PRODUTO);
 
-    const { data: produto, error: erroProduto } = await supabase
-      .from("produtos")
-      .insert({
+    const linha: Record<string, unknown> = {
         sku: gerarSkuAPartirDePrecificacao(),
         nome: h!.produto_nome,
         // A descrição da vitrine vai até 2000; a do anúncio, até 5000. Corta sem partir palavra.
@@ -156,9 +154,14 @@ export async function criarProdutoDePrecificacao(precificacaoId: string) {
         estoque_minimo: 10,
         saida_media_semanal: 0,
         ativo: true,
-      })
+    };
+    // Kit (0058): o estoque passa a vir dos itens. Sem a migração, cria como produto comum.
+    let { data: produto, error: erroProduto } = await supabase
+      .from("produtos")
+      .insert((opcoes.kit ? { ...linha, e_kit: true, estoque_minimo: 0 } : linha) as Record<string, unknown>)
       .select("id")
       .single();
+    if (erroProduto?.code === "PGRST204" && opcoes.kit) ({ data: produto, error: erroProduto } = await supabase.from("produtos").insert(linha).select("id").single());
     if (erroProduto) lancarErroSupabase(erroProduto);
     if (!produto) throw new Error("Erro ao criar produto.");
 

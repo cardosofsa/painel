@@ -292,6 +292,7 @@ export function ProdutosClient({
       grupo_id: p.grupo_id,
       variante_nome: p.variante_nome,
       loja_ids: p.loja_ids,
+      e_kit: p.e_kit ?? false,
     };
     setForm(dados);
     setFormOriginal(dados);
@@ -568,6 +569,7 @@ export function ProdutosClient({
                   <Td className="cursor-pointer" onClick={() => setDetalheId(p.id)}>
                     <div className={p.ativo ? "text-text-primary font-medium" : "text-text-tertiary line-through"}>
                       {p.grupo_nome ?? p.nome}
+                      {p.e_kit ? <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent-soft text-accent align-middle">Kit</span> : null}
                       {p.variante_nome ? (
                         <span className="ml-1.5 text-xs font-normal px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary">
                           {p.variante_nome}

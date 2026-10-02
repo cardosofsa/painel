@@ -53,7 +53,7 @@ async function saldosFisicosDaLoja(supabase: SupabaseClient, userId: string, loj
     .sort((a, b) => (a.criado_em ?? "").localeCompare(b.criado_em ?? ""))[0];
   if (armazem) {
     const { data, error } = await supabase.from("estoque_armazem").select("produto_id, quantidade").eq("user_id", userId).eq("armazem_id", armazem.id);
-    if (!error) return new Map((data ?? []).map((r) => [r.produto_id as string, Number(r.quantidade)]));
+    if (!error) return comKits(supabase, userId, new Map((data ?? []).map((r) => [r.produto_id as string, Number(r.quantidade)])));
   }
   const { data } = await supabase.from("produtos").select("id, estoque").eq("user_id", userId);
   return new Map((data ?? []).map((p) => [p.id as string, Number(p.estoque)]));
@@ -130,4 +130,16 @@ export async function empurrarEstoquePendente(supabase: SupabaseClient): Promise
       console.error("[estoque shopee]", e instanceof Error ? e.message : e);
     }
   }
+}
+
+/** Kits (0058) não têm saldo em armazém: valem quantos dá para montar com o saldo dos itens. */
+async function comKits(supabase: SupabaseClient, userId: string, saldos: Map<string, number>): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from("produtos").select("*").eq("user_id", userId).eq("e_kit", true);
+  if (error || !data?.length) return saldos;
+  for (const k of data as { id: string; insumos: { produtoId?: string | null; quantidade: number }[] | null }[]) {
+    const itens = (k.insumos ?? []).filter((i) => i.produtoId && i.quantidade > 0);
+    if (!itens.length) continue;
+    saldos.set(k.id, Math.max(0, Math.min(...itens.map((i) => Math.floor((saldos.get(i.produtoId as string) ?? 0) / Math.ceil(i.quantidade))))));
+  }
+  return saldos;
 }

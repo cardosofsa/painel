@@ -287,6 +287,15 @@ export function ProdutoFormModal({
             onChange={(e) => setForm({ ...form, custo_base: Number(e.target.value) || 0 })}
           />
         </FormField>
+        <label className="flex items-start gap-2 text-sm text-text-secondary mb-3 rounded-md border border-border px-3 py-2">
+          <input type="checkbox" className="mt-0.5" checked={!!form.e_kit} onChange={(e) => setForm((f) => ({ ...f, e_kit: e.target.checked }))} />
+          <span>
+            <span className="text-text-primary font-medium">Vender como kit</span>
+            <span className="block text-xs text-text-tertiary">
+              Os produtos do estoque na composição abaixo são os itens do kit: vender o kit baixa cada um, e o estoque do kit é quantos dá para montar.
+            </span>
+          </span>
+        </label>
         <div className="mb-4">
           <EditorInsumos
             componentes={form.insumos}
@@ -390,11 +399,12 @@ export function ProdutoFormModal({
           )}
         </FormField>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField label="Estoque Atual">
+          <FormField label="Estoque Atual" dica={form.e_kit ? "Kit: calculado pelos itens da composição." : undefined}>
             <input
               type="number"
               className={inputClass}
               value={form.estoque}
+              disabled={!!form.e_kit}
               onChange={(e) => setForm({ ...form, estoque: Number(e.target.value) || 0 })}
             />
           </FormField>

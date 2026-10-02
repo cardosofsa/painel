@@ -89,6 +89,8 @@ export const produtoSchema = z.object({
   grupo_id: uuidOpcional,
   variante_nome: z.string().trim().max(100).nullable(),
   loja_ids: z.array(uuid).max(50),
+  /** 0058: kit — o estoque vem dos componentes da composição. */
+  e_kit: z.boolean().optional(),
 });
 
 export const precificacaoSchema = z.object({
