@@ -15,15 +15,23 @@ export interface DadosMensagens {
 
 const PENDENTES: Etapa[] = ["reservar", "emitir", "enviar", "imprimir", "retirada"];
 
-export async function carregarMensagens(supabase: SupabaseClient): Promise<DadosMensagens> {
-  const agora = new Date();
+type VendaBruta = { id: string; numero: string; total: number; lucro: number; etapa: string | null; status: string; rastreio?: string | null; logistica?: string | null; data_venda: string; clientes: { nome: string; whatsapp: string | null } | null };
+type ParcelaBruta = { id: string; numero: number; total_parcelas: number; valor: number; data_vencimento: string; vendas: { numero: string; status: string; clientes: { nome: string; whatsapp: string | null } | null } | null };
+type PedidoBruto = { id: string; numero: string; cliente_nome: string; cliente_whatsapp: string; total: number; status: string; criado_em: string; venda_id: string | null };
+
+/**
+ * Avisos de WhatsApp pendentes (sem o resumo do dia). Usado também pelo sino do topo, que
+ * mostra cada um como notificação: enviar ou pular grava em `mensagens_enviadas` e ele sai
+ * dos dois lugares.
+ */
+export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = new Date()) {
   const hoje = hojeIsoLocal(agora);
   const desde = new Date(agora);
   desde.setDate(desde.getDate() - 15);
   const limiteFiado = new Date(agora);
   limiteFiado.setDate(limiteFiado.getDate() + 2);
 
-  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes, mktRes, produtosRes] = await Promise.all([
+  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes] = await Promise.all([
     supabase.from("perfil_negocio").select("nome_negocio, whatsapp").maybeSingle(),
     supabase.from("pedidos_vitrine").select("id, numero, cliente_nome, cliente_whatsapp, total, status, criado_em, venda_id").gte("criado_em", desde.toISOString()).limit(500),
     supabase.from("vendas").select("*, clientes(nome, whatsapp)").gte("data_venda", desde.toISOString()).order("data_venda", { ascending: false }).limit(1000),
@@ -34,16 +42,12 @@ export async function carregarMensagens(supabase: SupabaseClient): Promise<Dados
       .lte("data_vencimento", limiteFiado.toISOString().slice(0, 10))
       .limit(500),
     supabase.from("mensagens_enviadas").select("chave").gte("enviada_em", new Date(agora.getTime() - 60 * 86_400_000).toISOString()),
-    supabase.from("pedidos_marketplace").select("status, status_original").eq("status", "a_enviar"),
-    supabase.from("produtos").select("nome, estoque, estoque_minimo, ativo").eq("ativo", true),
   ]);
 
   const loja = (perfilRes.data?.nome_negocio as string | null) || "nossa loja";
-  const pedidos = (pedidosRes.data ?? []) as { id: string; numero: string; cliente_nome: string; cliente_whatsapp: string; total: number; status: string; criado_em: string; venda_id: string | null }[];
+  const pedidos = (pedidosRes.data ?? []) as PedidoBruto[];
   const doCatalogo = new Set(pedidos.map((p) => p.venda_id).filter((v): v is string => !!v));
-  type VendaBruta = { id: string; numero: string; total: number; lucro: number; etapa: string | null; status: string; rastreio?: string | null; logistica?: string | null; data_venda: string; clientes: { nome: string; whatsapp: string | null } | null };
   const vendas = (vendasRes.data ?? []) as VendaBruta[];
-  type ParcelaBruta = { id: string; numero: number; total_parcelas: number; valor: number; data_vencimento: string; vendas: { numero: string; status: string; clientes: { nome: string; whatsapp: string | null } | null } | null };
   const parcelas = ((parcelasRes.data ?? []) as unknown as ParcelaBruta[]).filter((p) => p.vendas && p.vendas.status !== "cancelada");
 
   const mensagens = mensagensPendentes(
@@ -78,6 +82,26 @@ export async function carregarMensagens(supabase: SupabaseClient): Promise<Dados
     new Set(((enviadasRes.data ?? []) as { chave: string }[]).map((e) => e.chave)),
   );
 
+  return {
+    loja,
+    whatsappDono: (perfilRes.data?.whatsapp as string | null) ?? null,
+    mensagens,
+    registroOk: !enviadasRes.error,
+    hoje,
+    pedidos,
+    vendas,
+    parcelas,
+  };
+}
+
+export async function carregarMensagens(supabase: SupabaseClient): Promise<DadosMensagens> {
+  const [base, mktRes, produtosRes] = await Promise.all([
+    carregarAvisosWhatsapp(supabase),
+    supabase.from("pedidos_marketplace").select("status, status_original").eq("status", "a_enviar"),
+    supabase.from("produtos").select("nome, estoque, estoque_minimo, ativo").eq("ativo", true),
+  ]);
+  const { loja, whatsappDono, mensagens, registroOk, hoje, pedidos, vendas, parcelas } = base;
+
   const deHoje = vendas.filter((v) => v.status !== "cancelada" && hojeIsoLocal(new Date(v.data_venda)) === hoje);
   const parados = PENDENTES.map((e) => ({ etapa: ROTULO_ETAPA[e], n: vendas.filter((v) => v.status !== "cancelada" && v.etapa === e).length }));
   const mkt = (mktRes.data ?? []) as { status_original: string | null }[];
@@ -88,9 +112,9 @@ export async function carregarMensagens(supabase: SupabaseClient): Promise<Dados
 
   return {
     loja,
-    whatsappDono: (perfilRes.data?.whatsapp as string | null) ?? null,
+    whatsappDono,
     mensagens,
-    registroOk: !enviadasRes.error,
+    registroOk,
     resumo: {
       data: hoje,
       vendas: deHoje.length,

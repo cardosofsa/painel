@@ -161,7 +161,8 @@ export function VendasClient({
   const daEtapa = useMemo(() => filtrarCentral(lista, filtros, etapa), [lista, filtros, etapa]);
   const filtrados = useMemo(() => {
     if (etapa === "reservar" && motivo !== "todos") return daEtapa.filter((p) => p.motivoReserva === motivo);
-    if (etapa === "enviar" && sub !== "todos") return daEtapa.filter((p) => p.origem === "marketplace" && subEnvio(p) === sub);
+    // Pedidos do sistema (#V-…) entram também: em Para Enviar ainda não foram programados.
+    if (etapa === "enviar" && sub !== "todos") return daEtapa.filter((p) => subEnvio(p) === sub);
     return daEtapa;
   }, [daEtapa, etapa, motivo, sub]);
   const conexoesLigadas = useMemo(() => marketplace.conexoes.filter((c) => plataformasLigadas.includes(c.plataforma)), [marketplace.conexoes, plataformasLigadas]);
@@ -379,7 +380,7 @@ export function VendasClient({
               itens={(["todos", "programar", "programando", "falha"] as const).map((m) => ({
                 id: m,
                 rotulo: m === "todos" ? "Todos" : ROTULO_SUB_ENVIO[m],
-                n: m === "todos" ? daEtapa.length : daEtapa.filter((p) => p.origem === "marketplace" && subEnvio(p) === m).length,
+                n: m === "todos" ? daEtapa.length : daEtapa.filter((p) => subEnvio(p) === m).length,
               }))}
             />
           )}
@@ -406,7 +407,7 @@ export function VendasClient({
                   checked={false}
                   onChange={(e) => setSelecionados(e.target.checked ? new Set(selecionaveis.map((p) => p.chave)) : new Set())}
                 />
-                Selecionar todos desta página (para imprimir lista de separação, romaneio…)
+                Selecionar todos
               </label>
             )
           )}

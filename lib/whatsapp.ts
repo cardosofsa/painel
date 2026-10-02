@@ -19,6 +19,13 @@ const dataBR = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocal
 
 export type AssuntoMensagem = "pedido" | "pago" | "enviado" | "fiado";
 
+export const ROTULO_ASSUNTO: Record<AssuntoMensagem, string> = {
+  pedido: "Pedido recebido",
+  pago: "Pagamento confirmado",
+  enviado: "Enviado",
+  fiado: "Fiado",
+};
+
 export interface MensagemPendente {
   chave: string;
   assunto: AssuntoMensagem;

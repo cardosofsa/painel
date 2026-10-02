@@ -2,26 +2,29 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sun, Moon, LogOut, Settings, Menu, UserRound } from "lucide-react";
+import { Sun, Moon, LogOut, Settings, Menu, UserRound, BadgeCheck, ArrowUpCircle } from "lucide-react";
 import Link from "next/link";
 import { sairOperador } from "@/app/(painel)/operador/actions";
 import { useTheme } from "./ThemeContext";
 import { useSidebarMobile } from "./SidebarMobileContext";
 import { createClient } from "@/lib/supabase/client";
 import { AlertasSino, type AlertaSino } from "./AlertasSino";
-
-function todayLabel() {
-  return new Date().toLocaleDateString("pt-BR");
-}
+import type { MensagemPendente } from "@/lib/whatsapp";
 
 export function TopBar({
   nomeNegocio,
   alertas,
+  mensagens = [],
+  plano = null,
   operador = null,
   exigeOperador = false,
 }: {
   nomeNegocio: string | null;
   alertas: AlertaSino[];
+  /** Avisos de WhatsApp pendentes (Vixe → Mensagens), cada um uma notificação no sino. */
+  mensagens?: MensagemPendente[];
+  /** Selo do plano ("Plano Pro" / "Teste · Pro") e se há plano acima; null = sem plano (master ou sem 0057). */
+  plano?: { rotulo: string; upgrade: boolean } | null;
   /** 11.8: quem está operando (turno). */
   operador?: string | null;
   exigeOperador?: boolean;
@@ -69,24 +72,43 @@ export function TopBar({
         <Menu size={18} />
       </button>
 
-      {/* Sem nome de negócio cadastrado, a saudação não aparece — "Olá, SERTÃO"
-          soava como se o sistema estivesse falando o próprio nome de volta pro dono. */}
-      {nomeNegocio && (
-        <div className="hidden sm:flex items-center gap-1.5 text-sm text-text-secondary truncate">
-          Olá, {nomeNegocio}
-        </div>
-      )}
+      {/* Esquerda e direita com a mesma base (flex-1 basis-0): o nome fica no centro de verdade. */}
+      <div className="flex-1 basis-0 min-w-0 flex items-center gap-2">
+        {plano && (
+          <>
+            <Link
+              href="/configuracoes?aba=plano"
+              title="Ver o plano"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-text-secondary hover:bg-surface-2 hover:text-text-primary whitespace-nowrap"
+            >
+              <BadgeCheck size={13} className="text-accent" /> {plano.rotulo}
+            </Link>
+            {plano.upgrade && (
+              <Link
+                href="/configuracoes?aba=plano"
+                aria-label="Fazer upgrade"
+                className="inline-flex items-center gap-1 rounded-full bg-accent px-2 sm:px-2.5 py-1 text-xs font-medium text-accent-on hover:bg-accent-hover whitespace-nowrap"
+              >
+                {/* No celular só o ícone: o selo + o texto não cabem na metade da barra. */}
+                <ArrowUpCircle size={13} /> <span className="hidden sm:inline">Fazer upgrade</span>
+              </Link>
+            )}
+          </>
+        )}
+      </div>
 
-      <span className="hidden sm:inline text-sm text-text-tertiary">{todayLabel()}</span>
+      {/* Sem nome de negócio cadastrado, nada aparece — "SERTÃO" no lugar soava como se o
+          sistema estivesse falando o próprio nome de volta pro dono. */}
+      {nomeNegocio && <div className="hidden md:block max-w-[30%] truncate text-sm font-semibold text-text-primary text-center">{nomeNegocio}</div>}
 
-      <div className="flex-1" />
+      <div className="flex-1 basis-0 min-w-0 flex items-center justify-end gap-4">
       {(operador || exigeOperador) && (
         <Link href="/operador" className="hidden sm:inline-flex items-center gap-1.5 mr-1 rounded-full border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-surface-2" title="Trocar quem está operando">
           <UserRound size={13} className="text-accent" /> {operador ?? "Ninguém operando"} · trocar
         </Link>
       )}
 
-      <AlertasSino alertas={alertas} />
+      <AlertasSino alertas={alertas} mensagens={mensagens} />
 
       <button
         onClick={toggleTheme}
@@ -118,6 +140,7 @@ export function TopBar({
             </button>
           </div>
         )}
+      </div>
       </div>
     </header>
   );

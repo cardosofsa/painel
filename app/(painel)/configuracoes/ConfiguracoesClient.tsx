@@ -98,6 +98,12 @@ export const ICONES_CANAL: Record<string, LucideIcon> = {
 const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Frete", "Fiscal", "Equipe", "IA", "Dados", "Plano", "Conta"] as const;
 const ABAS_TABS = ABAS.map((a) => ({ value: a, label: a }));
 
+/** `?aba=plano` (link do plano no topo) → "Plano". Sem parâmetro ou desconhecido: a primeira. */
+function abaDaUrl(param: string | undefined): (typeof ABAS)[number] {
+  const alvo = (param ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return ABAS.find((a) => a.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, "-") === alvo) ?? "Canais de Venda";
+}
+
 export function ConfiguracoesClient({
   categorias,
   canais,
@@ -116,7 +122,10 @@ export function ConfiguracoesClient({
   plano,
   fiscal,
   equipe,
+  abaUrl,
 }: {
+  /** `?aba=` da URL: aba aberta ao entrar. */
+  abaUrl?: string;
   /** 0063; null = migração ausente. */
   equipe: DadosEquipe | null;
   /** 0062; null = migração ausente. */
@@ -142,7 +151,7 @@ export function ConfiguracoesClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [aba, setAba] = useState<(typeof ABAS)[number]>("Canais de Venda");
+  const [aba, setAba] = useState<(typeof ABAS)[number]>(() => abaDaUrl(abaUrl));
 
   const [modalConta, setModalConta] = useState<Conta | "novo" | null>(null);
   const [modalArmazem, setModalArmazem] = useState<Armazem | "novo" | null>(null);

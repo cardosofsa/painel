@@ -23,8 +23,8 @@ import {
 } from "./ConfiguracoesClient";
 import { MasterConfiguracoesClient } from "./MasterConfiguracoesClient";
 
-export default async function ConfiguracoesPage({ searchParams }: { searchParams: Promise<{ shopee?: string }> }) {
-  const { shopee } = await searchParams;
+export default async function ConfiguracoesPage({ searchParams }: { searchParams: Promise<{ shopee?: string; aba?: string }> }) {
+  const { shopee, aba } = await searchParams;
   const supabase = await createClient();
 
   // Master não roda loja nenhuma por esta conta — categorias, canais, armazéns, formas de
@@ -191,6 +191,9 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
 
   return (
     <ConfiguracoesClient
+      // Remonta ao trocar de `?aba=` (clicar no plano do topo já estando em Configurações).
+      key={aba ?? "inicio"}
+      abaUrl={aba}
       categorias={categorias}
       canais={canais}
       lojas={lojas}
