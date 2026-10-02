@@ -1,5 +1,5 @@
 import { requisitarJson } from "../http";
-import { extrairTextoChat } from "./openai";
+import { conteudoChat, extrairTextoChat } from "./openai";
 import { TIMEOUT_PADRAO_MS, instrucaoJson, type OpcoesProvedor } from "./tipos";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -14,7 +14,7 @@ const ENDPOINT_CHAVE = "https://openrouter.ai/api/v1/auth/key";
 export function montarCorpoOpenRouter(prompt: string, o: OpcoesProvedor, modelo: string) {
   return {
     model: modelo,
-    messages: [{ role: "user", content: prompt + instrucaoJson(o.esquema) }],
+    messages: [{ role: "user", content: conteudoChat(prompt + instrucaoJson(o.esquema), o) }],
     max_tokens: o.maxTokens,
     temperature: o.temperatura,
   };

@@ -7,6 +7,7 @@ import { ProductThumb } from "@/components/ui/ProductThumb";
 import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { GeradorIA } from "@/components/ia/GeradorIA";
+import { GerarPelaFoto } from "./GerarPelaFoto";
 import { CamposEnvio, type DimensoesEnvio } from "@/components/produtos/CamposEnvio";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
@@ -131,6 +132,22 @@ export function ProdutoFormModal({
               </button>
             )}
           </div>
+          <GerarPelaFoto
+            key={`ia-foto-${editando?.id ?? "novo"}-${form.imagem_url ?? ""}`}
+            imagemUrl={form.imagem_url}
+            nomeAtual={form.nome}
+            categorias={categorias.map((c) => ({ id: c.id, nome: c.nome }))}
+            limiteDescricao={LIMITE_DESCRICAO}
+            disponivel={iaDisponivel}
+            onUsar={(c) =>
+              setForm((f) => ({
+                ...f,
+                ...(c.nome ? { nome: c.nome } : {}),
+                ...(c.descricao ? { descricao: c.descricao } : {}),
+                ...(c.categoriaId ? { categoria_id: c.categoriaId } : {}),
+              }))
+            }
+          />
         </FormField>
         {editandoAtual ? (
           <FormField label="Fotos Adicionais (opcional)">

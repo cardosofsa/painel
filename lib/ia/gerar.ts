@@ -56,6 +56,7 @@ import {
   type ContextoLegenda,
   type ContextoAtributos,
 } from "./prompts-textos";
+import { montarPromptFoto, esquemaFoto, interpretarFoto, hashFoto, type ContextoFoto, type ProdutoDaFoto } from "./prompts-foto";
 import {
   montarPromptVitrine,
   esquemaVitrine,
@@ -241,6 +242,7 @@ async function executarEstruturado<T>(
   esquema: object,
   interpretar: (bruto: string) => T,
   parametros: { maxTokens: number; temperatura: number } = PARAMETROS[tipo],
+  imagem?: { base64: string; mime: string },
 ): Promise<{ valor: T } & MetaGeracao> {
   const ia = await resolverProvedor(supabase);
   const { maxTokens, temperatura } = parametros;
@@ -260,7 +262,7 @@ async function executarEstruturado<T>(
 
   let bruto: string;
   try {
-    bruto = await chamarProvedor(ia, prompt, { maxTokens, temperatura, esquema });
+    bruto = await chamarProvedor(ia, prompt, { maxTokens, temperatura, esquema, imagem, ...(imagem ? { timeoutMs: 40_000 } : {}) });
   } catch (e) {
     await estornarSePreciso(supabase, ia, e);
     throw e;
@@ -447,5 +449,35 @@ export async function gerarVitrineIA(supabase: SupabaseClient, contexto: unknown
       { maxTokens: 1800, temperatura: 0.8 },
     );
     return { vitrine: valor, ...meta };
+  });
+}
+
+export interface SugestaoFoto extends MetaGeracao {
+  produto: ProdutoDaFoto;
+}
+
+/**
+ * Produto a partir da foto (10.7). Conta como geração de "descricao" (mesma cota e cache);
+ * a chave do cache inclui o hash dos bytes da imagem. Modelo sem visão costuma responder
+ * erro ou texto vazio — a mensagem pede uma IA com visão.
+ */
+export async function gerarProdutoPelaFotoIA(
+  supabase: SupabaseClient,
+  contexto: ContextoFoto,
+  imagem: { base64: string; mime: string; hash: string },
+): Promise<Resultado<SugestaoFoto>> {
+  return comResultado(async () => {
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "descricao",
+      hashFoto(imagem.hash, contexto),
+      montarPromptFoto(contexto),
+      esquemaFoto(),
+      (bruto) => interpretarFoto(bruto, contexto),
+      { maxTokens: 900, temperatura: 0.4 },
+      { base64: imagem.base64, mime: imagem.mime },
+    );
+    if (!valor.nome && !valor.descricao) throw new Error("A IA não reconheceu um produto nesta foto. Tente outra foto, com o produto em destaque.");
+    return { produto: valor, ...meta };
   });
 }

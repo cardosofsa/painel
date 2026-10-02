@@ -149,3 +149,21 @@ describe("instrucaoJson", () => {
     expect(instrucaoJson({ type: "object" })).toContain('{"type":"object"}');
   });
 });
+
+describe("foto junto do prompt (10.7)", async () => {
+  const { montarCorpoOpenAI } = await import("./openai");
+  const { montarCorpoAnthropic } = await import("./anthropic");
+  const { montarCorpoOpenRouter } = await import("./openrouter");
+  const { montarCorpo } = await import("../gemini");
+  const o = { maxTokens: 10, temperatura: 0, esquema: {}, imagem: { base64: "QUJD", mime: "image/jpeg" } };
+  it("cada provedor manda a imagem no formato dele", () => {
+    expect(montarCorpoOpenAI("p", o, "gpt-4o").messages[0].content).toEqual([
+      { type: "text", text: "p" },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,QUJD" } },
+    ]);
+    expect((montarCorpoOpenRouter("p", o, "x").messages[0].content as { type: string }[])[1].type).toBe("image_url");
+    expect((montarCorpoAnthropic("p", o, "claude").messages[0].content as { type: string; source?: { data: string } }[])[0]).toMatchObject({ type: "image", source: { data: "QUJD" } });
+    expect(montarCorpo("p", o, "gemini-x").input).toEqual([{ type: "text", text: "p" }, { type: "image", data: "QUJD", mime_type: "image/jpeg" }]);
+    expect(montarCorpoOpenAI("p", { ...o, imagem: undefined }, "gpt-4o").messages[0].content).toBe("p");
+  });
+});

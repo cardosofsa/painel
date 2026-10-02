@@ -13,11 +13,20 @@ export function aceitaTemperatura(modelo: string): boolean {
   return !/^(o\d|gpt-5)/i.test(modelo);
 }
 
+/** Puro. Texto, ou texto + foto no formato "chat completions" (OpenAI e OpenRouter). */
+export function conteudoChat(prompt: string, o: Pick<OpcoesProvedor, "imagem">) {
+  if (!o.imagem) return prompt;
+  return [
+    { type: "text", text: prompt },
+    { type: "image_url", image_url: { url: `data:${o.imagem.mime};base64,${o.imagem.base64}` } },
+  ];
+}
+
 /** Puro. Corpo da chamada, separado da rede para o teste conferir. */
 export function montarCorpoOpenAI(prompt: string, o: OpcoesProvedor, modelo: string) {
   return {
     model: modelo,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content: conteudoChat(prompt, o) }],
     // `max_completion_tokens` (e não `max_tokens`) é o nome aceito por todos os modelos atuais.
     max_completion_tokens: o.maxTokens,
     ...(aceitaTemperatura(modelo) ? { temperature: o.temperatura } : {}),

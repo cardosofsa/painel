@@ -1,6 +1,8 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import {
@@ -10,7 +12,7 @@ import {
   imagemProdutoSchema,
   acaoEmMassaProdutosSchema,
 } from "@/lib/validacao";
-import { gerarComIA } from "@/lib/ia/gerar";
+import { gerarComIA, gerarProdutoPelaFotoIA } from "@/lib/ia/gerar";
 import { comResultado } from "@/lib/acao";
 import type { ComponenteKit } from "@/lib/pricing";
 
@@ -187,4 +189,45 @@ export async function removerImagemProduto(id: string) {
 export async function gerarDescricaoProdutoIA(contexto: unknown) {
   const supabase = await createClient();
   return gerarComIA(supabase, "descricao", contexto);
+}
+
+const fotoSchema = z.object({
+  url: z.string().url().max(1000),
+  nomeAtual: z.string().trim().max(200).nullable(),
+  categorias: z.array(z.string().trim().min(1).max(80)).max(60),
+  limiteTitulo: z.number().int().min(20).max(200),
+  limiteDescricao: z.number().int().min(100).max(5000),
+});
+
+const MAX_FOTO_BYTES = 4 * 1024 * 1024;
+const TIPOS_FOTO = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * Nome, descrição, categoria e atributos a partir da foto do produto (10.7). Só aceita
+ * foto do Storage do próprio projeto (o servidor baixa a imagem: URL de fora seria SSRF).
+ * NÃO grava nada — a tela mostra e o usuário escolhe o que usar.
+ */
+export async function gerarProdutoPelaFoto(dados: z.input<typeof fotoSchema>) {
+  return comResultado(async () => {
+    const v = validar(fotoSchema, dados);
+    const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/`;
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !v.url.startsWith(base)) throw new Error("Envie a foto do produto primeiro (só fotos enviadas aqui).");
+    const supabase = await createClient();
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
+
+    const r = await fetch(v.url, { cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    const mime = (r?.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!r?.ok || !TIPOS_FOTO.includes(mime)) throw new Error("Não consegui abrir a foto (use JPG, PNG ou WebP).");
+    const bytes = Buffer.from(await r.arrayBuffer());
+    if (bytes.length > MAX_FOTO_BYTES) throw new Error("Foto grande demais para a IA (máx. 4 MB).");
+
+    const g = await gerarProdutoPelaFotoIA(
+      supabase,
+      { nomeAtual: v.nomeAtual, categorias: v.categorias, limiteTitulo: v.limiteTitulo, limiteDescricao: v.limiteDescricao },
+      { base64: bytes.toString("base64"), mime, hash: createHash("sha256").update(bytes).digest("hex") },
+    );
+    if (!g.ok) throw new Error(g.erro);
+    return g.dado;
+  });
 }

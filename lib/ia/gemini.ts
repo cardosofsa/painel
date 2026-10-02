@@ -43,6 +43,8 @@ export interface OpcoesGeracao {
   /** JSON Schema da resposta. Ver `esquemaSugestao` em `./prompts`. */
   esquema: object;
   timeoutMs?: number;
+  /** Foto junto do prompt (modelos com visão). Base64 sem o prefixo `data:`. */
+  imagem?: { base64: string; mime: string };
 }
 
 /** Códigos de bloqueio de conteúdo da API — todos viram a mesma mensagem para o usuário. */
@@ -105,7 +107,7 @@ export function nivelRaciocinio(modelo: string): "minimal" | "low" {
 export function montarCorpo(prompt: string, o: OpcoesGeracao, modelo: string) {
   return {
     model: modelo,
-    input: prompt,
+    input: o.imagem ? [{ type: "text", text: prompt }, { type: "image", data: o.imagem.base64, mime_type: o.imagem.mime }] : prompt,
     generation_config: {
       temperature: o.temperatura,
       max_output_tokens: o.maxTokens,

@@ -21,7 +21,17 @@ export function montarCorpoAnthropic(prompt: string, o: OpcoesProvedor, modelo: 
     max_tokens: o.maxTokens,
     // A API da Anthropic aceita de 0 a 1.
     temperature: Math.min(1, Math.max(0, o.temperatura)),
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      {
+        role: "user",
+        content: o.imagem
+          ? [
+              { type: "image", source: { type: "base64", media_type: o.imagem.mime, data: o.imagem.base64 } },
+              { type: "text", text: prompt },
+            ]
+          : prompt,
+      },
+    ],
     tools: [
       {
         name: NOME_FERRAMENTA,
