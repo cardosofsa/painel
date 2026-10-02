@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faltaReceber, interpretarImportacaoPedidos, statusAberto, sugestaoCompras } from "./compras";
+import { consumoDiario, diasDoPrazo, faltaReceber, interpretarImportacaoPedidos, statusAberto, sugestaoCompras } from "./compras";
 
 describe("compras", () => {
   it("falta receber nunca fica negativo", () => {
@@ -29,6 +29,32 @@ describe("compras", () => {
     expect(r.map((x) => x.produto.id)).toEqual(["b", "a", "e"]);
     expect(r[0].sugerido).toBe(20);
     expect(r[2].motivo).toBe("acabando");
+  });
+
+  it("prazo do fornecedor em texto vira dias", () => {
+    expect(diasDoPrazo("7 dias")).toBe(7);
+    expect(diasDoPrazo("2 semanas")).toBe(14);
+    expect(diasDoPrazo("1 mês")).toBe(30);
+    expect(diasDoPrazo("48h")).toBe(2);
+    expect(diasDoPrazo("")).toBe(7);
+    expect(diasDoPrazo("a combinar", 10)).toBe(10);
+  });
+
+  it("ritmo real soma os canais e o kit conta para os componentes", () => {
+    const kits = new Map([["kit", [{ produto_id: "caneca", quantidade: 2 }]]]);
+    const r = consumoDiario([{ produto_id: "caneca", quantidade: 10 }, { produto_id: "kit", quantidade: 5 }, { produto_id: null, quantidade: 3 }], 10, kits);
+    expect(r.get("caneca")).toBe(2);
+    expect(r.has("kit")).toBe(false);
+  });
+
+  it("cobertura: acaba antes de o pedido chegar → sugere cobrir prazo + alvo", () => {
+    const hoje = new Date("2026-10-02T12:00:00.000Z");
+    const p = { id: "a", nome: "A", custo: 1, fornecedor_id: "f", estoque: 20, estoque_minimo: 2, saida_media_semanal: 0 };
+    const r = sugestaoCompras([p], new Map(), 14, { consumo: new Map([["a", 2]]), prazoPorFornecedor: new Map([["f", 10]]), coberturaAlvo: 30, hoje });
+    // 20 / 2 = 10 dias; prazo 10 → pedir hoje. Alvo = 2 × (10 + 30) = 80 → comprar 60.
+    expect(r[0]).toMatchObject({ ritmo: "vendas", diasCobertura: 10, prazo: 10, pedirAte: "2026-10-02", sugerido: 60 });
+    const folgado = sugestaoCompras([{ ...p, estoque: 200 }], new Map(), 14, { consumo: new Map([["a", 2]]), prazoPorFornecedor: new Map([["f", 10]]), coberturaAlvo: 30, hoje });
+    expect(folgado).toEqual([]);
   });
 
   it("importação agrupa por pedido e aponta erro por linha", () => {

@@ -46,25 +46,109 @@ export interface LinhaSugestao {
   emAberto: number;
   sugerido: number;
   motivo: "abaixo_minimo" | "acabando";
+  /** Unidades por dia (vendas reais de todos os canais, ou a saída média cadastrada). */
+  porDia: number;
+  /** De onde veio o ritmo: vendas reais ou o campo "saída média semanal". */
+  ritmo: "vendas" | "cadastro";
+  /** Quantos dias o disponível (estoque + já pedido) dura nesse ritmo. null = não sai. */
+  diasCobertura: number | null;
+  /** Prazo de entrega do fornecedor (dias). */
+  prazo: number;
+  /** Último dia para pedir sem faltar (ISO, yyyy-mm-dd). null = sem ritmo. */
+  pedirAte: string | null;
+}
+
+/** "7 dias", "15", "2 semanas", "1 mês" → dias. Vazio ou ilegível = padrão. */
+export function diasDoPrazo(texto: string | null | undefined, padrao = 7): number {
+  const t = (texto ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const n = Number((/(\d+(?:[.,]\d+)?)/.exec(t)?.[1] ?? "").replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return padrao;
+  if (/semana/.test(t)) return Math.round(n * 7);
+  if (/mes/.test(t)) return Math.round(n * 30);
+  if (/hora|\d\s*h\b/.test(t)) return Math.max(1, Math.ceil(n / 24));
+  return Math.round(n);
 }
 
 /**
- * O que comprar agora: abaixo do mínimo, ou que acaba em até `diasAlerta` no ritmo de saída.
- * Desconta o que já está pedido e não chegou — senão a sugestão pede duas vezes a mesma coisa.
+ * Ritmo real: unidades por dia nos últimos `dias`, somando PDV, catálogo e marketplaces.
+ * Venda de KIT conta para cada componente (quantidade × itens do kit).
  */
-export function sugestaoCompras(produtos: ProdutoSugestao[], emAbertoPorProduto: Map<string, number>, diasAlerta = 14): LinhaSugestao[] {
+export function consumoDiario(
+  vendas: { produto_id: string | null; quantidade: number }[],
+  dias: number,
+  kits: Map<string, { produto_id: string; quantidade: number }[]> = new Map(),
+): Map<string, number> {
+  const total = new Map<string, number>();
+  const somar = (id: string, q: number) => total.set(id, (total.get(id) ?? 0) + q);
+  for (const v of vendas) {
+    if (!v.produto_id || v.quantidade <= 0) continue;
+    const comp = kits.get(v.produto_id);
+    if (comp?.length) for (const c of comp) somar(c.produto_id, v.quantidade * c.quantidade);
+    else somar(v.produto_id, v.quantidade);
+  }
+  const porDia = new Map<string, number>();
+  for (const [id, q] of total) porDia.set(id, q / Math.max(1, dias));
+  return porDia;
+}
+
+const somarDias = (hoje: Date, n: number) => {
+  const d = new Date(hoje);
+  d.setDate(d.getDate() + Math.floor(n));
+  return d.toISOString().slice(0, 10);
+};
+
+/**
+ * O que comprar agora: abaixo do mínimo, ou que acaba antes de o pedido chegar (prazo do
+ * fornecedor + `diasAlerta` de folga). Desconta o que já está pedido e não chegou — senão
+ * a sugestão pede duas vezes a mesma coisa. A quantidade cobre o prazo + `coberturaAlvo`.
+ */
+export function sugestaoCompras(
+  produtos: ProdutoSugestao[],
+  emAbertoPorProduto: Map<string, number>,
+  diasAlerta = 14,
+  opcoes: { consumo?: Map<string, number>; prazoPorFornecedor?: Map<string, number>; coberturaAlvo?: number; hoje?: Date } = {},
+): LinhaSugestao[] {
+  const hoje = opcoes.hoje ?? new Date();
   const linhas: LinhaSugestao[] = [];
   for (const p of produtos) {
     const emAberto = emAbertoPorProduto.get(p.id) ?? 0;
     const disponivel = p.estoque + emAberto;
-    const porDia = p.saida_media_semanal / 7;
+    const real = opcoes.consumo?.get(p.id);
+    const ritmo: LinhaSugestao["ritmo"] = real && real > 0 ? "vendas" : "cadastro";
+    const porDia = ritmo === "vendas" ? (real as number) : p.saida_media_semanal / 7;
+    const prazo = (p.fornecedor_id && opcoes.prazoPorFornecedor?.get(p.fornecedor_id)) || 7;
+    const diasCobertura = porDia > 0 ? disponivel / porDia : null;
     const abaixo = disponivel <= p.estoque_minimo;
-    const acabando = porDia > 0 && disponivel / porDia <= diasAlerta;
+    // Com prazo conhecido, o alerta é "acaba antes de chegar + folga"; sem opções, como antes.
+    const limite = opcoes.consumo || opcoes.prazoPorFornecedor ? prazo + Math.min(diasAlerta, 7) : diasAlerta;
+    const acabando = diasCobertura !== null && diasCobertura <= limite;
     if (!abaixo && !acabando) continue;
-    const sugerido = Math.max(1, quantidadeSugeridaCompra({ estoque: disponivel, estoque_minimo: p.estoque_minimo, saida_media_semanal: p.saida_media_semanal }));
-    linhas.push({ produto: p, emAberto, sugerido, motivo: abaixo ? "abaixo_minimo" : "acabando" });
+
+    let sugerido: number;
+    if (opcoes.coberturaAlvo && porDia > 0) {
+      // Para chegar com estoque para `coberturaAlvo` dias depois do prazo, e nunca abaixo do mínimo.
+      const alvo = Math.max(Math.ceil(porDia * (prazo + opcoes.coberturaAlvo)), p.estoque_minimo * 2);
+      sugerido = Math.max(1, alvo - disponivel);
+    } else {
+      sugerido = Math.max(1, quantidadeSugeridaCompra({ estoque: disponivel, estoque_minimo: p.estoque_minimo, saida_media_semanal: p.saida_media_semanal }));
+    }
+    linhas.push({
+      produto: p,
+      emAberto,
+      sugerido,
+      motivo: abaixo ? "abaixo_minimo" : "acabando",
+      porDia,
+      ritmo,
+      diasCobertura,
+      prazo,
+      pedirAte: diasCobertura !== null ? somarDias(hoje, Math.max(0, diasCobertura - prazo)) : null,
+    });
   }
-  return linhas.sort((a, b) => a.produto.estoque - a.produto.estoque_minimo - (b.produto.estoque - b.produto.estoque_minimo));
+  // Mais urgente primeiro: quem acaba antes (cobertura − prazo); sem ritmo, pela folga do mínimo.
+  const urgencia = (l: LinhaSugestao) => (l.diasCobertura !== null ? l.diasCobertura - l.prazo : 1e6 + (l.produto.estoque - l.produto.estoque_minimo));
+  // Sem ritmo real nem prazo (chamada antiga): a ordem de antes, pela folga do mínimo.
+  if (!opcoes.consumo && !opcoes.prazoPorFornecedor) return linhas.sort((a, b) => a.produto.estoque - a.produto.estoque_minimo - (b.produto.estoque - b.produto.estoque_minimo));
+  return linhas.sort((a, b) => urgencia(a) - urgencia(b));
 }
 
 // ---------- Importação de pedidos ----------

@@ -39,7 +39,7 @@ export function SugestaoCompras({
   if (linhas.length === 0) {
     return (
       <Card>
-        <EmptyState icon={PackageCheck} title="Nada para comprar agora" description="Nenhum produto abaixo do mínimo ou acabando nos próximos 14 dias, contando o que já foi pedido." />
+        <EmptyState icon={PackageCheck} title="Nada para comprar agora" description="Nenhum produto abaixo do mínimo ou acabando antes de um pedido novo chegar, contando o que já foi pedido." />
       </Card>
     );
   }
@@ -47,7 +47,7 @@ export function SugestaoCompras({
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        Produtos abaixo do mínimo ou que acabam em até 14 dias no ritmo de saída. O que já está pedido e não chegou é descontado.
+        Produtos abaixo do mínimo ou que acabam antes de um pedido novo chegar (prazo do fornecedor + 7 dias de folga), no ritmo real de venda dos últimos 60 dias em todos os canais. A quantidade cobre o prazo + 30 dias. O que já está pedido e não chegou é descontado.
       </p>
       {grupos.map(([fornecedorId, itens]) => {
         const escolhidos = itens.filter((l) => !fora.has(l.produto.id) && (qtd[l.produto.id] ?? 0) > 0);
@@ -95,6 +95,16 @@ export function SugestaoCompras({
                     <div className="text-xs text-text-tertiary">
                       {l.motivo === "abaixo_minimo" ? "Abaixo do mínimo" : "Acabando"} · estoque {l.produto.estoque} / mín. {l.produto.estoque_minimo}
                       {l.emAberto > 0 && ` · ${l.emAberto} já pedidos`}
+                    </div>
+                    <div className="text-xs text-text-tertiary">
+                      {l.porDia > 0 ? `vende ~${(l.porDia * 7).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}/semana${l.ritmo === "cadastro" ? " (do cadastro)" : ""}` : "sem vendas recentes"}
+                      {l.diasCobertura !== null && (
+                        <span className={l.diasCobertura <= l.prazo ? "text-negative font-medium" : ""}>
+                          {` · acaba em ${Math.max(0, Math.floor(l.diasCobertura))} dia(s)`}
+                          {l.pedirAte ? ` · peça até ${new Date(`${l.pedirAte}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}` : ""}
+                        </span>
+                      )}
+                      {` · entrega em ${l.prazo} dia(s)`}
                     </div>
                   </div>
                   <span className="text-xs text-text-tertiary font-mono hidden sm:inline">{formatBRL(l.produto.custo)}</span>

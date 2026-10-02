@@ -3,7 +3,7 @@ import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { hojeIsoLocal } from "@/lib/format";
 import { quantidadeSugeridaCompra } from "@/lib/alertas";
 import { ComprasClient, type ItemPedido, type Pedido } from "./ComprasClient";
-import { faltaReceber, statusAberto, sugestaoCompras } from "@/lib/compras";
+import { consumoDiario, diasDoPrazo, faltaReceber, statusAberto, sugestaoCompras } from "@/lib/compras";
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;
@@ -39,7 +39,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
         .order("data_pedido", { ascending: false })
         .limit(500),
       supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
-      supabase.from("fornecedores").select("id, nome, cnpj"),
+      supabase.from("fornecedores").select("id, nome, cnpj, prazo"),
       supabase
         .from("produtos")
         .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo")
@@ -122,6 +122,34 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
         }
       : null;
 
+  // Ritmo real (11.5): o que saiu nos últimos 60 dias em todos os canais; kit conta nos itens.
+  const DIAS_RITMO = 60;
+  const inicioRitmo = new Date();
+  inicioRitmo.setDate(inicioRitmo.getDate() - DIAS_RITMO);
+  const desde = inicioRitmo.toISOString();
+  const [vendidoRes, mktRes, kitsRes] = await Promise.all([
+    supabase.from("venda_itens").select("produto_id, quantidade, vendas!inner(data_venda, status)").gte("vendas.data_venda", desde).neq("vendas.status", "cancelada").limit(20000),
+    supabase
+      .from("pedidos_marketplace_itens")
+      .select("produto_id, quantidade, pedidos_marketplace!inner(criado_em_plataforma, status)")
+      .gte("pedidos_marketplace.criado_em_plataforma", desde)
+      .in("pedidos_marketplace.status", ["a_enviar", "enviado", "concluido"])
+      .limit(20000),
+    supabase.from("produtos").select("*").eq("e_kit", true),
+  ]);
+  const kits = new Map(
+    (kitsRes.error ? [] : (kitsRes.data ?? [])).map((k) => [
+      k.id as string,
+      ((k.insumos ?? []) as { produtoId?: string | null; quantidade: number }[]).filter((i) => i.produtoId).map((i) => ({ produto_id: i.produtoId as string, quantidade: Math.ceil(i.quantidade) })),
+    ]),
+  );
+  const consumo = consumoDiario(
+    [...((vendidoRes.data ?? []) as { produto_id: string | null; quantidade: number }[]), ...(mktRes.error ? [] : ((mktRes.data ?? []) as { produto_id: string | null; quantidade: number }[]))],
+    DIAS_RITMO,
+    kits,
+  );
+  const prazoPorFornecedor = new Map((fornecedoresTodosRes.data ?? []).map((f) => [f.id as string, diasDoPrazo((f as { prazo?: string | null }).prazo)]));
+
   // Sugestão de compra: desconta o que já foi pedido e ainda não chegou.
   const emAberto = new Map<string, number>();
   for (const p of pedidos) {
@@ -133,6 +161,8 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       .filter((p) => p.ativo !== false)
       .map((p) => ({ ...p, nome: produtos.find((x) => x.id === p.id)?.nome ?? p.nome })),
     emAberto,
+    14,
+    { consumo, prazoPorFornecedor, coberturaAlvo: 30 },
   );
 
   return (
