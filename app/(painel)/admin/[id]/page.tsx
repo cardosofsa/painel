@@ -4,6 +4,8 @@ import { lancarErroSupabase } from "@/lib/erros";
 import type { ContaAdmin } from "../AdminClient";
 import type { LinhaHistorico } from "../HistoricoAdmin";
 import { ContaDetalheClient, type UsoIa } from "./ContaDetalheClient";
+import { PlanoContaCard, type AssinaturaConta } from "@/components/admin/PlanoContaCard";
+import type { Plano } from "@/lib/planos";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,7 +21,7 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
 
   // `admin_listar_contas()` já é o conjunto pequeno de contas do sistema — não vale a pena
   // uma RPC dedicada só para buscar uma linha dele.
-  const [contasRes, atividadeRes, historicoRes, cotaRes] = await Promise.all([
+  const [contasRes, atividadeRes, historicoRes, cotaRes, planosRes, assinaturaRes] = await Promise.all([
     supabase.rpc("admin_listar_contas"),
     supabase.rpc("admin_atividade_conta", { p_user_id: id, p_dias: 90 }),
     supabase
@@ -31,6 +33,9 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
     // Limite + consumo. `ia_uso` é legível só pelo dono, então o master passa por uma
     // porta explícita gated por `e_master()` em vez de afrouxar o RLS (0025).
     supabase.rpc("admin_uso_ia_conta", { p_user_id: id }).maybeSingle(),
+    // Plano (0057). Sem a migração, o card não aparece.
+    supabase.from("planos").select("*").order("ordem"),
+    supabase.from("assinaturas").select("*").eq("user_id", id).maybeSingle(),
   ]);
 
   if (contasRes.error) lancarErroSupabase(contasRes.error);
@@ -45,11 +50,16 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
   if (cotaRes.error) console.error("[admin/detalhe] falha ao carregar uso de IA:", cotaRes.error.message);
 
   return (
-    <ContaDetalheClient
-      conta={conta}
-      atividade={(atividadeRes.data ?? []) as { dia: string; vendas: number; faturamento: number }[]}
-      historico={(historicoRes.data ?? []) as LinhaHistorico[]}
-      usoIa={(cotaRes.data as UsoIa | null) ?? null}
-    />
+    <>
+      <ContaDetalheClient
+        conta={conta}
+        atividade={(atividadeRes.data ?? []) as { dia: string; vendas: number; faturamento: number }[]}
+        historico={(historicoRes.data ?? []) as LinhaHistorico[]}
+        usoIa={(cotaRes.data as UsoIa | null) ?? null}
+      />
+      {conta.papel !== "master" && !planosRes.error && (
+        <PlanoContaCard userId={id} planos={(planosRes.data ?? []) as Plano[]} assinatura={(assinaturaRes.data as AssinaturaConta | null) ?? null} />
+      )}
+    </>
   );
 }

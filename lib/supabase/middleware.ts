@@ -116,6 +116,8 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     "/api/cron",
     // Notificações do Mercado Livre (sem sessão): a rota relê o pedido na API, não confia no corpo.
     "/api/mercadolivre/notificacoes",
+    // Webhook do provedor de cobrança (10.9): valida a assinatura do evento; sem provedor, 404.
+    "/api/cobranca/webhook",
   ]);
 
   /**

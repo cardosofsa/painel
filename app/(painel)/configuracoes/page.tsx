@@ -7,6 +7,8 @@ import { resumoConexoes } from "@/lib/marketplace/pedidos-servidor";
 import { estadoDoTeste, type EstadoTesteBruto } from "@/lib/ia/teste";
 import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
 import type { FreteConfig } from "@/components/configuracoes/AbaFrete";
+import type { DadosPlano } from "@/components/configuracoes/AbaPlano";
+import type { Plano, ResumoAssinatura } from "@/lib/planos";
 import {
   ConfiguracoesClient,
   type Categoria,
@@ -30,7 +32,9 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   const user = acesso ? { id: acesso.userId, email: acesso.email } : null;
 
   if (acesso?.papel === "master") {
-    return <MasterConfiguracoesClient email={user?.email ?? ""} />;
+    // Planos (0057): o master edita preço e limites aqui. Sem a migração, o bloco explica.
+    const planosRes = await supabase.from("planos").select("*").order("ordem");
+    return <MasterConfiguracoesClient email={user?.email ?? ""} planos={planosRes.error ? null : ((planosRes.data ?? []) as Plano[])} />;
   }
 
   const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes, conexoesRes] =
@@ -135,6 +139,16 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   const { data: testeBruto } = await supabase.rpc("ia_estado_teste").maybeSingle<EstadoTesteBruto>();
   const teste = testeBruto ? estadoDoTeste(testeBruto, new Date()) : null;
 
+  // Plano (0057): catálogo + resumo da conta. Sem a migração, a aba explica.
+  const [planosRes, assinaturaRes] = await Promise.all([supabase.from("planos").select("*").eq("ativo", true).order("ordem"), supabase.rpc("minha_assinatura")]);
+  const plano: DadosPlano | null =
+    planosRes.error || assinaturaRes.error || !assinaturaRes.data
+      ? null
+      : {
+          planos: ((planosRes.data ?? []) as Plano[]).map((p) => ({ ...p, preco_mensal: Number(p.preco_mensal) })),
+          resumo: assinaturaRes.data as ResumoAssinatura,
+        };
+
   // Frete (0055). Nunca manda o token: só se existe. Tabela ausente = null (a aba explica).
   const freteRes = await supabase.from("frete_conexoes").select("*").maybeSingle();
   const fr = freteRes.data as Record<string, unknown> | null;
@@ -165,6 +179,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       iaSistemaOk={Boolean(process.env.GEMINI_API_KEY)}
       teste={teste}
       frete={frete}
+      plano={plano}
       marketplace={{
         conexoes: conexoesRes.error ? [] : resumoConexoes(conexoesRes.data),
         faltando: [...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])],

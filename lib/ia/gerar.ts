@@ -345,6 +345,10 @@ async function reservarCota(
   tipo: TipoGeracao,
   ia: ProvedorResolvido,
 ): Promise<{ usadas: number; limite: number }> {
+  // Limite de gerações por mês do PLANO (0057). Sem a migração a função não existe: segue.
+  const { data: bloqueio, error: erroPlano } = await supabase.rpc("plano_permite_ia");
+  if (!erroPlano && typeof bloqueio === "string" && bloqueio) throw new Error(bloqueio);
+
   const { data, error } = await supabase
     .rpc("ia_consumir", { p_tipo: tipo, p_origem: ia.origem })
     .maybeSingle<{ usadas: number; limite: number }>();

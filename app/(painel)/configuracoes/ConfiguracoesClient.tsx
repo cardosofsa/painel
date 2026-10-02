@@ -38,6 +38,7 @@ import type { EstadoTeste } from "@/lib/ia/teste";
 import { AbaCanais, type DadosMarketplaceCanais } from "@/components/configuracoes/AbaCanais";
 import { AbaDados } from "@/components/configuracoes/AbaDados";
 import { AbaFrete, type FreteConfig } from "@/components/configuracoes/AbaFrete";
+import { AbaPlano, type DadosPlano } from "@/components/configuracoes/AbaPlano";
 import { ContaModal, FormaPagamentoModal, ArmazemModal, ROTULO_TIPO_FORMA } from "@/components/configuracoes/ModaisCadastro";
 
 export interface Categoria {
@@ -92,7 +93,7 @@ export const ICONES_CANAL: Record<string, LucideIcon> = {
   Facebook: Users,
 };
 
-const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Frete", "IA", "Dados", "Conta"] as const;
+const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Frete", "IA", "Dados", "Plano", "Conta"] as const;
 const ABAS_TABS = ABAS.map((a) => ({ value: a, label: a }));
 
 export function ConfiguracoesClient({
@@ -110,7 +111,10 @@ export function ConfiguracoesClient({
   teste,
   marketplace,
   frete,
+  plano,
 }: {
+  /** 0057; null = migração ausente. */
+  plano: DadosPlano | null;
   /** 0055; null = migração ausente. */
   frete: FreteConfig | null;
   /** Conexões da API por loja e o estado da integração (Canais de venda). */
@@ -393,6 +397,7 @@ export function ConfiguracoesClient({
           </Card>
         </div>
       )}
+      {aba === "Plano" && <AbaPlano dados={plano} />}
       {aba === "Frete" && <AbaFrete frete={frete} cofreOk={cofreOk} cepSugerido={perfil.empresa.cep ?? ""} />}
       {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} teste={teste} />}
       {aba === "Dados" && <AbaDados armazens={armazens.map((a) => ({ id: a.id, nome: a.nome }))} />}
