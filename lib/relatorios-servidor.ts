@@ -21,7 +21,7 @@ export async function carregarVendasRelatorio(supabase: Supabase, dias: number):
       .limit(20000),
     supabase.from("pedidos_vitrine").select("venda_id, entrega_uf").not("venda_id", "is", null),
     carregarPedidosMarketplace(supabase, dias),
-    supabase.from("lojas_canal").select("id, nome"),
+    supabase.from("lojas_canal").select("id, nome, canais(nome)"),
   ]);
   if (vendasRes.error) throw new Error(vendasRes.error.message);
 
@@ -54,14 +54,17 @@ export async function carregarVendasRelatorio(supabase: Supabase, dias: number):
     })),
   }));
 
-  // Shopee (0046): cada loja vira uma origem, para comparar as lojas entre si e com o PDV.
-  const nomeLoja = new Map((lojasRes.data ?? []).map((l) => [l.id as string, l.nome as string]));
+  // Marketplaces (0046): cada loja vira uma origem ("Shopee · Loja", "Mercado Livre · Loja"),
+  // para comparar as lojas entre si e com o PDV.
+  const nomeLoja = new Map(
+    ((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => [l.id, `${l.canais?.nome ?? "Marketplace"} · ${l.nome}`]),
+  );
   for (const p of marketplace.pedidos) {
     if (p.status === "cancelado" || p.status === "devolvido" || p.status === "nao_pago" || !p.criado_em_plataforma) continue;
     vendas.push({
       id: `mkt:${p.id}`,
       data: p.criado_em_plataforma,
-      origem: `Shopee · ${nomeLoja.get(p.loja_id) ?? "loja"}`,
+      origem: nomeLoja.get(p.loja_id) ?? "Marketplace · loja",
       uf: p.uf?.toUpperCase() ?? null,
       total: p.subtotal,
       custo: p.custo,

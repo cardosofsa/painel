@@ -3,6 +3,7 @@ import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemH
 import { hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { carregarCrediario } from "@/lib/crediario-servidor";
+import type { GastoAnuncio } from "@/components/financeiro/AbaResultado";
 
 /** Formato cru do join com `vendas`, antes de virar `ContaPagarReceber`. */
 interface LinhaCpr {
@@ -66,7 +67,8 @@ const RESUMO_VAZIO: ResumoFinanceiro = {
 // Brasília, já apontava para o dia seguinte — deslocando toda a janela de consulta.
 const isoDate = hojeIsoLocal;
 
-export default async function FinanceiroPage() {
+export default async function FinanceiroPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
+  const { aba } = await searchParams;
   const supabase = await createClient();
 
   const hoje = new Date();
@@ -85,6 +87,10 @@ export default async function FinanceiroPage() {
     pagamentosRes,
     parcelasRecebidasRes,
     crediario,
+    dreRes,
+    gastosRes,
+    lojasRes,
+    repassesRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -124,7 +130,25 @@ export default async function FinanceiroPage() {
       .order("data_pagamento", { ascending: false })
       .limit(300),
     carregarCrediario(supabase),
+    // Resultado (0066): os últimos 6 meses, somados no banco.
+    supabase.rpc("dre_mensal", { p_inicio: hojeIsoLocal(new Date(hoje.getFullYear(), hoje.getMonth() - 5, 1)), p_fim: hojeIsoLocal(hoje) }),
+    supabase.from("gastos_anuncios").select("id, periodo_inicio, periodo_fim, canal, campanha, valor, pedidos, vendas, origem").order("periodo_fim", { ascending: false }).limit(200),
+    supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
+    // Repasses: pedidos pagos dos últimos ~4 meses. `*`: repasse_recebido só a partir da 0066.
+    supabase
+      .from("pedidos_marketplace")
+      .select("*")
+      .not("status", "in", "(cancelado,nao_pago,devolvido)")
+      .gte("pago_em", new Date(hoje.getTime() - 120 * 86_400_000).toISOString())
+      .order("pago_em", { ascending: false })
+      .limit(1000),
   ]);
+
+  const lojasMarketplace = ((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => ({ id: l.id, nome: l.nome, canal: l.canais?.nome ?? "Loja" }));
+  const nomeLoja = new Map(lojasMarketplace.map((l) => [l.id, `${l.canal} · ${l.nome}`]));
+  const linhasRepasse = (repassesRes.data ?? []) as Record<string, unknown>[];
+  // Sem a 0066 a coluna não vem: a aba explica em vez de mostrar tudo como "aguardando".
+  const repassesOk = !repassesRes.error && !dreRes.error && (linhasRepasse.length === 0 || "repasse_recebido" in linhasRepasse[0]);
 
   // Só as consultas ESSENCIAIS derrubam a tela. Antes eram 11 `throw`: uma falha em
   // `precificacoes` — que alimenta apenas o card de erosão de margem — apagava saldo, fluxo
@@ -248,6 +272,8 @@ export default async function FinanceiroPage() {
 
   return (
     <FinanceiroClient
+      // Remonta ao trocar de `?aba=` (link da Vixe estando já no Financeiro).
+      key={aba ?? "visao"}
       contas={contasRes.data ?? []}
       movimentacoes={movimentacoes}
       despesasFixas={despesasRes.data ?? []}
@@ -258,6 +284,36 @@ export default async function FinanceiroPage() {
       historico={historico}
       historicoOk={!pagamentosRes.error}
       regraCrediario={crediario.regra}
+      abaUrl={aba}
+      dre={((dreRes.data ?? []) as Record<string, unknown>[]).map((d) => ({
+        mes: String(d.mes).slice(0, 10),
+        receita_bruta: Number(d.receita_bruta),
+        descontos: Number(d.descontos),
+        devolucoes: Number(d.devolucoes),
+        impostos: Number(d.impostos),
+        taxas_marketplace: Number(d.taxas_marketplace),
+        taxa_maquininha: Number(d.taxa_maquininha),
+        frete: Number(d.frete),
+        cmv: Number(d.cmv),
+        anuncios: Number(d.anuncios),
+        despesas: Number(d.despesas),
+        outras_receitas: Number(d.outras_receitas),
+        lucro_liquido: Number(d.lucro_liquido),
+        pedidos: Number(d.pedidos),
+      }))}
+      gastosAnuncios={((gastosRes.data ?? []) as GastoAnuncio[]).map((g) => ({ ...g, valor: Number(g.valor), vendas: g.vendas == null ? null : Number(g.vendas) }))}
+      lojasMarketplace={lojasMarketplace}
+      anunciosOk={!gastosRes.error && !dreRes.error}
+      repasses={linhasRepasse.map((p) => ({
+        id: String(p.id),
+        numero: String(p.numero),
+        loja: nomeLoja.get(String(p.loja_id)) ?? "Marketplace",
+        pago_em: (p.pago_em as string | null) ?? null,
+        repasse: Number(p.repasse ?? 0),
+        repasse_recebido: p.repasse_recebido == null ? null : Number(p.repasse_recebido),
+        repasse_recebido_em: (p.repasse_recebido_em as string | null) ?? null,
+      }))}
+      repassesOk={repassesOk}
     />
   );
 }
