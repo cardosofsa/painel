@@ -71,7 +71,7 @@ export async function carregarAlertasVixe(supabase: SupabaseClient, abasLiberada
     tarefas.push(
       contas(supabase, hoje).then(
         (a) => void blocos.push(a),
-        (e) => void falhas.push(`contas e fiado (${mensagem(e)})`),
+        (e) => void falhas.push(`contas e crediário (${mensagem(e)})`),
       ),
     );
   }

@@ -16,7 +16,7 @@ export type CategoriaAlerta = "estoque" | "margem" | "financeiro" | "preco";
 export const ROTULO_CATEGORIA: Record<CategoriaAlerta, string> = {
   estoque: "Estoque",
   margem: "Margem",
-  financeiro: "Contas e fiado",
+  financeiro: "Contas e crediário",
   preco: "Preço",
 };
 
@@ -150,7 +150,7 @@ export function alertasContasVencidas(itens: ContaVencida[], hojeIso: string, no
           id: `fiado-${c.id}`,
           categoria: "financeiro" as const,
           gravidade: atraso > 7 ? ("alta" as const) : ("media" as const),
-          titulo: `Fiado atrasado: ${c.clienteNome ?? "cliente"} · ${formatBRL(c.valor)}`,
+          titulo: `Crediário atrasado: ${c.clienteNome ?? "cliente"} · ${formatBRL(c.valor)}`,
           detalhe: `${c.descricao}; ${quando}.`,
           acoes: [
             { tipo: "externo" as const, rotulo: c.whatsapp ? "Cobrar no WhatsApp" : "Montar cobrança no WhatsApp", href: linkWhatsapp(c.whatsapp, mensagemCobranca(c, nomeNegocio)) },

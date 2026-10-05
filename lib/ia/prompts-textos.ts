@@ -93,7 +93,7 @@ export function montarPromptCobranca(ctx: ContextoCobranca): string {
     ctx.tom === "firme"
       ? "Tom firme e respeitoso: deixe claro que precisa do acerto e peça uma data."
       : "Tom gentil, como um lembrete entre conhecidos.";
-  return `Você escreve uma mensagem de WhatsApp de uma loja${ctx.nomeNegocio ? ` (${limparCampo(ctx.nomeNegocio, 80)})` : ""} para um cliente que comprou fiado.
+  return `Você escreve uma mensagem de WhatsApp de uma loja${ctx.nomeNegocio ? ` (${limparCampo(ctx.nomeNegocio, 80)})` : ""} para um cliente que comprou no crediário (a prazo).
 
 Parcelas em aberto:
 ${lista}

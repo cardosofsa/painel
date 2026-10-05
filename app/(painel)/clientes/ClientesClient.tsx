@@ -184,7 +184,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
         <Card>
           <CardEyebrow>Clientes Cadastrados</CardEyebrow>
-          <HeroMetric value={String(clientes.length)} caption={`${comFiado} com fiado liberado`} />
+          <HeroMetric value={String(clientes.length)} caption={`${comFiado} com crediário liberado`} />
         </Card>
         <Card>
           <CardEyebrow>Total Comprado</CardEyebrow>
@@ -219,7 +219,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
             description={
               busca
                 ? "Tente outro termo de busca."
-                : "Cadastre seus clientes para registrar vendas no nome deles, liberar fiado e acompanhar o histórico de compras."
+                : "Cadastre seus clientes para registrar vendas no nome deles, liberar crediário e acompanhar o histórico de compras."
             }
             action={
               busca ? undefined : (
@@ -238,7 +238,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
                 <Th>Cidade / UF</Th>
                 <Th align="right">Compras</Th>
                 <Th align="right">Total</Th>
-                <Th>Fiado</Th>
+                <Th>Crediário</Th>
                 <Th>Status</Th>
                 <Th align="right">Ações</Th>
               </tr>
@@ -371,13 +371,13 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
             checked={form.permite_fiado}
             onChange={(e) => setForm({ ...form, permite_fiado: e.target.checked })}
           />
-          Permitir fiado
+          Permitir crediário
         </label>
         <p className="text-xs text-text-tertiary mt-1 mb-3">
-          Libera a opção &quot;Venda Fiado&quot; no PDV para este cliente. A venda vira uma conta a receber em vez de entrar no caixa.
+          Libera a opção &quot;Venda no crediário&quot; no PDV para este cliente. A venda vira uma conta a receber em vez de entrar no caixa.
         </p>
         {form.permite_fiado && (
-          <FormField label="Limite de Fiado (R$)" dica="Crédito disponível para este cliente. Some as parcelas em aberto até chegar aqui.">
+          <FormField label="Limite do crediário (R$)" dica="Crédito disponível para este cliente. Some as parcelas em aberto até chegar aqui.">
             <input
               type="number"
               step="0.01"

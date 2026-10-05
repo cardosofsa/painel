@@ -27,14 +27,14 @@ function CartaoResumoFiado({ dados, nomeNegocio, logoUrl, contato }: { dados: Da
           <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ width: 44, height: 44, objectFit: "contain", borderRadius: 8 }} />
         )}
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>{nomeNegocio ?? "Resumo de fiado"}</div>
+          <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>{nomeNegocio ?? "Resumo do crediário"}</div>
           {contato && <div style={{ fontSize: 11, color: COR.suave, marginTop: 2 }}>{contato}</div>}
         </div>
       </div>
 
       <div style={{ padding: "18px 22px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: COR.suave }}>Resumo de fiado</span>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: COR.suave }}>Resumo do crediário</span>
           <span style={{ fontSize: 12, color: COR.suave }}>
             Venda {dados.numero} · {formatarDataIso(dados.data.slice(0, 10))}
           </span>
@@ -90,9 +90,9 @@ export function useResumoFiadoImagem(nomeNegocio: string | null, logoUrl: string
 
   function abrirResumo(dados: DadosResumoFiado) {
     capturar(<CartaoResumoFiado dados={dados} nomeNegocio={nomeNegocio} logoUrl={logoUrl} contato={contato} />, {
-      nome: `fiado-venda-${dados.numero}.png`,
-      titulo: `Resumo do fiado · ${dados.numero}`,
-      texto: `Resumo do fiado da venda ${dados.numero}: falta pagar ${formatBRL(dados.valorRestante)}.`,
+      nome: `crediario-venda-${dados.numero}.png`,
+      titulo: `Resumo do crediário · ${dados.numero}`,
+      texto: `Resumo do crediário da venda ${dados.numero}: falta pagar ${formatBRL(dados.valorRestante)}.`,
       largura: 420,
     });
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { traduzirErroSupabase, traduzirErroAuth, traduzirErroIA, ERROS_LINK } from "./erros";
+import { traduzirErroSupabase, traduzirErroAuth, traduzirErroIA, ERROS_LINK, trocarFiadoPorCrediario } from "./erros";
 
 // O fallback loga o original no servidor de propósito; silenciar para o output do teste
 // ficar limpo, mas conferir que ele É chamado (é o que garante que o erro não se perde).
@@ -136,5 +136,13 @@ describe("traduzirErroIA", () => {
   it("falha de configuração manda avisar o administrador, não o usuário se virar", () => {
     expect(traduzirErroIA("chave_invalida")).toContain("administrador");
     expect(traduzirErroIA("sem_credito")).toContain("administrador");
+  });
+});
+
+describe("nome antigo do crediário nas mensagens do banco", () => {
+  it("troca fiado por crediário", () => {
+    expect(trocarFiadoPorCrediario('Limite de fiado insuficiente para "Ana": disponível 10, necessário 20.')).toBe('Limite do crediário insuficiente para "Ana": disponível 10, necessário 20.');
+    expect(trocarFiadoPorCrediario("Venda fiado precisa de um cliente identificado.")).toBe("Venda no crediário precisa de um cliente identificado.");
+    expect(trocarFiadoPorCrediario('O cliente "Bia" não está autorizado a comprar fiado.')).toBe('O cliente "Bia" não está autorizado a comprar no crediário.');
   });
 });

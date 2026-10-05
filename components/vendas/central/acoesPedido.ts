@@ -61,6 +61,7 @@ export function montarAcoesPedido(
     { label: "Ver detalhes", onClick: () => c.detalhe(v) },
     anotar,
     { label: "Imprimir (PDF)", onClick: () => window.open(`/vendas/${v.id}/comprovante`, "_blank") },
+    ...(p.pagamento === "fiado" ? [{ label: "Imprimir carnê", onClick: () => window.open(`/vendas/${v.id}/carne`, "_blank") }] : []),
     ...(c.nota?.tipo === "nfe" && c.nota.danfe ? [{ label: "Ver DANFE (NF-e)", onClick: () => window.open(c.nota!.danfe as string, "_blank", "noopener") }] : []),
     ...(c.nota?.tipo === "nfe" && c.nota.status === "processando" && c.atualizarNfe ? [{ label: "Atualizar NF-e", onClick: c.atualizarNfe }] : []),
     ...(c.emitirNfe && !(c.nota?.tipo === "nfe" && ["autorizada", "processando"].includes(c.nota.status)) && p.etapa !== "emitir" ? [{ label: "Emitir NF-e…", onClick: c.emitirNfe }] : []),

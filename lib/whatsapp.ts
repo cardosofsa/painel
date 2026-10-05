@@ -23,7 +23,7 @@ export const ROTULO_ASSUNTO: Record<AssuntoMensagem, string> = {
   pedido: "Pedido recebido",
   pago: "Pagamento confirmado",
   enviado: "Enviado",
-  fiado: "Fiado",
+  fiado: "Crediário",
 };
 
 export interface MensagemPendente {

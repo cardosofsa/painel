@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { FinanceiroClient, type Movimentacao, type ContaPagarReceber } from "./FinanceiroClient";
+import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
 import { calcularErosaoMargem, calcularPrevisaoRuptura } from "@/lib/alertas";
 import { hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
@@ -22,6 +22,32 @@ interface LinhaCpr {
   conta_id: string | null;
   referencia_venda_id: string | null;
   vendas: { numero: string; total_parcelas_fiado: number | null } | null;
+  /** 0064 (antes da migração não vêm: valem 0/null). */
+  valor_pago?: number | null;
+  data_pagamento?: string | null;
+  parcela_numero?: number | null;
+  total_parcelas?: number | null;
+  referencia_pedido_compra_id: string | null;
+  pedidos_compra: { numero: string; fornecedores: { nome: string } | null } | null;
+}
+
+interface PagamentoBruto {
+  id: string;
+  valor: number;
+  data: string;
+  contas: { nome: string } | null;
+  contas_a_pagar_receber: { descricao: string; status: string; pedidos_compra: { numero: string; fornecedores: { nome: string } | null } | null } | null;
+}
+
+interface ParcelaRecebidaBruta {
+  id: string;
+  numero: number;
+  total_parcelas: number;
+  valor_pago: number | null;
+  valor: number;
+  data_pagamento: string | null;
+  conta_id: string | null;
+  vendas: { numero: string; cliente_nome: string | null } | null;
 }
 
 /** Totais agregados no banco — ver `resumo_financeiro` na migração 0022. */
@@ -66,6 +92,8 @@ export default async function FinanceiroPage() {
     custosRes,
     resumoRes,
     saidasEstoqueRes,
+    pagamentosRes,
+    parcelasRecebidasRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -76,10 +104,8 @@ export default async function FinanceiroPage() {
     supabase.from("despesas_fixas").select("id, nome, metodo, valor, dia_vencimento, conta_id").order("dia_vencimento"),
     supabase
       .from("contas_a_pagar_receber")
-      .select(
-        "id, tipo, descricao, valor, data_vencimento, status, conta_id, referencia_venda_id, " +
-          "vendas(numero, total_parcelas_fiado)",
-      )
+      // `*`: valor_pago, data_pagamento e parcela só existem a partir da 0064.
+      .select("*, vendas(numero, total_parcelas_fiado), pedidos_compra(numero, fornecedores(nome))")
       .order("data_vencimento"),
     supabase
       .from("movimentacoes_financeiras")
@@ -104,6 +130,18 @@ export default async function FinanceiroPage() {
       .select("produto_id, quantidade")
       .eq("tipo", "saida")
       .gte("data_movimentacao", isoDate(inicio30Dias)),
+    // Histórico de pagamentos (0064) e parcelas de crediário recebidas: o que saiu e entrou, com data.
+    supabase
+      .from("pagamentos_conta")
+      .select("id, valor, data, contas(nome), contas_a_pagar_receber(descricao, status, pedidos_compra(numero, fornecedores(nome)))")
+      .order("data", { ascending: false })
+      .limit(300),
+    supabase
+      .from("venda_parcelas")
+      .select("id, numero, total_parcelas, valor, valor_pago, data_pagamento, conta_id, vendas(numero, cliente_nome)")
+      .eq("status", "paga")
+      .order("data_pagamento", { ascending: false })
+      .limit(300),
   ]);
 
   // Só as consultas ESSENCIAIS derrubam a tela. Antes eram 11 `throw`: uma falha em
@@ -122,6 +160,8 @@ export default async function FinanceiroPage() {
     ["custos recentes", custosRes],
     ["resumo financeiro", resumoRes],
     ["saídas de estoque", saidasEstoqueRes],
+    ["histórico de pagamentos", pagamentosRes],
+    ["parcelas recebidas", parcelasRecebidasRes],
   ] as const) {
     if (res.error) console.error(`[financeiro] falha ao carregar ${nome}:`, res.error.message);
   }
@@ -177,7 +217,54 @@ export default async function FinanceiroPage() {
     venda_id: c.referencia_venda_id,
     venda_numero: c.vendas?.numero ?? null,
     total_parcelas_fiado: c.vendas?.total_parcelas_fiado ?? null,
+    // Antes da 0064 não há valor_pago: quitada = pago inteiro.
+    valor_pago: Number(c.valor_pago ?? (c.status === "pendente" ? 0 : c.valor)),
+    data_pagamento: c.data_pagamento ?? null,
+    parcela_numero: c.parcela_numero ?? null,
+    total_parcelas: c.total_parcelas ?? null,
+    pedido_id: c.referencia_pedido_compra_id ?? null,
+    pedido_numero: c.pedidos_compra?.numero ?? null,
+    fornecedor_nome: c.pedidos_compra?.fornecedores?.nome ?? null,
   }));
+
+  // Histórico: pagamentos a fornecedores/contas (0064) + recebimentos de crediário.
+  const historico: ItemHistorico[] = [
+    ...((pagamentosRes.data ?? []) as unknown as PagamentoBruto[]).map((g) => ({
+      id: `pag:${g.id}`,
+      tipo: "pago" as const,
+      data: g.data,
+      valor: Number(g.valor),
+      descricao: g.contas_a_pagar_receber?.descricao ?? "Pagamento",
+      quem: g.contas_a_pagar_receber?.pedidos_compra?.fornecedores?.nome ?? null,
+      conta: g.contas?.nome ?? null,
+      quitado: g.contas_a_pagar_receber?.status !== "pendente",
+    })),
+    ...((parcelasRecebidasRes.data ?? []) as unknown as ParcelaRecebidaBruta[])
+      .filter((p) => p.data_pagamento)
+      .map((p) => ({
+        id: `parc:${p.id}`,
+        tipo: "recebido" as const,
+        data: p.data_pagamento as string,
+        valor: Number(p.valor_pago ?? p.valor),
+        descricao: `Venda ${p.vendas?.numero ?? ""} — parcela ${p.numero}/${p.total_parcelas}`,
+        quem: p.vendas?.cliente_nome ?? null,
+        conta: (p.conta_id && contasPorId.get(p.conta_id)) ?? null,
+        quitado: true,
+      })),
+    // Crediário de parcela única recebido pelo "Marcar recebido" (data gravada a partir da 0064).
+    ...contasPagarReceber
+      .filter((c) => c.tipo === "receber" && c.status === "recebido" && c.data_pagamento && (c.total_parcelas_fiado ?? 1) <= 1)
+      .map((c) => ({
+        id: `cpr:${c.id}`,
+        tipo: "recebido" as const,
+        data: c.data_pagamento as string,
+        valor: c.valor,
+        descricao: c.descricao,
+        quem: null,
+        conta: c.conta_nome,
+        quitado: true,
+      })),
+  ].sort((a, b) => b.data.localeCompare(a.data));
 
   // Erosão de margem: cruza a compra recebida mais recente de cada produto com o custo da
   // última precificação salva. A RPC já devolve os dois lados prontos, um registro por SKU.
@@ -208,6 +295,8 @@ export default async function FinanceiroPage() {
       alertasErosaoMargem={alertasErosaoMargem}
       alertasRupturaEstoque={alertasRupturaEstoque}
       resumo={((resumoRes.data as ResumoFinanceiro[] | null)?.[0]) ?? RESUMO_VAZIO}
+      historico={historico}
+      historicoOk={!pagamentosRes.error}
     />
   );
 }

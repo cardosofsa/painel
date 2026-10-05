@@ -41,7 +41,7 @@ export function VixeMensagens({ dados }: { dados: DadosMensagens }) {
         {!dados.registroOk && <p className="text-xs text-negative">Sem a migração 0061 o SERTÃO não lembra o que já foi enviado: a lista volta ao recarregar.</p>}
         {lista.length === 0 ? (
           <Card>
-            <EmptyState icon={MessageCircle} title="Nenhum aviso pendente" description="Quando um pedido chegar, sair para entrega ou um fiado estiver vencendo, a mensagem pronta aparece aqui." />
+            <EmptyState icon={MessageCircle} title="Nenhum aviso pendente" description="Quando um pedido chegar, sair para entrega ou uma parcela do crediário estiver vencendo, a mensagem pronta aparece aqui." />
           </Card>
         ) : (
           lista.map((m) => (

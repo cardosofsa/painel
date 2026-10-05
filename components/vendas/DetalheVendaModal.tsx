@@ -10,7 +10,7 @@ import type { Venda } from "@/app/(painel)/vendas/VendasClient";
 
 const ROTULO_STATUS: Record<Venda["status"], { label: string; tone: "positive" | "negative" | "neutral" }> = {
   paga: { label: "Paga", tone: "positive" },
-  fiado: { label: "Fiado", tone: "neutral" },
+  fiado: { label: "Crediário", tone: "neutral" },
   cancelada: { label: "Cancelada", tone: "negative" },
 };
 

@@ -148,7 +148,7 @@ export function VixeInsights({
       {fluxo && (
         <Card>
           <h3 className="font-semibold text-text-primary mb-1">Próximos 30 dias no caixa</h3>
-          <p className="text-xs text-text-tertiary mb-3">Contas a receber (inclui fiado) e a pagar ainda em aberto.</p>
+          <p className="text-xs text-text-tertiary mb-3">Contas a receber (inclui crediário) e a pagar ainda em aberto.</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="rounded-md border border-border p-3">
               <div className="text-xs text-text-tertiary">A receber</div>

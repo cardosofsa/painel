@@ -11,7 +11,7 @@ import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Wallet, Receipt, AlertTriangle, TrendingDown, PackageX, ShieldCheck, Download } from "lucide-react";
+import { Wallet, Receipt, AlertTriangle, TrendingDown, PackageX, ShieldCheck, Download, History } from "lucide-react";
 import Link from "next/link";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
@@ -34,6 +34,9 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { LimparDadosModal } from "@/components/financeiro/LimparDadosModal";
 import { NovaMovimentacaoModal, NovaDespesaFixaModal, NovaCprModal } from "@/components/financeiro/ModaisFinanceiro";
 import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
+import { HistoricoPagamentosModal } from "@/components/financeiro/HistoricoPagamentos";
+import { diasAntes, restanteParcela, situacaoParcela, SITUACAO_PARCELA } from "@/lib/pagamentos";
+import type { AlvoPagamentos } from "./pagamentos-actions";
 import { Chip } from "@/components/ui/Chip";
 
 export interface Conta {
@@ -78,10 +81,41 @@ export interface ContaPagarReceber {
   venda_id: string | null;
   venda_numero: string | null;
   total_parcelas_fiado: number | null;
+  /** 0064: quanto já foi pago, quando, e de que parcela/pedido de compra é. */
+  valor_pago: number;
+  data_pagamento: string | null;
+  parcela_numero: number | null;
+  total_parcelas: number | null;
+  pedido_id: string | null;
+  pedido_numero: string | null;
+  fornecedor_nome: string | null;
 }
 
-const FILTROS_PAGAR = ["Todos", "Vencidos", "Próximos 7 dias"] as const;
-const FILTROS_RECEBER = ["Todos", "Vencidos", "Fiado", "Próximos 7 dias"] as const;
+/** Uma linha do histórico: pagamento feito (fornecedor/conta) ou recebimento (crediário). */
+export interface ItemHistorico {
+  id: string;
+  tipo: "pago" | "recebido";
+  data: string;
+  valor: number;
+  descricao: string;
+  quem: string | null;
+  conta: string | null;
+  /** A parcela ficou quitada (ou ainda resta algo dela em aberto). */
+  quitado: boolean;
+}
+
+const FILTROS_PAGAR = ["Todos", "Vencidos", "Próximos 7 dias", "Pagos"] as const;
+const FILTROS_RECEBER = ["Todos", "Vencidos", "Crediário", "Próximos 7 dias"] as const;
+const PERIODOS_HISTORICO = [
+  { id: "30", rotulo: "30 dias", dias: 30 },
+  { id: "90", rotulo: "90 dias", dias: 90 },
+  { id: "tudo", rotulo: "Tudo", dias: null },
+] as const;
+const TIPOS_HISTORICO = [
+  { id: "todos", rotulo: "Tudo" },
+  { id: "pago", rotulo: "Pagos" },
+  { id: "recebido", rotulo: "Recebidos" },
+] as const;
 
 export function FinanceiroClient({
   contas,
@@ -93,7 +127,13 @@ export function FinanceiroClient({
   alertasErosaoMargem,
   alertasRupturaEstoque,
   resumo,
+  historico,
+  historicoOk,
 }: {
+  /** Pagamentos feitos e recebimentos de crediário, mais recente primeiro. */
+  historico: ItemHistorico[];
+  /** false = 0064 ausente (pagamentos a fornecedores ainda sem histórico). */
+  historicoOk: boolean;
   contas: Conta[];
   movimentacoes: Movimentacao[];
   despesasFixas: DespesaFixa[];
@@ -115,6 +155,9 @@ export function FinanceiroClient({
   const [incluirFluxoNoLucro, setIncluirFluxoNoLucro] = useState(false);
   const [filtroContaId, setFiltroContaId] = useState<string | null>(null);
   const [parcelasAbertas, setParcelasAbertas] = useState<{ vendaId: string; numero: string } | null>(null);
+  const [pagamentosAbertos, setPagamentosAbertos] = useState<{ alvo: AlvoPagamentos; titulo: string } | null>(null);
+  const [periodoHistorico, setPeriodoHistorico] = useState<(typeof PERIODOS_HISTORICO)[number]["id"]>("30");
+  const [tipoHistorico, setTipoHistorico] = useState<(typeof TIPOS_HISTORICO)[number]["id"]>("todos");
   const lancamentosRef = useRef<HTMLDivElement>(null);
 
   function verMovimentacoesDaConta(contaId: string) {
@@ -161,7 +204,7 @@ export function FinanceiroClient({
   const resultadoMensal = receitaMensal - despesasMensais;
   const margemLiquidaPct = receitaMensal > 0 ? (resultadoMensal / receitaMensal) * 100 : 0;
 
-  const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + c.valor, 0);
+  const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
   const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente").reduce((a, c) => a + c.valor, 0);
 
   const hoje = new Date();
@@ -183,12 +226,13 @@ export function FinanceiroClient({
   const pagarFiltrado = contasPagar.filter((c) => {
     if (filtroPagar === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
     if (filtroPagar === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
+    if (filtroPagar === "Pagos") return c.status !== "pendente";
     return true;
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
     if (filtroReceber === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
-    if (filtroReceber === "Fiado") return c.venda_id !== null;
+    if (filtroReceber === "Crediário") return c.venda_id !== null;
     if (filtroReceber === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
     return true;
   });
@@ -200,7 +244,21 @@ export function FinanceiroClient({
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
   const pendentesEm30Dias = contasPagarReceber.filter((c) => c.status === "pendente" && c.data_vencimento <= em30DiasIso);
   const aReceberEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "receber").reduce((a, c) => a + c.valor, 0);
-  const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + c.valor, 0);
+  const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + restanteParcela(c), 0);
+
+  const periodoH = PERIODOS_HISTORICO.find((p) => p.id === periodoHistorico)!;
+  const desdeHistorico = periodoH.dias ? diasAntes(hojeIso, periodoH.dias) : "";
+  const historicoFiltrado = historico.filter((h) => h.data >= desdeHistorico && (tipoHistorico === "todos" || h.tipo === tipoHistorico));
+  const totalPagoHistorico = historicoFiltrado.filter((h) => h.tipo === "pago").reduce((a, h) => a + h.valor, 0);
+  const totalRecebidoHistorico = historicoFiltrado.filter((h) => h.tipo === "recebido").reduce((a, h) => a + h.valor, 0);
+
+  function abrirPagamentos(c: ContaPagarReceber) {
+    setPagamentosAbertos(
+      c.pedido_id
+        ? { alvo: { pedidoId: c.pedido_id }, titulo: `Pedido ${c.pedido_numero ?? ""}${c.fornecedor_nome ? ` · ${c.fornecedor_nome}` : ""}` }
+        : { alvo: { contaId: c.id }, titulo: c.descricao },
+    );
+  }
   const saldoProjetado30Dias = saldoAtual + aReceberEm30Dias - aPagarEm30Dias;
 
   const totalAlertas = vencimentosProximos.length + alertasErosaoMargem.length + alertasRupturaEstoque.length;
@@ -455,24 +513,39 @@ export function FinanceiroClient({
                 </tr>
               </Thead>
               <tbody>
-                {pagarFiltrado.map((c) => (
-                  <Tr key={c.id}>
-                    <Td>{c.descricao}</Td>
-                    <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
-                    <Td align="right" mono className="text-negative">
-                      {formatBRL(c.valor)}
-                    </Td>
-                    <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
-                    <Td>
-                      <StatusChip label={c.status === "pendente" ? "Pendente" : "Pago"} tone={c.status === "pendente" ? "neutral" : "positive"} />
-                    </Td>
-                    <Td align="right">
-                      {c.status === "pendente" && (
-                        <RowMenu actions={[{ label: "Marcar pago", onClick: () => quitar(c) }]} />
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
+                {pagarFiltrado.map((c) => {
+                  const sit = situacaoParcela(c, hojeIso);
+                  return (
+                    <Tr key={c.id}>
+                      <Td>
+                        <button type="button" onClick={() => abrirPagamentos(c)} className="text-left hover:underline">
+                          {c.descricao}
+                        </button>
+                        {c.fornecedor_nome && <div className="text-xs text-text-tertiary">{c.fornecedor_nome}</div>}
+                      </Td>
+                      <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
+                      <Td align="right" mono className="text-negative">
+                        {formatBRL(c.status === "pendente" ? restanteParcela(c) : c.valor_pago || c.valor)}
+                        {c.status === "pendente" && c.valor_pago > 0 && <div className="text-[11px] text-text-tertiary">de {formatBRL(c.valor)}</div>}
+                      </Td>
+                      <Td mono>
+                        {formatarDataIso(c.data_vencimento)}
+                        {c.status !== "pendente" && c.data_pagamento && <div className="text-[11px] text-text-tertiary">pago {formatarDataIso(c.data_pagamento)}</div>}
+                      </Td>
+                      <Td>
+                        <StatusChip label={SITUACAO_PARCELA[sit].rotulo} tone={SITUACAO_PARCELA[sit].tom} />
+                      </Td>
+                      <Td align="right">
+                        <RowMenu
+                          actions={[
+                            ...(c.status === "pendente" ? [{ label: "Registrar pagamento", onClick: () => abrirPagamentos(c) }] : []),
+                            { label: c.pedido_id ? "Histórico do pedido" : "Histórico de pagamentos", onClick: () => abrirPagamentos(c) },
+                          ]}
+                        />
+                      </Td>
+                    </Tr>
+                  );
+                })}
               </tbody>
             </Table>
           )}
@@ -549,6 +622,67 @@ export function FinanceiroClient({
           )}
         </Card>
       </div>
+
+      <Card padding="nenhum" className="overflow-hidden mb-5">
+        <div className="flex items-start justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary">Histórico de pagamentos</h2>
+            <p className="text-sm text-text-secondary">
+              Pago <span className="font-mono text-negative">{formatBRL(totalPagoHistorico)}</span> · Recebido <span className="font-mono text-positive">{formatBRL(totalRecebidoHistorico)}</span>
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {TIPOS_HISTORICO.map((t) => (
+              <Chip key={t.id} onClick={() => setTipoHistorico(t.id)} ativo={tipoHistorico === t.id}>
+                {t.rotulo}
+              </Chip>
+            ))}
+            <span className="w-px bg-border mx-1" aria-hidden />
+            {PERIODOS_HISTORICO.map((p) => (
+              <Chip key={p.id} onClick={() => setPeriodoHistorico(p.id)} ativo={periodoHistorico === p.id}>
+                {p.rotulo}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        {!historicoOk && <p className="px-5 pb-3 text-xs text-negative">Os pagamentos a fornecedores entram aqui depois da migração 0064.</p>}
+        {historicoFiltrado.length === 0 ? (
+          <EmptyState icon={History} title="Nenhum pagamento no período" description="Cada parcela paga a fornecedor ou recebida no crediário aparece aqui, com data e valor." />
+        ) : (
+          <div className="max-h-[28rem] overflow-y-auto">
+            <Table>
+              <Thead>
+                <tr>
+                  <Th>Data</Th>
+                  <Th>Descrição</Th>
+                  <Th>Conta</Th>
+                  <Th align="right">Valor</Th>
+                  <Th>Situação</Th>
+                </tr>
+              </Thead>
+              <tbody>
+                {historicoFiltrado.map((h) => (
+                  <Tr key={h.id}>
+                    <Td mono>{formatarDataIso(h.data)}</Td>
+                    <Td>
+                      <div>{h.descricao}</div>
+                      {h.quem && <div className="text-xs text-text-tertiary">{h.quem}</div>}
+                    </Td>
+                    <Td className="text-text-secondary">{h.conta ?? "—"}</Td>
+                    <Td align="right" mono className={h.tipo === "pago" ? "text-negative" : "text-positive"}>
+                      {h.tipo === "pago" ? "−" : "+"}
+                      {formatBRL(h.valor)}
+                    </Td>
+                    <Td>
+                      <StatusChip label={h.quitado ? "Quitado" : "Pago em parte"} tone={h.quitado ? "positive" : "neutral"} />
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card ref={lancamentosRef} padding="nenhum" className="lg:col-span-2 overflow-hidden">
@@ -731,6 +865,7 @@ export function FinanceiroClient({
         contas={contas}
         onClose={() => setParcelasAbertas(null)}
       />
+      <HistoricoPagamentosModal aberto={pagamentosAbertos} contas={contas} onClose={() => setPagamentosAbertos(null)} />
       {ConfirmDialog}
     </>
   );

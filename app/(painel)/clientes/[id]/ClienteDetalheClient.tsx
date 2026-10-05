@@ -58,7 +58,7 @@ export interface VendaCliente {
 
 const ROTULO_STATUS: Record<VendaCliente["status"], { label: string; tone: "positive" | "negative" | "neutral" }> = {
   paga: { label: "Paga", tone: "positive" },
-  fiado: { label: "Fiado", tone: "neutral" },
+  fiado: { label: "Crediário", tone: "neutral" },
   cancelada: { label: "Cancelada", tone: "negative" },
 };
 
@@ -293,13 +293,13 @@ export function ClienteDetalheClient({
       {/* Box Fiado — três estados: liberado, nunca usado (cadeado total), desligado com histórico (cadeado só no saldo) */}
       <Card className="mb-5">
         <CardHeader>
-          <CardTitle>Fiado</CardTitle>
+          <CardTitle>Crediário</CardTitle>
         </CardHeader>
 
         {!cliente.permite_fiado && !jaComprouFiado ? (
           <div className="flex flex-col items-center justify-center py-8 text-text-tertiary">
             <Lock size={24} className="mb-2 opacity-50" />
-            <p className="text-sm opacity-70">Fiado não liberado para este cliente.</p>
+            <p className="text-sm opacity-70">Crediário não liberado para este cliente.</p>
           </div>
         ) : (
           <>
@@ -319,12 +319,12 @@ export function ClienteDetalheClient({
             ) : (
               <div className="flex items-center gap-2 mb-4 text-text-tertiary">
                 <Lock size={16} />
-                <span className="text-sm">Fiado desligado — saldo indisponível. Histórico abaixo continua visível.</span>
+                <span className="text-sm">Crediário desligado — saldo indisponível. Histórico abaixo continua visível.</span>
               </div>
             )}
 
             {comprasFiado.length === 0 ? (
-              <p className="text-sm text-text-tertiary">Nenhuma compra em fiado ainda.</p>
+              <p className="text-sm text-text-tertiary">Nenhuma compra no crediário ainda.</p>
             ) : (
               <div className="border border-border rounded-md divide-y divide-border">
                 {comprasFiado.map((v) => {
@@ -350,6 +350,7 @@ export function ClienteDetalheClient({
                               label: enviandoResumoId === v.id ? "Gerando…" : "Enviar resumo",
                               onClick: () => enviarResumo(v),
                             },
+                            { label: "Imprimir carnê", onClick: () => window.open(`/vendas/${v.id}/carne`, "_blank", "noopener") },
                           ]}
                         />
                       </div>

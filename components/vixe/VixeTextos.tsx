@@ -39,7 +39,7 @@ interface Saida {
 
 const FERRAMENTAS: { id: FerramentaTexto; rotulo: string; ajuda: string }[] = [
   { id: "resposta", rotulo: "Responder cliente", ajuda: "Cole a pergunta do comprador e receba uma resposta usando os dados do produto." },
-  { id: "cobranca", rotulo: "Cobrança de fiado", ajuda: "Mensagem educada com as parcelas em aberto. O nome do cliente não vai para a IA." },
+  { id: "cobranca", rotulo: "Cobrança de crediário", ajuda: "Mensagem educada com as parcelas em aberto. O nome do cliente não vai para a IA." },
   { id: "legenda", rotulo: "Legenda", ajuda: "Texto de divulgação para WhatsApp ou Instagram." },
   { id: "atributos", rotulo: "Ficha técnica", ajuda: "Separa material, medidas, cor etc. a partir da descrição do produto." },
 ];
@@ -186,7 +186,7 @@ export function VixeTextos({
 
         {ferramenta === "cobranca" ? (
           clientes.length === 0 ? (
-            <p className="text-sm text-text-secondary">Nenhum cliente com parcela de fiado em aberto.</p>
+            <p className="text-sm text-text-secondary">Nenhum cliente com parcela do crediário em aberto.</p>
           ) : (
             <>
               <FormField label="Cliente">

@@ -461,7 +461,10 @@ export const pedidoCompraSchema = z.object({
   data_entrega_prevista: dataIso.nullable(),
   forma_pagamento: z.string().trim().max(100),
   conta_id: uuid,
+  /** true = a prazo (parcelas pendentes); false = à vista, já sai paga (0064). */
   parcelado: z.boolean(),
+  /** Dias entre as parcelas a prazo (30 = mesmo dia de cada mês). */
+  intervalo_dias: z.number().int("Intervalo inválido").min(1, "Intervalo mínimo de 1 dia").max(120, "Intervalo máximo de 120 dias").default(30),
   // Teto obrigatório: `Array.from({ length: parcelas })` com um número enorme vindo do
   // cliente aloca a lista inteira e derruba o processo Node antes de tocar no banco.
   parcelas: z.number().int("Número de parcelas inválido").min(1).max(48, "Máximo de 48 parcelas").nullable(),
@@ -477,6 +480,15 @@ export const pedidoCompraSchema = z.object({
     )
     .min(1, "O pedido precisa ter pelo menos um item")
     .max(500, "Pedido com itens demais"),
+});
+
+/** Pagamento de uma conta a pagar (0064): valor livre, data, conta e "dar por quitada". */
+export const pagamentoContaSchema = z.object({
+  id: uuid,
+  valor: z.number().finite("Valor inválido").positive("Informe o valor pago").max(100_000_000),
+  data: dataIso,
+  conta_id: uuid,
+  quitar: z.boolean(),
 });
 
 /**

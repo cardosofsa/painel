@@ -99,7 +99,8 @@ export default async function DashboardPage() {
       supabase.from("fornecedores").select("id, nome"),
       supabase
         .from("contas_a_pagar_receber")
-        .select("id, tipo, descricao, valor, data_vencimento, status")
+        // `*`: valor_pago (pagamento parcial) só existe a partir da 0064.
+        .select("*")
         .eq("status", "pendente")
         .order("data_vencimento")
         .limit(8),
@@ -172,7 +173,7 @@ export default async function DashboardPage() {
       vencimento: formatarDataIso(c.data_vencimento),
       tipo: c.tipo === "pagar" ? "A Pagar" : "A Receber",
       descricao: c.descricao,
-      valor: c.tipo === "pagar" ? -c.valor : c.valor,
+      valor: c.tipo === "pagar" ? -(c.valor - Number(c.valor_pago ?? 0)) : c.valor,
     };
   });
 

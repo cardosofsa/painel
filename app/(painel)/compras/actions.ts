@@ -28,6 +28,7 @@ export interface PedidoCompraInput {
   conta_id: string;
   parcelado: boolean;
   parcelas: number | null;
+  intervalo_dias?: number;
   data_primeiro_vencimento: string;
   itens: ItemPedidoInput[];
 }
@@ -53,7 +54,7 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
  * importação. `frete`/`observacao` (0042) só vão quando preenchidos: antes da migração as
  * colunas não existem, e mandá-las vazias derrubaria o cadastro.
  */
-async function gravarPedido(supabase: Supabase, v: PedidoCompraInput, extra: { frete?: number; observacao?: string | null } = {}) {
+async function gravarPedido(supabase: Supabase, v: PedidoCompraInput & { intervalo_dias: number }, extra: { frete?: number; observacao?: string | null } = {}) {
   const frete = Math.max(0, extra.frete ?? 0);
   const valorTotal = v.itens.reduce((acc, it) => acc + it.quantidade * it.custo_unitario, 0) + frete;
 
@@ -83,6 +84,22 @@ async function gravarPedido(supabase: Supabase, v: PedidoCompraInput, extra: { f
   const { error: erroItens } = await supabase.from("pedidos_compra_itens").insert(itensParaInserir);
   if (erroItens) lancarErroSupabase(erroItens);
 
+  // Parcelas no banco, numa transação só (0064). À vista já nasce paga.
+  const { error: erroPagamento } = await supabase.rpc("gerar_pagamento_compra", {
+    p_pedido: pedido.id,
+    p_a_prazo: v.parcelado,
+    p_parcelas: v.parcelado ? Math.max(1, v.parcelas ?? 1) : 1,
+    p_primeiro_venc: v.data_primeiro_vencimento,
+    p_intervalo_dias: v.intervalo_dias,
+    p_conta_id: v.conta_id,
+  });
+  if (erroPagamento?.code === "PGRST202") await gravarParcelasSemMigracao(supabase, v, pedido, valorTotal);
+  else if (erroPagamento) lancarErroSupabase(erroPagamento);
+  return pedido;
+}
+
+/** Sem a 0064 a RPC não existe: grava as parcelas pendentes como antes (mensais). */
+async function gravarParcelasSemMigracao(supabase: Supabase, v: PedidoCompraInput, pedido: { id: string; numero: string }, valorTotal: number) {
   const parcelas = v.parcelado ? Math.max(1, v.parcelas ?? 1) : 1;
   const valorParcela = Math.round((valorTotal / parcelas) * 100) / 100;
   const titulos = Array.from({ length: parcelas }, (_, i) => {
@@ -92,16 +109,14 @@ async function gravarPedido(supabase: Supabase, v: PedidoCompraInput, extra: { f
       tipo: "pagar" as const,
       descricao: parcelas > 1 ? `Pedido ${pedido.numero} — parcela ${i + 1}/${parcelas}` : `Pedido ${pedido.numero}`,
       valor,
-      data_vencimento: somarMeses(v.data_primeiro_vencimento, i),
+      data_vencimento: v.parcelado ? somarMeses(v.data_primeiro_vencimento, i) : v.data_pedido,
       status: "pendente" as const,
       conta_id: v.conta_id,
       referencia_pedido_compra_id: pedido.id,
     };
   });
-
-  const { error: erroTitulos } = await supabase.from("contas_a_pagar_receber").insert(titulos);
-  if (erroTitulos) lancarErroSupabase(erroTitulos);
-  return pedido;
+  const { error } = await supabase.from("contas_a_pagar_receber").insert(titulos);
+  if (error) lancarErroSupabase(error);
 }
 
 export async function criarPedidoCompra(dados: PedidoCompraInput) {
@@ -146,8 +161,10 @@ export async function importarPedidosCompra(
         data_entrega_prevista: null,
         forma_pagamento: comum.forma_pagamento,
         conta_id: comum.conta_id,
-        parcelado: false,
-        parcelas: null,
+        // A planilha traz só um vencimento: vira uma parcela a pagar nessa data.
+        parcelado: true,
+        parcelas: 1,
+        intervalo_dias: 30,
         data_primeiro_vencimento: comum.data_primeiro_vencimento,
         itens: p.itens,
       });
