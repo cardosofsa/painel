@@ -9,6 +9,7 @@ import { useTheme } from "./ThemeContext";
 import { useSidebarMobile } from "./SidebarMobileContext";
 import { createClient } from "@/lib/supabase/client";
 import { AlertasSino, type AlertaSino } from "./AlertasSino";
+import { PaletaComandos } from "./PaletaComandos";
 import type { MensagemPendente } from "@/lib/whatsapp";
 
 export function TopBar({
@@ -16,6 +17,7 @@ export function TopBar({
   alertas,
   mensagens = [],
   verVixe = false,
+  abas = [],
   plano = null,
   operador = null,
   exigeOperador = false,
@@ -26,6 +28,8 @@ export function TopBar({
   mensagens?: MensagemPendente[];
   /** A aba Vixe está liberada: o sino ganha o link para a central de alertas. */
   verVixe?: boolean;
+  /** Abas que a pessoa (ou o operador) pode abrir: a busca Ctrl+K só mostra essas. */
+  abas?: string[];
   /** Selo do plano ("Plano Pro" / "Teste · Pro") e se há plano acima; null = sem plano (master ou sem 0057). */
   plano?: { rotulo: string; upgrade: boolean } | null;
   /** 11.8: quem está operando (turno). */
@@ -110,6 +114,8 @@ export function TopBar({
           <UserRound size={13} className="text-accent" /> {operador ?? "Ninguém operando"} · trocar
         </Link>
       )}
+
+      <PaletaComandos abas={abas} />
 
       <AlertasSino alertas={alertas} mensagens={mensagens} verVixe={verVixe} />
 

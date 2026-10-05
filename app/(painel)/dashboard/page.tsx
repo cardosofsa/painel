@@ -3,6 +3,7 @@ import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { carregarVendasRelatorio } from "@/lib/relatorios-servidor";
 import { hojeIsoLocal, formatarDataIso, dataLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
+import type { PassoInicial } from "@/components/dashboard/PrimeirosPassos";
 import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
 import { MasterDashboardClient } from "./MasterDashboardClient";
 import type { ContaAdmin } from "../admin/AdminClient";
@@ -85,6 +86,10 @@ export default async function DashboardPage() {
     compromissosRes,
     vendasRes,
     vendasRelatorio,
+    perfilRes,
+    lojasCountRes,
+    vendasCountRes,
+    mktCountRes,
   ] = await Promise.all([
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       supabase
@@ -123,7 +128,23 @@ export default async function DashboardPage() {
         .gte("data_venda", inicioVendas.toISOString()),
       // Todas as origens (PDV, catálogo, Shopee) para o painel de vendas: este mês + o anterior.
       carregarVendasRelatorio(supabase, 62),
+      // Primeiros passos: o que já está configurado. `*`: onboarding_oculto só a partir da 0065.
+      supabase.from("perfil_negocio").select("*").maybeSingle(),
+      supabase.from("lojas_canal").select("id", { count: "exact", head: true }),
+      supabase.from("vendas").select("id", { count: "exact", head: true }),
+      supabase.from("pedidos_marketplace").select("id", { count: "exact", head: true }),
     ]);
+
+  const perfil = perfilRes.data as Record<string, unknown> | null;
+  const primeirosPassos: PassoInicial[] | null = perfil?.onboarding_oculto
+    ? null
+    : [
+        { id: "loja", rotulo: "Dados da loja", ajuda: "Nome, regime e alíquota do imposto.", href: "/configuracoes?aba=conta", feito: !!String(perfil?.nome_negocio ?? "").trim() },
+        { id: "conta", rotulo: "Conta de recebimento", ajuda: "Caixa, banco ou Pix onde o dinheiro entra.", href: "/configuracoes?aba=transacoes", feito: (contasRes.data ?? []).length > 0 },
+        { id: "produto", rotulo: "Primeiro produto", ajuda: "Com custo, para o lucro sair certo.", href: "/produtos", feito: (produtosRes.data ?? []).length > 0 },
+        { id: "canal", rotulo: "Canal de venda", ajuda: "Shopee, Mercado Livre, catálogo ou loja física.", href: "/configuracoes?aba=canais-de-venda", feito: (lojasCountRes.count ?? 0) > 0 },
+        { id: "venda", rotulo: "Primeira venda", ajuda: "Pelo PDV ou importando os pedidos.", href: "/pdv", feito: (vendasCountRes.count ?? 0) + (mktCountRes.count ?? 0) > 0 },
+      ];
 
   if (contasRes.error) throw new Error(contasRes.error.message);
   if (produtosRes.error) throw new Error(produtosRes.error.message);
@@ -191,6 +212,7 @@ export default async function DashboardPage() {
       vendas={vendas}
       compromissos={compromissos}
       vendasRelatorio={vendasRelatorio}
+      primeirosPassos={primeirosPassos}
     />
   );
 }

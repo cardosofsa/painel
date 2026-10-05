@@ -11,6 +11,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
+import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { formatBRL } from "@/lib/format";
 import {
   criarCategoria,
@@ -97,7 +98,16 @@ export const ICONES_CANAL: Record<string, LucideIcon> = {
 };
 
 const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Frete", "Fiscal", "Equipe", "IA", "Dados", "Plano", "Conta"] as const;
-const ABAS_TABS = ABAS.map((a) => ({ value: a, label: a }));
+/** As 11 telas em 5 grupos: menos abas na tela, e o que é parecido fica junto. */
+const GRUPOS: { id: string; rotulo: string; abas: (typeof ABAS)[number][] }[] = [
+  { id: "vendas", rotulo: "Vendas", abas: ["Canais de Venda", "Transações", "Frete"] },
+  { id: "loja", rotulo: "Loja", abas: ["Conta", "Categorias", "Armazéns"] },
+  { id: "fiscal-ia", rotulo: "Fiscal e IA", abas: ["Fiscal", "IA"] },
+  { id: "equipe", rotulo: "Equipe e plano", abas: ["Equipe", "Plano"] },
+  { id: "dados", rotulo: "Dados", abas: ["Dados"] },
+];
+const GRUPOS_TABS = GRUPOS.map((g) => ({ value: g.id, label: g.rotulo }));
+const grupoDaAba = (a: (typeof ABAS)[number]) => GRUPOS.find((g) => g.abas.includes(a)) ?? GRUPOS[0];
 
 /** `?aba=plano` (link do plano no topo) → "Plano". Sem parâmetro ou desconhecido: a primeira. */
 function abaDaUrl(param: string | undefined): (typeof ABAS)[number] {
@@ -256,7 +266,12 @@ export function ConfiguracoesClient({
     <>
       <PageHeader title="Configurações do Negócio" />
 
-      <Tabs tabs={ABAS_TABS} value={aba} onChange={setAba} className="mb-6" />
+      <Tabs tabs={GRUPOS_TABS} value={grupoDaAba(aba).id} onChange={(id) => setAba(GRUPOS.find((g) => g.id === id)?.abas[0] ?? aba)} className="mb-4" />
+      {grupoDaAba(aba).abas.length > 1 && (
+        <div className="mb-6">
+          <SubAbas itens={grupoDaAba(aba).abas.map((a) => ({ id: a, rotulo: a }))} valor={aba} onChange={setAba} />
+        </div>
+      )}
 
       <TabPanel key={aba} tabValue={aba}>
       {aba === "Canais de Venda" && <AbaCanais canais={canais} lojas={lojas} marketplace={marketplace} />}

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { PrimeirosPassos, type PassoInicial } from "@/components/dashboard/PrimeirosPassos";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -64,7 +65,10 @@ export function DashboardClient({
   vendas,
   vendasRelatorio,
   compromissos,
+  primeirosPassos = null,
 }: {
+  /** null = oculto pela pessoa (0065). */
+  primeirosPassos?: PassoInicial[] | null;
   /** Vendas de todas as origens (PDV, catálogo, Shopee) dos últimos ~2 meses. */
   vendasRelatorio: VendaRelatorio[];
   contas: Conta[];
@@ -96,6 +100,8 @@ export function DashboardClient({
           </>
         }
       />
+
+      {primeirosPassos && <PrimeirosPassos passos={primeirosPassos} />}
 
           <Card className="mb-5">
             <CardEyebrow>Saldo Total Disponível</CardEyebrow>

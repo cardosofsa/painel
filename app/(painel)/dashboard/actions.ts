@@ -41,3 +41,18 @@ export async function removerCompromisso(id: string) {
     revalidatePath(PATH);
   });
 }
+
+/** "Primeiros passos" não aparece mais para esta conta (0065). */
+export async function ocultarPrimeirosPassos() {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Sessão expirada, faça login novamente");
+    const { error } = await supabase.from("perfil_negocio").upsert({ user_id: user.id, onboarding_oculto: true, atualizado_em: new Date().toISOString() });
+    if (error?.code === "PGRST204" || error?.code === "42703") throw new Error("Ocultar precisa da migração 0065. Aplique no Supabase e recarregue.");
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+  });
+}

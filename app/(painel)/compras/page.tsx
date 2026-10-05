@@ -9,8 +9,8 @@ import { consumoDiario, diasDoPrazo, faltaReceber, statusAberto, sugestaoCompras
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;
 
-export default async function ComprasPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
-  const { novo } = await searchParams;
+export default async function ComprasPage({ searchParams }: { searchParams: Promise<{ novo?: string; busca?: string }> }) {
+  const { novo, busca } = await searchParams;
   const supabase = await createClient();
 
   const inicio = new Date();
@@ -43,7 +43,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       supabase.from("fornecedores").select("id, nome, cnpj, prazo"),
       supabase
         .from("produtos")
-        .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo")
+        .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo, codigo_barras")
         .order("nome"),
       supabase.from("armazens").select("id, nome").order("nome"),
       supabase.from("contas").select("id, nome").order("nome"),
@@ -179,10 +179,14 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
 
   return (
     <ComprasClient
+      key={busca ?? "inicio"}
+      buscaInicial={busca?.slice(0, 80) ?? ""}
       sugestao={sugestao}
       pedidoInicial={pedidoInicial}
       pedidos={pedidos}
       fornecedores={fornecedoresAtivosRes.data ?? []}
+      // XML da NF-e: o fornecedor é achado pelo CNPJ (inclusive inativo, que volta a valer).
+      cnpjFornecedores={(fornecedoresTodosRes.data ?? []).filter((f) => f.cnpj).map((f) => ({ id: f.id, nome: f.nome, cnpj: f.cnpj as string }))}
       produtos={produtos}
       armazens={armazensRes.data ?? []}
       contas={contasRes.data ?? []}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PackageSearch, Lightbulb, ClipboardList, Wallet } from "lucide-react";
+import { PackageSearch, Lightbulb, ClipboardList, Wallet, FileCode2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -24,6 +24,7 @@ import { ReceberPedidoModal } from "@/components/compras/ReceberPedidoModal";
 import { DetalhePedidoModal } from "@/components/compras/DetalhePedidoModal";
 import { SugestaoCompras } from "@/components/compras/SugestaoCompras";
 import { ImportarPedidosModal } from "@/components/compras/ImportarPedidosModal";
+import { ImportarNfeModal } from "@/components/compras/ImportarNfeModal";
 
 export interface ItemPedido {
   id?: string;
@@ -72,6 +73,7 @@ const PERIODOS = [
 ] as const;
 
 export function ComprasClient({
+  buscaInicial = "",
   pedidoInicial,
   pedidos,
   fornecedores,
@@ -80,12 +82,17 @@ export function ComprasClient({
   contas,
   formasPagamento,
   sugestao,
+  cnpjFornecedores = [],
 }: {
+  /** `?busca=` (busca global). */
+  buscaInicial?: string;
   /** Pedido pré-preenchido vindo do alerta de estoque mínimo (?novo=…). */
   pedidoInicial: { fornecedorId: string | null; item: ItemPedidoInput } | null;
   pedidos: Pedido[];
   fornecedores: Opcao[];
-  produtos: (Opcao & { custo: number; sku: string })[];
+  produtos: (Opcao & { custo: number; sku: string; codigo_barras?: string | null })[];
+  /** Fornecedores com CNPJ (XML da NF-e acha pelo CNPJ). */
+  cnpjFornecedores?: { id: string; nome: string; cnpj: string }[];
   armazens: Opcao[];
   contas: Opcao[];
   formasPagamento: Opcao[];
@@ -94,14 +101,15 @@ export function ComprasClient({
   const [, startTransition] = useTransition();
   const router = useRouter();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [secao, setSecao] = useState<Secao>(pedidos.some((p) => statusAberto(p.status)) ? "todos" : sugestao.length ? "sugestao" : "todos");
+  const [secao, setSecao] = useState<Secao>(buscaInicial || pedidos.some((p) => statusAberto(p.status)) ? "todos" : sugestao.length ? "sugestao" : "todos");
   const [novoPedido, setNovoPedido] = useState<{ fornecedorId: string | null; itens?: ItemPedidoInput[]; item?: ItemPedidoInput } | null>(pedidoInicial);
   const [detalhe, setDetalhe] = useState<Pedido | null>(null);
   const [receber, setReceber] = useState<Pedido | null>(null);
   const [importando, setImportando] = useState(false);
+  const [importandoNfe, setImportandoNfe] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const [periodo, setPeriodo] = useState("");
   const [fornecedorFiltro, setFornecedorFiltro] = useState("");
 
@@ -217,8 +225,11 @@ export function ComprasClient({
         title="Compras & Reposição"
         actions={
           <>
+            <Button variant="secondary" onClick={() => setImportandoNfe(true)}>
+              <FileCode2 size={14} /> XML da NF-e
+            </Button>
             <Button variant="secondary" onClick={() => setImportando(true)}>
-              Importar
+              Importar planilha
             </Button>
             <Button variant="secondary" onClick={() => setExportando(true)} disabled={pedidos.length === 0}>
               Exportar
@@ -384,6 +395,17 @@ export function ComprasClient({
 
       {detalhe && <DetalhePedidoModal pedido={detalhe} contas={contas} onClose={() => setDetalhe(null)} />}
       {receber && <ReceberPedidoModal pedido={receber} armazens={armazens} onClose={() => setReceber(null)} />}
+      {importandoNfe && (
+        <ImportarNfeModal
+          onClose={() => setImportandoNfe(false)}
+          produtos={produtos}
+          fornecedores={fornecedores}
+          cnpjFornecedores={cnpjFornecedores}
+          armazens={armazens}
+          contas={contas}
+          formasPagamento={formasPagamento}
+        />
+      )}
       {importando && (
         <ImportarPedidosModal onClose={() => setImportando(false)} produtos={produtos} fornecedores={fornecedores} armazens={armazens} contas={contas} formasPagamento={formasPagamento} />
       )}

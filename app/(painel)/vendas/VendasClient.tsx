@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { ExportarModal } from "@/components/ui/ExportarModal";
 import { executarComToast } from "@/lib/acao-cliente";
-import { periodoAnterior, periodoDoAtalho, rotuloPeriodo, type Periodo } from "@/lib/periodo";
+import { periodoAnterior, periodoDoAtalho, periodoDosUltimosDias, rotuloPeriodo, type Periodo } from "@/lib/periodo";
 import {
   contarEtapas,
   filtrarCentral,
@@ -95,6 +95,7 @@ export function VendasClient({
   contas,
   formasPagamentoPdv,
   pedidoInicial,
+  buscaInicial = "",
   marketplace,
   lojasMarketplace,
   produtosMarketplace,
@@ -121,6 +122,8 @@ export function VendasClient({
   contas: ContaPdv[];
   formasPagamentoPdv: FormaPagamentoPdv[];
   pedidoInicial: string | null;
+  /** `?busca=` (busca global): já filtra e abre a janela inteira, não só hoje. */
+  buscaInicial?: string;
   marketplace: DadosMarketplace;
   lojasMarketplace: LojaMarketplace[];
   produtosMarketplace: ProdutoMarketplace[];
@@ -146,14 +149,15 @@ export function VendasClient({
     [vendas, pedidos, marketplace.pedidos, lojasMarketplace, disponivel],
   );
 
-  const [periodo, setPeriodo] = useState<Periodo>(() => periodoDoAtalho("hoje"));
+  const [periodo, setPeriodo] = useState<Periodo>(() => (buscaInicial ? periodoDosUltimosDias(diasJanela) : periodoDoAtalho("hoje")));
   const [canais, setCanais] = useState<string[]>([]);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const [extras, setExtras] = useState<FiltrosExtras>(EXTRAS_VAZIOS);
   const filtros: FiltrosCentral = useMemo(() => ({ periodo, canais, busca, ...extras }), [periodo, canais, busca, extras]);
   const contagem = useMemo(() => contarEtapas(lista, filtros), [lista, filtros]);
   const [etapa, setEtapa] = useState<Etapa | "todos" | "oculto">(() => {
     const c = contarEtapas(lista, { ...FILTROS_VAZIOS, periodo: periodoDoAtalho("hoje") });
+    if (buscaInicial) return "todos";
     return c.emitir > 0 ? "emitir" : c.imprimir > 0 ? "imprimir" : "todos";
   });
   const [motivo, setMotivo] = useState<MotivoReserva | "todos">("todos");

@@ -5,7 +5,7 @@ import { GuardaNumericos } from "@/components/ui/GuardaNumericos";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
-import { ABAS_OBRIGATORIAS } from "@/lib/acesso";
+import { ABAS_OBRIGATORIAS, normalizarAbas } from "@/lib/acesso";
 import { carregarAvisosWhatsapp } from "@/lib/vixe/mensagens-servidor";
 import { rotuloPlanoTopo, temPlanoAcima, type Plano, type ResumoAssinatura } from "@/lib/planos";
 
@@ -63,6 +63,7 @@ export default async function PainelLayout({ children }: { children: React.React
             alertas={alertasRes.data ?? []}
             mensagens={avisosWhatsapp?.mensagens ?? []}
             verVixe={veMensagens}
+            abas={ehMaster ? [] : normalizarAbas(acesso?.abas ?? ABAS_OBRIGATORIAS).filter((a) => !abasOperador || abasOperador.includes(a))}
             plano={plano}
             operador={acesso?.operador?.nome ?? null}
             exigeOperador={!!acesso?.exigeOperador}

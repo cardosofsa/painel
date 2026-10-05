@@ -55,7 +55,7 @@ const FORM_VAZIO: ClienteInput = {
   status: "ativo",
 };
 
-export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
+export function ClientesClient({ clientes, buscaInicial = "" }: { clientes: Cliente[]; buscaInicial?: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -64,7 +64,7 @@ export function ClientesClient({ clientes }: { clientes: Cliente[] }) {
   const [form, setForm] = useState<ClienteInput>(FORM_VAZIO);
   const [formOriginal, setFormOriginal] = useState<ClienteInput>(FORM_VAZIO);
   const [opcionaisAbertos, setOpcionaisAbertos] = useState(false);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const sujo = useFormularioSujo(form, formOriginal);
 
   const filtrados = useMemo(() => {

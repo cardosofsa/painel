@@ -6,7 +6,8 @@ export function SubAbas<T extends string>({
   valor,
   onChange,
 }: {
-  itens: { id: T; rotulo: string; n: number }[];
+  /** `n` = contagem ao lado do rótulo (opcional). */
+  itens: { id: T; rotulo: string; n?: number }[];
   valor: T;
   onChange: (v: T) => void;
 }) {
@@ -20,7 +21,8 @@ export function SubAbas<T extends string>({
           onClick={() => onChange(i.id)}
           className={`text-xs rounded-md border px-2.5 py-1.5 ${valor === i.id ? "border-accent bg-accent-soft text-accent font-medium" : "border-border text-text-secondary hover:bg-surface-2"}`}
         >
-          {i.rotulo} <span className="font-mono">{i.n}</span>
+          {i.rotulo}
+          {i.n !== undefined && <span className="font-mono"> {i.n}</span>}
         </button>
       ))}
     </div>
