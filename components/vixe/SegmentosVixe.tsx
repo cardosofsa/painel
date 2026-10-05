@@ -3,17 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-/**
- * Segmentos da Vixe. O menu lateral tem uma entrada só ("Vixe"); daqui a pessoa escolhe o
- * que quer. Segmento ainda não construído aparece como "em breve", sem link.
- */
-const SEGMENTOS: { href: string; rotulo: string; pronto: boolean }[] = [
-  { href: "/vixe", rotulo: "Alertas", pronto: true },
-  { href: "/vixe/preco", rotulo: "Preço", pronto: true },
-  { href: "/vixe/textos", rotulo: "Textos", pronto: true },
-  { href: "/vixe/insights", rotulo: "Insights", pronto: true },
-  { href: "/vixe/radar", rotulo: "Radar", pronto: true },
-  { href: "/vixe/mensagens", rotulo: "Mensagens", pronto: true },
+/** Segmentos da Vixe. O menu lateral tem uma entrada só ("Vixe"); daqui a pessoa escolhe o que quer. */
+const SEGMENTOS: { href: string; rotulo: string }[] = [
+  { href: "/vixe", rotulo: "Alertas" },
+  { href: "/vixe/preco", rotulo: "Preço" },
+  { href: "/vixe/textos", rotulo: "Textos" },
+  { href: "/vixe/insights", rotulo: "Insights" },
+  { href: "/vixe/radar", rotulo: "Radar" },
+  { href: "/vixe/mensagens", rotulo: "Mensagens" },
 ];
 
 export function SegmentosVixe() {
@@ -23,13 +20,6 @@ export function SegmentosVixe() {
       {SEGMENTOS.map((s) => {
         const ativo = s.href === "/vixe" ? pathname === "/vixe" : pathname.startsWith(s.href);
         const base = "shrink-0 px-3 py-2 text-sm border-b-2 -mb-px transition-colors";
-        if (!s.pronto) {
-          return (
-            <span key={s.href} className={`${base} border-transparent text-text-tertiary cursor-default`} title="Em construção">
-              {s.rotulo} <span className="text-[10px] uppercase tracking-wide">em breve</span>
-            </span>
-          );
-        }
         return (
           <Link
             key={s.href}

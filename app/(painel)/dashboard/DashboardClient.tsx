@@ -146,9 +146,14 @@ export function DashboardClient({
             </Card>
 
             <Card padding="nenhum" className="overflow-hidden flex flex-col">
-              <div className="px-5 pt-5 pb-3">
-                <h2 className="text-base font-semibold text-text-primary">Estoque Baixo</h2>
-                <p className="text-xs text-text-tertiary">{produtosBaixoEstoque.length} produtos precisam de reposição</p>
+              <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-text-primary">Estoque Baixo</h2>
+                  <p className="text-xs text-text-tertiary">{produtosBaixoEstoque.length} produtos precisam de reposição</p>
+                </div>
+                <Link href="/vixe" className="text-xs text-accent hover:underline shrink-0">
+                  Todos os alertas ›
+                </Link>
               </div>
               <div className="flex-1 divide-y divide-border overflow-y-auto max-h-48">
                 {produtosBaixoEstoque.length === 0 && (
@@ -157,7 +162,8 @@ export function DashboardClient({
                 {produtosBaixoEstoque.map((p) => (
                   <Link
                     key={p.id}
-                    href="/produtos"
+                    href={`/compras?novo=${p.id}`}
+                    title="Criar pedido de compra"
                     className="flex items-center justify-between px-5 py-2.5 text-sm hover:bg-surface-2/50"
                   >
                     <div>

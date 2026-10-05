@@ -15,6 +15,7 @@ export function TopBar({
   nomeNegocio,
   alertas,
   mensagens = [],
+  verVixe = false,
   plano = null,
   operador = null,
   exigeOperador = false,
@@ -23,6 +24,8 @@ export function TopBar({
   alertas: AlertaSino[];
   /** Avisos de WhatsApp pendentes (Vixe → Mensagens), cada um uma notificação no sino. */
   mensagens?: MensagemPendente[];
+  /** A aba Vixe está liberada: o sino ganha o link para a central de alertas. */
+  verVixe?: boolean;
   /** Selo do plano ("Plano Pro" / "Teste · Pro") e se há plano acima; null = sem plano (master ou sem 0057). */
   plano?: { rotulo: string; upgrade: boolean } | null;
   /** 11.8: quem está operando (turno). */
@@ -108,7 +111,7 @@ export function TopBar({
         </Link>
       )}
 
-      <AlertasSino alertas={alertas} mensagens={mensagens} />
+      <AlertasSino alertas={alertas} mensagens={mensagens} verVixe={verVixe} />
 
       <button
         onClick={toggleTheme}

@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
     formats: ["image/avif", "image/webp"],
   },
 
+  // Endereços antigos que ainda podem estar salvos nos favoritos.
+  async redirects() {
+    return [{ source: "/vixe/vitrine", destination: "/catalogo", permanent: true }];
+  },
+
   /**
    * O app serve a vitrine pública (/vitrine/[slug]) na MESMA origem do painel autenticado.
    * Sem `X-Frame-Options`, um link de vitrine compartilhado no WhatsApp pode ser usado para

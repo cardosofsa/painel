@@ -11,13 +11,12 @@ import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Wallet, Receipt, AlertTriangle, TrendingDown, PackageX, ShieldCheck, Download, History } from "lucide-react";
+import { Wallet, Receipt, AlertTriangle, ShieldCheck, Download, History } from "lucide-react";
 import Link from "next/link";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
 import { formatBRL, formatarDataIso, hojeIsoLocal, classeValor } from "@/lib/format";
 import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
-import type { AlertaErosaoMargem, AlertaRupturaEstoque } from "@/lib/alertas";
 import type { ResumoFinanceiro } from "./page";
 import {
   criarMovimentacao,
@@ -124,8 +123,6 @@ export function FinanceiroClient({
   contasPagarReceber,
   fluxoCaixaDiario,
   despesasPorCategoria,
-  alertasErosaoMargem,
-  alertasRupturaEstoque,
   resumo,
   historico,
   historicoOk,
@@ -140,8 +137,6 @@ export function FinanceiroClient({
   contasPagarReceber: ContaPagarReceber[];
   fluxoCaixaDiario: { dia: string; entradas: number; saidas: number }[];
   despesasPorCategoria: { categoria: string; valor: number }[];
-  alertasErosaoMargem: AlertaErosaoMargem[];
-  alertasRupturaEstoque: AlertaRupturaEstoque[];
   resumo: ResumoFinanceiro;
 }) {
   const [pending, startTransition] = useTransition();
@@ -261,7 +256,8 @@ export function FinanceiroClient({
   }
   const saldoProjetado30Dias = saldoAtual + aReceberEm30Dias - aPagarEm30Dias;
 
-  const totalAlertas = vencimentosProximos.length + alertasErosaoMargem.length + alertasRupturaEstoque.length;
+  const vencidos = vencimentosProximos.filter((c) => c.data_vencimento < hojeIso);
+  const vencendo = vencimentosProximos.filter((c) => c.data_vencimento >= hojeIso);
 
   const impactoNoLucro = incluirFluxoNoLucro
     ? resumo.saldo_liquido
@@ -356,63 +352,28 @@ export function FinanceiroClient({
         }
       />
 
-      <Card className="mb-5">
-        <div className="flex items-center gap-2 mb-3">
-          <h2 className="text-base font-semibold text-text-primary">Central de Alertas</h2>
-          {totalAlertas > 0 && <StatusChip label={String(totalAlertas)} tone="negative" />}
-        </div>
-        {totalAlertas === 0 ? (
-          <EmptyState icon={ShieldCheck} title="Tudo em dia" description="Nenhum vencimento próximo, erosão de margem ou risco de ruptura de estoque no momento." />
+      {/* Os alertas moram na Vixe (estoque, margem, preço, contas e crediário). Aqui fica só
+          o resumo do que é do Financeiro: o que venceu e o que vence nos próximos 7 dias. */}
+      <Link
+        href="/vixe"
+        className={`mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-4 py-2.5 text-sm hover:bg-surface-2 ${
+          vencidos.length > 0 ? "border-negative/40 bg-negative-soft" : "border-border bg-surface-1"
+        }`}
+      >
+        {vencimentosProximos.length === 0 ? (
+          <span className="inline-flex items-center gap-2 text-text-secondary">
+            <ShieldCheck size={15} className="text-positive" /> Nenhuma conta vencida ou vencendo nos próximos 7 dias.
+          </span>
         ) : (
-          <div className="space-y-2">
-            {vencimentosProximos.map((c) => (
-              <div key={c.id} className="flex items-center justify-between text-sm border border-border rounded-md px-3 py-2">
-                <div className="flex items-center gap-2">
-                  {/* "Vencido" precisa ser texto, não só a cor do ícone: quem não distingue
-                      as duas cores não tem como saber o que já passou do prazo. */}
-                  <AlertTriangle size={14} className={c.data_vencimento < hojeIso ? "text-negative" : "text-accent"} />
-                  <span className="text-text-primary">{c.descricao}</span>
-                  {c.data_vencimento < hojeIso && <StatusChip label="Vencido" tone="negative" />}
-                  <span className="text-xs text-text-tertiary">
-                    {c.tipo === "pagar" ? "a pagar" : "a receber"} em {formatarDataIso(c.data_vencimento)}
-                  </span>
-                </div>
-                <span className="font-mono text-text-secondary">{formatBRL(c.valor)}</span>
-              </div>
-            ))}
-            {alertasErosaoMargem.map((a) => (
-              <Link
-                key={a.produtoId}
-                href="/produtos"
-                className="flex items-center justify-between text-sm border border-border rounded-md px-3 py-2 hover:bg-surface-2/50"
-              >
-                <div className="flex items-center gap-2">
-                  <TrendingDown size={14} className="text-negative" />
-                  <span className="text-text-primary">{a.produtoNome}</span>
-                  <span className="text-xs text-text-tertiary">
-                    custo subiu {a.aumentoPct.toFixed(0)}% ({formatBRL(a.custoPrecificado)} → {formatBRL(a.custoRecente)})
-                  </span>
-                </div>
-              </Link>
-            ))}
-            {alertasRupturaEstoque.map((a) => (
-              <Link
-                key={a.produtoId}
-                href="/estoque"
-                className="flex items-center justify-between text-sm border border-border rounded-md px-3 py-2 hover:bg-surface-2/50"
-              >
-                <div className="flex items-center gap-2">
-                  <PackageX size={14} className="text-negative" />
-                  <span className="text-text-primary">{a.produtoNome}</span>
-                  <span className="text-xs text-text-tertiary">
-                    estoque acaba em ~{Math.max(0, Math.round(a.diasRestantes))} dias ({a.estoqueAtual} un.)
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
+          <span className="inline-flex items-center gap-2 text-text-primary">
+            <AlertTriangle size={15} className={vencidos.length > 0 ? "text-negative" : "text-accent"} />
+            {vencidos.length > 0 && <strong className="text-negative">{vencidos.length} vencida(s)</strong>}
+            {vencidos.length > 0 && vencendo.length > 0 && " · "}
+            {vencendo.length > 0 && `${vencendo.length} vencendo em 7 dias`}
+          </span>
         )}
-      </Card>
+        <span className="ml-auto text-accent">Ver todos os alertas na Vixe ›</span>
+      </Link>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>

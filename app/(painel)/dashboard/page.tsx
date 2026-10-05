@@ -89,7 +89,7 @@ export default async function DashboardPage() {
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       supabase
         .from("produtos")
-        .select("id, sku, nome, estoque, estoque_minimo")
+        .select("id, sku, nome, estoque, estoque_minimo, ativo")
         .order("estoque_minimo", { ascending: false }),
       supabase
         .from("pedidos_compra")
@@ -156,7 +156,9 @@ export default async function DashboardPage() {
     precificacoesMes: precificacoesMesRes.count ?? 0,
   };
 
-  const produtosBaixoEstoque = (produtosRes.data ?? []).filter((p) => p.estoque <= p.estoque_minimo);
+  // Mesma regra do alerta de estoque mínimo (gatilho da 0034): produto ativo, com mínimo
+  // definido e no mínimo ou abaixo. Antes entrava produto inativo e mínimo 0 com estoque 0.
+  const produtosBaixoEstoque = (produtosRes.data ?? []).filter((p) => p.ativo !== false && p.estoque_minimo > 0 && p.estoque <= p.estoque_minimo);
 
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
   const pedidosPendentes = (pedidosRes.data ?? []).map((p) => ({

@@ -62,6 +62,7 @@ export default async function PainelLayout({ children }: { children: React.React
             nomeNegocio={perfilNegocioRes.data?.nome_negocio ?? null}
             alertas={alertasRes.data ?? []}
             mensagens={avisosWhatsapp?.mensagens ?? []}
+            verVixe={veMensagens}
             plano={plano}
             operador={acesso?.operador?.nome ?? null}
             exigeOperador={!!acesso?.exigeOperador}

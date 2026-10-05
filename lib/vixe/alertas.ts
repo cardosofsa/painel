@@ -138,12 +138,26 @@ function linkWhatsapp(numero: string | null | undefined, texto: string): string 
   return `${base}?text=${encodeURIComponent(texto)}`;
 }
 
+/** Conta a pagar que vence em até tantos dias entra como aviso (antes de virar atraso). */
+export const DIAS_AVISO_PAGAR = 7;
+
 export function alertasContasVencidas(itens: ContaVencida[], hojeIso: string, nomeNegocio: string | null): AlertaVixe[] {
   return itens
     .map((c) => ({ c, atraso: diasEntre(c.vencimento, hojeIso) }))
-    .filter(({ atraso }) => atraso > 0)
+    .filter(({ c, atraso }) => atraso > 0 || (c.tipo === "pagar" && atraso >= -DIAS_AVISO_PAGAR))
     .sort((x, y) => y.atraso - x.atraso)
     .map(({ c, atraso }) => {
+      if (atraso <= 0) {
+        const faltam = -atraso;
+        return {
+          id: `avencer-${c.id}`,
+          categoria: "financeiro" as const,
+          gravidade: faltam <= 2 ? ("media" as const) : ("baixa" as const),
+          titulo: `Conta a pagar ${faltam === 0 ? "vence hoje" : `vence em ${faltam} ${faltam === 1 ? "dia" : "dias"}`} · ${formatBRL(c.valor)}`,
+          detalhe: `${c.descricao}; vencimento ${formatarDataIso(c.vencimento)}.`,
+          acoes: [{ tipo: "link" as const, rotulo: "Registrar pagamento", href: "/financeiro?aba=a-pagar" }],
+        };
+      }
       const quando = `venceu há ${atraso} ${atraso === 1 ? "dia" : "dias"} (${formatarDataIso(c.vencimento)})`;
       if (c.tipo === "fiado") {
         return {

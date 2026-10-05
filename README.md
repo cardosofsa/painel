@@ -7,8 +7,9 @@ Uso pessoal, um usuário por conta, com isolamento de dados no banco.
 ## Stack
 
 - **Next.js 16** (App Router, Turbopack) + **React 19** + **TypeScript** (`strict`)
-- **Supabase** — Postgres, Auth e Storage. O app usa apenas a chave anônima; o isolamento
-  entre contas é feito por Row Level Security no banco.
+- **Supabase** — Postgres, Auth e Storage. Telas e ações usam a chave anônima; o isolamento
+  entre contas é feito por Row Level Security no banco. A service role key só é usada por
+  rotas de servidor sem usuário logado (cron, webhooks, vitrine pública).
 - **Tailwind CSS 4**, **Recharts** (gráficos), **sonner** (toasts), **lucide-react** (ícones)
 
 ## Como rodar
@@ -28,8 +29,15 @@ Variáveis de ambiente (em `.env.local`):
 | `NEXT_PUBLIC_SITE_URL` | Opcional em dev, **recomendada em produção**: base dos links enviados por e-mail |
 | `GEMINI_API_KEY` | Opcional. Liga a geração de texto por IA. **Sem prefixo `NEXT_PUBLIC_`** — ver [Geração por IA](#geração-por-ia) |
 | `GEMINI_MODEL` | Opcional. Padrão `gemini-3.5-flash-lite` |
+| `IA_CHAVE_COFRE` | Chave-mestra (32 bytes em base64) do cofre que guarda chaves de IA, frete e NF-e de cada conta |
+| `ACESSO_SEGREDO` | Opcional. Assina o cookie de acesso do middleware (sem ela, usa `IA_CHAVE_COFRE`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Só servidor. Cron, webhooks e vitrine pública (frete e pedido). Sem ela, esses recursos ficam desligados |
+| `CRON_SECRET` | Protege `/api/cron/shopee` (sincronização automática) |
+| `SHOPEE_PARTNER_ID`, `SHOPEE_PARTNER_KEY`, `SHOPEE_AMBIENTE`, `SHOPEE_HOST` | API da Shopee (ver `docs/shopee-api.md`) |
+| `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | API do Mercado Livre (ver `docs/mercadolivre-api.md`) |
 
-Não existe service role key no projeto, e não deve existir: tudo passa pelo RLS.
+A service role key ignora o RLS: só `lib/supabase/servico.ts` a lê, e só rotas sem usuário
+logado a usam, sempre filtrando `user_id` explícito. Tela e Server Action nunca.
 
 ## Autenticação
 
@@ -91,7 +99,7 @@ O código não alcança nada disto, e sem isto o fluxo falha em produção:
 ## Banco de dados
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql` → `0026_endurecimento_storage_vitrine_fks.sql`). **Elas são aplicadas
+(`0001_init.sql` → a mais recente; confira a pasta). **Elas são aplicadas
 manualmente**: abra o SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem
 numérica.
 
@@ -245,8 +253,9 @@ real: toda requisição já passava pelo proxy, que consulta a sessão antes de 
 
 O app é um Next.js comum; o banco continua sendo o Supabase que já existe.
 
-1. **Vercel** — importe o repositório e configure as duas variáveis de ambiente:
-   `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (as mesmas do `.env.local`).
+1. **Vercel** — importe o repositório e configure as variáveis de ambiente da tabela de
+   [Como rodar](#como-rodar). O mínimo é `NEXT_PUBLIC_SUPABASE_URL` e
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`; as demais ligam IA, marketplaces, cron e vitrine.
    A chave anônima é pública por natureza; quem protege os dados é o RLS.
 2. **Supabase → Authentication → URL Configuration** — ponha o domínio de produção em
    *Site URL* e em *Redirect URLs* (`https://SEU-DOMINIO/auth/callback`). Sem isso o link de

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, ShoppingCart, Check, ArrowRight, Package, MessageCircle, Send } from "lucide-react";
 import { IconeMarca } from "@/components/ui/IconeMarca";
@@ -28,7 +29,7 @@ export interface AlertaSino {
  * Também cada aviso de WhatsApp de Vixe → Mensagens vira uma notificação: enviar ou pular
  * grava em `mensagens_enviadas` (0061) e ele sai daqui e de lá.
  */
-export function AlertasSino({ alertas, mensagens = [] }: { alertas: AlertaSino[]; mensagens?: MensagemPendente[] }) {
+export function AlertasSino({ alertas, mensagens = [], verVixe = false }: { alertas: AlertaSino[]; mensagens?: MensagemPendente[]; verVixe?: boolean }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -202,6 +203,12 @@ export function AlertasSino({ alertas, mensagens = [] }: { alertas: AlertaSino[]
                 </li>
               ))}
             </ul>
+          )}
+          {/* Estoque, margem, preço, contas e crediário: a lista completa mora na Vixe. */}
+          {verVixe && (
+            <Link href="/vixe" onClick={() => setAberto(false)} className="block border-t border-border px-3 py-2 text-center text-xs text-accent hover:bg-surface-2">
+              Ver todos os alertas na Vixe ›
+            </Link>
           )}
         </div>
       )}

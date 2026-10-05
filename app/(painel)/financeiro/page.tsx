@@ -1,15 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
-import { calcularErosaoMargem, calcularPrevisaoRuptura } from "@/lib/alertas";
 import { hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
-
-interface CustoRecente {
-  produto_id: string;
-  produto_nome: string;
-  custo_compra: number;
-  custo_precificacao: number;
-}
 
 /** Formato cru do join com `vendas`, antes de virar `ContaPagarReceber`. */
 interface LinhaCpr {
@@ -88,10 +80,7 @@ export default async function FinanceiroPage() {
     cprRes,
     fluxoRes,
     despesasCatRes,
-    produtosRes,
-    custosRes,
     resumoRes,
-    saidasEstoqueRes,
     pagamentosRes,
     parcelasRecebidasRes,
   ] = await Promise.all([
@@ -116,20 +105,10 @@ export default async function FinanceiroPage() {
       .select("valor, categoria")
       .eq("tipo", "saida")
       .gte("data_movimentacao", isoDate(inicioMes)),
-    supabase.from("produtos").select("id, nome, estoque").eq("ativo", true),
-    // Antes eram duas varreduras totais aqui — `pedidos_compra_itens` e `precificacoes`
-    // inteiras — para montar em memória um mapa de ~50 entradas. A RPC faz o mesmo com
-    // `distinct on`, numa passada indexada.
-    supabase.rpc("custos_recentes_por_produto"),
     // Totais somados no banco. O card "Saldo Líquido Realizado" somava o array de 100
     // lançamentos que a tela recebia, então o número ficava errado a partir do 101º — e
     // `numeric` do Postgres é exato, sem o acúmulo de centavos do float do JavaScript.
     supabase.rpc("resumo_financeiro", { p_inicio: null, p_fim: null }),
-    supabase
-      .from("estoque_movimentacoes")
-      .select("produto_id, quantidade")
-      .eq("tipo", "saida")
-      .gte("data_movimentacao", isoDate(inicio30Dias)),
     // Histórico de pagamentos (0064) e parcelas de crediário recebidas: o que saiu e entrou, com data.
     supabase
       .from("pagamentos_conta")
@@ -156,10 +135,7 @@ export default async function FinanceiroPage() {
   for (const [nome, res] of [
     ["fluxo de caixa", fluxoRes],
     ["despesas por categoria", despesasCatRes],
-    ["produtos", produtosRes],
-    ["custos recentes", custosRes],
     ["resumo financeiro", resumoRes],
-    ["saídas de estoque", saidasEstoqueRes],
     ["histórico de pagamentos", pagamentosRes],
     ["parcelas recebidas", parcelasRecebidasRes],
   ] as const) {
@@ -266,23 +242,6 @@ export default async function FinanceiroPage() {
       })),
   ].sort((a, b) => b.data.localeCompare(a.data));
 
-  // Erosão de margem: cruza a compra recebida mais recente de cada produto com o custo da
-  // última precificação salva. A RPC já devolve os dois lados prontos, um registro por SKU.
-  const comprasRecentesPorProduto = new Map<string, { custo_unitario: number; produto_nome: string }>();
-  const precificacoesRecentesPorProduto = new Map<string, { custo: number }>();
-  for (const c of (custosRes.data ?? []) as CustoRecente[]) {
-    comprasRecentesPorProduto.set(c.produto_id, { custo_unitario: c.custo_compra, produto_nome: c.produto_nome });
-    precificacoesRecentesPorProduto.set(c.produto_id, { custo: c.custo_precificacao });
-  }
-
-  const alertasErosaoMargem = calcularErosaoMargem(precificacoesRecentesPorProduto, comprasRecentesPorProduto);
-
-  const saidasPorProduto = new Map<string, number>();
-  for (const s of saidasEstoqueRes.data ?? []) {
-    if (!s.produto_id) continue;
-    saidasPorProduto.set(s.produto_id, (saidasPorProduto.get(s.produto_id) ?? 0) + s.quantidade);
-  }
-  const alertasRupturaEstoque = calcularPrevisaoRuptura(produtosRes.data ?? [], saidasPorProduto);
 
   return (
     <FinanceiroClient
@@ -292,8 +251,6 @@ export default async function FinanceiroPage() {
       contasPagarReceber={contasPagarReceber}
       fluxoCaixaDiario={fluxoCaixaDiario}
       despesasPorCategoria={despesasPorCategoria}
-      alertasErosaoMargem={alertasErosaoMargem}
-      alertasRupturaEstoque={alertasRupturaEstoque}
       resumo={((resumoRes.data as ResumoFinanceiro[] | null)?.[0]) ?? RESUMO_VAZIO}
       historico={historico}
       historicoOk={!pagamentosRes.error}
