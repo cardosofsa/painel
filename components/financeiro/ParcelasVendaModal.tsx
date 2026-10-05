@@ -8,6 +8,7 @@ import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
 import { executarComToast } from "@/lib/acao-cliente";
 import { obterParcelasVenda, marcarParcelaPaga, type ParcelaVenda } from "@/app/(painel)/financeiro/actions";
 import type { Conta } from "@/app/(painel)/financeiro/FinanceiroClient";
+import { cobraEncargos, encargosAtraso, type RegraEncargos } from "@/lib/crediario";
 
 /**
  * Tabela de parcelas de uma venda fiado parcelada (migração 0030): parcela, valor, status,
@@ -20,7 +21,10 @@ export function ParcelasVendaModal({
   vendaNumero,
   contas,
   onClose,
+  regra = null,
 }: {
+  /** Multa e juros por atraso (0065): a parcela atrasada já sugere o valor atualizado. */
+  regra?: RegraEncargos | null;
   vendaId: string | null;
   vendaNumero: string | null;
   contas: Conta[];
@@ -45,7 +49,7 @@ export function ParcelasVendaModal({
 
   function abrirPagamento(p: ParcelaVenda) {
     setEditando(p);
-    setValorPago(p.valor);
+    setValorPago(encargosAtraso(p.valor, p.data_vencimento, hojeIsoLocal(), regra).total);
     setDataPagamento(hojeIsoLocal());
     setContaId(contas[0]?.id ?? null);
   }
@@ -128,6 +132,15 @@ export function ParcelasVendaModal({
                         />
                       </FormField>
                     </div>
+                    {(() => {
+                      const e = encargosAtraso(p.valor, p.data_vencimento, hoje, regra);
+                      if (!cobraEncargos(regra) || e.dias === 0) return null;
+                      return (
+                        <p className="text-xs text-text-secondary">
+                          {e.dias} dia(s) de atraso: {formatBRL(p.valor)} + multa {formatBRL(e.multa)} + juros {formatBRL(e.juros)} = <strong className="text-text-primary">{formatBRL(e.total)}</strong>. Mude o valor se for cobrar diferente; o que passar da parcela fica registrado como juros e multa.
+                        </p>
+                      );
+                    })()}
                     <FormField label="Conta que recebeu">
                       <select className={inputClass} value={contaId ?? ""} onChange={(e) => setContaId(e.target.value || null)}>
                         <option value="">Selecione…</option>

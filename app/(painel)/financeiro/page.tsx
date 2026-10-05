@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
 import { hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
+import { carregarCrediario } from "@/lib/crediario-servidor";
 
 /** Formato cru do join com `vendas`, antes de virar `ContaPagarReceber`. */
 interface LinhaCpr {
@@ -83,6 +84,7 @@ export default async function FinanceiroPage() {
     resumoRes,
     pagamentosRes,
     parcelasRecebidasRes,
+    crediario,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -121,6 +123,7 @@ export default async function FinanceiroPage() {
       .eq("status", "paga")
       .order("data_pagamento", { ascending: false })
       .limit(300),
+    carregarCrediario(supabase),
   ]);
 
   // Só as consultas ESSENCIAIS derrubam a tela. Antes eram 11 `throw`: uma falha em
@@ -254,6 +257,7 @@ export default async function FinanceiroPage() {
       resumo={((resumoRes.data as ResumoFinanceiro[] | null)?.[0]) ?? RESUMO_VAZIO}
       historico={historico}
       historicoOk={!pagamentosRes.error}
+      regraCrediario={crediario.regra}
     />
   );
 }

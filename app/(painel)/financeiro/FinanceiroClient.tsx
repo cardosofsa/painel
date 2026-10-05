@@ -23,7 +23,6 @@ import {
   criarDespesaFixa,
   retirarDespesaDaConta,
   desfazerRetiradaDespesa,
-  quitarContaPagarReceber,
   criarContaPagarReceber,
   type MovimentacaoInput,
   type DespesaFixaInput,
@@ -34,6 +33,8 @@ import { LimparDadosModal } from "@/components/financeiro/LimparDadosModal";
 import { NovaMovimentacaoModal, NovaDespesaFixaModal, NovaCprModal } from "@/components/financeiro/ModaisFinanceiro";
 import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
 import { HistoricoPagamentosModal } from "@/components/financeiro/HistoricoPagamentos";
+import { ReceberContaModal, type ContaParaReceber } from "@/components/financeiro/ReceberContaModal";
+import type { RegraEncargos } from "@/lib/crediario";
 import { diasAntes, restanteParcela, situacaoParcela, SITUACAO_PARCELA } from "@/lib/pagamentos";
 import type { AlvoPagamentos } from "./pagamentos-actions";
 import { Chip } from "@/components/ui/Chip";
@@ -126,7 +127,10 @@ export function FinanceiroClient({
   resumo,
   historico,
   historicoOk,
+  regraCrediario = null,
 }: {
+  /** Multa e juros do crediário (0065): a parcela atrasada já sugere o valor atualizado. */
+  regraCrediario?: RegraEncargos | null;
   /** Pagamentos feitos e recebimentos de crediário, mais recente primeiro. */
   historico: ItemHistorico[];
   /** false = 0064 ausente (pagamentos a fornecedores ainda sem histórico). */
@@ -150,6 +154,7 @@ export function FinanceiroClient({
   const [incluirFluxoNoLucro, setIncluirFluxoNoLucro] = useState(false);
   const [filtroContaId, setFiltroContaId] = useState<string | null>(null);
   const [parcelasAbertas, setParcelasAbertas] = useState<{ vendaId: string; numero: string } | null>(null);
+  const [recebendo, setRecebendo] = useState<ContaParaReceber | null>(null);
   const [pagamentosAbertos, setPagamentosAbertos] = useState<{ alvo: AlvoPagamentos; titulo: string } | null>(null);
   const [periodoHistorico, setPeriodoHistorico] = useState<(typeof PERIODOS_HISTORICO)[number]["id"]>("30");
   const [tipoHistorico, setTipoHistorico] = useState<(typeof TIPOS_HISTORICO)[number]["id"]>("todos");
@@ -267,18 +272,6 @@ export function FinanceiroClient({
   const movimentacoesFiltradas = filtroContaId ? movimentacoes.filter((m) => m.conta_id === filtroContaId) : movimentacoes;
   const entradasContaFiltrada = movimentacoesFiltradas.filter((m) => m.valor > 0).reduce((a, m) => a + m.valor, 0);
   const saidasContaFiltrada = movimentacoesFiltradas.filter((m) => m.valor < 0).reduce((a, m) => a + m.valor, 0);
-
-  async function quitar(c: ContaPagarReceber) {
-    const ok = await confirm({
-      title: c.tipo === "pagar" ? "Marcar como pago?" : "Marcar como recebido?",
-      message: `"${c.descricao}" (${formatBRL(c.valor)}) terá o saldo da conta atualizado imediatamente.`,
-      confirmLabel: "Confirmar",
-    });
-    if (!ok) return;
-    startTransition(async () => {
-      await executarComToast(quitarContaPagarReceber(c.id), { sucesso: "Status atualizado", erro: "Erro ao atualizar status" });
-    });
-  }
 
   function adicionarMovimentacao(dados: MovimentacaoInput) {
     startTransition(async () => {
@@ -571,7 +564,15 @@ export function FinanceiroClient({
                           />
                         ) : (
                           c.status === "pendente" && (
-                            <RowMenu actions={[{ label: "Marcar recebido", onClick: () => quitar(c) }]} />
+                            <RowMenu
+                              actions={[
+                                {
+                                  label: "Receber",
+                                  onClick: () =>
+                                    setRecebendo({ id: c.id, descricao: c.descricao, valor: c.valor, valor_pago: c.valor_pago, data_vencimento: c.data_vencimento, conta_id: c.conta_id, crediario: c.venda_id !== null }),
+                                },
+                              ]}
+                            />
                           )
                         )}
                       </Td>
@@ -824,8 +825,10 @@ export function FinanceiroClient({
         vendaId={parcelasAbertas?.vendaId ?? null}
         vendaNumero={parcelasAbertas?.numero ?? null}
         contas={contas}
+        regra={regraCrediario}
         onClose={() => setParcelasAbertas(null)}
       />
+      <ReceberContaModal key={`receber-${recebendo?.id ?? "fechado"}`} conta={recebendo} contas={contas} regra={regraCrediario} onClose={() => setRecebendo(null)} />
       <HistoricoPagamentosModal aberto={pagamentosAbertos} contas={contas} onClose={() => setPagamentosAbertos(null)} />
       {ConfirmDialog}
     </>

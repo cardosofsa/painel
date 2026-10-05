@@ -11,6 +11,7 @@ import type { DadosPlano } from "@/components/configuracoes/AbaPlano";
 import { FISCAL_PADRAO, type FiscalConfigTela } from "@/components/configuracoes/AbaFiscal";
 import type { DadosEquipe, OperadorTela } from "@/components/configuracoes/AbaEquipe";
 import type { Plano, ResumoAssinatura } from "@/lib/planos";
+import type { CrediarioConfig } from "./actions";
 import {
   ConfiguracoesClient,
   type Categoria,
@@ -151,6 +152,20 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           resumo: assinaturaRes.data as ResumoAssinatura,
         };
 
+  // Pix e encargos do crediário (0065). Consulta à parte: sem a migração as colunas não
+  // existem e o perfil inteiro não pode cair junto — o card explica.
+  const crediarioRes = await supabase.from("perfil_negocio").select("pix_chave, pix_nome, pix_cidade, multa_atraso_pct, juros_mes_pct").maybeSingle();
+  const cr = crediarioRes.data as Record<string, unknown> | null;
+  const crediario: CrediarioConfig | null = crediarioRes.error
+    ? null
+    : {
+        pix_chave: (cr?.pix_chave as string | null) ?? null,
+        pix_nome: (cr?.pix_nome as string | null) ?? null,
+        pix_cidade: (cr?.pix_cidade as string | null) ?? null,
+        multa_atraso_pct: Number(cr?.multa_atraso_pct ?? 0),
+        juros_mes_pct: Number(cr?.juros_mes_pct ?? 0),
+      };
+
   // Equipe (0063): operadores sem o hash do PIN (a coluna nem é legível pela API).
   const [opsRes, negocioRes] = await Promise.all([
     supabase.from("operadores").select("id, nome, abas, comissao_pct, comissao_base, ativo").order("nome"),
@@ -210,6 +225,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       plano={plano}
       fiscal={fiscal}
       equipe={equipe}
+      crediario={crediario}
       marketplace={{
         conexoes: conexoesRes.error ? [] : resumoConexoes(conexoesRes.data),
         faltando: [...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])],

@@ -34,6 +34,19 @@ describe("WhatsApp semi-automático", () => {
     expect(r.find((m) => m.chave === "fiado:f1:vencido")!.texto).toContain("parcela 1/2");
   });
 
+  it("cobrança atrasada leva valor com multa/juros e o Pix copia-e-cola", () => {
+    const r = mensagensPendentes({ ...base, crediario: { pix: { chave: "loja@x.com", nome: "Loja", cidade: "Feira" }, regra: { multaPct: 2, jurosMesPct: 1 } } }, new Set());
+    const atrasada = r.find((m) => m.chave === "fiado:f1:vencido")!.texto;
+    // 25 + 2% (0,50) + 4 dias de 1% a.m. (0,03) = 25,53
+    expect(atrasada).toMatch(/hoje fica R\$\s25,53/);
+    expect(atrasada).toContain("Pix copia e cola:\n000201");
+    expect(atrasada).toContain("540525.53");
+    // A que ainda vai vencer vai com Pix do valor normal, sem encargo.
+    const vence = r.find((m) => m.chave === "fiado:f3:vence")!.texto;
+    expect(vence).not.toContain("multa");
+    expect(vence).toContain("540510.00");
+  });
+
   it("resumo do dia", () => {
     const t = textoResumoDia({ data: "2026-10-02", vendas: 3, faturamento: 150, lucro: 45, parados: [{ etapa: "Para Enviar", n: 2 }, { etapa: "Para Imprimir", n: 0 }], acabando: ["Caneca"], aReceberHoje: 25 }, "Loja");
     expect(t).toContain("Vendas: 3");

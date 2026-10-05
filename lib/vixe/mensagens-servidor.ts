@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hojeIsoLocal } from "@/lib/format";
 import { ROTULO_ETAPA, type Etapa } from "@/lib/pedidos-central";
+import { crediarioDoPerfil } from "@/lib/crediario-servidor";
 import { mensagensPendentes, type MensagemPendente, type ResumoDia } from "@/lib/whatsapp";
 
 /** Dados de Vixe → Mensagens (11.6): o que avisar aos clientes e o resumo do dia. SERVIDOR. */
@@ -31,8 +32,9 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
   const limiteFiado = new Date(agora);
   limiteFiado.setDate(limiteFiado.getDate() + 2);
 
-  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes] = await Promise.all([
-    supabase.from("perfil_negocio").select("nome_negocio, whatsapp").maybeSingle(),
+  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes, unicasRes] = await Promise.all([
+    // `*`: Pix e multa/juros (0065) entram na cobrança quando existem.
+    supabase.from("perfil_negocio").select("*").maybeSingle(),
     supabase.from("pedidos_vitrine").select("id, numero, cliente_nome, cliente_whatsapp, total, status, criado_em, venda_id").gte("criado_em", desde.toISOString()).limit(500),
     supabase.from("vendas").select("*, clientes(nome, whatsapp)").gte("data_venda", desde.toISOString()).order("data_venda", { ascending: false }).limit(1000),
     supabase
@@ -42,18 +44,40 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
       .lte("data_vencimento", limiteFiado.toISOString().slice(0, 10))
       .limit(500),
     supabase.from("mensagens_enviadas").select("chave").gte("enviada_em", new Date(agora.getTime() - 60 * 86_400_000).toISOString()),
+    // Crediário de parcela única não tem `venda_parcelas`: é a própria conta a receber.
+    // `*`: valor_pago (recebido em parte) só a partir da 0064.
+    supabase
+      .from("contas_a_pagar_receber")
+      .select("*, vendas!inner(numero, status, total_parcelas_fiado, clientes(nome, whatsapp))")
+      .eq("tipo", "receber")
+      .eq("status", "pendente")
+      .not("referencia_venda_id", "is", null)
+      .lte("data_vencimento", limiteFiado.toISOString().slice(0, 10))
+      .limit(500),
   ]);
 
   const loja = (perfilRes.data?.nome_negocio as string | null) || "nossa loja";
   const pedidos = (pedidosRes.data ?? []) as PedidoBruto[];
   const doCatalogo = new Set(pedidos.map((p) => p.venda_id).filter((v): v is string => !!v));
   const vendas = (vendasRes.data ?? []) as VendaBruta[];
-  const parcelas = ((parcelasRes.data ?? []) as unknown as ParcelaBruta[]).filter((p) => p.vendas && p.vendas.status !== "cancelada");
+  type UnicaBruta = { id: string; valor: number; valor_pago?: number | null; data_vencimento: string; vendas: { numero: string; status: string; total_parcelas_fiado: number | null; clientes: { nome: string; whatsapp: string | null } | null } | null };
+  const unicas: ParcelaBruta[] = ((unicasRes.data ?? []) as unknown as UnicaBruta[])
+    .filter((c) => c.vendas && (c.vendas.total_parcelas_fiado ?? 1) <= 1)
+    .map((c) => ({
+      id: c.id,
+      numero: 1,
+      total_parcelas: 1,
+      valor: Number(c.valor) - Number(c.valor_pago ?? 0),
+      data_vencimento: c.data_vencimento,
+      vendas: c.vendas ? { numero: c.vendas.numero, status: c.vendas.status, clientes: c.vendas.clientes } : null,
+    }));
+  const parcelas = [...((parcelasRes.data ?? []) as unknown as ParcelaBruta[]), ...unicas].filter((p) => p.vendas && p.vendas.status !== "cancelada" && p.valor > 0);
 
   const mensagens = mensagensPendentes(
     {
       loja,
       hoje,
+      crediario: crediarioDoPerfil(perfilRes.data as Record<string, unknown> | null),
       pedidosCatalogo: pedidos.map((p) => ({ ...p, total: Number(p.total) })),
       vendas: vendas.map((v) => ({
         id: v.id,

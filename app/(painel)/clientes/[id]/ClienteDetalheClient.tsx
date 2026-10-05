@@ -21,6 +21,7 @@ import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
 import type { Conta } from "@/app/(painel)/financeiro/FinanceiroClient";
 import { obterParcelasVenda } from "@/app/(painel)/financeiro/actions";
 import { useResumoFiadoImagem } from "@/components/clientes/ResumoFiadoImagem";
+import type { RegraEncargos } from "@/lib/crediario";
 
 export interface ClienteDetalhe {
   id: string;
@@ -89,6 +90,7 @@ export function ClienteDetalheClient({
   cliente,
   vendas,
   contas,
+  regraCrediario = null,
   fiadoEmUso,
   nomeNegocio,
   logoUrl,
@@ -97,6 +99,8 @@ export function ClienteDetalheClient({
   cliente: ClienteDetalhe;
   vendas: VendaCliente[];
   contas: Conta[];
+  /** Multa e juros do crediário (0065). */
+  regraCrediario?: RegraEncargos | null;
   fiadoEmUso: number;
   nomeNegocio: string | null;
   logoUrl: string | null;
@@ -460,6 +464,8 @@ export function ClienteDetalheClient({
       </Card>
 
       <ParcelasVendaModal
+        key={`parcelas-${parcelasVenda?.id ?? "fechado"}`}
+        regra={regraCrediario}
         vendaId={parcelasVenda?.id ?? null}
         vendaNumero={parcelasVenda?.numero ?? null}
         contas={contas}

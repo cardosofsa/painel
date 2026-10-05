@@ -76,3 +76,28 @@ export async function obterPagamentos(alvo: AlvoPagamentos) {
     }));
   });
 }
+
+const recebimentoSchema = z.object({
+  id: z.string().uuid("Conta inválida"),
+  valor: z.number().finite("Valor inválido").positive("Informe o valor recebido").max(100_000_000),
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
+  conta_id: z.string().uuid("Escolha a conta"),
+  quitar: z.boolean(),
+});
+
+/**
+ * Recebe uma conta a receber (crediário de parcela única ou avulsa) com valor livre (0065):
+ * menos que o devido deixa o resto em aberto; o que passar vira "Juros e multa de crediário".
+ */
+export async function receberConta(dados: { id: string; valor: number; data: string; conta_id: string; quitar: boolean }) {
+  return comResultado(async () => {
+    const v = validar(recebimentoSchema, dados);
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("receber_conta", { p_id: v.id, p_valor: v.valor, p_data: v.data, p_conta_id: v.conta_id, p_quitar: v.quitar });
+    if (error?.code === "PGRST202") throw new Error("Receber com valor livre precisa da migração 0065. Aplique no Supabase e recarregue.");
+    if (error) lancarErroSupabase(error);
+    revalidateTudo();
+    revalidatePath("/clientes");
+    return data as { valor_pago: number; quitada: boolean; restante: number };
+  });
+}

@@ -603,6 +603,15 @@ export const dadosEmpresaSchema = z.object({
   uf: z.string().trim().max(2).nullable(),
 });
 
+/** Pix e encargos do crediário (0065). Multa limitada a 2% pelo CDC; o banco também confere. */
+export const crediarioConfigSchema = z.object({
+  pix_chave: z.string().trim().max(77, "Chave Pix longa demais").nullable(),
+  pix_nome: z.string().trim().max(25, "O nome no Pix vai até 25 letras").nullable(),
+  pix_cidade: z.string().trim().max(15, "A cidade no Pix vai até 15 letras").nullable(),
+  multa_atraso_pct: z.number().finite().min(0).max(2, "A multa por atraso vai até 2% (Código de Defesa do Consumidor)"),
+  juros_mes_pct: z.number().finite().min(0).max(10, "Juros de até 10% ao mês"),
+});
+
 /** Chave de IA que o usuário cola: sem espaço/quebra de linha (sinal de cópia errada). */
 export const iaChaveSchema = z.object({
   provedor: z.enum(["gemini", "openai", "anthropic", "openrouter"]),

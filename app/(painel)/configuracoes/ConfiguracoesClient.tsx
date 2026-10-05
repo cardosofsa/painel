@@ -30,6 +30,7 @@ import {
   type ArmazemInput,
   type FormaPagamentoInput,
   type DadosEmpresaInput,
+  type CrediarioConfig,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { AbaConta } from "@/components/configuracoes/AbaConta";
@@ -123,7 +124,10 @@ export function ConfiguracoesClient({
   fiscal,
   equipe,
   abaUrl,
+  crediario = null,
 }: {
+  /** Pix e encargos do crediário (0065); null = migração ausente. */
+  crediario?: CrediarioConfig | null;
   /** `?aba=` da URL: aba aberta ao entrar. */
   abaUrl?: string;
   /** 0063; null = migração ausente. */
@@ -421,7 +425,7 @@ export function ConfiguracoesClient({
       {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} teste={teste} />}
       {aba === "Dados" && <AbaDados armazens={armazens.map((a) => ({ id: a.id, nome: a.nome }))} />}
       {aba === "Conta" && (
-        <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} />
+        <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} crediario={crediario} />
       )}
 
       </TabPanel>

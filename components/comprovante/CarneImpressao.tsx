@@ -1,11 +1,12 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatBRL, formatarDataIso } from "@/lib/format";
 import type { DadosComprovante } from "@/lib/comprovante";
+import { gerarPixCopiaECola } from "@/lib/pix";
 
 /**
  * Carnê do crediário: uma lâmina por parcela, com canhoto (fica com a loja) e via do
@@ -26,10 +27,40 @@ function Campo({ titulo, children, grande = false }: { titulo: string; children:
   );
 }
 
-export function CarneImpressao({ dados }: { dados: DadosComprovante }) {
+/** Pix copia-e-cola de cada parcela em aberto (null = sem chave Pix ou parcela paga). */
+function pixDasParcelas(dados: DadosComprovante, pix: { chave: string; nome: string; cidade: string } | null): (string | null)[] {
+  return (dados.parcelas ?? []).map((p) => {
+    if (!pix || p.status === "paga") return null;
+    try {
+      return gerarPixCopiaECola({ ...pix, valor: p.valor, txid: `${dados.numero}P${p.numero}` });
+    } catch {
+      return null;
+    }
+  });
+}
+
+export function CarneImpressao({ dados, pix = null }: { dados: DadosComprovante; pix?: { chave: string; nome: string; cidade: string } | null }) {
   const parcelas = dados.parcelas ?? [];
   const loja = dados.empresa?.nome ?? "Loja";
   const cliente = dados.cliente?.nome ?? dados.clienteNome ?? "Cliente";
+  const codigos = useMemo(() => pixDasParcelas(dados, pix), [dados, pix]);
+  const [qrs, setQrs] = useState<Record<string, string>>({});
+
+  // QR gerado no navegador (a lib só carrega aqui). data: URL — a CSP já libera imagem data:.
+  useEffect(() => {
+    const unicos = [...new Set(codigos.filter((c): c is string => !!c))];
+    if (unicos.length === 0) return;
+    let ativo = true;
+    import("qrcode")
+      .then((m) => Promise.all(unicos.map(async (c) => [c, await m.toDataURL(c, { width: 220, margin: 1, errorCorrectionLevel: "M" })] as const)))
+      .then((pares) => {
+        if (ativo) setQrs(Object.fromEntries(pares));
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [codigos]);
 
   return (
     <div>
@@ -47,7 +78,7 @@ export function CarneImpressao({ dados }: { dados: DadosComprovante }) {
         <p className="text-sm text-text-secondary">Esta venda não tem parcelas de crediário.</p>
       ) : (
         <div style={{ background: "#fff", color: COR.texto, maxWidth: 760, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
-          {parcelas.map((p) => {
+          {parcelas.map((p, i) => {
             const paga = p.status === "paga";
             return (
               <div
@@ -90,6 +121,18 @@ export function CarneImpressao({ dados }: { dados: DadosComprovante }) {
                       <span style={{ color: paga ? COR.pago : COR.texto }}>{paga ? "Paga" : "A pagar"}</span>
                     </Campo>
                   </div>
+                  {codigos[i] && (
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: `1px solid ${COR.linha}`, paddingTop: 8 }}>
+                      {qrs[codigos[i] as string] && (
+                        // eslint-disable-next-line @next/next/no-img-element -- QR em data: URL, gerado aqui; next/image não ajuda
+                        <img src={qrs[codigos[i] as string]} alt={`QR Code Pix da parcela ${p.numero}`} width={84} height={84} style={{ flexShrink: 0 }} />
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={rotulo}>Pague com Pix · copia e cola</div>
+                        <div style={{ fontSize: 8, fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.3 }}>{codigos[i]}</div>
+                      </div>
+                    </div>
+                  )}
                   {(dados.empresa?.telefone || dados.empresa?.enderecoLinha) && (
                     <div style={{ fontSize: 10, color: COR.suave }}>{[dados.empresa?.telefone, dados.empresa?.enderecoLinha].filter(Boolean).join(" · ")}</div>
                   )}

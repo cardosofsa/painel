@@ -14,6 +14,7 @@ import {
   formaPagamentoSchema,
   perfilNegocioSchema,
   dadosEmpresaSchema,
+  crediarioConfigSchema,
   pinAdminSchema,
   categoriaSchema,
 } from "@/lib/validacao";
@@ -407,5 +408,41 @@ export async function salvarDadosEmpresa(dados: DadosEmpresaInput) {
     revalidatePath("/vendas");
     revalidatePath("/pdv");
     revalidatePath("/clientes");
+  });
+}
+
+// ---------- Pix e encargos do crediário (0065) ----------
+export interface CrediarioConfig {
+  pix_chave: string | null;
+  pix_nome: string | null;
+  pix_cidade: string | null;
+  multa_atraso_pct: number;
+  juros_mes_pct: number;
+}
+
+export async function salvarCrediario(dados: CrediarioConfig) {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Sessão expirada, faça login novamente");
+    const v = validar(crediarioConfigSchema, dados);
+    // Só estas colunas: o resto do perfil não é tocado.
+    const { error } = await supabase.from("perfil_negocio").upsert({
+      user_id: user.id,
+      pix_chave: v.pix_chave || null,
+      pix_nome: v.pix_nome || null,
+      pix_cidade: v.pix_cidade || null,
+      multa_atraso_pct: v.multa_atraso_pct,
+      juros_mes_pct: v.juros_mes_pct,
+      atualizado_em: new Date().toISOString(),
+    });
+    if (error?.code === "PGRST204" || error?.code === "42703") throw new Error("Pix e encargos precisam da migração 0065. Aplique no Supabase e recarregue.");
+    if (error) lancarErroSupabase(error);
+    revalidatePath(PATH);
+    revalidatePath("/vendas");
+    revalidatePath("/clientes");
+    revalidatePath("/financeiro");
   });
 }
