@@ -820,3 +820,33 @@ export const mensagemEnviadaSchema = z.object({
   pulada: z.boolean().optional(),
 });
 export type MensagemEnviadaInput = z.infer<typeof mensagemEnviadaSchema>;
+
+// ---------- Raio-X (0071) ----------
+export const precoPraticadoSchema = z.object({
+  chave: z.string().trim().min(1).max(300),
+  produto_id: z.string().uuid().nullable(),
+  loja_id: z.string().uuid().nullable(),
+  preco: z.number({ message: "Informe o preço" }).positive("O preço precisa ser maior que zero").max(999999),
+  observacao: z.string().trim().max(200).nullish(),
+});
+export type PrecoPraticadoInput = z.infer<typeof precoPraticadoSchema>;
+
+// ---------- Estúdio de IA (0072) ----------
+export const imagemIASchema = z.object({
+  produtoId: z.string().uuid(),
+  tipo: z.enum(["fundo_branco", "ambiente", "capa_selo", "variacao_cor", "medidas", "livre"]),
+  extra: z.string().trim().max(160).nullish(),
+  fotoUrl: z.string().url().max(1000).nullish(),
+});
+export type ImagemIAInput = z.infer<typeof imagemIASchema>;
+
+// ---------- Inventário (0074) ----------
+export const inventarioSchema = z.object({
+  armazemId: z.string().uuid().nullable(),
+  itens: z
+    .array(z.object({ produto_id: z.string().uuid(), contado: z.number().int("Contagem em unidades inteiras").min(0).max(1_000_000) }))
+    .min(1, "Conte pelo menos um produto antes de aplicar.")
+    .max(5000, "Inventário grande demais: aplique em partes de até 5.000 produtos."),
+  observacao: z.string().trim().max(300).nullish(),
+});
+export type InventarioInput = z.infer<typeof inventarioSchema>;

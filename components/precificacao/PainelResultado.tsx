@@ -117,7 +117,7 @@ export function PainelResultado({
             </span>
           </div>
           <div className="flex justify-between text-text-tertiary text-xs">
-            <span>Margem sobre custo</span>
+            <span>Markup sobre o custo</span>
             <span className="font-mono">{(resultado.markupSobreCustoPct * 100).toFixed(1)}%</span>
           </div>
         </div>

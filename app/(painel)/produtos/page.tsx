@@ -4,6 +4,8 @@ import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient"
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Produtos" };
+// O Estúdio de IA (gerar imagem) roda numa Server Action desta página e leva 15–40 s.
+export const maxDuration = 60;
 
 export default async function ProdutosPage({ searchParams }: { searchParams: Promise<{ busca?: string }> }) {
   const { busca } = await searchParams;

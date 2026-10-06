@@ -15,6 +15,8 @@ export interface Plano {
   limite_lojas: number | null;
   limite_usuarios: number | null;
   limite_ia_mes: number | null;
+  /** Imagens com IA por mês (0072). Ausente antes da migração. */
+  limite_imagens_mes?: number | null;
   ativo: boolean;
   ordem: number;
 }
@@ -27,7 +29,8 @@ export interface ResumoAssinatura {
   periodo_fim: string | null;
   plano_solicitado: string | null;
   solicitado_em: string | null;
-  uso: { produtos: number; lojas: number; ia_mes: number };
+  /** `usuarios` e `imagens_mes` chegam na 0073; ausentes antes dela. */
+  uso: { produtos: number; lojas: number; ia_mes: number; usuarios?: number; imagens_mes?: number };
 }
 
 export const ROTULO_STATUS_ASSINATURA: Record<StatusAssinatura, string> = {
@@ -41,13 +44,20 @@ const data = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { timeZo
 const dias = (iso: string, agora: Date) => Math.ceil((new Date(iso).getTime() - agora.getTime()) / 86_400_000);
 
 /** Frase da situação (o que a pessoa precisa saber em uma linha). */
-export function situacaoAssinatura(r: ResumoAssinatura, planos: Pick<Plano, "id" | "nome">[], agora = new Date()): { texto: string; tom: "positive" | "negative" | "neutral" } {
+export function situacaoAssinatura(
+  r: ResumoAssinatura,
+  planos: Pick<Plano, "id" | "nome">[],
+  agora = new Date(),
+): { texto: string; tom: "positive" | "negative" | "neutral" } {
   const nome = (id: string) => planos.find((p) => p.id === id)?.nome ?? id;
   const valendoOutro = r.plano_efetivo !== r.plano_id;
   if (r.status === "teste") {
     if (r.teste_ate && !valendoOutro) {
       const d = dias(r.teste_ate, agora);
-      return { texto: `Teste grátis do ${nome(r.plano_id)}: ${d <= 1 ? "termina hoje" : `${d} dias restantes (até ${data(r.teste_ate)})`}.`, tom: d <= 3 ? "negative" : "positive" };
+      return {
+        texto: `Teste grátis do ${nome(r.plano_id)}: ${d <= 1 ? "termina hoje" : `${d} dias restantes (até ${data(r.teste_ate)})`}.`,
+        tom: d <= 3 ? "negative" : "positive",
+      };
     }
     return { texto: `O teste terminou. Valendo o plano ${nome(r.plano_efetivo)} até você assinar.`, tom: "negative" };
   }
@@ -94,5 +104,7 @@ export function estourosNoPlano(uso: ResumoAssinatura["uso"], p: Plano): string[
   const s: string[] = [];
   if (p.limite_produtos !== null && uso.produtos > p.limite_produtos) s.push(`${uso.produtos} produtos (o plano permite ${p.limite_produtos})`);
   if (p.limite_lojas !== null && uso.lojas > p.limite_lojas) s.push(`${uso.lojas} lojas conectadas (o plano permite ${p.limite_lojas})`);
+  if (p.limite_usuarios !== null && uso.usuarios !== undefined && uso.usuarios > p.limite_usuarios)
+    s.push(`${uso.usuarios} usuários ativos (o plano permite ${p.limite_usuarios})`);
   return s;
 }

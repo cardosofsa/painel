@@ -252,9 +252,10 @@ interface ItemML {
   id: string;
   title?: string;
   available_quantity?: number;
+  price?: number | null;
   seller_custom_field?: string | null;
   attributes?: { id?: string; value_name?: string | null }[];
-  variations?: { id: number; available_quantity?: number; seller_custom_field?: string | null; attributes?: { id?: string; value_name?: string | null }[]; attribute_combinations?: { value_name?: string }[] }[];
+  variations?: { id: number; available_quantity?: number; price?: number | null; seller_custom_field?: string | null; attributes?: { id?: string; value_name?: string | null }[]; attribute_combinations?: { value_name?: string }[] }[];
 }
 
 const skuDe = (x: { seller_custom_field?: string | null; attributes?: { id?: string; value_name?: string | null }[] }) =>
@@ -265,10 +266,11 @@ export function anunciosDoItemML(item: ItemML): AnuncioShopee[] {
   const itemId = idNumericoML(item.id);
   const nome = item.title?.trim() || item.id;
   const skuPai = skuDe(item);
-  if (!item.variations?.length) return [{ itemId, modelId: 0, sku: skuPai, skuPrincipal: skuPai, nome, estoque: Math.max(0, item.available_quantity ?? 0) }];
+  const preco = (v?: number | null) => (typeof v === "number" && v > 0 ? Math.round(v * 100) / 100 : null);
+  if (!item.variations?.length) return [{ itemId, modelId: 0, sku: skuPai, skuPrincipal: skuPai, nome, estoque: Math.max(0, item.available_quantity ?? 0), preco: preco(item.price) }];
   return item.variations.map((v) => {
     const rotulo = (v.attribute_combinations ?? []).map((a) => a.value_name).filter(Boolean).join(" · ");
-    return { itemId, modelId: v.id, sku: skuDe(v), skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, estoque: Math.max(0, v.available_quantity ?? 0) };
+    return { itemId, modelId: v.id, sku: skuDe(v), skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, estoque: Math.max(0, v.available_quantity ?? 0), preco: preco(v.price ?? item.price) };
   });
 }
 
@@ -281,7 +283,7 @@ export async function buscarAnunciosML(tokenAcesso: string, sellerId: string): P
   }
   const anuncios: AnuncioShopee[] = [];
   for (let i = 0; i < ids.length; i += 20) {
-    const r = (await chamar(tokenAcesso, `/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title,available_quantity,seller_custom_field,attributes,variations`)) as { code?: number; body?: ItemML }[];
+    const r = (await chamar(tokenAcesso, `/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title,price,available_quantity,seller_custom_field,attributes,variations`)) as { code?: number; body?: ItemML }[];
     for (const x of r) if (x.code === 200 && x.body) anuncios.push(...anunciosDoItemML(x.body));
   }
   return anuncios;

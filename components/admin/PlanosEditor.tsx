@@ -58,11 +58,12 @@ function LinhaPlano({ inicial }: { inicial: Plano }) {
           <input type="checkbox" checked={p.ativo} onChange={(e) => setP((x) => ({ ...x, ativo: e.target.checked }))} /> Ativo
         </label>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {campo("limite_produtos", "Produtos")}
         {campo("limite_lojas", "Lojas API")}
         {campo("limite_usuarios", "Usuários")}
         {campo("limite_ia_mes", "IA/mês")}
+        {p.limite_imagens_mes !== undefined && campo("limite_imagens_mes", "Imagens IA/mês")}
       </div>
       <div className="flex items-center gap-2">
         <input className={`${inputClass} h-8 flex-1`} maxLength={300} value={p.descricao ?? ""} onChange={(e) => setP((x) => ({ ...x, descricao: e.target.value || null }))} placeholder="Descrição curta" />

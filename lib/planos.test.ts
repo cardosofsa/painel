@@ -51,5 +51,7 @@ describe("limites", () => {
   it("avisa o que estoura ao trocar para um plano menor", () => {
     const gratis: Plano = { id: "gratis", nome: "Grátis", descricao: null, preco_mensal: 0, limite_produtos: 5, limite_lojas: 0, limite_usuarios: 1, limite_ia_mes: 20, ativo: true, ordem: 1 };
     expect(estourosNoPlano(base.uso, gratis)).toEqual(["10 produtos (o plano permite 5)", "1 lojas conectadas (o plano permite 0)"]);
+    expect(estourosNoPlano({ ...base.uso, usuarios: 3 }, gratis)).toContain("3 usuários ativos (o plano permite 1)");
+    expect(estourosNoPlano({ ...base.uso, usuarios: 1 }, gratis)).toHaveLength(2);
   });
 });
