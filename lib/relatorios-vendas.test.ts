@@ -54,12 +54,21 @@ describe("relatórios de vendas", () => {
 });
 
 describe("seriePorHora", () => {
-  it("agrupa o dia nas 24 horas locais e ignora outros dias", () => {
-    const v = (data: Date, total: number) => ({ id: String(total), data: data.toISOString(), origem: "PDV", uf: null, total, custo: 0, lucro: 0, taxas: 0, itens: [] });
-    const s = seriePorHora([v(new Date(2026, 9, 1, 9, 10), 10), v(new Date(2026, 9, 1, 9, 50), 5), v(new Date(2026, 9, 1, 23, 59), 7), v(new Date(2026, 9, 2, 0, 1), 99)], "2026-10-01");
+  it("agrupa o dia nas 24 horas de Brasília e ignora outros dias", () => {
+    const v = (data: string, total: number) => ({ id: String(total), data: new Date(`${data}-03:00`).toISOString(), origem: "PDV", uf: null, total, custo: 0, lucro: 0, taxas: 0, itens: [] });
+    const s = seriePorHora([v("2026-10-01T09:10:00", 10), v("2026-10-01T09:50:00", 5), v("2026-10-01T23:59:00", 7), v("2026-10-02T00:01:00", 99)], "2026-10-01");
     expect(s).toHaveLength(24);
     expect(s[9]).toEqual({ hora: 9, valor: 15, pedidos: 2 });
     expect(s[23]).toEqual({ hora: 23, valor: 7, pedidos: 1 });
     expect(s.reduce((a, h) => a + h.pedidos, 0)).toBe(3);
+  });
+});
+
+describe("seriePorHora em Brasília", () => {
+  it("venda às 23h de Brasília entra no dia e na hora de Brasília", () => {
+    const venda = { data: "2026-10-06T02:30:00Z", total: 10 } as unknown as Parameters<typeof seriePorHora>[0][number];
+    const s = seriePorHora([venda], "2026-10-05");
+    expect(s[23]).toMatchObject({ valor: 10, pedidos: 1 });
+    expect(seriePorHora([venda], "2026-10-06").every((h) => h.pedidos === 0)).toBe(true);
   });
 });

@@ -7,6 +7,7 @@
 import { formatBRL } from "./format";
 import { encargosAtraso, type RegraEncargos } from "./crediario";
 import { gerarPixCopiaECola } from "./pix";
+import { aplicarModelo, modeloDe, type ModelosConta } from "./vixe/modelos";
 
 /** wa.me com DDI do Brasil quando faltar. Sem número, abre para escolher o contato. */
 export function linkWhatsapp(numero: string | null | undefined, texto: string): string {
@@ -15,8 +16,9 @@ export function linkWhatsapp(numero: string | null | undefined, texto: string): 
   return `${base}?text=${encodeURIComponent(texto)}`;
 }
 
-const primeiroNome = (nome: string | null | undefined) => (nome ?? "").trim().split(/\s+/)[0] || "";
-const ola = (nome: string | null | undefined) => (primeiroNome(nome) ? `Oi, ${primeiroNome(nome)}!` : "Oi!");
+export const primeiroNome = (nome: string | null | undefined) => (nome ?? "").trim().split(/\s+/)[0] || "";
+/** "Oi, Ana!" (ou só "Oi!" sem nome): a {saudacao} dos modelos. */
+export const ola = (nome: string | null | undefined) => (primeiroNome(nome) ? `Oi, ${primeiroNome(nome)}!` : "Oi!");
 const dataBR = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR");
 
 export type AssuntoMensagem = "pedido" | "pago" | "enviado" | "fiado";
@@ -81,6 +83,8 @@ export interface EntradaMensagens {
   parcelas: { id: string; venda_numero: string; cliente: string | null; whatsapp: string | null; valor: number; vencimento: string; numero: number; total_parcelas: number }[];
   /** Pix e multa/juros da loja (0065). Sem isso, a cobrança vai só com o valor. */
   crediario?: { pix: { chave: string; nome: string; cidade: string } | null; regra: RegraEncargos } | null;
+  /** Textos da própria conta (0069). O que faltar usa o padrão de `lib/vixe/modelos.ts`. */
+  modelos?: ModelosConta | null;
 }
 
 /** O que mandar agora, menos o que já foi enviado (chave). Mais recente primeiro. */
@@ -89,16 +93,26 @@ export function mensagensPendentes(e: EntradaMensagens, enviadas: Set<string>): 
   const add = (m: MensagemPendente) => {
     if (m.whatsapp.replace(/\D/g, "").length >= 10 && !enviadas.has(m.chave)) saida.push(m);
   };
+  const pessoa = (nome: string | null | undefined) => ({ saudacao: ola(nome), cliente: primeiroNome(nome), loja: e.loja });
   for (const p of e.pedidosCatalogo) {
     if (p.status !== "pendente") continue;
-    add({ chave: `pedido:${p.id}`, assunto: "pedido", cliente: p.cliente_nome, whatsapp: p.cliente_whatsapp, quando: p.criado_em, referencia: p.numero, texto: textoPedidoRecebido({ nome: p.cliente_nome, numero: p.numero, total: p.total, loja: e.loja }) });
+    const texto = aplicarModelo(modeloDe("pedido", e.modelos), { ...pessoa(p.cliente_nome), pedido: p.numero, valor: formatBRL(p.total) });
+    add({ chave: `pedido:${p.id}`, assunto: "pedido", cliente: p.cliente_nome, whatsapp: p.cliente_whatsapp, quando: p.criado_em, referencia: p.numero, texto });
   }
   for (const v of e.vendas) {
     if (v.status === "cancelada" || !v.whatsapp) continue;
-    if (v.etapa === "enviado")
-      add({ chave: `enviado:${v.id}`, assunto: "enviado", cliente: v.cliente ?? "", whatsapp: v.whatsapp, quando: v.data, referencia: v.numero, texto: textoEnviado({ nome: v.cliente, numero: v.numero, loja: e.loja, rastreio: v.rastreio, logistica: v.logistica }) });
-    else if (v.doCatalogo && v.status === "paga" && v.etapa !== "concluido")
-      add({ chave: `pago:${v.id}`, assunto: "pago", cliente: v.cliente ?? "", whatsapp: v.whatsapp, quando: v.data, referencia: v.numero, texto: textoPagamentoConfirmado({ nome: v.cliente, numero: v.numero, total: v.total, loja: e.loja }) });
+    if (v.etapa === "enviado") {
+      const texto = aplicarModelo(modeloDe("enviado", e.modelos), {
+        ...pessoa(v.cliente),
+        pedido: v.numero,
+        transportadora: v.logistica ? ` por ${v.logistica}` : "",
+        rastreio: v.rastreio ? ` Código de rastreio: ${v.rastreio}.` : "",
+      });
+      add({ chave: `enviado:${v.id}`, assunto: "enviado", cliente: v.cliente ?? "", whatsapp: v.whatsapp, quando: v.data, referencia: v.numero, texto });
+    } else if (v.doCatalogo && v.status === "paga" && v.etapa !== "concluido") {
+      const texto = aplicarModelo(modeloDe("pago", e.modelos), { ...pessoa(v.cliente), pedido: v.numero, valor: formatBRL(v.total) });
+      add({ chave: `pago:${v.id}`, assunto: "pago", cliente: v.cliente ?? "", whatsapp: v.whatsapp, quando: v.data, referencia: v.numero, texto });
+    }
   }
   const amanha = new Date(`${e.hoje}T12:00:00`);
   amanha.setDate(amanha.getDate() + 2);
@@ -122,7 +136,14 @@ export function mensagensPendentes(e: EntradaMensagens, enviadas: Set<string>): 
       whatsapp: p.whatsapp,
       quando: p.vencimento,
       referencia: p.venda_numero,
-      texto: textoFiado({ nome: p.cliente, valor: p.valor, vencimento: p.vencimento, loja: e.loja, vencido, parcela: p.total_parcelas > 1 ? `${p.numero}/${p.total_parcelas}` : null, atualizado, pix }),
+      texto: aplicarModelo(modeloDe(vencido ? "fiado_vencido" : "fiado_vence", e.modelos), {
+        ...pessoa(p.cliente),
+        parcela: p.total_parcelas > 1 ? `a parcela ${p.numero}/${p.total_parcelas}` : "o valor",
+        valor: formatBRL(p.valor),
+        vencimento: dataBR(p.vencimento),
+        encargos: vencido && atualizado > p.valor + 0.004 ? ` Com multa e juros do atraso, hoje fica ${formatBRL(atualizado)}.` : "",
+        pix: pix ? `\n\nPra facilitar, o Pix copia e cola:\n${pix}` : "",
+      }),
     });
   }
   return saida.sort((a, b) => b.quando.localeCompare(a.quando));

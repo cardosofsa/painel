@@ -20,6 +20,7 @@ import { TODAS_AS_ABAS, ABAS_PADRAO, ABAS_OBRIGATORIAS, type StatusConta } from 
 import { atualizarAcessoConta, atualizarStatusEmLote } from "./actions";
 import { HistoricoAdmin, type LinhaHistorico } from "./HistoricoAdmin";
 import { VisaoGeralAdmin } from "./VisaoGeralAdmin";
+import { NovidadesAdmin } from "./NovidadesAdmin";
 import { executarComToast } from "@/lib/acao-cliente";
 import { campoBase } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";
@@ -54,6 +55,7 @@ const ABAS_PAINEL = [
   { value: "contas", label: "Contas" },
   { value: "visao-geral", label: "Visão Geral" },
   { value: "historico", label: "Histórico" },
+  { value: "novidades", label: "Novidades" },
 ] as const;
 type AbaPainel = (typeof ABAS_PAINEL)[number]["value"];
 
@@ -234,6 +236,12 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
       {aba === "historico" && (
         <TabPanel key="historico" tabValue="historico">
           <HistoricoAdmin linhas={historico} />
+        </TabPanel>
+      )}
+
+      {aba === "novidades" && (
+        <TabPanel key="novidades" tabValue="novidades">
+          <NovidadesAdmin />
         </TabPanel>
       )}
 

@@ -6,8 +6,8 @@ import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { IconeMarca } from "@/components/ui/IconeMarca";
 import { VendasComparadasChart, type PontoComparado } from "@/components/charts/VendasComparadasChart";
-import { formatBRL } from "@/lib/format";
-import { diaLocal, periodoAnterior, periodoDoAtalho, somarDias, type AtalhoPeriodo, type Periodo } from "@/lib/periodo";
+import { formatBRL, hojeIsoBrasil } from "@/lib/format";
+import { periodoAnterior, periodoDoAtalho, somarDias, type AtalhoPeriodo, type Periodo } from "@/lib/periodo";
 import { porChave, porProduto, seriePorHora, type VendaRelatorio } from "@/lib/relatorios-vendas";
 
 const PERIODOS: { id: AtalhoPeriodo; rotulo: string }[] = [
@@ -21,7 +21,7 @@ const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractio
 const canalDe = (origem: string) => origem.split(" · ")[0];
 
 function noPeriodo(v: VendaRelatorio, p: Periodo) {
-  const d = diaLocal(new Date(v.data));
+  const d = hojeIsoBrasil(new Date(v.data));
   return d >= p.inicio && d <= p.fim;
 }
 
@@ -53,11 +53,11 @@ export function PainelVendas({ vendas }: { vendas: VendaRelatorio[] }) {
     }
     const pontos: PontoComparado[] = [];
     for (let d = periodo.inicio, a = anterior.inicio; d <= periodo.fim; d = somarDias(d, 1), a = somarDias(a, 1)) {
-      const doDia = doCanal.filter((v) => diaLocal(new Date(v.data)) === d);
+      const doDia = doCanal.filter((v) => hojeIsoBrasil(new Date(v.data)) === d);
       pontos.push({
         rotulo: `${d.slice(8, 10)}/${d.slice(5, 7)}`,
         valor: doDia.reduce((s, v) => s + v.total, 0),
-        comparacao: doCanal.filter((v) => diaLocal(new Date(v.data)) === a).reduce((s, v) => s + v.total, 0),
+        comparacao: doCanal.filter((v) => hojeIsoBrasil(new Date(v.data)) === a).reduce((s, v) => s + v.total, 0),
         pedidos: doDia.length,
       });
     }

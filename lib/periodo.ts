@@ -1,8 +1,11 @@
 /**
- * Período de datas para filtros (Vendas, Visão Geral). Datas em DIA LOCAL ("AAAA-MM-DD"),
- * para "hoje" e "este mês" baterem com o relógio de quem usa. PURO, coberto por
- * `periodo.test.ts`.
+ * Período de datas para filtros (Vendas, Visão Geral). Datas em dia ("AAAA-MM-DD") no
+ * horário de Brasília: "hoje" e o dia de cada venda saem iguais no servidor (UTC, na
+ * Vercel) e no navegador — antes o servidor contava o dia em UTC e o painel trocava o
+ * número ao hidratar. PURO, coberto por `periodo.test.ts`.
  */
+
+import { hojeIsoBrasil } from "./format";
 
 export interface Periodo {
   /** Primeiro dia, inclusivo (AAAA-MM-DD). */
@@ -24,6 +27,7 @@ export const ROTULO_ATALHO: Record<AtalhoPeriodo, string> = {
 
 const dois = (n: number) => String(n).padStart(2, "0");
 
+/** Dia de uma data-calendário (meia-noite local, de `dataDoDia`). Para instantes, `hojeIsoBrasil`. */
 export function diaLocal(d: Date): string {
   return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
 }
@@ -42,12 +46,12 @@ export function somarDias(dia: string, n: number): string {
 
 /** Os últimos `n` dias até hoje (a janela inteira que a tela carregou). */
 export function periodoDosUltimosDias(n: number, agora = new Date()): Periodo {
-  const hoje = diaLocal(agora);
+  const hoje = hojeIsoBrasil(agora);
   return { inicio: somarDias(hoje, -(Math.max(1, n) - 1)), fim: hoje };
 }
 
 export function periodoDoAtalho(a: AtalhoPeriodo, agora = new Date()): Periodo {
-  const hoje = diaLocal(agora);
+  const hoje = hojeIsoBrasil(agora);
   switch (a) {
     case "hoje":
       return { inicio: hoje, fim: hoje };
@@ -79,10 +83,10 @@ export function atalhoDoPeriodo(p: Periodo, agora = new Date()): AtalhoPeriodo |
   return null;
 }
 
-/** Data ISO (com hora) cai dentro do período, no dia LOCAL. */
+/** Data ISO (com hora) cai dentro do período, no dia de Brasília. */
 export function noPeriodo(iso: string | null | undefined, p: Periodo): boolean {
   if (!iso) return false;
-  const dia = diaLocal(new Date(iso));
+  const dia = hojeIsoBrasil(new Date(iso));
   return dia >= p.inicio && dia <= p.fim;
 }
 

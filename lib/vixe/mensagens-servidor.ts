@@ -3,6 +3,10 @@ import { hojeIsoBrasil } from "@/lib/format";
 import { ROTULO_ETAPA, type Etapa } from "@/lib/pedidos-central";
 import { crediarioDoPerfil } from "@/lib/crediario-servidor";
 import { mensagensPendentes, type MensagemPendente, type ResumoDia } from "@/lib/whatsapp";
+import { ASSUNTOS_MODELO, type AssuntoModelo, type ModelosConta } from "@/lib/vixe/modelos";
+import { listaRecompra, type ClienteRecompra } from "@/lib/vixe/recompra";
+import { proximasDatas } from "@/lib/calendario-comercial";
+import { dataLocal } from "@/lib/format";
 
 /** Dados de Vixe → Mensagens (11.6): o que avisar aos clientes e o resumo do dia. SERVIDOR. */
 export interface DadosMensagens {
@@ -12,6 +16,26 @@ export interface DadosMensagens {
   resumo: ResumoDia;
   /** false = 0061 ainda não aplicada (não dá para lembrar o que já foi enviado). */
   registroOk: boolean;
+  /** Textos da conta (0069). `modelosOk` false = migração ainda não aplicada. */
+  modelos: ModelosConta;
+  modelosOk: boolean;
+  /** Para o {link} das campanhas: o cliente monta com o endereço do navegador. */
+  slugVitrine: string | null;
+  recompra: ClienteRecompra[];
+  /** Próxima data do comércio já na hora de preparar, com quem recebe a campanha. */
+  campanha: { id: string; nome: string; data: string; faltam: number; destinatarios: { cliente_id: string; nome: string; whatsapp: string }[] } | null;
+  enviadas: Enviada[];
+}
+
+export interface Enviada {
+  chave: string;
+  assunto: string | null;
+  cliente: string | null;
+  referencia: string | null;
+  whatsapp: string | null;
+  texto: string | null;
+  enviada_em: string;
+  pulada: boolean;
 }
 
 const PENDENTES: Etapa[] = ["reservar", "emitir", "enviar", "imprimir", "retirada"];
@@ -32,7 +56,7 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
   const limiteFiado = new Date(agora);
   limiteFiado.setDate(limiteFiado.getDate() + 2);
 
-  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes, unicasRes, antigasRes] = await Promise.all([
+  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes, unicasRes, antigasRes, modelosRes] = await Promise.all([
     // `*`: Pix e multa/juros (0065) entram na cobrança quando existem.
     supabase.from("perfil_negocio").select("*").maybeSingle(),
     supabase.from("pedidos_vitrine").select("id, numero, cliente_nome, cliente_whatsapp, total, status, criado_em, venda_id").gte("criado_em", desde.toISOString()).limit(500),
@@ -64,7 +88,15 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
       .not("cliente_id", "is", null)
       .lte("data_vencimento", hojeIsoBrasil(limiteFiado))
       .limit(500),
+    // Textos da conta (0069). Sem a migração, vale o padrão.
+    supabase.from("mensagens_modelos").select("assunto, texto"),
   ]);
+
+  const modelos: ModelosConta = {};
+  for (const m of (modelosRes.error ? [] : (modelosRes.data ?? [])) as { assunto: string; texto: string }[]) {
+    if ((ASSUNTOS_MODELO as string[]).includes(m.assunto)) modelos[m.assunto as AssuntoModelo] = m.texto;
+  }
+  const jaEnviadas = new Set(((enviadasRes.data ?? []) as { chave: string }[]).map((e) => e.chave));
 
   const loja = (perfilRes.data?.nome_negocio as string | null) || "nossa loja";
   const pedidos = (pedidosRes.data ?? []) as PedidoBruto[];
@@ -98,6 +130,7 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
       loja,
       hoje,
       crediario: crediarioDoPerfil(perfilRes.data as Record<string, unknown> | null),
+      modelos,
       pedidosCatalogo: pedidos.map((p) => ({ ...p, total: Number(p.total) })),
       vendas: vendas.map((v) => ({
         id: v.id,
@@ -123,7 +156,7 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
         total_parcelas: p.total_parcelas,
       })),
     },
-    new Set(((enviadasRes.data ?? []) as { chave: string }[]).map((e) => e.chave)),
+    jaEnviadas,
   );
 
   return {
@@ -131,6 +164,9 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
     whatsappDono: (perfilRes.data?.whatsapp as string | null) ?? null,
     mensagens,
     registroOk: !enviadasRes.error,
+    modelos,
+    modelosOk: !modelosRes.error,
+    jaEnviadas,
     hoje,
     pedidos,
     vendas,
@@ -139,12 +175,50 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
 }
 
 export async function carregarMensagens(supabase: SupabaseClient): Promise<DadosMensagens> {
-  const [base, mktRes, produtosRes] = await Promise.all([
+  const [base, mktRes, produtosRes, historicoRes, clientesRes, catalogoRes, enviadasRes] = await Promise.all([
     carregarAvisosWhatsapp(supabase),
     supabase.from("pedidos_marketplace").select("status, status_original").eq("status", "a_enviar"),
     supabase.from("produtos").select("nome, estoque, estoque_minimo, ativo").eq("ativo", true),
+    // 0069. Sem a migração, recompra e campanha ficam vazias.
+    supabase.rpc("historico_compras_clientes"),
+    supabase.from("clientes").select("id, nome, whatsapp, status").eq("status", "ativo").limit(2000),
+    supabase.from("catalogos").select("slug").eq("ativo", true).order("criado_em").limit(1).maybeSingle(),
+    supabase.from("mensagens_enviadas").select("chave, assunto, cliente, referencia, whatsapp, texto, enviada_em, pulada").order("enviada_em", { ascending: false }).limit(100),
   ]);
-  const { loja, whatsappDono, mensagens, registroOk, hoje, pedidos, vendas, parcelas } = base;
+  const { loja, whatsappDono, mensagens, registroOk, modelos, modelosOk, jaEnviadas, hoje, pedidos, vendas, parcelas } = base;
+
+  // Recompra e campanha: só clientes ativos com WhatsApp e ao menos uma compra.
+  const clientes = new Map(((clientesRes.data ?? []) as { id: string; nome: string; whatsapp: string | null }[]).map((c) => [c.id, c]));
+  type HistBruto = { cliente_id: string; compras: number; primeira: string; ultima: string };
+  const historico = ((historicoRes.error ? [] : (historicoRes.data ?? [])) as HistBruto[])
+    .filter((h) => clientes.has(h.cliente_id))
+    .map((h) => ({
+      cliente_id: h.cliente_id,
+      nome: clientes.get(h.cliente_id)!.nome,
+      whatsapp: clientes.get(h.cliente_id)!.whatsapp,
+      compras: Number(h.compras),
+      primeira: hojeIsoBrasil(new Date(h.primeira)),
+      ultima: hojeIsoBrasil(new Date(h.ultima)),
+    }));
+  const mes = hoje.slice(0, 7);
+  const recompra = listaRecompra(historico, hoje)
+    .filter((c) => !jaEnviadas.has(`recompra:${c.cliente_id}:${mes}`))
+    .slice(0, 100);
+  const proxima = proximasDatas(dataLocal(hoje), 30).find((d) => d.preparar);
+  // Sem o histórico (0069) não há para quem mandar: a campanha não aparece.
+  const campanha = proxima && !historicoRes.error
+    ? {
+        id: proxima.id,
+        nome: proxima.nome,
+        data: proxima.data,
+        faltam: proxima.faltam,
+        destinatarios: historico
+          .filter((h) => (h.whatsapp ?? "").replace(/\D/g, "").length >= 10 && !jaEnviadas.has(`data:${proxima.id}:${proxima.data.slice(0, 4)}:${h.cliente_id}`))
+          .sort((a, b) => b.compras - a.compras)
+          .slice(0, 200)
+          .map((h) => ({ cliente_id: h.cliente_id, nome: h.nome, whatsapp: h.whatsapp! })),
+      }
+    : null;
 
   const deHoje = vendas.filter((v) => v.status !== "cancelada" && hojeIsoBrasil(new Date(v.data_venda)) === hoje);
   const parados = PENDENTES.map((e) => ({ etapa: ROTULO_ETAPA[e], n: vendas.filter((v) => v.status !== "cancelada" && v.etapa === e).length }));
@@ -159,6 +233,12 @@ export async function carregarMensagens(supabase: SupabaseClient): Promise<Dados
     whatsappDono,
     mensagens,
     registroOk,
+    modelos,
+    modelosOk,
+    slugVitrine: (catalogoRes.data?.slug as string | undefined) ?? null,
+    recompra,
+    campanha,
+    enviadas: (enviadasRes.error ? [] : (enviadasRes.data ?? [])) as Enviada[],
     resumo: {
       data: hoje,
       vendas: deHoje.length,

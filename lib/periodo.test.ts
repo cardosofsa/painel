@@ -22,11 +22,11 @@ describe("periodoDoAtalho", () => {
 });
 
 describe("intervalo", () => {
-  it("noPeriodo usa o dia local", () => {
+  it("noPeriodo usa o dia de Brasília", () => {
     const p = { inicio: "2026-09-30", fim: "2026-10-01" };
-    expect(noPeriodo(new Date(2026, 8, 30, 0, 5).toISOString(), p)).toBe(true);
-    expect(noPeriodo(new Date(2026, 9, 1, 23, 59).toISOString(), p)).toBe(true);
-    expect(noPeriodo(new Date(2026, 9, 2, 0, 1).toISOString(), p)).toBe(false);
+    expect(noPeriodo("2026-09-30T00:05:00-03:00", p)).toBe(true);
+    expect(noPeriodo("2026-10-01T23:59:00-03:00", p)).toBe(true);
+    expect(noPeriodo("2026-10-02T00:01:00-03:00", p)).toBe(false);
     expect(noPeriodo(null, p)).toBe(false);
   });
   it("período anterior do mesmo tamanho", () => {
@@ -47,5 +47,17 @@ describe("intervalo", () => {
     expect(d.slice(0, 5)).toEqual([null, null, null, null, "2026-10-01"]);
     expect(d.length % 7).toBe(0);
     expect(d.filter(Boolean)).toHaveLength(31);
+  });
+});
+
+describe("dia em Brasília, igual no servidor (UTC) e no navegador", () => {
+  // 06/10 às 02h em UTC = 05/10 às 23h em Brasília.
+  const agora = new Date("2026-10-06T02:00:00Z");
+  it("'hoje' é o dia de Brasília", () => {
+    expect(periodoDoAtalho("hoje", agora)).toEqual({ inicio: "2026-10-05", fim: "2026-10-05" });
+  });
+  it("venda das 23h de Brasília cai no dia certo", () => {
+    expect(noPeriodo("2026-10-06T02:00:00Z", { inicio: "2026-10-05", fim: "2026-10-05" })).toBe(true);
+    expect(noPeriodo("2026-10-06T02:00:00Z", { inicio: "2026-10-06", fim: "2026-10-06" })).toBe(false);
   });
 });

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover } from "@/components/ui/Popover";
 import { Button } from "@/components/ui/Button";
-import { atalhoDoPeriodo, dataDoDia, diaLocal, diasDoMes, periodoDoAtalho, rotuloPeriodo, ROTULO_ATALHO, somarDias, type AtalhoPeriodo, type Periodo } from "@/lib/periodo";
+import { atalhoDoPeriodo, dataDoDia, diasDoMes, periodoDoAtalho, rotuloPeriodo, ROTULO_ATALHO, somarDias, type AtalhoPeriodo, type Periodo } from "@/lib/periodo";
+import { hojeIsoBrasil } from "@/lib/format";
 
 const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -40,7 +41,7 @@ export function SeletorPeriodo({ valor, onChange, limiteDias }: { valor: Periodo
 }
 
 function Calendario({ valor, onAplicar, limiteDias }: { valor: Periodo; onAplicar: (p: Periodo) => void; limiteDias?: number }) {
-  const hoje = diaLocal(new Date());
+  const hoje = hojeIsoBrasil();
   const minimo = limiteDias ? somarDias(hoje, -limiteDias) : null;
   const [mes, setMes] = useState(() => {
     const d = dataDoDia(valor.fim);

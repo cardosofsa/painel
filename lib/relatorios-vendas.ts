@@ -4,6 +4,8 @@
  * `relatorios-vendas.test.ts`.
  */
 
+import { hojeIsoBrasil, horaBrasil } from "./format";
+
 export interface ItemRelatorio {
   chave: string;
   nome: string;
@@ -56,7 +58,7 @@ export function serieDiaria(vendas: VendaRelatorio[], inicio: Date, fim: Date): 
   const mapa = new Map<string, { faturamento: number; lucro: number }>();
   for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) mapa.set(d.toLocaleDateString("sv-SE"), { faturamento: 0, lucro: 0 });
   for (const v of vendas) {
-    const chave = new Date(v.data).toLocaleDateString("sv-SE");
+    const chave = hojeIsoBrasil(new Date(v.data));
     const m = mapa.get(chave);
     if (!m) continue;
     m.faturamento += v.total;
@@ -128,8 +130,9 @@ export function seriePorHora(vendas: VendaRelatorio[], dia: string): { hora: num
   const horas = Array.from({ length: 24 }, (_, hora) => ({ hora, valor: 0, pedidos: 0 }));
   for (const v of vendas) {
     const d = new Date(v.data);
-    if (d.toLocaleDateString("sv-SE") !== dia) continue;
-    const h = horas[d.getHours()];
+    // Dia e hora em Brasília: no servidor (UTC) a venda das 22h caía no dia seguinte.
+    if (hojeIsoBrasil(d) !== dia) continue;
+    const h = horas[horaBrasil(d)];
     h.valor += v.total;
     h.pedidos++;
   }
