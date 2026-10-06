@@ -9,6 +9,7 @@ import { sincronizarConexao, tokenDaConexao, tokenML, type ConexaoShopee } from 
 import { plataformaDa } from "@/lib/marketplace/conexao-api";
 import { envioDoPedidoML, etiquetasML } from "@/lib/marketplace/mercadolivre-api";
 import { baixarEtiquetas, montarShipOrder, parametroEnvio, programarEnvio, rastreio, type ModoEnvio } from "@/lib/marketplace/shopee-envio";
+import { hojeIsoBrasil } from "@/lib/format";
 
 /**
  * Envio da Shopee pelo Sertão (Fase 10.5): programar envio e imprimir etiquetas, um ou em
@@ -135,7 +136,7 @@ export async function etiquetasShopee(ids: string[]) {
         if (!envios.length) continue;
         try {
           const pdf = await etiquetasML(token, [...new Set(envios.map((e) => e.envio))]);
-          arquivos.push({ nome: `etiquetas-ml-${new Date().toISOString().slice(0, 10)}-${arquivos.length + 1}.pdf`, base64: Buffer.from(pdf).toString("base64") });
+          arquivos.push({ nome: `etiquetas-ml-${hojeIsoBrasil()}-${arquivos.length + 1}.pdf`, base64: Buffer.from(pdf).toString("base64") });
           await registrar(supabase, envios.map((e) => ({ id: e.pedido.id, impressa: true })));
           impressas += envios.length;
         } catch (e) {
@@ -153,7 +154,7 @@ export async function etiquetasShopee(ids: string[]) {
       );
       falhas.push(...r.falhas.map((f) => ({ numero: f.orderSn, erro: f.erro.replace(/^Shopee: /, "") })));
       if (r.pdf) {
-        arquivos.push({ nome: `etiquetas-${new Date().toISOString().slice(0, 10)}-${arquivos.length + 1}.pdf`, base64: Buffer.from(r.pdf).toString("base64") });
+        arquivos.push({ nome: `etiquetas-${hojeIsoBrasil()}-${arquivos.length + 1}.pdf`, base64: Buffer.from(r.pdf).toString("base64") });
         const prontos = new Set(r.prontos);
         await registrar(
           supabase,

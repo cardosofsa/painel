@@ -5,6 +5,7 @@
 
 import { quantidadeSugeridaCompra } from "@/lib/alertas";
 import { lerNumero, mapearColunas, type ErroImportacao } from "@/lib/importar";
+import { hojeIsoBrasil } from "@/lib/format";
 
 /** Valores gravados no banco (0042). Os nomes antigos continuam; só mudam na tela. */
 export type StatusCompra = "pendente" | "em_transito" | "parcial" | "recebido" | "cancelado";
@@ -94,7 +95,8 @@ export function consumoDiario(
 const somarDias = (hoje: Date, n: number) => {
   const d = new Date(hoje);
   d.setDate(d.getDate() + Math.floor(n));
-  return d.toISOString().slice(0, 10);
+  // Dia de Brasília: com `toISOString` a data virava o dia seguinte depois das 21h.
+  return hojeIsoBrasil(d);
 };
 
 /**

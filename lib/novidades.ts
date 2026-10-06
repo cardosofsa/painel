@@ -15,6 +15,18 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Auditoria de segurança e desempenho",
+    itens: [
+      "Cota de IA não pode mais ser zerada pelo console do navegador",
+      "Funções de estoque de kit fechadas para fora do banco",
+      "27 índices novos nas chaves estrangeiras",
+      "Datas de compras e etiquetas no horário de Brasília",
+      "Relatório completo em docs/auditoria-2026-10.md",
+    ],
+    migracao: "0070",
+  },
+  {
+    data: "2026-10-06",
     titulo: "Vixe → Mensagens: modelos próprios, recompra e campanhas",
     itens: [
       "Cada conta escreve o próprio texto de cada aviso, com variáveis e prévia",

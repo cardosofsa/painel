@@ -307,7 +307,7 @@ export function SimuladorPreco({ custoTotal, taxas }: { custoTotal: number; taxa
             </span>
           </div>
           <div className="flex justify-between text-text-tertiary text-xs">
-            <span>Margem sobre custo simulada</span>
+            <span>Markup sobre o custo simulado</span>
             <span className="font-mono">{(resultado.markupSobreCustoPct * 100).toFixed(1)}%</span>
           </div>
         </div>
