@@ -55,6 +55,12 @@ export function LoginClient() {
     setReenviando(true);
     try {
       const r = await reenviarConfirmacao(email);
+      // Falha (limite de envio, e-mail inválido) é erro, não aviso verde de "enviado".
+      if (!r.ok) {
+        setAviso(null);
+        setErro(r.mensagem);
+        return;
+      }
       setErro(null);
       setAviso(r.mensagem);
       setNaoConfirmado(false);

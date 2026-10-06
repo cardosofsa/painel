@@ -452,6 +452,27 @@ export const compromissoSchema = z.object({
   descricao: textoOpcional,
 });
 
+/** Data própria do calendário (0068): feriado da cidade, data da loja, promoção. */
+export const dataCalendarioSchema = z.object({
+  titulo: z.string().trim().min(1, "Dê um nome para a data").max(80, "Nome longo demais"),
+  data: dataIso,
+  repete_todo_ano: z.boolean(),
+  tipo: z.enum(["municipal", "pessoal", "promocao"]),
+  observacao: z.string().trim().max(200).nullable(),
+});
+
+/** Estado dos feriados estaduais e o que aparece no calendário (0068). */
+export const preferenciasCalendarioSchema = z.object({
+  uf: z.string().regex(/^[A-Z]{2}$/, "UF inválida").nullable(),
+  camadas: z.array(z.enum(["feriado", "comercial", "pagar", "receber", "compromisso", "minhas"])).max(6),
+});
+
+/** Janela do calendário: até ~3 meses por vez (mês mostrado + o seguinte). */
+export const periodoCalendarioSchema = z
+  .object({ inicio: dataIso, fim: dataIso })
+  .refine((p) => p.fim >= p.inicio, { message: "Período inválido" })
+  .refine((p) => (new Date(p.fim).getTime() - new Date(p.inicio).getTime()) / 86_400_000 <= 100, { message: "Período longo demais" });
+
 export const movimentacaoEstoqueSchema = z.object({
   produtoId: uuid,
   tipo: z.enum(["entrada", "saida"]),

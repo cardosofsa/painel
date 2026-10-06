@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { carregarVendasRelatorio } from "@/lib/relatorios-servidor";
-import { hojeIsoLocal, formatarDataIso, dataLocal } from "@/lib/format";
+import { hojeIsoLocal, hojeIsoBrasil, formatarDataIso } from "@/lib/format";
+import { carregarFontesPeriodo } from "@/lib/calendario-servidor";
+import { CAMADAS_PADRAO, diasAte, type Camada } from "@/lib/calendario-dashboard";
 import { lancarErroSupabase } from "@/lib/erros";
 import type { PassoInicial } from "@/components/dashboard/PrimeirosPassos";
-import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
+import { DashboardClient, type Vencimento } from "./DashboardClient";
 import { MasterDashboardClient } from "./MasterDashboardClient";
 import type { ContaAdmin } from "../admin/AdminClient";
 import type { LinhaHistorico } from "../admin/HistoricoAdmin";
@@ -13,10 +15,8 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Home" };
 
 function rotuloVencimento(dataVencimento: string): { status: string; tone: "negative" | "positive" | "neutral" } {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const venc = dataLocal(dataVencimento);
-  const diffDias = Math.round((venc.getTime() - hoje.getTime()) / 86400000);
+  // Hoje no Brasil: o relógio do servidor é UTC e, depois das 21h, "vence amanhã" virava "vence hoje".
+  const diffDias = diasAte(hojeIsoBrasil(), dataVencimento.slice(0, 10));
 
   if (diffDias < 0) return { status: "Atrasado", tone: "negative" };
   if (diffDias === 0) return { status: "Vence hoje", tone: "negative" };
@@ -62,12 +62,12 @@ export default async function DashboardPage() {
   inicioMes.setDate(1);
   const inicioMesIso = hojeIsoLocal(inicioMes);
 
-  const inicioAgenda = new Date();
-  inicioAgenda.setDate(inicioAgenda.getDate() - 45);
-  const fimAgenda = new Date();
-  fimAgenda.setDate(fimAgenda.getDate() + 45);
-  const inicioAgendaIso = hojeIsoLocal(inicioAgenda);
-  const fimAgendaIso = hojeIsoLocal(fimAgenda);
+  // Calendário: o mês de hoje (no Brasil) e o seguinte, para "Próximos 30 dias".
+  const hojeBr = hojeIsoBrasil();
+  const [anoCal, mesCal] = hojeBr.split("-").map(Number);
+  const inicioCalendario = `${hojeBr.slice(0, 7)}-01`;
+  const fimSeguinte = new Date(anoCal, mesCal + 1, 0);
+  const fimCalendario = `${fimSeguinte.getFullYear()}-${String(fimSeguinte.getMonth() + 1).padStart(2, "0")}-${String(fimSeguinte.getDate()).padStart(2, "0")}`;
 
   // A janela de vendas começa no menor dos dois marcos (início do mês ou 7 dias
   // atrás) para que hoje/semana/mês saiam todos de uma consulta só.
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
     cprRes,
     comprasMesRes,
     precificacoesMesRes,
-    compromissosRes,
+    fontesCalendario,
     vendasRes,
     vendasRelatorio,
     perfilRes,
@@ -114,16 +114,8 @@ export default async function DashboardPage() {
         .limit(8),
       supabase.from("pedidos_compra").select("valor_total").gte("data_pedido", inicioMesIso),
       supabase.from("precificacoes").select("id", { count: "exact", head: true }).gte("criado_em", inicioMesIso),
-      // O card da agenda só desenha o mês corrente; sem janela, esta consulta trazia a
-      // agenda inteira, de todos os anos. Uma folga de 45 dias cobre a navegação para o
-      // mês anterior e o seguinte.
-      supabase
-        .from("compromissos")
-        .select("id, titulo, data, hora, descricao")
-        .gte("data", inicioAgendaIso)
-        .lte("data", fimAgendaIso)
-        .order("data")
-        .order("hora"),
+      // O resto do calendário (os outros meses) vem sob demanda, ao navegar.
+      carregarFontesPeriodo(supabase, inicioCalendario, fimCalendario),
       supabase
         .from("vendas")
         .select("total, lucro, data_venda")
@@ -156,7 +148,6 @@ export default async function DashboardPage() {
   if (cprRes.error) throw new Error(cprRes.error.message);
   if (comprasMesRes.error) throw new Error(comprasMesRes.error.message);
   if (precificacoesMesRes.error) throw new Error(precificacoesMesRes.error.message);
-  if (compromissosRes.error) throw new Error(compromissosRes.error.message);
   if (vendasRes.error) throw new Error(vendasRes.error.message);
 
   const inicioHoje = new Date();
@@ -203,7 +194,14 @@ export default async function DashboardPage() {
     };
   });
 
-  const compromissos: Compromisso[] = compromissosRes.data ?? [];
+  const camadasSalvas = Array.isArray(perfil?.calendario_camadas) ? (perfil.calendario_camadas as Camada[]).filter((c) => CAMADAS_PADRAO.includes(c)) : null;
+  const calendario = {
+    hoje: hojeBr,
+    ufInicial: (perfil?.calendario_uf as string | null) ?? null,
+    ufEmpresa: ((perfil?.uf as string | null) ?? "").toUpperCase() || null,
+    camadasIniciais: camadasSalvas ?? CAMADAS_PADRAO,
+    fontesIniciais: fontesCalendario,
+  };
 
   return (
     <DashboardClient
@@ -213,7 +211,7 @@ export default async function DashboardPage() {
       vencimentos={vencimentos}
       resumoMes={resumoMes}
       vendas={vendas}
-      compromissos={compromissos}
+      calendario={calendario}
       vendasRelatorio={vendasRelatorio}
       primeirosPassos={primeirosPassos}
     />
