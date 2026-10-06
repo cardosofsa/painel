@@ -15,6 +15,17 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Raio-X da precificação",
+    itens: [
+      "Compara o preço que você usa em cada anúncio com o preço ideal da sua regra",
+      "Preço praticado digitado, média dos pedidos dos últimos 30 dias ou o preço no ar na Shopee/Mercado Livre",
+      "Quanto ganha ou perde por venda e por mês, nota de 0 a 100 e situação (prejuízo, zona morta…)",
+      "Dicas automáticas e exportação para Excel",
+    ],
+    migracao: "0071",
+  },
+  {
+    data: "2026-10-06",
     titulo: "Auditoria de segurança e desempenho",
     itens: [
       "Cota de IA não pode mais ser zerada pelo console do navegador",

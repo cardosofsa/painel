@@ -22,6 +22,7 @@ import { PainelResultado } from "@/components/precificacao/PainelResultado";
 import { PainelEstrategiaVixe } from "@/components/precificacao/PainelEstrategiaVixe";
 import { PainelAnuncio } from "@/components/precificacao/PainelAnuncio";
 import { HistoricoPrecificacoes } from "@/components/precificacao/HistoricoPrecificacoes";
+import { RaioXView } from "@/components/precificacao/RaioXView";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
 import {
   usePrecificacao,
@@ -43,7 +44,8 @@ const ABAS_PRECIFICACAO = [
   { value: "kits", label: "Kits" },
   { value: "massa", label: "Em Massa" },
   { value: "historico", label: "Histórico" },
-] as const satisfies readonly TabItem<"individual" | "variacoes" | "kits" | "massa" | "historico">[];
+  { value: "raio-x", label: "Raio-X" },
+] as const satisfies readonly TabItem<"individual" | "variacoes" | "kits" | "massa" | "historico" | "raio-x">[];
 
 /**
  * Calculadora de Precificação.
@@ -193,6 +195,8 @@ export function PrecificacaoClient({
           paginacao={{ temMais, carregando: carregandoMais, carregarMais: () => carregarMais(false), carregarTudo: () => carregarMais(true) }}
         />
       )}
+
+      {visao === "raio-x" && <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />}
 
       <ModalVincularProduto
         aberto={!!estado.vinculandoId}

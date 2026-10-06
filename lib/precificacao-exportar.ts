@@ -12,6 +12,7 @@ import type { TabelaExport } from "./exportar";
 import { hojeIsoBrasil } from "./format";
 import type { AnuncioSalvo, PrecificacaoHist, VariacaoSalva } from "./precificacao-tipos";
 import type { ResultadoLinhaMassa } from "./precificacao-massa";
+import { ROTULO_SELO, type ItemRaioX } from "./raio-x";
 
 /** Dinheiro no centavo e percentual em 4 casas (0,2846 = 28,46%): o banco guarda o preço
  * sem arredondar, e o CSV saía com "73,91304347826087". */
@@ -87,3 +88,26 @@ export function tabelaEmMassa(resultados: ResultadoLinhaMassa[], subtitulo?: str
     linhas: resultados,
   };
 }
+
+/** Raio-X: um anúncio por linha, com o preço praticado, o ideal e quanto ganha ou perde. */
+export function tabelaRaioX(lista: ItemRaioX[], subtitulo?: string): TabelaExport<ItemRaioX> {
+  return {
+    titulo: "Raio-X dos anúncios",
+    subtitulo,
+    colunas: [
+      { rotulo: "Anúncio", largura: 34, valor: (i) => i.rotulo },
+      { rotulo: "Loja", largura: 22, valor: (i) => i.loja },
+      { rotulo: "Preço praticado", tipo: "moeda", valor: (i) => (i.resultado.praticado ? rs(i.resultado.praticado.precoVenda) : "") },
+      { rotulo: "Preço ideal", tipo: "moeda", valor: (i) => (i.resultado.ideal.viavel ? rs(i.resultado.ideal.precoVenda) : "") },
+      { rotulo: "Preço mínimo", tipo: "moeda", valor: (i) => i.resultado.precoMinimo ?? "" },
+      { rotulo: "Lucro por venda", tipo: "moeda", valor: (i) => (i.resultado.praticado ? rs(i.resultado.praticado.lucroLiquido) : "") },
+      { rotulo: "Margem", tipo: "percentual", valor: (i) => (i.resultado.praticado ? pct(i.resultado.praticado.margemEfetivaPct) : "") },
+      { rotulo: "Diferença por venda", tipo: "moeda", valor: (i) => i.resultado.diferencaPorVenda ?? "" },
+      { rotulo: "Diferença no mês", tipo: "moeda", valor: (i) => i.resultado.diferencaMes ?? "" },
+      { rotulo: "Nota", valor: (i) => i.resultado.nota ?? "" },
+      { rotulo: "Situação", largura: 20, valor: (i) => ROTULO_SELO[i.resultado.selo] },
+    ],
+    linhas: lista,
+  };
+}
+

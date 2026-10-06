@@ -18,11 +18,23 @@ export async function atualizarAnuncios(supabase: SupabaseClient, conexao: Conex
     supabase.from("marketplace_vinculos").select("sku_externo, produto_id").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id),
   ]);
   const produtos = (produtosRes.data ?? []).map((p) => ({ id: p.id as string, sku: p.sku as string | null, custo: Number(p.custo ?? 0) }));
-  const linhas = casarAnuncios(anuncios, produtos, vinculosRes.data ?? []).map((l) => ({ ...l, user_id: conexao.user_id, loja_id: conexao.loja_id, atualizado_em: new Date().toISOString() }));
-  for (let i = 0; i < linhas.length; i += 500) {
-    const { error } = await supabase.from("marketplace_anuncios").upsert(linhas.slice(i, i + 500), { onConflict: "loja_id,item_id,model_id" });
+  const agoraIso = new Date().toISOString();
+  const precos = new Map(anuncios.map((a) => [`${a.itemId}:${a.modelId}`, a.preco ?? null]));
+  const base = casarAnuncios(anuncios, produtos, vinculosRes.data ?? []).map((l) => ({ ...l, user_id: conexao.user_id, loja_id: conexao.loja_id, atualizado_em: agoraIso }));
+  // Preço atual do anúncio (0071, Raio-X). Sem a migração a coluna não existe: grava sem
+  // o preço em vez de parar a sincronização do estoque.
+  let comPreco = true;
+  for (let i = 0; i < base.length; i += 500) {
+    const fatia = base.slice(i, i + 500);
+    const linhas = comPreco ? fatia.map((l) => ({ ...l, preco_atual: precos.get(`${l.item_id}:${l.model_id}`) ?? null, preco_lido_em: agoraIso })) : fatia;
+    let { error } = await supabase.from("marketplace_anuncios").upsert(linhas, { onConflict: "loja_id,item_id,model_id" });
+    if (error && comPreco && (error.code === "PGRST204" || error.code === "42703")) {
+      comPreco = false;
+      ({ error } = await supabase.from("marketplace_anuncios").upsert(fatia, { onConflict: "loja_id,item_id,model_id" }));
+    }
     if (error) throw new Error(error.message);
   }
+  const linhas = base;
   await supabase.from("marketplace_conexoes").update({ anuncios_atualizados_em: new Date().toISOString() }).eq("id", conexao.id);
   return linhas.length;
 }

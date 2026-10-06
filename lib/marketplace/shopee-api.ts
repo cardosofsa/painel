@@ -287,10 +287,18 @@ export interface AnuncioShopee {
   skuPrincipal: string | null;
   nome: string;
   estoque: number;
+  /** Preço atual do anúncio na plataforma (Raio-X da precificação). Ausente se a API não mandou. */
+  preco?: number | null;
 }
 
 interface EstoqueApi {
   stock_info_v2?: { seller_stock?: { stock?: number }[]; summary_info?: { total_available_stock?: number } };
+}
+
+/** Preço atual (com promoção da própria loja, se houver) — `price_info[0].current_price`. */
+function precoDe(x: { price_info?: { current_price?: number }[] }): number | null {
+  const p = Number(x.price_info?.[0]?.current_price);
+  return Number.isFinite(p) && p > 0 ? Math.round(p * 100) / 100 : null;
 }
 
 function estoqueDe(x: EstoqueApi): number {
@@ -312,18 +320,18 @@ export async function buscarAnuncios(c: CredenciaisShopee, token: string, shopId
   const anuncios: AnuncioShopee[] = [];
   for (let i = 0; i < ids.length; i += 50) {
     const r = await getLoja(c, "/api/v2/product/get_item_base_info", token, shopId, { item_id_list: ids.slice(i, i + 50).join(",") });
-    for (const item of (r.item_list as (EstoqueApi & { item_id: number; item_name?: string; item_sku?: string; has_model?: boolean })[] | undefined) ?? []) {
+    for (const item of (r.item_list as (EstoqueApi & { item_id: number; item_name?: string; item_sku?: string; has_model?: boolean; price_info?: { current_price?: number }[] })[] | undefined) ?? []) {
       const nome = item.item_name?.trim() || `Anúncio ${item.item_id}`;
       const skuPai = item.item_sku?.trim() || null;
       if (!item.has_model) {
-        anuncios.push({ itemId: item.item_id, modelId: 0, sku: skuPai, skuPrincipal: skuPai, nome, estoque: estoqueDe(item) });
+        anuncios.push({ itemId: item.item_id, modelId: 0, sku: skuPai, skuPrincipal: skuPai, nome, estoque: estoqueDe(item), preco: precoDe(item) });
         continue;
       }
       const m = await getLoja(c, "/api/v2/product/get_model_list", token, shopId, { item_id: String(item.item_id) });
       const variacoes = (m.tier_variation as { option_list?: { option?: string }[] }[] | undefined) ?? [];
-      for (const model of (m.model as (EstoqueApi & { model_id: number; model_sku?: string; tier_index?: number[] })[] | undefined) ?? []) {
+      for (const model of (m.model as (EstoqueApi & { model_id: number; model_sku?: string; tier_index?: number[]; price_info?: { current_price?: number }[] })[] | undefined) ?? []) {
         const rotulo = (model.tier_index ?? []).map((t, n) => variacoes[n]?.option_list?.[t]?.option).filter(Boolean).join(" · ");
-        anuncios.push({ itemId: item.item_id, modelId: model.model_id, sku: model.model_sku?.trim() || null, skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, estoque: estoqueDe(model) });
+        anuncios.push({ itemId: item.item_id, modelId: model.model_id, sku: model.model_sku?.trim() || null, skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, estoque: estoqueDe(model), preco: precoDe(model) });
       }
     }
   }

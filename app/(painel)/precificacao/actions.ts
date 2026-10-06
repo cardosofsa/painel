@@ -11,6 +11,8 @@ import {
   concorrenteSchema,
   vincularProdutoPrecificacaoSchema,
   paginaHistoricoSchema,
+  precoPraticadoSchema,
+  type PrecoPraticadoInput,
 } from "@/lib/validacao";
 import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
 import { gerarComIA } from "@/lib/ia/gerar";
@@ -364,3 +366,59 @@ export async function carregarHistoricoPrecificacoes(antesDe: string | null, lim
   });
 }
 
+
+// ---------- Raio-X (0071) ----------
+
+export interface DadosRaioX {
+  precificacoes: PrecificacaoHist[];
+  /** Último preço digitado por chave do anúncio. */
+  digitados: Record<string, { preco: number; observado_em: string }>;
+  /** Preço no ar por `produto_id|loja_id` (média das variações vinculadas). */
+  noAr: Record<string, { preco: number; lido_em: string | null }>;
+  /** Vendas dos últimos 30 dias por `produto_id|loja_id` (loja vazia = PDV/catálogo). */
+  vendas: Record<string, { quantidade: number; preco_medio: number }>;
+  /** false = 0071 não aplicada: só o preço ideal aparece. */
+  migracaoOk: boolean;
+}
+
+/** Tudo que o Raio-X precisa, carregado quando a aba abre (não pesa a tela principal). */
+export async function carregarRaioX() {
+  return comResultado(async (): Promise<DadosRaioX> => {
+    const supabase = await createClient();
+    const [precRes, digRes, arRes, vendasRes] = await Promise.all([
+      supabase.from("precificacoes").select("*").order("criado_em", { ascending: false }).limit(1000),
+      supabase.from("precos_praticados").select("chave, preco, observado_em").order("observado_em", { ascending: false }).limit(2000),
+      supabase.from("marketplace_anuncios").select("produto_id, loja_id, preco_atual, preco_lido_em").not("produto_id", "is", null).not("preco_atual", "is", null).limit(5000),
+      supabase.rpc("raio_x_vendas", { p_dias: 30 }),
+    ]);
+    if (precRes.error) lancarErroSupabase(precRes.error);
+    const digitados: DadosRaioX["digitados"] = {};
+    for (const d of (digRes.error ? [] : (digRes.data ?? [])) as { chave: string; preco: number; observado_em: string }[]) {
+      if (!digitados[d.chave]) digitados[d.chave] = { preco: Number(d.preco), observado_em: d.observado_em };
+    }
+    const somaAr = new Map<string, { soma: number; n: number; lido: string | null }>();
+    for (const a of (arRes.error ? [] : (arRes.data ?? [])) as { produto_id: string; loja_id: string; preco_atual: number; preco_lido_em: string | null }[]) {
+      const k = `${a.produto_id}|${a.loja_id}`;
+      const atual = somaAr.get(k) ?? { soma: 0, n: 0, lido: a.preco_lido_em };
+      somaAr.set(k, { soma: atual.soma + Number(a.preco_atual), n: atual.n + 1, lido: atual.lido ?? a.preco_lido_em });
+    }
+    const noAr: DadosRaioX["noAr"] = {};
+    for (const [k, v] of somaAr) noAr[k] = { preco: Math.round((v.soma / v.n) * 100) / 100, lido_em: v.lido };
+    const vendas: DadosRaioX["vendas"] = {};
+    for (const v of (vendasRes.error ? [] : (vendasRes.data ?? [])) as { produto_id: string; loja_id: string | null; quantidade: number; preco_medio: number }[]) {
+      vendas[`${v.produto_id}|${v.loja_id ?? ""}`] = { quantidade: Number(v.quantidade), preco_medio: Number(v.preco_medio) };
+    }
+    return { precificacoes: (precRes.data ?? []) as PrecificacaoHist[], digitados, noAr, vendas, migracaoOk: !digRes.error && !vendasRes.error };
+  });
+}
+
+/** Guarda o preço que a pessoa usa hoje num anúncio (0071). */
+export async function salvarPrecoPraticado(input: PrecoPraticadoInput) {
+  return comResultado(async () => {
+    const d = validar(precoPraticadoSchema, input);
+    const supabase = await createClient();
+    const { error } = await supabase.from("precos_praticados").insert({ chave: d.chave, produto_id: d.produto_id, loja_id: d.loja_id, preco: d.preco, observacao: d.observacao ?? null });
+    if (error?.code === "PGRST205" || error?.code === "42P01") throw new Error("Guardar o preço praticado precisa da migração 0071.");
+    if (error) lancarErroSupabase(error);
+  });
+}

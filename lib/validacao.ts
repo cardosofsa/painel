@@ -820,3 +820,13 @@ export const mensagemEnviadaSchema = z.object({
   pulada: z.boolean().optional(),
 });
 export type MensagemEnviadaInput = z.infer<typeof mensagemEnviadaSchema>;
+
+// ---------- Raio-X (0071) ----------
+export const precoPraticadoSchema = z.object({
+  chave: z.string().trim().min(1).max(300),
+  produto_id: z.string().uuid().nullable(),
+  loja_id: z.string().uuid().nullable(),
+  preco: z.number({ message: "Informe o preço" }).positive("O preço precisa ser maior que zero").max(999999),
+  observacao: z.string().trim().max(200).nullish(),
+});
+export type PrecoPraticadoInput = z.infer<typeof precoPraticadoSchema>;
