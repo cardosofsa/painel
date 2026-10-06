@@ -4,7 +4,7 @@ import type { ConexaoShopee } from "./tokens";
 import { apiDaConexao } from "./conexao-api";
 
 /**
- * Estoque do SERTÃO → anúncios da Shopee, por loja conectada. Código de SERVIDOR; funciona
+ * Estoque do Sertão → anúncios da Shopee, por loja conectada. Código de SERVIDOR; funciona
  * com a sessão do dono e com a service key do cron (sempre filtra por `user_id`).
  */
 
@@ -67,7 +67,7 @@ async function anunciosDaLoja(supabase: SupabaseClient, conexao: ConexaoShopee, 
   return (data ?? []) as (AnuncioSalvo & { id: string; pendente: boolean })[];
 }
 
-/** Prévia "SERTÃO × Shopee" (relê a listagem para mostrar o estoque de agora na Shopee). */
+/** Prévia "Sertão × Shopee" (relê a listagem para mostrar o estoque de agora na Shopee). */
 export async function previaEstoque(supabase: SupabaseClient, conexao: ConexaoShopee): Promise<{ total: number; semVinculo: number; diferencas: DiferencaEstoque[] }> {
   await atualizarAnuncios(supabase, conexao);
   const anuncios = await anunciosDaLoja(supabase, conexao, false);

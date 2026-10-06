@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
+import { Download } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
+import { Modal, campoBase } from "@/components/ui/Modal";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { Chip } from "@/components/ui/Chip";
@@ -10,6 +12,7 @@ import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
 import { DetalhamentoPrecificacao } from "@/components/precificacao/resultado-compartilhado";
 import type { EstadoPrecificacao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
 import type { RowMenuAction } from "@/components/ui/RowMenu";
+import { ExportarPrecificacoesModal, ExportarVariacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 
 /**
  * A aba "Histórico" inteira: sub-abas Precificações / Produtos com Variações. Extraído de
@@ -19,7 +22,9 @@ export function HistoricoPrecificacoes({
   estado,
   anuncios,
   acoesLigarProduto,
+  empresa = null,
 }: {
+  empresa?: { nome: string | null; logoUrl: string | null } | null;
   estado: EstadoPrecificacao;
   anuncios: AnuncioSalvo[];
   /** Vincular / aplicar preço / criar produto — definidas uma vez em PrecificacaoClient
@@ -41,7 +46,6 @@ export function HistoricoPrecificacoes({
     setMostrarDetalheHistorico,
     mostrarDetalheHistorico,
     resumoDoHistorico,
-    exportarHistoricoCsv,
     duplicarHistorico,
     removerHistorico,
     setPendenteExport,
@@ -49,9 +53,16 @@ export function HistoricoPrecificacoes({
     anuncioExpandidoHistorico,
     setAnuncioExpandidoHistorico,
     excluirAnuncioHistorico,
-    exportarAnunciosCsv,
     criarProdutosDaVariacao,
+    historico,
   } = estado;
+  // Marcar várias e exportar só elas (como em Compras). Some ao trocar de filtro? Não: a
+  // pessoa pode marcar, buscar outra coisa e marcar mais.
+  const [selecionadas, setSelecionadas] = useState<string[]>([]);
+  const [exportando, setExportando] = useState<"precificacoes" | "variacoes" | null>(null);
+  const [anunciosExportar, setAnunciosExportar] = useState<AnuncioSalvo[] | null>(null);
+  const alternar = (id: string) => setSelecionadas((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const todasFiltradasMarcadas = historicoFiltrado.length > 0 && historicoFiltrado.every((h) => selecionadas.includes(h.id));
 
   return (
     <>
@@ -74,28 +85,59 @@ export function HistoricoPrecificacoes({
                   value={filtroHistoricoTexto}
                   onChange={(e) => setFiltroHistoricoTexto(e.target.value)}
                   placeholder="Buscar por produto…"
-                  className="h-8 px-3 bg-surface-1 border border-border rounded-md text-xs text-text-primary outline-none focus:border-accent w-40"
+                  aria-label="Buscar por produto"
+                  className={`${campoBase} h-8 text-xs w-40`}
                 />
                 <input
                   type="date"
                   value={filtroHistoricoDataIni}
                   onChange={(e) => setFiltroHistoricoDataIni(e.target.value)}
-                  className="h-8 px-2 bg-surface-1 border border-border rounded-md text-xs text-text-primary outline-none focus:border-accent"
+                  aria-label="De"
+                  className={`${campoBase} h-8 text-xs`}
                 />
                 <input
                   type="date"
                   value={filtroHistoricoDataFim}
                   onChange={(e) => setFiltroHistoricoDataFim(e.target.value)}
-                  className="h-8 px-2 bg-surface-1 border border-border rounded-md text-xs text-text-primary outline-none focus:border-accent"
+                  aria-label="Até"
+                  className={`${campoBase} h-8 text-xs`}
                 />
-                <button onClick={exportarHistoricoCsv} className="text-xs text-accent hover:underline shrink-0">
-                  Exportar CSV
-                </button>
+                <Button variant="secondary" size="sm" onClick={() => setExportando("precificacoes")}>
+                  <Download size={14} /> Exportar
+                </Button>
               </div>
             </div>
+            {selecionadas.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-accent-soft px-5 py-2.5">
+                <span className="text-sm text-accent font-medium">
+                  {selecionadas.length} {selecionadas.length === 1 ? "selecionada" : "selecionadas"}
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="primary" size="sm" onClick={() => setExportando("precificacoes")}>
+                    <Download size={14} /> Exportar selecionadas
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSelecionadas([])}>
+                    Limpar seleção
+                  </Button>
+                </div>
+              </div>
+            )}
             <Table>
               <Thead>
                 <tr>
+                  <Th>
+                    <input
+                      type="checkbox"
+                      aria-label="Selecionar todas desta lista"
+                      className="w-4 h-4 accent-accent"
+                      checked={todasFiltradasMarcadas}
+                      onChange={(e) =>
+                        setSelecionadas((s) =>
+                          e.target.checked ? Array.from(new Set([...s, ...historicoFiltrado.map((h) => h.id)])) : s.filter((id) => !historicoFiltrado.some((h) => h.id === id)),
+                        )
+                      }
+                    />
+                  </Th>
                   <Th>Data</Th>
                   <Th>Produto / Kit</Th>
                   <Th>Canal</Th>
@@ -109,6 +151,9 @@ export function HistoricoPrecificacoes({
               <tbody>
                 {historicoFiltrado.map((h) => (
                   <Tr key={h.id}>
+                    <Td>
+                      <input type="checkbox" aria-label={`Selecionar ${h.produto_nome}`} className="w-4 h-4 accent-accent" checked={selecionadas.includes(h.id)} onChange={() => alternar(h.id)} />
+                    </Td>
                     <Td mono>{new Date(h.criado_em).toLocaleDateString("pt-BR")}</Td>
                     <Td>{h.produto_nome}</Td>
                     <Td className="text-text-secondary">{h.canal ?? "—"}</Td>
@@ -137,11 +182,12 @@ export function HistoricoPrecificacoes({
                   </Tr>
                 ))}
                 {historicoFiltrado.length === 0 && (
-                  <Tr>
-                    <Td align="center" className="text-text-tertiary text-center py-8">
+                  <tr>
+                    {/* Sem colSpan a mensagem ficava espremida na primeira coluna. */}
+                    <td colSpan={9} className="text-sm text-text-tertiary text-center py-8">
                       Nenhuma precificação encontrada.
-                    </Td>
-                  </Tr>
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </Table>
@@ -198,9 +244,8 @@ export function HistoricoPrecificacoes({
                   <div className="flex justify-between font-medium pt-1.5 border-t border-border">
                     <span className="text-text-primary">Lucro líquido</span>
                     <span className={`font-mono ${classeValor(historicoDetalhe.lucro)}`}>
-                      {formatBRL(historicoDetalhe.lucro)} (
-                      {formatarMargemPct(historicoDetalhe.lucro, historicoDetalhe.preco_calculado)}
-                      %)
+                      {/* `formatarMargemPct` já traz o "%": saía "(+28,0%%)". */}
+                      {formatBRL(historicoDetalhe.lucro)} ({formatarMargemPct(historicoDetalhe.lucro, historicoDetalhe.preco_calculado)})
                     </span>
                   </div>
                   {historicoDetalhe.anuncio && historicoDetalhe.anuncio.valor > 0 && (
@@ -256,9 +301,9 @@ export function HistoricoPrecificacoes({
         <Card padding="nenhum" className="overflow-hidden">
           <div className="px-5 pt-5 pb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-text-primary">Produtos com Variações</h2>
-            <button onClick={exportarAnunciosCsv} className="text-xs text-accent hover:underline">
-              Exportar CSV
-            </button>
+            <Button variant="secondary" size="sm" onClick={() => setExportando("variacoes")} disabled={anuncios.length === 0}>
+              <Download size={14} /> Exportar
+            </Button>
           </div>
           <div className="divide-y divide-border">
             {anuncios.map((a) => (
@@ -280,6 +325,7 @@ export function HistoricoPrecificacoes({
                         onClick: () => setAnuncioExpandidoHistorico((v) => (v === a.id ? null : a.id)),
                       },
                       { label: "Criar produtos a partir das variações", onClick: () => criarProdutosDaVariacao(a) },
+                      { label: "Exportar este anúncio", onClick: () => setAnunciosExportar([a]) },
                       { label: "Remover", onClick: () => excluirAnuncioHistorico(a), destructive: true },
                     ]}
                   />
@@ -305,6 +351,23 @@ export function HistoricoPrecificacoes({
             )}
           </div>
         </Card>
+      )}
+      {exportando === "precificacoes" && (
+        <ExportarPrecificacoesModal
+          onClose={() => setExportando(null)}
+          empresa={empresa}
+          grupos={[
+            { id: "selecionadas", rotulo: "Selecionadas", lista: historico.filter((h) => selecionadas.includes(h.id)) },
+            { id: "filtradas", rotulo: "Desta lista", lista: historicoFiltrado },
+            { id: "todas", rotulo: "Todas carregadas", lista: historico },
+          ]}
+        />
+      )}
+      {exportando === "variacoes" && (
+        <ExportarVariacoesModal onClose={() => setExportando(null)} empresa={empresa} grupos={[{ id: "todos", rotulo: "Todos os anúncios", lista: anuncios }]} />
+      )}
+      {anunciosExportar && (
+        <ExportarVariacoesModal onClose={() => setAnunciosExportar(null)} empresa={empresa} grupos={[{ id: "este", rotulo: anunciosExportar[0]?.nome_anuncio ?? "Anúncio", lista: anunciosExportar }]} />
       )}
     </>
   );

@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { carregarRadar } from "@/lib/vixe/radar-servidor";
 import { VixeRadar } from "@/components/vixe/VixeRadar";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Vixe · Radar" };
 
 /** Vixe → Radar (11.2): onde a loja perde dinheiro, por produto e canal. */
 export default async function VixeRadarPage() {

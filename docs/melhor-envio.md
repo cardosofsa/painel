@@ -1,6 +1,6 @@
 # Frete com Melhor Envio
 
-O SERTÃO cota frete e compra etiquetas pela conta do lojista no Melhor Envio (Fase 10.6).
+O Sertão cota frete e compra etiquetas pela conta do lojista no Melhor Envio (Fase 10.6).
 
 ## Ligar
 
@@ -19,7 +19,7 @@ O SERTÃO cota frete e compra etiquetas pela conta do lojista no Melhor Envio (F
       - `shipping-print`
       - `orders-read`
       - `balance-read`
-4. Cole o token **só** em **SERTÃO → Configurações → Frete**. Ali também ficam:
+4. Cole o token **só** em **Sertão → Configurações → Frete**. Ali também ficam:
    - o ambiente (sandbox ou produção);
    - o CEP de origem;
    - o acréscimo por envio;

@@ -312,7 +312,7 @@ export function PainelResultado({
             ({(analiseConcorrencia.resultadoNoPrecoMedio.margemEfetivaPct * 100).toFixed(1)}%).
           </div>
           <p className="text-[11px] text-text-tertiary italic mt-3">
-            Sugestão gerada por regras simples de comparação de preço. Em breve: recomendações mais precisas com IA.
+            Sugestão gerada por regras simples de comparação de preço. Para uma análise completa, peça a estratégia à Vixe logo abaixo.
           </p>
         </Card>
       )}

@@ -3,7 +3,7 @@ import type { SVGProps } from "react";
 /**
  * Cacto — não existe em `lucide-react` (checado na versão instalada, 1.45.0). Desenhado no
  * mesmo estilo dos ícones lucide ao redor (viewBox 24×24, traço 2, cantos arredondados) pra
- * não destoar. É a marca do SERTÃO, no lugar do antigo ícone `Brain`.
+ * não destoar. É a marca do Sertão, no lugar do antigo ícone `Brain`.
  */
 export function IconeCacto({ size = 24, ...props }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (

@@ -2,14 +2,15 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Clock } from "lucide-react";
+import { Clock, Download } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { Chip } from "@/components/ui/Chip";
 import { formatBRL, classeValor } from "@/lib/format";
-import { paraCsv, baixarArquivo } from "@/lib/csv";
+import { ExportarModal } from "@/components/ui/ExportarModal";
+import { tabelaEmMassa } from "@/lib/precificacao-exportar";
 import {
   MAX_LINHAS_MASSA,
   calcularResultadosEmMassa,
@@ -46,6 +47,7 @@ export function CalculadoraEmMassa({
   const [filtroResultado, setFiltroResultado] = useState<"todos" | "subir" | "ok">("todos");
   const [sugestaoAbertaId, setSugestaoAbertaId] = useState<string | null>(null);
   const [linhaExpandidaId, setLinhaExpandidaId] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
   const salvosRecentes = useMemo(() => historico.filter((h) => h.origem === "em_massa").slice(0, 5), [historico]);
   const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
@@ -142,22 +144,6 @@ export function CalculadoraEmMassa({
       return;
     }
     setVisualizacao("resultado");
-  }
-
-  function exportarCsv() {
-    const colunas = ["loja", "sku", "nome", "custo", "precoSugerido", "precoAtual", "diferenca", "novoLucro"];
-    const linhasCsv = resultados.map((r) => ({
-      loja: r.loja ? `${r.loja.canalNome} — ${r.loja.nome}` : "Manual",
-      sku: r.linha.sku,
-      nome: r.linha.nome,
-      custo: r.linha.custo.toFixed(2),
-      precoSugerido: r.resultado.precoVenda.toFixed(2),
-      precoAtual: r.linha.precoAtual.toFixed(2),
-      diferenca: r.diferenca.toFixed(2),
-      novoLucro: r.resultado.lucroLiquido.toFixed(2),
-    }));
-    baixarArquivo("precificacao-em-massa.csv", paraCsv(linhasCsv, colunas));
-    toast.success("CSV exportado");
   }
 
   function salvarNoHistorico() {
@@ -311,8 +297,8 @@ export function CalculadoraEmMassa({
             ← Voltar e editar
           </Button>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={exportarCsv}>
-              Exportar CSV
+            <Button variant="secondary" onClick={() => setExportando(true)}>
+              <Download size={14} /> Exportar
             </Button>
             <Button variant="primary" onClick={salvarNoHistorico} loading={pending}>
               Salvar no Histórico
@@ -347,7 +333,23 @@ export function CalculadoraEmMassa({
           </div>
         </Card>
 
-        {modaisExportacao}
+        {exportando && (
+        <ExportarModal
+          aberto
+          onClose={() => setExportando(false)}
+          titulo="Exportar precificação em massa"
+          escopos={[
+            { id: "todos", rotulo: "Todas as linhas", quantidade: resultados.length },
+            { id: "subir", rotulo: "Precisam subir o preço", quantidade: resultados.filter((r) => r.precisaSubir).length },
+          ]}
+          montar={(escopo) => {
+            const lista = escopo === "subir" ? resultados.filter((r) => r.precisaSubir) : resultados;
+            return tabelaEmMassa(lista, `${lista.length} produto(s)`);
+          }}
+          empresa={empresa}
+        />
+      )}
+      {modaisExportacao}
         {ConfirmDialog}
       </div>
     );

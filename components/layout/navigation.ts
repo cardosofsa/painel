@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard,
+  House,
   ScanBarcode,
   Receipt,
   Tag,
@@ -22,7 +22,7 @@ import { ABAS, type AbaId } from "@/lib/acesso";
 export type IconeNav = ComponentType<{ size?: number | string; strokeWidth?: number; className?: string }>;
 
 const ICONES: Record<AbaId, IconeNav> = {
-  dashboard: LayoutDashboard,
+  dashboard: House,
   pdv: ScanBarcode,
   vendas: Receipt,
   precificacao: Tag,
@@ -47,14 +47,14 @@ export const NAV_ITEMS: { id: AbaId; href: string; label: string; icon: IconeNav
 /**
  * Agrupamento visual da barra lateral, por segmento do negócio — puramente de
  * apresentação, não mexe em controle de acesso (isso continua em `lib/acesso.ts`, decidido
- * pela conta master). `dashboard` fica de fora: o acesso a ele passou a ser pelo logo, não
- * por um item de menu. `configuracoes` também fica de fora: é renderizado à parte, sempre
+ * pela conta master). `dashboard` é o "Home", primeiro item: só o logo como caminho de volta
+ * não era óbvio. `configuracoes` também fica de fora: é renderizado à parte, sempre
  * por último, igual já era o link de Administração do master.
  */
 export const GRUPOS_NAV: { label: string | null; itens: AbaId[] }[] = [
   // Sem título: a Vixe é uma entrada só no menu; os segmentos dela (Alertas, Preço…)
   // ficam dentro da própria página, para não encher a barra lateral.
-  { label: null, itens: ["vixe"] },
+  { label: null, itens: ["dashboard", "vixe"] },
   { label: "Vendas", itens: ["pdv", "vendas", "catalogo"] },
   { label: "Produtos & Estoque", itens: ["precificacao", "produtos", "estoque"] },
   { label: "Compras", itens: ["compras", "fornecedores"] },

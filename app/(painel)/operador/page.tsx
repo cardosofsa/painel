@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { OperadorClient } from "./OperadorClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Operador" };
 
 /** "Quem está operando?" (11.8): escolhe o operador e digita o PIN. */
 export default async function OperadorPage() {

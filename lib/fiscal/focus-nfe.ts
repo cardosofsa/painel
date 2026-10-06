@@ -4,7 +4,7 @@
  *
  * Regras fiscais (CFOP, CSOSN, PIS/COFINS) vêm da configuração da conta: os padrões servem
  * ao Simples Nacional comum, mas QUEM DECIDE é o contador. O certificado A1 é cadastrado no
- * próprio painel do emissor; o SERTÃO só guarda o token da API (cifrado).
+ * próprio painel do emissor; o Sertão só guarda o token da API (cifrado).
  */
 
 export type Ambiente = "homologacao" | "producao";
@@ -140,7 +140,7 @@ export function montarNfe(v: VendaFiscal, c: ConfigFiscal, e: EmpresaFiscal, d: 
 
 export type StatusNota = "processando" | "autorizada" | "rejeitada" | "cancelada";
 
-/** Resposta da Focus → status do SERTÃO. */
+/** Resposta da Focus → status do Sertão. */
 export function statusDaFocus(j: { status?: string; mensagem_sefaz?: string; mensagem?: string } | null): { status: StatusNota; mensagem: string | null } {
   const s = j?.status ?? "";
   if (s === "autorizado") return { status: "autorizada", mensagem: j?.mensagem_sefaz ?? null };

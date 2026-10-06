@@ -11,7 +11,7 @@ export const maxDuration = 60;
  *
  * Não confia no corpo: só usa o `user_id` para achar a conexão e o número do pedido do
  * `resource`, e então LÊ o pedido na API com o token da loja. Notificação forjada no
- * máximo faz o SERTÃO reler um pedido de verdade. Sem service key ou credenciais, ignora.
+ * máximo faz o Sertão reler um pedido de verdade. Sem service key ou credenciais, ignora.
  */
 export async function POST(req: NextRequest) {
   const corpo = (await req.json().catch(() => null)) as { resource?: string; user_id?: number | string; topic?: string } | null;

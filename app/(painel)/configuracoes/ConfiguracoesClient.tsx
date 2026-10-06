@@ -2,16 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ShoppingBag, ShoppingCart, Store, Users, Warehouse, CreditCard, Tag, type LucideIcon } from "lucide-react";
+import { ShoppingBag, ShoppingCart, Store, Users, Warehouse, CreditCard, Tag, Plus, X, type LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { inputClass } from "@/components/ui/Modal";
+import { Button, IconButton } from "@/components/ui/Button";
+import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
+import { Chip, ChipRow } from "@/components/ui/Chip";
+import { campoBase, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
-import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { formatBRL } from "@/lib/format";
 import {
   criarCategoria,
@@ -98,21 +98,27 @@ export const ICONES_CANAL: Record<string, LucideIcon> = {
 };
 
 const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Frete", "Fiscal", "Equipe", "IA", "Dados", "Plano", "Conta"] as const;
+type Aba = (typeof ABAS)[number];
 /** As 11 telas em 5 grupos: menos abas na tela, e o que é parecido fica junto. */
-const GRUPOS: { id: string; rotulo: string; abas: (typeof ABAS)[number][] }[] = [
+const GRUPOS: { id: string; rotulo: string; abas: Aba[] }[] = [
+  { id: "negocio", rotulo: "Negócio", abas: ["Conta", "Categorias", "Armazéns"] },
   { id: "vendas", rotulo: "Vendas", abas: ["Canais de Venda", "Transações", "Frete"] },
-  { id: "loja", rotulo: "Loja", abas: ["Conta", "Categorias", "Armazéns"] },
   { id: "fiscal-ia", rotulo: "Fiscal e IA", abas: ["Fiscal", "IA"] },
   { id: "equipe", rotulo: "Equipe e plano", abas: ["Equipe", "Plano"] },
   { id: "dados", rotulo: "Dados", abas: ["Dados"] },
 ];
 const GRUPOS_TABS = GRUPOS.map((g) => ({ value: g.id, label: g.rotulo }));
-const grupoDaAba = (a: (typeof ABAS)[number]) => GRUPOS.find((g) => g.abas.includes(a)) ?? GRUPOS[0];
+const grupoDaAba = (a: Aba) => GRUPOS.find((g) => g.abas.includes(a)) ?? GRUPOS[0];
+/** Rótulo de sub-aba quando o nome da tela não diz tudo. */
+const ROTULO_SUBABA: Partial<Record<Aba, string>> = { Conta: "Conta e negócio", Transações: "Contas e pagamentos" };
+
+/** "Canais de Venda" → "canais-de-venda": o mesmo formato que os links do sistema usam. */
+const slugDaAba = (a: Aba) => a.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, "-");
 
 /** `?aba=plano` (link do plano no topo) → "Plano". Sem parâmetro ou desconhecido: a primeira. */
-function abaDaUrl(param: string | undefined): (typeof ABAS)[number] {
+function abaDaUrl(param: string | undefined): Aba {
   const alvo = (param ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  return ABAS.find((a) => a.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, "-") === alvo) ?? "Canais de Venda";
+  return ABAS.find((a) => slugDaAba(a) === alvo) ?? "Conta";
 }
 
 export function ConfiguracoesClient({
@@ -165,7 +171,22 @@ export function ConfiguracoesClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [aba, setAba] = useState<(typeof ABAS)[number]>(() => abaDaUrl(abaUrl));
+  const [aba, setAbaEstado] = useState<Aba>(() => abaDaUrl(abaUrl));
+  // Última sub-aba vista em cada grupo: voltar ao grupo reabre onde a pessoa estava.
+  const [ultimaDoGrupo, setUltimaDoGrupo] = useState<Record<string, Aba>>({});
+
+  /**
+   * Troca a aba e grava `?aba=` na URL, para recarregar, voltar ou mandar o link abrir no
+   * mesmo lugar. `history.replaceState` em vez de `router.replace`: a página remonta por
+   * `key={aba}` e buscaria tudo do servidor de novo a cada clique.
+   */
+  function setAba(nova: Aba) {
+    setAbaEstado(nova);
+    setUltimaDoGrupo((u) => ({ ...u, [grupoDaAba(nova).id]: nova }));
+    const url = new URL(window.location.href);
+    url.searchParams.set("aba", slugDaAba(nova));
+    window.history.replaceState(window.history.state, "", url);
+  }
 
   const [modalConta, setModalConta] = useState<Conta | "novo" | null>(null);
   const [modalArmazem, setModalArmazem] = useState<Armazem | "novo" | null>(null);
@@ -264,21 +285,35 @@ export function ConfiguracoesClient({
 
   return (
     <>
-      <PageHeader title="Configurações do Negócio" />
+      <PageHeader title="Configurações" />
 
-      <Tabs tabs={GRUPOS_TABS} value={grupoDaAba(aba).id} onChange={(id) => setAba(GRUPOS.find((g) => g.id === id)?.abas[0] ?? aba)} className="mb-4" />
+      <Tabs
+        tabs={GRUPOS_TABS}
+        value={grupoDaAba(aba).id}
+        onChange={(id) => {
+          const grupo = GRUPOS.find((g) => g.id === id);
+          if (grupo) setAba(ultimaDoGrupo[grupo.id] ?? grupo.abas[0]);
+        }}
+        className="mb-4"
+      />
+
+      {/* O painel leva o id do GRUPO: é ele que a barra de abas controla (`aria-controls`). */}
+      <TabPanel key={aba} tabValue={grupoDaAba(aba).id}>
       {grupoDaAba(aba).abas.length > 1 && (
-        <div className="mb-6">
-          <SubAbas itens={grupoDaAba(aba).abas.map((a) => ({ id: a, rotulo: a }))} valor={aba} onChange={setAba} />
-        </div>
+        <ChipRow className="mb-5">
+          {grupoDaAba(aba).abas.map((a) => (
+            <Chip key={a} ativo={aba === a} onClick={() => setAba(a)}>
+              {ROTULO_SUBABA[a] ?? a}
+            </Chip>
+          ))}
+        </ChipRow>
       )}
-
-      <TabPanel key={aba} tabValue={aba}>
       {aba === "Canais de Venda" && <AbaCanais canais={canais} lojas={lojas} marketplace={marketplace} />}
 
       {aba === "Categorias" && (
         <Card>
-          <h3 className="font-semibold text-text-primary mb-4">Categorias de Produto</h3>
+          <CardTitle>Categorias de produto</CardTitle>
+          <CardSubtitle className="mb-4">O tipo separa o que você vende do que é insumo ou embalagem na precificação.</CardSubtitle>
           <div className="flex gap-2 mb-3">
             <input
               value={novaCategoria}
@@ -287,8 +322,8 @@ export function ConfiguracoesClient({
               placeholder="Nova categoria…"
               className={inputClass}
             />
-            <Button variant="secondary" onClick={adicionarCategoriaHandler}>
-              Adicionar
+            <Button variant="secondary" onClick={adicionarCategoriaHandler} disabled={!novaCategoria.trim()}>
+              <Plus size={14} /> Adicionar
             </Button>
           </div>
           <div className="space-y-2">
@@ -305,16 +340,16 @@ export function ConfiguracoesClient({
                         await executarComToast(definirTipoCategoria(c.id, tipo), { sucesso: "Tipo atualizado", erro: "Erro ao mudar o tipo" });
                       });
                     }}
-                    className="h-7 text-xs rounded-md border border-border bg-surface-1 px-2 text-text-secondary"
+                    className={`${campoBase} h-8 text-xs`}
                   >
                     <option value="produto">Produto</option>
                     <option value="insumo">Insumo</option>
                     <option value="embalagem">Embalagem</option>
                   </select>
                   <span className="font-mono text-xs text-text-secondary">{c.skus} SKUs</span>
-                  <button onClick={() => removerCategoriaHandler(c)} className="text-text-tertiary hover:text-negative text-sm">
-                    ×
-                  </button>
+                  <IconButton aria-label={`Remover a categoria ${c.nome}`} onClick={() => removerCategoriaHandler(c)}>
+                    <X size={14} />
+                  </IconButton>
                 </div>
               </div>
             ))}
@@ -326,17 +361,12 @@ export function ConfiguracoesClient({
       )}
 
       {aba === "Armazéns" && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="font-semibold text-text-primary">Armazéns</h3>
-              <p className="text-sm text-text-secondary">Onde o estoque físico fica e quais lojas cada um abastece.</p>
-            </div>
-            <button onClick={() => setModalArmazem("novo")} className="text-sm text-accent hover:underline shrink-0">
-              + Adicionar Armazém
-            </button>
-          </div>
-          <div className="space-y-3">
+        <Card padding="nenhum">
+          <CardHeader acoes={<BotaoAdicionar onClick={() => setModalArmazem("novo")}>Armazém</BotaoAdicionar>}>
+            <CardTitle>Armazéns</CardTitle>
+            <CardSubtitle>Onde o estoque físico fica e quais lojas cada um abastece.</CardSubtitle>
+          </CardHeader>
+          <div className="space-y-3 px-5 pb-5">
             {armazens.map((a) => (
               <div key={a.id} className="border border-border rounded-md p-3">
                 <div className="flex items-center justify-between mb-2">
@@ -369,14 +399,12 @@ export function ConfiguracoesClient({
 
       {aba === "Transações" && (
         <div className="space-y-5">
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-text-primary">Formas de Recebimento</h3>
-              <button onClick={() => setModalConta("novo")} className="text-sm text-accent hover:underline">
-                + Adicionar Conta
-              </button>
-            </div>
-            <div className="space-y-3">
+          <Card padding="nenhum">
+            <CardHeader acoes={<BotaoAdicionar onClick={() => setModalConta("novo")}>Conta</BotaoAdicionar>}>
+              <CardTitle>Contas (onde o dinheiro entra e sai)</CardTitle>
+              <CardSubtitle>Caixa, banco, Pix ou carteira do marketplace. O saldo é atualizado pelo Financeiro.</CardSubtitle>
+            </CardHeader>
+            <div className="space-y-3 px-5 pb-5">
               {contas.map((c) => (
                 <div key={c.id} className="flex items-center justify-between border border-border rounded-md p-3">
                   <div>
@@ -400,14 +428,12 @@ export function ConfiguracoesClient({
             </div>
           </Card>
 
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-text-primary">Formas de Pagamento</h3>
-              <button onClick={() => setModalFormaPagamento("novo")} className="text-sm text-accent hover:underline">
-                + Adicionar Forma de Pagamento
-              </button>
-            </div>
-            <div className="space-y-3">
+          <Card padding="nenhum">
+            <CardHeader acoes={<BotaoAdicionar onClick={() => setModalFormaPagamento("novo")}>Forma</BotaoAdicionar>}>
+              <CardTitle>Formas de pagamento</CardTitle>
+              <CardSubtitle>As opções que aparecem no PDV e nas compras.</CardSubtitle>
+            </CardHeader>
+            <div className="space-y-3 px-5 pb-5">
               {formasPagamento.map((f) => (
                 <div key={f.id} className="flex items-center justify-between border border-border rounded-md p-3">
                   <div>
@@ -440,7 +466,7 @@ export function ConfiguracoesClient({
       {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} teste={teste} />}
       {aba === "Dados" && <AbaDados armazens={armazens.map((a) => ({ id: a.id, nome: a.nome }))} />}
       {aba === "Conta" && (
-        <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} crediario={crediario} />
+        <AbaConta perfil={perfil} email={email} crediario={crediario} />
       )}
 
       </TabPanel>
@@ -463,5 +489,14 @@ export function ConfiguracoesClient({
       />
       {ConfirmDialog}
     </>
+  );
+}
+
+/** "+ Armazém", "+ Conta"…: o mesmo botão em todo cartão de cadastro (antes, metade era link solto). */
+export function BotaoAdicionar({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Button variant="secondary" size="sm" onClick={onClick}>
+      <Plus size={14} /> {children}
+    </Button>
   );
 }

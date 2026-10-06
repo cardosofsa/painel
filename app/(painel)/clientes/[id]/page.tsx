@@ -4,6 +4,9 @@ import { carregarCrediario } from "@/lib/crediario-servidor";
 import { lancarErroSupabase } from "@/lib/erros";
 import { contatoDoNegocio } from "@/lib/empresa";
 import { ClienteDetalheClient, type ClienteDetalhe, type VendaCliente } from "./ClienteDetalheClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Cliente" };
 
 interface VendaBruta {
   id: string;

@@ -32,6 +32,15 @@ const variants: Record<Variant, string> = {
   ghost: "bg-transparent text-text-secondary hover:bg-surface-2 hover:text-text-primary",
 };
 
+/**
+ * As mesmas classes do `<Button>` para um link (`<a>`/`<Link>`) que precisa parecer botão.
+ * Pôr `<Button>` dentro de `<a>` cria um botão dentro de link — HTML inválido, e o teclado
+ * para duas vezes no mesmo lugar.
+ */
+export function classesBotao({ variant = "primary", size = "md" }: { variant?: Variant; size?: Size } = {}): string {
+  return `${base} ${sizes[size]} ${variants[variant]}`;
+}
+
 export function Button({
   variant = "primary",
   size = "md",

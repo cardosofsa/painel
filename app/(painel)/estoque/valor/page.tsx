@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { curvaAbc, giroEstoque, valorPorArmazem, valorPorCategoria, type ProdutoValor } from "@/lib/estoque-valor";
 import { ValorEstoqueClient } from "./ValorEstoqueClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Valor do estoque" };
 
 /** Janela das saídas para giro, cobertura e "parados". */
 const JANELA = 90;

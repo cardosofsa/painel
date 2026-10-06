@@ -4,6 +4,9 @@ import { normalizarAbas } from "@/lib/acesso";
 import { carregarAlertasVixe } from "@/lib/vixe/carregar-alertas";
 import { CentralAlertas } from "@/components/vixe/CentralAlertas";
 import { CalendarioComercial } from "@/components/vixe/CalendarioComercial";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Vixe · Alertas" };
 
 export default async function VixeAlertasPage() {
   const supabase = await createClient();

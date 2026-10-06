@@ -48,9 +48,9 @@ describe("exportar", () => {
 
   it("CSV neutraliza fórmula e mantém número cru", () => {
     const csv = tabelaParaCsv(tabela);
-    expect(csv.split("\n")[0]).toBe("SKU,Nome,Custo,Estoque,Margem,Criado");
+    expect(csv.split("\n")[0]).toBe("SKU;Nome;Custo;Estoque;Margem;Criado");
     expect(csv).toContain("'=HYPERLINK");
-    expect(csv).toContain(",12.5,3,0.254,30/09/2026");
+    expect(csv).toContain(";12,5;3;0,254;30/09/2026");
   });
 
   it("nome de arquivo sem acento e com data", () => {

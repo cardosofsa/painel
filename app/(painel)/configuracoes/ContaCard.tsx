@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Card } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { createClient } from "@/lib/supabase/client";
@@ -70,7 +70,7 @@ export function ContaCard({ email }: { email: string }) {
 
   return (
     <Card className="h-full flex flex-col">
-      <h3 className="font-semibold text-text-primary mb-4">Conta</h3>
+      <CardTitle className="mb-4">Acesso: e-mail e senha</CardTitle>
       <FormField label="E-mail">
         <input className={inputClass} value={email} disabled />
       </FormField>
@@ -108,7 +108,7 @@ export function ContaCard({ email }: { email: string }) {
       </FormField>
       <div className="mt-auto pt-2">
         <Button variant="primary" onClick={alterarSenha} loading={salvando}>
-          Alterar Senha
+          Alterar senha
         </Button>
       </div>
     </Card>

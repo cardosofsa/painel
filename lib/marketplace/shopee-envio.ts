@@ -1,5 +1,5 @@
 /**
- * Envio da Shopee pelo SERTÃO (Fase 10.5): programar envio, rastreio e etiqueta.
+ * Envio da Shopee pelo Sertão (Fase 10.5): programar envio, rastreio e etiqueta.
  * Código de SERVIDOR (usa as credenciais), com a parte pura — escolher coleta ou postagem
  * e montar o corpo do `ship_order` — coberta por `shopee-envio.test.ts`.
  *

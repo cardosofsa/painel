@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 
 /**
  * Página inicial pública. Quem já entrou vai direto para o painel; quem não entrou vê o que
- * o SERTÃO faz. O bloco "Entrar com o Google" é exigido pelo Google para verificar o login:
+ * o Sertão faz. O bloco "Entrar com o Google" é exigido pelo Google para verificar o login:
  * a página inicial precisa explicar a finalidade do app e como ele usa os dados da conta.
  *
  * As imagens (`public/landing/*.webp`) são capturas da conta de teste, sem dado real.
@@ -53,7 +53,7 @@ export default async function Home() {
             Saiba quanto cobrar, quanto tem e quanto lucra de verdade
           </h1>
           <p className="mt-4 text-base sm:text-lg text-text-secondary leading-relaxed max-w-2xl mx-auto">
-            O SERTÃO é o sistema de gestão para pequenos negócios que vendem em marketplaces e no WhatsApp: precificação com as taxas de cada canal,
+            O Sertão é o sistema de gestão para pequenos negócios que vendem em marketplaces e no WhatsApp: precificação com as taxas de cada canal,
             estoque, compras, vendas, catálogo online e financeiro num lugar só.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
@@ -65,7 +65,7 @@ export default async function Home() {
             </Link>
           </div>
           <Moldura className="mt-10 sm:mt-14">
-            <Image src="/landing/precificacao.webp" alt="Calculadora de precificação do SERTÃO mostrando o preço recomendado e o lucro líquido" width={1800} height={1125} priority className="w-full h-auto" />
+            <Image src="/landing/precificacao.webp" alt="Calculadora de precificação do Sertão mostrando o preço recomendado e o lucro líquido" width={1800} height={1125} priority className="w-full h-auto" />
           </Moldura>
         </section>
 
@@ -121,7 +121,7 @@ export default async function Home() {
             ]}
             imagem={
               <div className="mx-auto w-[260px] sm:w-[300px] rounded-[2.2rem] border-[10px] border-text-primary/90 bg-text-primary/90 shadow-elev-2 overflow-hidden">
-                <Image src="/landing/vitrine-celular.webp" alt="Catálogo do SERTÃO aberto no celular" width={780} height={1560} className="w-full h-auto rounded-[1.5rem]" />
+                <Image src="/landing/vitrine-celular.webp" alt="Catálogo do Sertão aberto no celular" width={780} height={1560} className="w-full h-auto rounded-[1.5rem]" />
               </div>
             }
           />
@@ -186,7 +186,7 @@ export default async function Home() {
           <div className="mt-8 divide-y divide-border border-y border-border">
             {[
               ["Funciona para quem vende na Shopee e no Mercado Livre?", "Sim. Você cadastra cada loja com as taxas e faixas de comissão do canal, e a precificação calcula o preço e o lucro de cada um. Os pedidos da Shopee entram pela planilha da Central do Vendedor, com a margem real de cada pedido."],
-              ["Preciso instalar alguma coisa?", "Não. O SERTÃO funciona no navegador do computador e do celular."],
+              ["Preciso instalar alguma coisa?", "Não. O Sertão funciona no navegador do computador e do celular."],
               ["Meus clientes precisam de cadastro para pedir pelo catálogo?", "Não. Eles abrem o link, montam o pedido e enviam pelo WhatsApp. Você confirma no painel."],
               ["A IA usa meus dados para outra coisa?", "Não. A Vixe recebe só os números da tela que você está usando, para responder àquele pedido. Você também pode usar a sua própria chave de IA."],
               ["Consigo tirar meus dados do sistema?", "Sim. Em Configurações → Dados você exporta produtos, vendas, movimentações e financeiro em planilha, e baixa um backup completo."],
@@ -222,7 +222,7 @@ export default async function Home() {
         <section className="max-w-3xl mx-auto px-4 pb-10 text-sm text-text-secondary leading-relaxed">
           <h2 className="font-semibold text-text-primary mb-1.5">Entrar com o Google</h2>
           <p>
-            Você pode entrar com sua conta Google. O SERTÃO recebe apenas seu nome, e-mail e foto de perfil, usados para identificar sua conta. Não acessamos
+            Você pode entrar com sua conta Google. O Sertão recebe apenas seu nome, e-mail e foto de perfil, usados para identificar sua conta. Não acessamos
             seus e-mails, contatos ou arquivos, e não compartilhamos esses dados. Veja os detalhes na{" "}
             <Link href="/privacidade" className="text-accent hover:underline">
               Política de Privacidade
@@ -246,7 +246,7 @@ function Marca() {
   return (
     <span className="flex items-center gap-2">
       <LogoSertao tamanho={34} prioridade />
-      <span className="font-semibold tracking-tight text-lg">SERTÃO</span>
+      <span className="font-semibold tracking-tight text-lg">Sertão</span>
     </span>
   );
 }

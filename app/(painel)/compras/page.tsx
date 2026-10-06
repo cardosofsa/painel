@@ -5,6 +5,9 @@ import { quantidadeSugeridaCompra } from "@/lib/alertas";
 import { ComprasClient, type ItemPedido, type Pedido } from "./ComprasClient";
 import { resumoPagamento } from "@/lib/pagamentos";
 import { consumoDiario, diasDoPrazo, faltaReceber, statusAberto, sugestaoCompras } from "@/lib/compras";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Compras" };
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;

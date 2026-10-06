@@ -121,7 +121,7 @@ export function AdicionarIAModal({ open, onClose, primeira }: { open: boolean; o
               Salvar IA
             </Button>
           </div>
-          <p className="text-[11px] text-text-tertiary mt-2">
+          <p className="text-xs text-text-tertiary mt-2">
             Ao salvar, fazemos uma chamada mínima para confirmar que o modelo responde (custo de poucos centavos de token).
           </p>
         </>

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Boxes, ShoppingCart, ArrowLeftRight, Receipt, Wallet, DatabaseBackup } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
 import { Modal, FormField, inputClass, campoBase } from "@/components/ui/Modal";
 import { ExportarModal } from "@/components/ui/ExportarModal";
 import { ImportarPedidosModal } from "@/components/compras/ImportarPedidosModal";
@@ -36,7 +36,7 @@ function Secao({ icone: Icone, titulo, descricao, children }: { icone: typeof Bo
           <Icone size={17} />
         </span>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-text-primary">{titulo}</h3>
+          <CardTitle>{titulo}</CardTitle>
           <p className="text-xs text-text-tertiary mb-3">{descricao}</p>
           <div className="flex flex-wrap items-end gap-2">{children}</div>
         </div>

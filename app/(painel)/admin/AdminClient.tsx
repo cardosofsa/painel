@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { formatBRL, formatarDataHora } from "@/lib/format";
-import { paraCsv, baixarArquivo } from "@/lib/csv";
+import { paraCsv, baixarArquivo, centavos } from "@/lib/csv";
 import { ordenarContas, type CampoOrdenacaoConta } from "@/lib/admin";
 import { TODAS_AS_ABAS, ABAS_PADRAO, ABAS_OBRIGATORIAS, type StatusConta } from "@/lib/acesso";
 import { atualizarAcessoConta, atualizarStatusEmLote } from "./actions";
@@ -214,7 +214,7 @@ export function AdminClient({ contas, historico }: { contas: ContaAdmin[]; histo
       ultimo_acesso: c.ultimo_acesso ? c.ultimo_acesso.slice(0, 10) : "",
       total_produtos: c.total_produtos,
       total_vendas: c.total_vendas,
-      faturamento_total: c.faturamento_total.toFixed(2),
+      faturamento_total: centavos(c.faturamento_total),
     }));
     baixarArquivo("contas.csv", paraCsv(linhas, colunas));
   }

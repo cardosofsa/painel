@@ -90,7 +90,7 @@ export function ConectarMarketplace({
               >
                 <IconeMarca marca={p.id} tamanho={32} />
                 <span className="font-medium text-text-primary">{p.nome}</span>
-                {!p.disponivel && <span className="text-[10px] text-text-tertiary">em breve</span>}
+                {!p.disponivel && <span className="text-xs text-text-tertiary">em breve</span>}
               </button>
             ))}
           </div>
@@ -135,7 +135,7 @@ export function ConectarMarketplace({
             </FormField>
           )}
           <p className="text-xs text-text-tertiary mt-3">
-            Ao continuar, você entra com o login DESTA loja na {plataforma.nome} e autoriza o SERTÃO a ler pedidos e atualizar estoque. Depois volta para cá.
+            Ao continuar, você entra com o login DESTA loja na {plataforma.nome} e autoriza o Sertão a ler pedidos e atualizar estoque. Depois volta para cá.
           </p>
           {faltando.length > 0 && (
             <p className="text-xs text-negative mt-2">

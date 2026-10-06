@@ -91,7 +91,7 @@ export function VincularAnunciosModal({
                   <span className="font-mono">{p.sku}</span> · {p.loja} · {p.quantidade} un. em {p.pedidos} pedido(s)
                 </div>
               </div>
-              <Combobox itens={itensProduto} valor={escolha[k] ?? null} onChange={(id) => setEscolha((e) => ({ ...e, [k]: id ?? "" }))} placeholder="Produto do SERTÃO…" />
+              <Combobox itens={itensProduto} valor={escolha[k] ?? null} onChange={(id) => setEscolha((e) => ({ ...e, [k]: id ?? "" }))} placeholder="Produto do Sertão…" />
               <Button size="sm" variant="primary" loading={pending} disabled={!escolha[k]} onClick={() => vincular(k, p)}>
                 Vincular
               </Button>

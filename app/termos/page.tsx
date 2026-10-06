@@ -3,16 +3,16 @@ import Link from "next/link";
 import { PaginaLegal } from "@/components/legal/PaginaLegal";
 import { RESPONSAVEL } from "@/lib/legal";
 
-export const metadata: Metadata = { title: "Termos de Uso · SERTÃO" };
+export const metadata: Metadata = { title: "Termos de Uso" };
 
 export default function TermosPage() {
   return (
     <PaginaLegal titulo="Termos de Uso" outra={{ href: "/privacidade", texto: "Política de Privacidade" }}>
       <p className="mt-4">
-        Ao criar uma conta ou usar o SERTÃO, você concorda com estes termos. Se não concordar, não use o sistema.
+        Ao criar uma conta ou usar o Sertão, você concorda com estes termos. Se não concordar, não use o sistema.
       </p>
 
-      <h2>1. O que é o SERTÃO</h2>
+      <h2>1. O que é o Sertão</h2>
       <p>
         Um sistema online de gestão para pequenos negócios: cadastro de produtos, estoque, vendas, precificação, vitrine
         online e recursos opcionais de IA.
@@ -49,7 +49,7 @@ export default function TermosPage() {
       <h2>6. Cálculos e valores</h2>
       <p>
         Preços, margens, taxas e comissões calculados pelo sistema dependem das informações que você cadastra e das regras
-        de cada plataforma, que mudam. Confira os valores antes de tomar decisões; o SERTÃO é uma ferramenta de apoio, não
+        de cada plataforma, que mudam. Confira os valores antes de tomar decisões; o Sertão é uma ferramenta de apoio, não
         consultoria contábil ou fiscal.
       </p>
 

@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { PaginaLegal } from "@/components/legal/PaginaLegal";
 import { RESPONSAVEL } from "@/lib/legal";
 
-export const metadata: Metadata = { title: "Política de Privacidade · SERTÃO" };
+export const metadata: Metadata = { title: "Política de Privacidade" };
 
 export default function PrivacidadePage() {
   return (
     <PaginaLegal titulo="Política de Privacidade" outra={{ href: "/termos", texto: "Termos de Uso" }}>
       <p className="mt-4">
-        O SERTÃO é um sistema de gestão para pequenos negócios: produtos, estoque, vendas, precificação e vitrine online.
+        O Sertão é um sistema de gestão para pequenos negócios: produtos, estoque, vendas, precificação e vitrine online.
         Esta página explica quais dados pessoais o sistema guarda, para quê, e como você pode consultá-los ou apagá-los.
       </p>
 
@@ -30,7 +30,7 @@ export default function PrivacidadePage() {
         </li>
         <li>
           <strong>Dados dos seus clientes:</strong> nome, telefone/WhatsApp, e-mail e endereço que você cadastra ou que o
-          próprio comprador informa ao fazer um pedido na vitrine. Quem usa o SERTÃO é o controlador desses dados; nós os
+          próprio comprador informa ao fazer um pedido na vitrine. Quem usa o Sertão é o controlador desses dados; nós os
           guardamos em nome dessa pessoa.
         </li>
         <li>
@@ -79,7 +79,7 @@ export default function PrivacidadePage() {
       <h2>6. Seus direitos</h2>
       <p>
         Pela LGPD, você pode pedir confirmação de que tratamos seus dados, acesso, correção, exportação, anonimização ou
-        exclusão, e retirar consentimentos. Se você é cliente de uma loja que usa o SERTÃO, fale primeiro com a loja; se
+        exclusão, e retirar consentimentos. Se você é cliente de uma loja que usa o Sertão, fale primeiro com a loja; se
         preferir, escreva para o e-mail acima. Respondemos em até 15 dias.
       </p>
 

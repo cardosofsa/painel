@@ -3,6 +3,9 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { AdminClient, type ContaAdmin } from "./AdminClient";
 import type { LinhaHistorico } from "./HistoricoAdmin";
 import { PedidosPlano } from "@/components/admin/PedidosPlano";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Administração" };
 
 export default async function AdminPage() {
   const supabase = await createClient();

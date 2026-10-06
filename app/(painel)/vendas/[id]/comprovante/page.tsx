@@ -2,6 +2,9 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { carregarComprovante } from "@/lib/comprovante-servidor";
 import { ComprovanteImpressao } from "@/components/comprovante/ComprovanteImpressao";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Comprovante" };
 
 /**
  * Página do comprovante para imprimir / salvar como PDF (o "Salvar como PDF" do próprio

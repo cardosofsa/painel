@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 import { PdvClient } from "./PdvClient";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "PDV" };
 
 export default async function PdvPage({ searchParams }: { searchParams: Promise<{ troca?: string; credito?: string }> }) {
   const { troca, credito } = await searchParams;

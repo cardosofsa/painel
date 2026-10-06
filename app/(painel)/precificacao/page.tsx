@@ -4,6 +4,9 @@ import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { PrecificacaoClient } from "./PrecificacaoClient";
 import type { LojaOpcao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
 import type { Concorrente } from "@/lib/pricing";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Precificação" };
 
 export default async function PrecificacaoPage() {
   const supabase = await createClient();

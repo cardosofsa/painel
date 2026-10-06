@@ -4,6 +4,9 @@ import { hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { carregarCrediario } from "@/lib/crediario-servidor";
 import type { GastoAnuncio } from "@/components/financeiro/AbaResultado";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Financeiro" };
 
 /** Formato cru do join com `vendas`, antes de virar `ContaPagarReceber`. */
 interface LinhaCpr {

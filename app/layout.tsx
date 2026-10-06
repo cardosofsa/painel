@@ -21,8 +21,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SERTÃO",
-  description: "Sistema local de gestão — precificação, produtos, estoque, compras e financeiro.",
+  // O template põe a tela na frente da marca ("Precificação · Sertão"): com várias abas
+  // abertas, só "Sertão" em todas não dizia qual era qual.
+  title: { default: "Sertão — gestão para quem vende online", template: "%s · Sertão" },
+  description: "Precificação com as taxas de cada canal, estoque, compras, vendas, catálogo e financeiro para quem vende online.",
+  applicationName: "Sertão",
+  openGraph: {
+    title: "Sertão — gestão para quem vende online",
+    description: "Saiba quanto cobrar, quanto tem e quanto lucra de verdade.",
+    siteName: "Sertão",
+    locale: "pt_BR",
+    type: "website",
+  },
   // Prova de propriedade do site no Google Search Console (exigida na verificação do login com Google).
   verification: { google: "AywG-MdNmFQ7TsFAs9aoDFTn635PCS-KAoFi6HsDnr4" },
 };

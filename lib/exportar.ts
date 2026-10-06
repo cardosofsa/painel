@@ -85,7 +85,7 @@ export function matrizTexto<L>(t: TabelaExport<L>): { cabecalho: string[]; linha
   };
 }
 
-/** CSV com número cru (ponto decimal troca por vírgula no Excel pt-BR via BOM + separador ","). */
+/** CSV com número cru: `escaparCampo` põe a vírgula decimal e `;` separa as colunas (Excel em pt-BR). */
 export function tabelaParaCsv<L>(t: TabelaExport<L>): string {
   const cabecalho = t.colunas.map((c) => c.rotulo);
   const linhas = t.linhas.map((l) =>

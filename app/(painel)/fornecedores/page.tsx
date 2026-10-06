@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { hojeIsoLocal } from "@/lib/format";
 import { FornecedoresClient, type Fornecedor } from "./FornecedoresClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Fornecedores" };
 
 export default async function FornecedoresPage() {
   const supabase = await createClient();

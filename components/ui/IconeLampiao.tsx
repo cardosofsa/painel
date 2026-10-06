@@ -1,7 +1,7 @@
 import type { SVGProps } from "react";
 
 /**
- * Lampião — a marca da Vixe, a assistente do SERTÃO. Não existe em `lucide-react`; desenhado
+ * Lampião — a marca da Vixe, a assistente do Sertão. Não existe em `lucide-react`; desenhado
  * no mesmo estilo dos ícones ao redor (viewBox 24×24, traço 2, cantos arredondados), como o
  * `IconeCacto`.
  */

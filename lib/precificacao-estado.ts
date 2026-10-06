@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { formatBRL } from "@/lib/format";
-import { paraCsv as paraCsvColunas, matrizParaCsv, baixarArquivo } from "@/lib/csv";
+import { formatBRL, hojeIsoBrasil } from "@/lib/format";
 import {
   resolverPorMargem,
   resolverPorMarkup,
@@ -78,7 +77,6 @@ export function usePrecificacao({
   produtos,
   aliquotaDasPadrao,
   lojas,
-  anuncios,
   concorrentesPorProduto,
   empresa = null,
 }: PrecificacaoProps) {
@@ -269,7 +267,8 @@ export function usePrecificacao({
   const historicoFiltrado = useMemo(() => {
     return historico.filter((h) => {
       const passaTexto = !filtroHistoricoTexto.trim() || h.produto_nome.toLowerCase().includes(filtroHistoricoTexto.trim().toLowerCase());
-      const dataItem = h.criado_em.slice(0, 10);
+      // Dia no Brasil: `slice(0, 10)` do timestamptz é o dia em UTC (depois das 21h, o seguinte).
+      const dataItem = hojeIsoBrasil(new Date(h.criado_em));
       const passaIni = !filtroHistoricoDataIni || dataItem >= filtroHistoricoDataIni;
       const passaFim = !filtroHistoricoDataFim || dataItem <= filtroHistoricoDataFim;
       return passaTexto && passaIni && passaFim;
@@ -415,20 +414,6 @@ export function usePrecificacao({
     setSugestoesAbertas(false);
   }
 
-  function exportarHistoricoCsv() {
-    const cabecalho = ["Data", "Produto/Kit", "Canal", "Custo", "Preço Venda", "Lucro", "Margem %"];
-    const linhas = historicoFiltrado.map((h) => [
-      new Date(h.criado_em).toLocaleDateString("pt-BR"),
-      h.produto_nome,
-      h.canal ?? "",
-      h.custo.toFixed(2),
-      h.preco_calculado.toFixed(2),
-      h.lucro.toFixed(2),
-      h.preco_calculado > 0 ? ((h.lucro / h.preco_calculado) * 100).toFixed(1) : "0.0",
-    ]);
-    baixarArquivo("historico-precificacoes.csv", matrizParaCsv([cabecalho, ...linhas]));
-  }
-
   function duplicarHistorico(h: PrecificacaoHist) {
     setNomeProduto(h.produto_nome);
     setNomeAnuncio(h.titulo_anuncio ?? "");
@@ -537,25 +522,6 @@ export function usePrecificacao({
         erro: "Erro ao criar produtos",
       });
     });
-  }
-
-  function exportarAnunciosCsv() {
-    const linhas = anuncios.flatMap((a) =>
-      a.variacoes.map((v) => ({
-        data: new Date(a.criado_em).toLocaleDateString("pt-BR"),
-        produto: a.nome_anuncio,
-        variacao: v.nome_variacao,
-        multiplicador: String(v.multiplicador),
-        custo: v.custo.toFixed(2),
-        preco: v.preco_calculado.toFixed(2),
-        lucro: v.lucro.toFixed(2),
-        margem: v.preco_calculado > 0 ? ((v.lucro / v.preco_calculado) * 100).toFixed(1) : "0.0",
-      })),
-    );
-    baixarArquivo(
-      "produtos-com-variacoes.csv",
-      paraCsvColunas(linhas, ["data", "produto", "variacao", "multiplicador", "custo", "preco", "lucro", "margem"]),
-    );
   }
 
   function salvar() {
@@ -729,19 +695,18 @@ export function usePrecificacao({
     setFiltroHistoricoDataIni,
     filtroHistoricoDataFim,
     setFiltroHistoricoDataFim,
+    historico,
     historicoFiltrado,
     historicoDetalhe,
     setHistoricoDetalhe,
     mostrarDetalheHistorico,
     setMostrarDetalheHistorico,
     resumoDoHistorico,
-    exportarHistoricoCsv,
     duplicarHistorico,
     removerHistorico,
 
     // histórico — produtos com variações
     excluirAnuncioHistorico,
-    exportarAnunciosCsv,
     criarProdutosDaVariacao,
 
     // ligar precificação/histórico a um produto

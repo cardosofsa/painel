@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { carregarVendasRelatorio } from "@/lib/relatorios-servidor";
 import { RelatoriosVendasClient } from "./RelatoriosVendasClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Relatórios de vendas" };
 
 /** Até um ano (mais o ano anterior para comparar os 365 dias). */
 const DIAS = 730;

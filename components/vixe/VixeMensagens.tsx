@@ -38,7 +38,7 @@ export function VixeMensagens({ dados }: { dados: DadosMensagens }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-4 items-start">
       <div className="space-y-3">
-        {!dados.registroOk && <p className="text-xs text-negative">Sem a migração 0061 o SERTÃO não lembra o que já foi enviado: a lista volta ao recarregar.</p>}
+        {!dados.registroOk && <p className="text-xs text-negative">Sem a migração 0061 o Sertão não lembra o que já foi enviado: a lista volta ao recarregar.</p>}
         {lista.length === 0 ? (
           <Card>
             <EmptyState icon={MessageCircle} title="Nenhum aviso pendente" description="Quando um pedido chegar, sair para entrega ou uma parcela do crediário estiver vencendo, a mensagem pronta aparece aqui." />

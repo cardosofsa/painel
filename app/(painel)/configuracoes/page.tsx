@@ -23,6 +23,9 @@ import {
   type PerfilNegocio,
 } from "./ConfiguracoesClient";
 import { MasterConfiguracoesClient } from "./MasterConfiguracoesClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Configurações" };
 
 export default async function ConfiguracoesPage({ searchParams }: { searchParams: Promise<{ shopee?: string; aba?: string }> }) {
   const { shopee, aba } = await searchParams;

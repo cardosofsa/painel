@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBRL, formatarDataIso, hojeIsoLocal, dataLocal } from "@/lib/format";
-import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
+import { matrizParaCsv, baixarArquivo, centavos } from "@/lib/csv";
 import { linkComprovanteWhatsapp } from "@/lib/comprovante";
 import { obterComprovante } from "@/app/(painel)/vendas/comprovante-actions";
 import { useComprovanteImagem } from "@/components/comprovante/useComprovanteImagem";
@@ -232,8 +232,8 @@ export function ClienteDetalheClient({
           ROTULO_STATUS[v.status].label,
           pagamento?.label ?? "—",
           v.status_envio ? ROTULO_ENVIO[v.status_envio] : "—",
-          v.total.toFixed(2),
-          v.lucro.toFixed(2),
+          centavos(v.total),
+          centavos(v.lucro),
         ];
       }),
     ];

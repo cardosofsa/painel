@@ -65,7 +65,7 @@ export function FaixasModal({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                 {ultima ? (
                   <div className="col-span-2">
-                    <label className="text-[10px] text-text-tertiary block mb-1">Faixa de Preço</label>
+                    <label className="text-xs text-text-tertiary block mb-1">Faixa de Preço</label>
                     <div className="text-sm text-text-secondary bg-surface-2 rounded-md h-9 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">
                       Acima de {formatBRL(f.preco_min)}
                     </div>
@@ -73,7 +73,7 @@ export function FaixasModal({
                 ) : (
                   <>
                     <div>
-                      <label className="text-[10px] text-text-tertiary block mb-1">De (R$)</label>
+                      <label className="text-xs text-text-tertiary block mb-1">De (R$)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -83,7 +83,7 @@ export function FaixasModal({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-text-tertiary block mb-1">Até (R$)</label>
+                      <label className="text-xs text-text-tertiary block mb-1">Até (R$)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -95,7 +95,7 @@ export function FaixasModal({
                   </>
                 )}
                 <div>
-                  <label className="text-[10px] text-text-tertiary block mb-1">Comissão (%)</label>
+                  <label className="text-xs text-text-tertiary block mb-1">Comissão (%)</label>
                   <input
                     type="number"
                     step="0.1"
@@ -105,7 +105,7 @@ export function FaixasModal({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-text-tertiary block mb-1">Tarifa Fixa (R$)</label>
+                  <label className="text-xs text-text-tertiary block mb-1">Tarifa Fixa (R$)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -392,7 +392,7 @@ export function LimitesTextoModal({
         Quantos caracteres a plataforma aceita. A IA gera títulos e descrições dentro desse limite. Deixe em branco para usar o
         teto do sistema (título 200, descrição 5.000).
       </p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Título (20 a 200)">
           <input type="number" min={20} max={200} className={inputClass} value={titulo} onChange={(e) => setTitulo(e.target.value)} />
         </FormField>

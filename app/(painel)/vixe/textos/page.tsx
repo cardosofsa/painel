@@ -6,6 +6,9 @@ import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { hojeIsoLocal } from "@/lib/format";
 import { diasEntre } from "@/lib/vixe/alertas";
 import { VixeTextos, type ClienteCobranca, type ProdutoTexto } from "@/components/vixe/VixeTextos";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Vixe · Textos" };
 
 export default async function VixeTextosPage() {
   const supabase = await createClient();

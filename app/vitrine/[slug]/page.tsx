@@ -6,7 +6,7 @@ import { VitrinePublica } from "@/components/catalogo/VitrinePublica";
  * Metadata própria da vitrine.
  *
  * Sem isso a página herdava o metadata raiz, e colar o link no WhatsApp mostrava a prévia
- * "SERTÃO — Sistema local de gestão: precificação, produtos, estoque…" para o
+ * "Sertão — Sistema local de gestão: precificação, produtos, estoque…" para o
  * cliente final. Como o WhatsApp *é* o canal de distribuição desta página, a prévia é
  * parte do produto.
  *

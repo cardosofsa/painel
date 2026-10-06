@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { QrCode } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL, numeroOuNulo } from "@/lib/format";
@@ -26,7 +26,7 @@ export function CrediarioCard({ inicial, nomePadrao, cidadePadrao }: { inicial: 
   if (!inicial) {
     return (
       <Card className="text-sm text-text-secondary">
-        <h3 className="font-semibold text-text-primary mb-2">Pix e crediário</h3>
+        <CardTitle className="mb-2">Pix e crediário</CardTitle>
         Chave Pix no carnê e multa/juros por atraso precisam da migração <span className="font-mono">0065_crediario_pix_encargos.sql</span>. Aplique no Supabase e recarregue.
       </Card>
     );
@@ -53,9 +53,9 @@ export function CrediarioCard({ inicial, nomePadrao, cidadePadrao }: { inicial: 
 
   return (
     <Card className="flex flex-col">
-      <h3 className="font-semibold text-text-primary mb-1 flex items-center gap-2">
+      <CardTitle className="mb-1 flex items-center gap-2">
         <QrCode size={16} className="text-accent" /> Pix e crediário
-      </h3>
+      </CardTitle>
       <p className="text-xs text-text-tertiary mb-4">A chave sai no carnê (QR e copia-e-cola) e na cobrança pelo WhatsApp. O cliente paga direto no banco dele, sem taxa.</p>
       <FormField label="Chave Pix" dica="CPF/CNPJ, e-mail, celular ou chave aleatória.">
         <input className={inputClass} value={chave} onChange={(e) => setChave(e.target.value)} placeholder="ex.: loja@email.com" />

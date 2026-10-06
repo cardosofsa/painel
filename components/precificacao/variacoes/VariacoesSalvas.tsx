@@ -24,8 +24,8 @@ export function VariacoesSalvas({
       <div className="px-5 pt-5 pb-4 flex items-center justify-between">
         <h2 className="text-base font-semibold text-text-primary">Variações Salvas</h2>
         <div className="flex items-center gap-3">
-          <button onClick={onExportarCsv} className="text-xs text-accent hover:underline">
-            Exportar CSV
+          <button onClick={onExportarCsv} className="text-xs text-accent hover:underline" disabled={anuncios.length === 0}>
+            Exportar
           </button>
           <button onClick={onVerHistorico} className="text-xs text-accent hover:underline">
             Ver histórico completo →

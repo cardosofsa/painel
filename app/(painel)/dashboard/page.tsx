@@ -8,6 +8,9 @@ import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardC
 import { MasterDashboardClient } from "./MasterDashboardClient";
 import type { ContaAdmin } from "../admin/AdminClient";
 import type { LinhaHistorico } from "../admin/HistoricoAdmin";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Home" };
 
 function rotuloVencimento(dataVencimento: string): { status: string; tone: "negative" | "positive" | "neutral" } {
   const hoje = new Date();

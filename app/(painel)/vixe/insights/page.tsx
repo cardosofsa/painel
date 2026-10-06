@@ -13,6 +13,9 @@ import {
   type VendaResumo,
 } from "@/lib/vixe/insights";
 import { VixeInsights } from "@/components/vixe/VixeInsights";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Vixe · Insights" };
 
 /** Janela das vendas: 30 dias atuais + 30 anteriores para comparar. */
 const JANELA_DIAS = 60;

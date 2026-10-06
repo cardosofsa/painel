@@ -1,5 +1,5 @@
 /**
- * Estoque do SERTÃO → anúncios da Shopee. PURO, coberto por `estoque-shopee.test.ts`.
+ * Estoque do Sertão → anúncios da Shopee. PURO, coberto por `estoque-shopee.test.ts`.
  *
  * - Casa cada anúncio (item/variação) com um produto pelo vínculo manual ou pelo SKU.
  * - O saldo enviado é o do ARMAZÉM que abastece a loja (0041); sem armazém marcado, o total
@@ -47,7 +47,7 @@ export interface DiferencaEstoque {
   para: number;
 }
 
-/** Anúncios vinculados cujo saldo no SERTÃO difere do que está na Shopee. */
+/** Anúncios vinculados cujo saldo no Sertão difere do que está na Shopee. */
 export function diferencasEstoque(anuncios: AnuncioSalvo[], saldos: Map<string, number>): DiferencaEstoque[] {
   const out: DiferencaEstoque[] = [];
   for (const a of anuncios) {

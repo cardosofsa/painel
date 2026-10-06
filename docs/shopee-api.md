@@ -3,7 +3,7 @@
 ## Hoje: planilha (já funciona com a migração 0046)
 
 1. Na Central do Vendedor da loja, vá em **Meus Pedidos → Exportar**. Escolha o período e baixe o `.xlsx`.
-2. No SERTÃO, abra **Vendas → aba Shopee → Importar planilha da Shopee**, escolha a loja e o arquivo.
+2. No Sertão, abra **Vendas → aba Shopee → Importar planilha da Shopee**, escolha a loja e o arquivo.
 3. Na prévia, vincule os anúncios cujo SKU não bateu com nenhum produto. O vínculo fica salvo.
 4. Clique em **Importar**. O que acontece:
    - Pedidos a enviar, enviados ou concluídos baixam o estoque uma única vez, no armazém que abastece a loja (Configurações → Armazéns → Lojas abastecidas).
@@ -81,10 +81,10 @@ Para ligar o de 15 minutos:
 
 O segredo fica no Vault do Supabase, nunca no código.
 
-## Estoque do SERTÃO nos anúncios (Fase 9.7, migração 0049)
+## Estoque do Sertão nos anúncios (Fase 9.7, migração 0049)
 
 - **Permissão:** precisa da permissão **Product** no app da Shopee. Confira em Console → App → Permissões antes do Go-Live.
-- **Ligar:** em Configurações → Canais de venda, na loja conectada, clique em **Enviar estoque**. A prévia "Shopee → SERTÃO" mostra o que muda em cada anúncio. **Confirmar e ligar o automático** envia tudo na hora.
+- **Ligar:** em Configurações → Canais de venda, na loja conectada, clique em **Enviar estoque**. A prévia "Shopee → Sertão" mostra o que muda em cada anúncio. **Confirmar e ligar o automático** envia tudo na hora.
 - **Depois de ligado:** cada venda no PDV, pedido baixado, compra recebida ou ajuste marca o anúncio como pendente. O envio acontece na hora (PDV), em toda sincronização e a cada 15 minutos.
 - **Saldo enviado:** é o do armazém que tem a loja em "Lojas abastecidas". Sem armazém marcado, vai o total do produto.
 - **Casamento anúncio × produto:** é feito pelo SKU, da variação ou do anúncio, ou pelo vínculo feito em Vendas → Vincular anúncios.

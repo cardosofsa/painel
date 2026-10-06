@@ -7,6 +7,9 @@ import type { FaixaComissao } from "@/lib/pricing";
 import type { LojaPreco } from "@/lib/vixe/preco";
 import { Card } from "@/components/ui/Card";
 import { VixePreco, type ProdutoPreco } from "@/components/vixe/VixePreco";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Vixe · Preço" };
 
 type Busca = { produto?: string; nome?: string; custo?: string; preco?: string; loja?: string };
 
