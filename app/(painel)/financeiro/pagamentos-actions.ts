@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, pagamentoContaSchema } from "@/lib/validacao";
+import { validar, pagamentoContaSchema, dividaAntigaSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 import type { ParcelaPagar } from "@/lib/pagamentos";
 
@@ -101,3 +101,45 @@ export async function receberConta(dados: { id: string; valor: number; data: str
     return data as { valor_pago: number; quitada: boolean; restante: number };
   });
 }
+
+export interface DividaAntigaInput {
+  tipo: "pagar" | "receber";
+  fornecedor_id: string | null;
+  cliente_id: string | null;
+  descricao: string;
+  valor_total: number;
+  parcelas: number;
+  primeiro_vencimento: string;
+  intervalo_dias: number;
+  ja_pago: number;
+  conta_id: string | null;
+}
+
+/**
+ * Dívida/conta de antes do sistema (0067): parcelas ligadas ao fornecedor ou ao cliente.
+ * O "já pago" não sai do caixa de hoje — por isso não vira lançamento no Financeiro.
+ */
+export async function lancarDividaAntiga(dados: DividaAntigaInput) {
+  return comResultado(async () => {
+    const v = validar(dividaAntigaSchema, dados);
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("lancar_divida_antiga", {
+      p_tipo: v.tipo,
+      p_fornecedor_id: v.tipo === "pagar" ? v.fornecedor_id : null,
+      p_cliente_id: v.tipo === "receber" ? v.cliente_id : null,
+      p_descricao: v.descricao,
+      p_valor_total: v.valor_total,
+      p_parcelas: v.parcelas,
+      p_primeiro_venc: v.primeiro_vencimento,
+      p_intervalo_dias: v.intervalo_dias,
+      p_ja_pago: v.ja_pago,
+      p_conta_id: v.conta_id,
+    });
+    if (error?.code === "PGRST202") throw new Error("Lançar dívida antiga precisa da migração 0067. Aplique no Supabase e recarregue.");
+    if (error) lancarErroSupabase(error);
+    revalidateTudo();
+    revalidatePath("/clientes");
+    return data as number;
+  });
+}
+

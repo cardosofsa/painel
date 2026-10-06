@@ -15,6 +15,7 @@ import Link from "next/link";
 import { formatBRL, formatarDataIso } from "@/lib/format";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { DividaAntigaModal, type InicioDividaAntiga } from "@/components/financeiro/DividaAntigaModal";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
 export interface Fornecedor extends FornecedorInput {
@@ -46,6 +47,8 @@ export function FornecedoresClient({
   const totalAtrasado = Object.values(emAberto ?? {}).reduce((s, a) => s + a.atrasado, 0);
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalAberto, setModalAberto] = useState(false);
+  // Dívida de antes do sistema com um fornecedor (0067).
+  const [divida, setDivida] = useState<InicioDividaAntiga | null>(null);
   const [editando, setEditando] = useState<Fornecedor | null>(null);
   const [form, setForm] = useState<FornecedorInput>(FORM_VAZIO);
   const [formOriginal, setFormOriginal] = useState<FornecedorInput>(FORM_VAZIO);
@@ -105,7 +108,14 @@ export function FornecedoresClient({
     <>
       <PageHeader
         title="Fornecedores"
-        actions={<Button variant="primary" onClick={abrirNovo}>+ Cadastrar Fornecedor</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setDivida({ tipo: "pagar" })} disabled={fornecedores.length === 0}>
+              Lançar dívida antiga
+            </Button>
+            <Button variant="primary" onClick={abrirNovo}>+ Cadastrar Fornecedor</Button>
+          </>
+        }
       />
 
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${emAberto ? "lg:grid-cols-3" : ""} gap-4 mb-5`}>
@@ -121,8 +131,8 @@ export function FornecedoresClient({
           <Card>
             <CardEyebrow>A pagar a fornecedores</CardEyebrow>
             <HeroMetric value={formatBRL(totalAberto)} caption={totalAtrasado > 0 ? `${formatBRL(totalAtrasado)} atrasado` : "nada atrasado"} />
-            <Link href="/compras" className="text-xs text-accent hover:underline mt-3 inline-block">
-              Ver em Compras ›
+            <Link href="/financeiro?aba=a-pagar" className="text-xs text-accent hover:underline mt-3 inline-block">
+              Ver no Financeiro ›
             </Link>
           </Card>
         )}
@@ -183,6 +193,7 @@ export function FornecedoresClient({
                     <RowMenu
                       actions={[
                         { label: "Editar", onClick: () => abrirEdicao(f) },
+                        { label: "Lançar dívida antiga", onClick: () => setDivida({ tipo: "pagar", fornecedorId: f.id }) },
                         { label: f.status === "ativo" ? "Desativar" : "Ativar", onClick: () => alternarStatus(f) },
                         { label: "Remover", onClick: () => remover(f), destructive: true },
                       ]}
@@ -230,6 +241,13 @@ export function FornecedoresClient({
         </div>
       </Modal>
       {ConfirmDialog}
+      <DividaAntigaModal
+        key={`divida-${divida?.fornecedorId ?? divida?.tipo ?? "fechado"}`}
+        inicio={divida}
+        fornecedores={fornecedores.map((f) => ({ id: f.id, nome: f.nome }))}
+        clientes={[]}
+        onClose={() => setDivida(null)}
+      />
     </>
   );
 }

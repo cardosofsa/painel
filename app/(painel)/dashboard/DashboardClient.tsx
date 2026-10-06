@@ -1,21 +1,15 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { PrimeirosPassos, type PassoInicial } from "@/components/dashboard/PrimeirosPassos";
-import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button, IconButton } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { useConfirm } from "@/components/ui/ConfirmModal";
-import { formatBRL, hojeIsoLocal, formatarDataIso } from "@/lib/format";
-import { criarCompromisso, removerCompromisso, type CompromissoInput } from "./actions";
-import { executarComToast } from "@/lib/acao-cliente";
+import { formatBRL } from "@/lib/format";
 import { PainelVendas } from "@/components/dashboard/PainelVendas";
+import { CalendarioDashboard } from "@/components/dashboard/CalendarioDashboard";
 import type { VendaRelatorio } from "@/lib/relatorios-vendas";
 
 export interface Conta {
@@ -48,14 +42,6 @@ export interface Vencimento {
   valor: number;
 }
 
-export interface Compromisso {
-  id: string;
-  titulo: string;
-  data: string;
-  hora: string | null;
-  descricao: string | null;
-}
-
 export function DashboardClient({
   contas,
   produtosBaixoEstoque,
@@ -64,7 +50,7 @@ export function DashboardClient({
   resumoMes,
   vendas,
   vendasRelatorio,
-  compromissos,
+  calendario,
   primeirosPassos = null,
 }: {
   /** null = oculto pela pessoa (0065). */
@@ -77,7 +63,7 @@ export function DashboardClient({
   vencimentos: Vencimento[];
   resumoMes: { comprasMes: number; precificacoesMes: number };
   vendas: { hoje: number; semana: number; mes: number; lucroMes: number };
-  compromissos: Compromisso[];
+  calendario: Parameters<typeof CalendarioDashboard>[0];
 }) {
   const saldoTotal = contas.reduce((acc, c) => acc + c.saldo, 0);
   const capitalComprometido = pedidosPendentes.reduce((acc, p) => acc + p.valor_total, 0);
@@ -120,9 +106,9 @@ export function DashboardClient({
 
           <PainelVendas vendas={vendasRelatorio} />
 
-          {/* Agenda logo depois das vendas: compromisso do dia não pode ficar no fim da página. */}
+          {/* Calendário logo depois das vendas: feriado e vencimento do dia não podem ficar no fim da página. */}
           <div className="mb-5">
-            <AgendaCard compromissos={compromissos} />
+            <CalendarioDashboard {...calendario} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
@@ -239,227 +225,5 @@ export function DashboardClient({
           </div>
 
     </>
-  );
-}
-
-const NOMES_MES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];
-const DIAS_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
-
-function hojeIso() {
-  return hojeIsoLocal();
-}
-
-function AgendaCard({ compromissos }: { compromissos: Compromisso[] }) {
-  const [, startTransition] = useTransition();
-  const { confirm, ConfirmDialog } = useConfirm();
-  const hoje = new Date();
-  const [ano, setAno] = useState(hoje.getFullYear());
-  const [mes, setMes] = useState(hoje.getMonth());
-  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
-  const [modalAberto, setModalAberto] = useState(false);
-
-  const compromissosPorDia = useMemo(() => {
-    const mapa = new Map<string, Compromisso[]>();
-    for (const c of compromissos) {
-      const lista = mapa.get(c.data) ?? [];
-      lista.push(c);
-      mapa.set(c.data, lista);
-    }
-    return mapa;
-  }, [compromissos]);
-
-  const celulas = useMemo(() => {
-    const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
-    const totalDias = new Date(ano, mes + 1, 0).getDate();
-    const lista: (string | null)[] = Array(primeiroDiaSemana).fill(null);
-    for (let d = 1; d <= totalDias; d++) {
-      lista.push(`${ano}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
-    }
-    return lista;
-  }, [ano, mes]);
-
-  function mudarMes(delta: number) {
-    const novo = new Date(ano, mes + delta, 1);
-    setAno(novo.getFullYear());
-    setMes(novo.getMonth());
-  }
-
-  async function remover(id: string, titulo: string) {
-    const ok = await confirm({
-      title: "Remover compromisso?",
-      message: `"${titulo}" será apagado da agenda.`,
-      confirmLabel: "Remover",
-    });
-    if (!ok) return;
-    startTransition(async () => {
-      await executarComToast(removerCompromisso(id), { sucesso: "Compromisso removido", erro: "Erro ao remover compromisso" });
-    });
-  }
-
-  const listaExibida = diaSelecionado
-    ? compromissos.filter((c) => c.data === diaSelecionado)
-    : compromissos.filter((c) => c.data >= hojeIso()).slice(0, 6);
-
-  return (
-    <Card>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-text-primary">Agenda</h2>
-        <Button variant="secondary" onClick={() => setModalAberto(true)}>
-          + Novo Compromisso
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,260px)_1fr] gap-6">
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <IconButton onClick={() => mudarMes(-1)} aria-label="Mês anterior">
-              <ChevronLeft size={16} />
-            </IconButton>
-            <span className="text-sm font-medium text-text-primary">
-              {NOMES_MES[mes]} {ano}
-            </span>
-            <IconButton onClick={() => mudarMes(1)} aria-label="Próximo mês">
-              <ChevronRight size={16} />
-            </IconButton>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-xs text-text-tertiary mb-1">
-            {DIAS_SEMANA.map((d, i) => (
-              <div key={i}>{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {celulas.map((iso, i) => {
-              if (!iso) return <div key={i} />;
-              const dia = Number(iso.slice(-2));
-              const temCompromisso = compromissosPorDia.has(iso);
-              const selecionado = diaSelecionado === iso;
-              const ehHoje = iso === hojeIso();
-              return (
-                <button
-                  key={iso}
-                  onClick={() => setDiaSelecionado(selecionado ? null : iso)}
-                  className={`relative h-8 rounded-md text-xs flex items-center justify-center ${
-                    selecionado
-                      ? "bg-accent text-accent-on"
-                      : ehHoje
-                        ? "border border-accent text-text-primary"
-                        : "text-text-secondary hover:bg-surface-2"
-                  }`}
-                >
-                  {dia}
-                  {temCompromisso && !selecionado && (
-                    <span className="absolute bottom-1 w-1 h-1 rounded-full bg-accent" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-text-tertiary">
-              {diaSelecionado
-                ? `Compromissos em ${formatarDataIso(diaSelecionado)}`
-                : "Próximos compromissos"}
-            </span>
-            {diaSelecionado && (
-              <button onClick={() => setDiaSelecionado(null)} className="text-xs text-accent hover:underline">
-                Ver todos
-              </button>
-            )}
-          </div>
-          <div className="space-y-2">
-            {listaExibida.length === 0 && <p className="text-sm text-text-tertiary">Nenhum compromisso.</p>}
-            {listaExibida.map((c) => (
-              <div key={c.id} className="flex items-center justify-between border border-border rounded-md px-3 py-2">
-                <div>
-                  <div className="text-sm text-text-primary">{c.titulo}</div>
-                  <div className="text-xs text-text-tertiary">
-                    {formatarDataIso(c.data)}
-                    {c.hora ? ` às ${c.hora.slice(0, 5)}` : ""}
-                    {c.descricao ? ` — ${c.descricao}` : ""}
-                  </div>
-                </div>
-                <button
-                  onClick={() => remover(c.id, c.titulo)}
-                  aria-label={`Remover compromisso ${c.titulo}`}
-                  className="text-text-tertiary hover:text-negative"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <CompromissoModal
-        key={`compromisso-${modalAberto ? (diaSelecionado ?? hojeIso()) : "fechado"}`}
-        open={modalAberto}
-        dataPadrao={diaSelecionado ?? hojeIso()}
-        onClose={() => setModalAberto(false)}
-      />
-      {ConfirmDialog}
-    </Card>
-  );
-}
-
-function CompromissoModal({ open, dataPadrao, onClose }: { open: boolean; dataPadrao: string; onClose: () => void }) {
-  const [pending, startTransition] = useTransition();
-  const [titulo, setTitulo] = useState("");
-  const [data, setData] = useState(dataPadrao);
-  const [hora, setHora] = useState("");
-  const [descricao, setDescricao] = useState("");
-
-  function fechar() {
-    setTitulo("");
-    setData(dataPadrao);
-    setHora("");
-    setDescricao("");
-    onClose();
-  }
-
-  function salvar() {
-    if (!titulo.trim()) {
-      toast.error("Informe um título para o compromisso");
-      return;
-    }
-    const dados: CompromissoInput = { titulo: titulo.trim(), data, hora: hora || null, descricao: descricao.trim() || null };
-    startTransition(async () => {
-      const r = await executarComToast(criarCompromisso(dados), { sucesso: "Compromisso adicionado", erro: "Erro ao salvar compromisso" });
-      if (r.ok) {
-        fechar();
-      }
-    });
-  }
-
-  return (
-    <Modal open={open} onClose={fechar} title="Novo Compromisso">
-      <FormField label="Título">
-        <input className={inputClass} value={titulo} onChange={(e) => setTitulo(e.target.value)} />
-      </FormField>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Data">
-          <input type="date" className={inputClass} value={data} onChange={(e) => setData(e.target.value)} />
-        </FormField>
-        <FormField label="Hora (opcional)">
-          <input type="time" className={inputClass} value={hora} onChange={(e) => setHora(e.target.value)} />
-        </FormField>
-      </div>
-      <FormField label="Descrição (opcional)">
-        <input className={inputClass} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
-      </FormField>
-      <div className="flex gap-2 mt-5">
-        <Button variant="secondary" className="flex-1" onClick={fechar}>
-          Cancelar
-        </Button>
-        <Button variant="primary" className="flex-1" onClick={salvar} loading={pending}>
-          Salvar
-        </Button>
-      </div>
-    </Modal>
   );
 }

@@ -19,6 +19,8 @@ import {
   canalLimitesSchema,
   SENHA_MIN,
   SENHA_MAX,
+  dividaAntigaSchema,
+  paginaHistoricoSchema,
 } from "./validacao";
 
 describe("senhaSchema", () => {
@@ -357,3 +359,53 @@ describe("7.4: limites do canal, tom e palavras-chave", () => {
     expect(produtoSchema.shape.palavras_chave.safeParse(undefined).success).toBe(true);
   });
 });
+
+describe("dividaAntigaSchema (0067)", () => {
+  const ok = {
+    tipo: "pagar" as const,
+    fornecedor_id: "11111111-1111-4111-8111-111111111111",
+    cliente_id: null,
+    descricao: "Saldo anterior",
+    valor_total: 300,
+    parcelas: 3,
+    primeiro_vencimento: "2026-11-05",
+    intervalo_dias: 30,
+    ja_pago: 50,
+    conta_id: null,
+  };
+
+  it("aceita uma dívida com fornecedor", () => {
+    expect(dividaAntigaSchema.safeParse(ok).success).toBe(true);
+  });
+
+  it("já pago maior que o total é recusado", () => {
+    expect(dividaAntigaSchema.safeParse({ ...ok, ja_pago: 301 }).success).toBe(false);
+  });
+
+  it("valor zero é recusado", () => {
+    expect(dividaAntigaSchema.safeParse({ ...ok, valor_total: 0 }).success).toBe(false);
+  });
+
+  it("conta a pagar não leva cliente; a receber não leva fornecedor", () => {
+    expect(dividaAntigaSchema.safeParse({ ...ok, cliente_id: ok.fornecedor_id }).success).toBe(false);
+    expect(dividaAntigaSchema.safeParse({ ...ok, tipo: "receber" }).success).toBe(false);
+  });
+
+  it("de 1 a 48 parcelas", () => {
+    expect(dividaAntigaSchema.safeParse({ ...ok, parcelas: 49 }).success).toBe(false);
+    expect(dividaAntigaSchema.safeParse({ ...ok, parcelas: 0 }).success).toBe(false);
+  });
+});
+
+describe("paginaHistoricoSchema", () => {
+  it("aceita o timestamptz como o Supabase devolve (microssegundos e +00:00)", () => {
+    expect(paginaHistoricoSchema.safeParse({ antesDe: "2026-10-01T12:34:56.123456+00:00", limite: 50 }).success).toBe(true);
+    expect(paginaHistoricoSchema.safeParse({ antesDe: null, limite: 50 }).success).toBe(true);
+  });
+
+  it("recusa cursor que não é data e limite fora de 1..5000", () => {
+    expect(paginaHistoricoSchema.safeParse({ antesDe: "ontem", limite: 50 }).success).toBe(false);
+    expect(paginaHistoricoSchema.safeParse({ antesDe: null, limite: 5001 }).success).toBe(false);
+  });
+});
+

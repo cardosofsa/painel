@@ -23,7 +23,10 @@ export function HistoricoPrecificacoes({
   anuncios,
   acoesLigarProduto,
   empresa = null,
+  paginacao,
 }: {
+  /** A tela abre com as 50 mais recentes; daqui busca as mais antigas. */
+  paginacao?: { temMais: boolean; carregando: boolean; carregarMais: () => void; carregarTudo: () => void };
   empresa?: { nome: string | null; logoUrl: string | null } | null;
   estado: EstadoPrecificacao;
   anuncios: AnuncioSalvo[];
@@ -191,6 +194,19 @@ export function HistoricoPrecificacoes({
                 )}
               </tbody>
             </Table>
+            {paginacao?.temMais && (
+              <div className="flex flex-wrap items-center justify-center gap-2 px-5 py-4 border-t border-border">
+                <span className="text-xs text-text-tertiary">
+                  Mostrando as {historico.length} mais recentes. A busca, o filtro de data e a exportação valem para as que estão carregadas.
+                </span>
+                <Button variant="secondary" size="sm" loading={paginacao.carregando} onClick={paginacao.carregarMais}>
+                  Carregar mais 50
+                </Button>
+                <Button variant="ghost" size="sm" disabled={paginacao.carregando} onClick={paginacao.carregarTudo}>
+                  Carregar tudo
+                </Button>
+              </div>
+            )}
           </Card>
 
           <Modal open={!!historicoDetalhe} onClose={() => setHistoricoDetalhe(null)} title={historicoDetalhe?.produto_nome ?? ""}>

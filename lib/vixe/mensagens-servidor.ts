@@ -32,7 +32,7 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
   const limiteFiado = new Date(agora);
   limiteFiado.setDate(limiteFiado.getDate() + 2);
 
-  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes, unicasRes] = await Promise.all([
+  const [perfilRes, pedidosRes, vendasRes, parcelasRes, enviadasRes, unicasRes, antigasRes] = await Promise.all([
     // `*`: Pix e multa/juros (0065) entram na cobrança quando existem.
     supabase.from("perfil_negocio").select("*").maybeSingle(),
     supabase.from("pedidos_vitrine").select("id, numero, cliente_nome, cliente_whatsapp, total, status, criado_em, venda_id").gte("criado_em", desde.toISOString()).limit(500),
@@ -54,6 +54,16 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
       .not("referencia_venda_id", "is", null)
       .lte("data_vencimento", hojeIsoBrasil(limiteFiado))
       .limit(500),
+    // Crediário de antes do sistema (0067): conta a receber ligada direto ao cliente.
+    supabase
+      .from("contas_a_pagar_receber")
+      .select("*, clientes(nome, whatsapp)")
+      .eq("tipo", "receber")
+      .eq("status", "pendente")
+      .is("referencia_venda_id", null)
+      .not("cliente_id", "is", null)
+      .lte("data_vencimento", hojeIsoBrasil(limiteFiado))
+      .limit(500),
   ]);
 
   const loja = (perfilRes.data?.nome_negocio as string | null) || "nossa loja";
@@ -71,7 +81,17 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
       data_vencimento: c.data_vencimento,
       vendas: c.vendas ? { numero: c.vendas.numero, status: c.vendas.status, clientes: c.vendas.clientes } : null,
     }));
-  const parcelas = [...((parcelasRes.data ?? []) as unknown as ParcelaBruta[]), ...unicas].filter((p) => p.vendas && p.vendas.status !== "cancelada" && p.valor > 0);
+  type AntigaBruta = { id: string; valor: number; valor_pago?: number | null; data_vencimento: string; parcela_numero?: number | null; total_parcelas?: number | null; clientes: { nome: string; whatsapp: string | null } | null };
+  const antigas: ParcelaBruta[] = ((antigasRes.error ? [] : (antigasRes.data ?? [])) as unknown as AntigaBruta[]).map((c) => ({
+    id: c.id,
+    numero: c.parcela_numero ?? 1,
+    total_parcelas: c.total_parcelas ?? 1,
+    valor: Number(c.valor) - Number(c.valor_pago ?? 0),
+    data_vencimento: c.data_vencimento,
+    // Sem venda: "ANTIGO" vira a referência na lista e no txid do Pix.
+    vendas: { numero: "ANTIGO", status: "fiado", clientes: c.clientes },
+  }));
+  const parcelas = [...((parcelasRes.data ?? []) as unknown as ParcelaBruta[]), ...unicas, ...antigas].filter((p) => p.vendas && p.vendas.status !== "cancelada" && p.valor > 0);
 
   const mensagens = mensagensPendentes(
     {

@@ -1,0 +1,201 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { History } from "lucide-react";
+import { Modal, FormField, inputClass } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { executarComToast } from "@/lib/acao-cliente";
+import { formatBRL, formatarDataIso, hojeIsoLocal, numeroOuNulo } from "@/lib/format";
+import { distribuirJaPago, previaParcelas } from "@/lib/pagamentos";
+import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
+import { lancarDividaAntiga } from "@/app/(painel)/financeiro/pagamentos-actions";
+
+export interface Pessoa {
+  id: string;
+  nome: string;
+}
+
+/** Onde o modal foi aberto: já sabe o lado (e às vezes quem). */
+export interface InicioDividaAntiga {
+  tipo: "pagar" | "receber";
+  fornecedorId?: string | null;
+  clienteId?: string | null;
+}
+
+/**
+ * Lançar uma dívida ou conta de antes de usar o Sertão: o que você ainda deve a um
+ * fornecedor, ou o crediário antigo de um cliente. As parcelas vão para o Financeiro, para
+ * Fornecedores → "Em aberto" e para o limite do crediário do cliente. O "já pago" fica
+ * registrado na parcela, mas não sai do caixa de hoje (foi pago antes do sistema).
+ *
+ * Montado com `key` por quem abre: o estado nasce do `inicio`.
+ */
+export function DividaAntigaModal({
+  inicio,
+  fornecedores,
+  clientes,
+  onClose,
+}: {
+  inicio: InicioDividaAntiga | null;
+  fornecedores: Pessoa[];
+  clientes: Pessoa[];
+  onClose: () => void;
+}) {
+  const [tipo, setTipo] = useState<"pagar" | "receber">(inicio?.tipo ?? "pagar");
+  const [fornecedorId, setFornecedorId] = useState(inicio?.fornecedorId ?? "");
+  const [clienteId, setClienteId] = useState(inicio?.clienteId ?? "");
+  const [descricao, setDescricao] = useState("Saldo anterior ao sistema");
+  const [total, setTotal] = useState("");
+  const [parcelas, setParcelas] = useState("1");
+  const [primeiro, setPrimeiro] = useState(() => hojeIsoLocal());
+  const [intervalo, setIntervalo] = useState(30);
+  const [jaPago, setJaPago] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [inicial] = useState({ total: "", jaPago: "", parcelas: "1" });
+  const sujo = useFormularioSujo({ total, jaPago, parcelas }, inicial);
+
+  const totalN = numeroOuNulo(total) ?? 0;
+  const jaPagoN = numeroOuNulo(jaPago) ?? 0;
+  const nParcelas = Math.min(48, Math.max(1, Math.trunc(numeroOuNulo(parcelas) ?? 1)));
+  const quem = tipo === "pagar" ? fornecedorId : clienteId;
+  const previa = useMemo(
+    () => (totalN > 0 && primeiro ? distribuirJaPago(previaParcelas(totalN, nParcelas, primeiro, intervalo), jaPagoN) : []),
+    [totalN, nParcelas, primeiro, intervalo, jaPagoN],
+  );
+  const emAberto = Math.max(0, Math.round((totalN - jaPagoN) * 100) / 100);
+  const erro =
+    !quem
+      ? tipo === "pagar"
+        ? "Escolha o fornecedor."
+        : "Escolha o cliente."
+      : totalN <= 0
+        ? "Informe o valor total."
+        : jaPagoN > totalN
+          ? "O já pago passa do total."
+          : null;
+
+  async function salvar() {
+    if (erro) return;
+    setSalvando(true);
+    const r = await executarComToast(
+      lancarDividaAntiga({
+        tipo,
+        fornecedor_id: tipo === "pagar" ? fornecedorId : null,
+        cliente_id: tipo === "receber" ? clienteId : null,
+        descricao: descricao.trim(),
+        valor_total: totalN,
+        parcelas: nParcelas,
+        primeiro_vencimento: primeiro,
+        intervalo_dias: intervalo,
+        ja_pago: jaPagoN,
+        conta_id: null,
+      }),
+      { sucesso: tipo === "pagar" ? "Dívida lançada no A pagar" : "Crediário antigo lançado no A receber", erro: "Erro ao lançar" },
+    );
+    setSalvando(false);
+    if (r.ok) onClose();
+  }
+
+  return (
+    <Modal open={!!inicio} onClose={onClose} title="Lançar dívida antiga" sujo={sujo} width="max-w-lg">
+      <p className="text-sm text-text-secondary mb-4 flex gap-2">
+        <History size={16} className="text-accent shrink-0 mt-0.5" />
+        Para o que já existia antes de usar o Sertão. O valor já pago fica registrado, mas não sai do caixa de hoje.
+      </p>
+      {/* Aberta de Fornecedores (sem clientes) ou de um cliente (sem fornecedores): o lado já está decidido. */}
+      {fornecedores.length > 0 && clientes.length > 0 && (
+      <div className="flex gap-2 mb-4" role="group" aria-label="Tipo">
+        <Button variant={tipo === "pagar" ? "primary" : "secondary"} className="flex-1" aria-pressed={tipo === "pagar"} onClick={() => setTipo("pagar")}>
+          Devo a um fornecedor
+        </Button>
+        <Button variant={tipo === "receber" ? "primary" : "secondary"} className="flex-1" aria-pressed={tipo === "receber"} onClick={() => setTipo("receber")}>
+          Um cliente me deve
+        </Button>
+      </div>
+      )}
+
+      {tipo === "pagar" ? (
+        <FormField label="Fornecedor">
+          <select className={inputClass} value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
+            <option value="">Escolha…</option>
+            {fornecedores.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.nome}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      ) : (
+        <FormField label="Cliente" dica="Entra no limite do crediário dele.">
+          <select className={inputClass} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+            <option value="">Escolha…</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
+
+      <FormField label="Descrição">
+        <input className={inputClass} value={descricao} maxLength={150} onChange={(e) => setDescricao(e.target.value)} />
+      </FormField>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+        <FormField label="Valor total da dívida (R$)">
+          <input className={inputClass} inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0,00" />
+        </FormField>
+        <FormField label="Já pago (R$)" dica="Se já pagou uma parte antes.">
+          <input className={inputClass} inputMode="decimal" value={jaPago} onChange={(e) => setJaPago(e.target.value)} placeholder="0,00" />
+        </FormField>
+        <FormField label="Parcelas">
+          <input className={inputClass} inputMode="numeric" value={parcelas} onChange={(e) => setParcelas(e.target.value)} />
+        </FormField>
+        <FormField label="1º vencimento">
+          <input type="date" className={inputClass} value={primeiro} onChange={(e) => setPrimeiro(e.target.value)} />
+        </FormField>
+      </div>
+      {nParcelas > 1 && (
+        <FormField label="Intervalo">
+          <select className={inputClass} value={intervalo} onChange={(e) => setIntervalo(Number(e.target.value))}>
+            <option value={7}>Toda semana</option>
+            <option value={15}>A cada 15 dias</option>
+            <option value={30}>Todo mês</option>
+          </select>
+        </FormField>
+      )}
+
+      {previa.length > 0 && (
+        <div className="rounded-md border border-border mb-4">
+          <div className="flex justify-between px-3 py-2 text-sm border-b border-border bg-surface-2">
+            <span className="text-text-secondary">Fica em aberto</span>
+            <span className="font-mono font-semibold text-text-primary">{formatBRL(emAberto)}</span>
+          </div>
+          <ul className="max-h-40 overflow-y-auto divide-y divide-border text-xs">
+            {previa.map((p, i) => (
+              <li key={i} className="flex justify-between gap-3 px-3 py-1.5">
+                <span className="text-text-secondary">
+                  {i + 1}ª · vence {formatarDataIso(p.vencimento)}
+                </span>
+                <span className="font-mono text-text-primary">
+                  {formatBRL(p.valor)}
+                  {p.jaPago > 0 && <span className="text-positive"> · {p.quitada ? "paga" : `${formatBRL(p.jaPago)} pago`}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {erro && (total || quem) && <p className="text-xs text-negative mb-3">{erro}</p>}
+      <div className="flex gap-2">
+        <Button variant="secondary" className="flex-1" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button variant="primary" className="flex-1" onClick={salvar} loading={salvando} disabled={!!erro}>
+          Lançar
+        </Button>
+      </div>
+    </Modal>
+  );
+}

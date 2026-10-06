@@ -175,18 +175,21 @@ export function NovaDespesaFixaModal({
 
 export function NovaCprModal({
   open,
+  tipoInicial = "pagar",
   onClose,
   contas,
   onSave,
   salvando,
 }: {
   open: boolean;
+  /** Lado em que abre (quem chama monta com `key`, então vale como estado inicial). */
+  tipoInicial?: "pagar" | "receber";
   onClose: () => void;
   contas: Conta[];
   onSave: (dados: ContaPagarReceberInput) => void;
   salvando: boolean;
 }) {
-  const [tipo, setTipo] = useState<"pagar" | "receber">("pagar");
+  const [tipo, setTipo] = useState<"pagar" | "receber">(tipoInicial);
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState(0);
   const [vencimento, setVencimento] = useState(() => hojeIsoLocal());

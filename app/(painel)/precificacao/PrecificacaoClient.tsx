@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { executarComToast } from "@/lib/acao-cliente";
+import { carregarHistoricoPrecificacoes } from "./actions";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -31,6 +33,9 @@ import {
 import type { Concorrente } from "@/lib/pricing";
 
 export type { PrecificacaoHist, LojaOpcao, AnuncioSalvo, ProdutoOpcao, VariacaoSalva } from "@/lib/precificacao-estado";
+
+/** Quantas linhas do histórico a página traz e cada "Carregar mais" acrescenta. */
+const POR_PAGINA = 50;
 
 const ABAS_PRECIFICACAO = [
   { value: "individual", label: "Individual" },
@@ -68,7 +73,27 @@ export function PrecificacaoClient({
   iaDisponivel: boolean;
 }) {
   const [exportandoSalvas, setExportandoSalvas] = useState(false);
-  const estado = usePrecificacao({ historico, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa });
+  // Linhas mais antigas buscadas sob demanda (a página traz só as 50 mais recentes).
+  const [maisAntigas, setMaisAntigas] = useState<PrecificacaoHist[]>([]);
+  const [temMais, setTemMais] = useState(historico.length >= POR_PAGINA);
+  const [carregandoMais, startCarregar] = useTransition();
+  // Depois de salvar, o servidor manda as 50 de novo: o que já estava na tela não duplica.
+  const historicoCompleto = useMemo(() => {
+    const ids = new Set(historico.map((h) => h.id));
+    return [...historico, ...maisAntigas.filter((h) => !ids.has(h.id))];
+  }, [historico, maisAntigas]);
+  const estado = usePrecificacao({ historico: historicoCompleto, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa });
+
+  function carregarMais(tudo: boolean) {
+    const ultima = historicoCompleto[historicoCompleto.length - 1];
+    startCarregar(async () => {
+      const limite = tudo ? 5000 : POR_PAGINA;
+      const r = await executarComToast(carregarHistoricoPrecificacoes(ultima?.criado_em ?? null, limite), { erro: "Erro ao carregar o histórico" });
+      if (!r.ok) return;
+      setMaisAntigas((x) => [...x, ...r.dado]);
+      setTemMais(r.dado.length >= limite);
+    });
+  }
   const { visao, setVisao } = estado;
 
   function acoesLigarProduto(h: PrecificacaoHist) {
@@ -160,7 +185,13 @@ export function PrecificacaoClient({
       )}
 
       {visao === "historico" && (
-        <HistoricoPrecificacoes estado={estado} anuncios={anuncios} acoesLigarProduto={acoesLigarProduto} empresa={empresa} />
+        <HistoricoPrecificacoes
+          estado={estado}
+          anuncios={anuncios}
+          acoesLigarProduto={acoesLigarProduto}
+          empresa={empresa}
+          paginacao={{ temMais, carregando: carregandoMais, carregarMais: () => carregarMais(false), carregarTudo: () => carregarMais(true) }}
+        />
       )}
 
       <ModalVincularProduto
