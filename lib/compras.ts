@@ -51,6 +51,8 @@ export interface LinhaSugestao {
   porDia: number;
   /** De onde veio o ritmo: vendas reais ou o campo "saída média semanal". */
   ritmo: "vendas" | "cadastro";
+  /** Tendência das vendas nas últimas semanas (previsão de demanda). Ausente = sem previsão. */
+  tendencia?: "subindo" | "estavel" | "caindo";
   /** Quantos dias o disponível (estoque + já pedido) dura nesse ritmo. null = não sai. */
   diasCobertura: number | null;
   /** Prazo de entrega do fornecedor (dias). */

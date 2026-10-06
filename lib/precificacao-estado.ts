@@ -79,10 +79,11 @@ export function usePrecificacao({
   lojas,
   concorrentesPorProduto,
   empresa = null,
+  visaoInicial = "individual",
 }: PrecificacaoProps) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [visao, setVisao] = useState<VisaoPrecificacao>("individual");
+  const [visao, setVisao] = useState<VisaoPrecificacao>(visaoInicial);
   const [subAbaHistorico, setSubAbaHistorico] = useState<"precificacoes" | "produtos">("precificacoes");
   const [anuncioExpandidoHistorico, setAnuncioExpandidoHistorico] = useState<string | null>(null);
   const [produtoId, setProdutoId] = useState<string | null>(null);

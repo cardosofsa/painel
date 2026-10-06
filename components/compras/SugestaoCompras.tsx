@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PackageCheck } from "lucide-react";
+import { PackageCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -47,7 +47,7 @@ export function SugestaoCompras({
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        Produtos abaixo do mínimo ou que acabam antes de um pedido novo chegar (prazo do fornecedor + 7 dias de folga), no ritmo real de venda dos últimos 60 dias em todos os canais. A quantidade cobre o prazo + 30 dias. O que já está pedido e não chegou é descontado.
+        Produtos abaixo do mínimo ou que acabam antes de um pedido novo chegar (prazo do fornecedor + 7 dias de folga), na previsão de venda das próximas semanas (as últimas 12 semanas de todos os canais, seguindo a tendência). A quantidade cobre o prazo + 30 dias. O que já está pedido e não chegou é descontado.
       </p>
       {grupos.map(([fornecedorId, itens]) => {
         const escolhidos = itens.filter((l) => !fora.has(l.produto.id) && (qtd[l.produto.id] ?? 0) > 0);
@@ -98,6 +98,18 @@ export function SugestaoCompras({
                     </div>
                     <div className="text-xs text-text-tertiary">
                       {l.porDia > 0 ? `vende ~${(l.porDia * 7).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}/semana${l.ritmo === "cadastro" ? " (do cadastro)" : ""}` : "sem vendas recentes"}
+                      {l.tendencia === "subindo" && (
+                        <span className="inline-flex items-center gap-0.5 text-positive font-medium" title="As vendas estão subindo nas últimas semanas: a previsão já conta com isso">
+                          {" "}
+                          <TrendingUp size={12} aria-hidden /> subindo
+                        </span>
+                      )}
+                      {l.tendencia === "caindo" && (
+                        <span className="inline-flex items-center gap-0.5 text-text-secondary" title="As vendas estão caindo nas últimas semanas: a previsão pede menos">
+                          {" "}
+                          <TrendingDown size={12} aria-hidden /> caindo
+                        </span>
+                      )}
                       {l.diasCobertura !== null && (
                         <span className={l.diasCobertura <= l.prazo ? "text-negative font-medium" : ""}>
                           {` · acaba em ${Math.max(0, Math.floor(l.diasCobertura))} dia(s)`}

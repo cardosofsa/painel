@@ -7,7 +7,8 @@
  */
 
 import { formatBRL, formatarDataIso } from "@/lib/format";
-import type { AlertaErosaoMargem, AlertaRupturaEstoque } from "@/lib/alertas";
+import type { AlertaErosaoMargem, AlertaPrecoDefasado, AlertaRupturaEstoque } from "@/lib/alertas";
+import type { SituacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
 import type { ZonaMorta } from "@/lib/pricing";
 
 export type Gravidade = "alta" | "media" | "baixa";
@@ -99,6 +100,24 @@ export function alertasMargem(itens: AlertaErosaoMargem[]): AlertaVixe[] {
     titulo: `${m.produtoNome}: custo subiu ${m.aumentoPct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`,
     detalhe: `Precificado com custo de ${formatBRL(m.custoPrecificado)}; a última compra saiu a ${formatBRL(m.custoRecente)}. A margem real está menor que a calculada.`,
     acoes: [{ tipo: "link", rotulo: "Reprecificar", href: "/precificacao" }],
+  }));
+}
+
+/** Custo de hoje subiu desde a última precificação, ou a precificação está velha. */
+export function alertasPrecoDefasado(itens: AlertaPrecoDefasado[]): AlertaVixe[] {
+  return itens.map((d) => ({
+    id: `defasado-${d.produtoId}`,
+    categoria: "margem",
+    gravidade: d.motivo === "custo" ? (d.aumentoPct >= 15 ? "alta" : "media") : "baixa",
+    titulo:
+      d.motivo === "custo"
+        ? `${d.produtoNome}: preço defasado (custo +${d.aumentoPct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)`
+        : `${d.produtoNome}: precificação de ${d.dias} dias atrás`,
+    detalhe:
+      d.motivo === "custo"
+        ? `Precificado com custo de ${formatBRL(d.custoPrecificado)}; hoje o custo está em ${formatBRL(d.custoAtual)} (produto + insumos). O preço calculado não cobre mais a margem que você queria.`
+        : "Taxas dos canais e custos mudam: vale conferir se o preço ainda dá o lucro esperado.",
+    acoes: [{ tipo: "link", rotulo: "Conferir no Raio-X", href: "/precificacao?visao=raio-x" }],
   }));
 }
 
@@ -209,4 +228,61 @@ export function alertasZonaMorta(itens: PrecoEmZonaMorta[]): AlertaVixe[] {
       { tipo: "link", rotulo: "Abrir Precificação", href: "/precificacao" },
     ],
   }));
+}
+
+// ---------- Repasses (Fase 5, onda A) ----------
+
+export interface ResumoRepasses {
+  divergentes: number;
+  /** Soma de |recebido − esperado| dos divergentes. */
+  diferenca: number;
+  atrasados: number;
+  /** Soma do esperado dos atrasados. */
+  valorAtrasado: number;
+}
+
+export function resumirRepasses(
+  pedidos: { repasse: number; repasse_recebido: number | null; pago_em: string | null }[],
+  hoje: string,
+  situacao: (p: { repasse: number; repasse_recebido: number | null; pago_em: string | null }, hoje: string) => SituacaoRepasse,
+): ResumoRepasses {
+  const r: ResumoRepasses = { divergentes: 0, diferenca: 0, atrasados: 0, valorAtrasado: 0 };
+  for (const p of pedidos) {
+    const s = situacao(p, hoje);
+    if (s === "divergente") {
+      r.divergentes++;
+      r.diferenca += Math.abs(Number(p.repasse_recebido) - Number(p.repasse));
+    } else if (s === "atrasado") {
+      r.atrasados++;
+      r.valorAtrasado += Number(p.repasse);
+    }
+  }
+  r.diferenca = Math.round(r.diferenca * 100) / 100;
+  r.valorAtrasado = Math.round(r.valorAtrasado * 100) / 100;
+  return r;
+}
+
+/** Repasse da Shopee/ML diferente do esperado ou atrasado: um alerta por situação. */
+export function alertasRepasses(r: ResumoRepasses): AlertaVixe[] {
+  const link = { tipo: "link" as const, rotulo: "Conferir repasses", href: "/financeiro?aba=repasses" };
+  const saida: AlertaVixe[] = [];
+  if (r.divergentes > 0)
+    saida.push({
+      id: "repasse-divergente",
+      categoria: "financeiro",
+      gravidade: r.diferenca >= 50 ? "alta" : "media",
+      titulo: `${r.divergentes} ${r.divergentes === 1 ? "repasse veio diferente" : "repasses vieram diferentes"} do esperado`,
+      detalhe: `Diferença somada de ${formatBRL(r.diferenca)} entre o que a plataforma pagou e o que o pedido previa. Confira taxas, frete e devoluções.`,
+      acoes: [link],
+    });
+  if (r.atrasados > 0)
+    saida.push({
+      id: "repasse-atrasado",
+      categoria: "financeiro",
+      gravidade: "media",
+      titulo: `${r.atrasados} ${r.atrasados === 1 ? "repasse atrasado" : "repasses atrasados"}`,
+      detalhe: `${formatBRL(r.valorAtrasado)} de pedidos pagos há mais de 15 dias que ainda não aparecem como recebidos. Importe o relatório de repasses para conferir.`,
+      acoes: [link],
+    });
+  return saida;
 }

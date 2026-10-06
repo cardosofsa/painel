@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcularErosaoMargem, calcularPrevisaoRuptura, quantidadeSugeridaCompra } from "./alertas";
+import { calcularErosaoMargem, calcularPrecoDefasado, calcularPrevisaoRuptura, quantidadeSugeridaCompra, ultimaPrecificacaoPorProduto } from "./alertas";
 
 describe("calcularErosaoMargem", () => {
   it("alerta quando o custo da compra recente subiu acima da tolerância", () => {
@@ -109,5 +109,43 @@ describe("quantidadeSugeridaCompra", () => {
   it("nunca sugere menos que 1, mesmo com estoque alto", () => {
     expect(quantidadeSugeridaCompra({ estoque: 50, estoque_minimo: 10, saida_media_semanal: 1 })).toBe(1);
     expect(quantidadeSugeridaCompra({ estoque: 0, estoque_minimo: 0, saida_media_semanal: 0 })).toBe(1);
+  });
+});
+
+describe("preço defasado", () => {
+  const hoje = new Date("2026-10-06T12:00:00Z");
+  const ult = ultimaPrecificacaoPorProduto([
+    { produto_id: "a", custo: 10, criado_em: "2026-09-01T00:00:00Z" },
+    { produto_id: "a", custo: 8, criado_em: "2026-01-01T00:00:00Z" },
+    { produto_id: "b", custo: 20, criado_em: "2026-01-01T00:00:00Z" },
+    { produto_id: "c", custo: 5, criado_em: "2026-09-30T00:00:00Z" },
+    { produto_id: null, custo: 5, criado_em: "2026-09-30T00:00:00Z" },
+  ]);
+
+  it("usa a última precificação de cada produto", () => {
+    expect(ult.get("a")?.custo).toBe(10);
+  });
+
+  it("custo de hoje acima da tolerância, precificação velha e o que não é aviso", () => {
+    const r = calcularPrecoDefasado(
+      [
+        { id: "a", nome: "A", custo: 12 },
+        { id: "b", nome: "B", custo: 20 },
+        { id: "c", nome: "C", custo: 5.1 },
+        { id: "d", nome: "D", custo: 9 },
+      ],
+      ult,
+      hoje,
+    );
+    expect(r.map((x) => [x.produtoId, x.motivo])).toEqual([
+      ["a", "custo"],
+      ["b", "antiga"],
+    ]);
+    expect(r[0].aumentoPct).toBeCloseTo(20);
+    expect(r[1].dias).toBeGreaterThan(120);
+  });
+
+  it("produto que já tem alerta de erosão fica de fora", () => {
+    expect(calcularPrecoDefasado([{ id: "a", nome: "A", custo: 12 }], ult, hoje, new Set(["a"]))).toEqual([]);
   });
 });

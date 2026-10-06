@@ -88,7 +88,9 @@ export interface ProdutoOpcao {
   tipo?: "produto" | "insumo" | "embalagem" | null;
 }
 
-export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "historico" | "raio-x";
+export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "historico" | "raio-x" | "promocao";
+
+export const VISOES_PRECIFICACAO: VisaoPrecificacao[] = ["individual", "variacoes", "kits", "massa", "historico", "raio-x", "promocao"];
 
 export interface PrecificacaoProps {
   historico: PrecificacaoHist[];
@@ -99,4 +101,6 @@ export interface PrecificacaoProps {
   concorrentesPorProduto: Record<string, Concorrente[]>;
   /** Nome e logo da empresa (Dados da Empresa), no cabeçalho da imagem compartilhada. */
   empresa?: { nome: string | null; logoUrl: string | null } | null;
+  /** Aba aberta ao entrar (`?visao=` vindo de um alerta da Vixe). */
+  visaoInicial?: VisaoPrecificacao;
 }

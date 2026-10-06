@@ -4,7 +4,8 @@ import { hojeIsoLocal } from "@/lib/format";
 import { quantidadeSugeridaCompra } from "@/lib/alertas";
 import { ComprasClient, type ItemPedido, type Pedido } from "./ComprasClient";
 import { resumoPagamento } from "@/lib/pagamentos";
-import { consumoDiario, diasDoPrazo, faltaReceber, statusAberto, sugestaoCompras } from "@/lib/compras";
+import { diasDoPrazo, faltaReceber, statusAberto, sugestaoCompras } from "@/lib/compras";
+import { preverDemanda, vendasPorSemana, type Tendencia } from "@/lib/demanda";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Compras" };
@@ -137,10 +138,12 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
         }
       : null;
 
-  // Ritmo real (11.5): o que saiu nos últimos 60 dias em todos os canais; kit conta nos itens.
-  const DIAS_RITMO = 60;
-  const inicioRitmo = new Date();
-  inicioRitmo.setDate(inicioRitmo.getDate() - DIAS_RITMO);
+  // Ritmo real (11.5): o que saiu nas últimas 12 semanas em todos os canais; kit conta nos
+  // itens. A previsão de demanda (lib/demanda.ts) segue a tendência semana a semana.
+  const SEMANAS = 12;
+  const agora = new Date();
+  const inicioRitmo = new Date(agora);
+  inicioRitmo.setDate(inicioRitmo.getDate() - SEMANAS * 7);
   const desde = inicioRitmo.toISOString();
   const [vendidoRes, mktRes, kitsRes] = await Promise.all([
     supabase.from("venda_itens").select("produto_id, quantidade, vendas!inner(data_venda, status)").gte("vendas.data_venda", desde).neq("vendas.status", "cancelada").limit(20000),
@@ -158,11 +161,28 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       ((k.insumos ?? []) as { produtoId?: string | null; quantidade: number }[]).filter((i) => i.produtoId).map((i) => ({ produto_id: i.produtoId as string, quantidade: Math.ceil(i.quantidade) })),
     ]),
   );
-  const consumo = consumoDiario(
-    [...((vendidoRes.data ?? []) as { produto_id: string | null; quantidade: number }[]), ...(mktRes.error ? [] : ((mktRes.data ?? []) as { produto_id: string | null; quantidade: number }[]))],
-    DIAS_RITMO,
+  type LinhaVendida = { produto_id: string | null; quantidade: number; vendas?: { data_venda: string } | null };
+  type LinhaMkt = { produto_id: string | null; quantidade: number; pedidos_marketplace?: { criado_em_plataforma: string } | null };
+  const series = vendasPorSemana(
+    [
+      ...((vendidoRes.data ?? []) as unknown as LinhaVendida[]).map((v) => ({ produto_id: v.produto_id, quantidade: v.quantidade, data: v.vendas?.data_venda ?? null })),
+      ...(mktRes.error ? [] : ((mktRes.data ?? []) as unknown as LinhaMkt[])).map((v) => ({
+        produto_id: v.produto_id,
+        quantidade: v.quantidade,
+        data: v.pedidos_marketplace?.criado_em_plataforma ?? null,
+      })),
+    ],
+    SEMANAS,
+    agora,
     kits,
   );
+  const consumo = new Map<string, number>();
+  const tendencia = new Map<string, Tendencia>();
+  for (const [id, serie] of series) {
+    const p = preverDemanda(serie);
+    if (p.porDia > 0) consumo.set(id, p.porDia);
+    if (p.semanasComVenda >= 3) tendencia.set(id, p.tendencia);
+  }
   const prazoPorFornecedor = new Map((fornecedoresTodosRes.data ?? []).map((f) => [f.id as string, diasDoPrazo((f as { prazo?: string | null }).prazo)]));
 
   // Sugestão de compra: desconta o que já foi pedido e ainda não chegou.
@@ -178,7 +198,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
     emAberto,
     14,
     { consumo, prazoPorFornecedor, coberturaAlvo: 30 },
-  );
+  ).map((l) => ({ ...l, tendencia: l.ritmo === "vendas" ? tendencia.get(l.produto.id) : undefined }));
 
   return (
     <ComprasClient

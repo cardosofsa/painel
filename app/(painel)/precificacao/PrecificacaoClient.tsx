@@ -23,6 +23,8 @@ import { PainelEstrategiaVixe } from "@/components/precificacao/PainelEstrategia
 import { PainelAnuncio } from "@/components/precificacao/PainelAnuncio";
 import { HistoricoPrecificacoes } from "@/components/precificacao/HistoricoPrecificacoes";
 import { RaioXView } from "@/components/precificacao/RaioXView";
+import { SimuladorPromocao } from "@/components/precificacao/SimuladorPromocao";
+import type { VisaoPrecificacao } from "@/lib/precificacao-tipos";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
 import {
   usePrecificacao,
@@ -45,7 +47,8 @@ const ABAS_PRECIFICACAO = [
   { value: "massa", label: "Em Massa" },
   { value: "historico", label: "Histórico" },
   { value: "raio-x", label: "Raio-X" },
-] as const satisfies readonly TabItem<"individual" | "variacoes" | "kits" | "massa" | "historico" | "raio-x">[];
+  { value: "promocao", label: "Promoção" },
+] as const satisfies readonly TabItem<VisaoPrecificacao>[];
 
 /**
  * Calculadora de Precificação.
@@ -63,6 +66,7 @@ export function PrecificacaoClient({
   concorrentesPorProduto,
   iaDisponivel,
   empresa,
+  visaoInicial,
 }: {
   empresa: { nome: string | null; logoUrl: string | null } | null;
   historico: PrecificacaoHist[];
@@ -73,6 +77,7 @@ export function PrecificacaoClient({
   concorrentesPorProduto: Record<string, Concorrente[]>;
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
   iaDisponivel: boolean;
+  visaoInicial?: VisaoPrecificacao;
 }) {
   const [exportandoSalvas, setExportandoSalvas] = useState(false);
   // Linhas mais antigas buscadas sob demanda (a página traz só as 50 mais recentes).
@@ -84,7 +89,7 @@ export function PrecificacaoClient({
     const ids = new Set(historico.map((h) => h.id));
     return [...historico, ...maisAntigas.filter((h) => !ids.has(h.id))];
   }, [historico, maisAntigas]);
-  const estado = usePrecificacao({ historico: historicoCompleto, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa });
+  const estado = usePrecificacao({ historico: historicoCompleto, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa, visaoInicial });
 
   function carregarMais(tudo: boolean) {
     const ultima = historicoCompleto[historicoCompleto.length - 1];
@@ -197,6 +202,7 @@ export function PrecificacaoClient({
       )}
 
       {visao === "raio-x" && <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />}
+      {visao === "promocao" && <SimuladorPromocao historico={historicoCompleto} lojas={lojas} produtos={produtos} />}
 
       <ModalVincularProduto
         aberto={!!estado.vinculandoId}

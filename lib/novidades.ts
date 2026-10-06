@@ -15,6 +15,17 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Dinheiro: promoção, preço defasado, demanda e repasses",
+    itens: [
+      "Precificação → Promoção: desconto, cupom e comissão extra de campanha; mostra se compensa e quanto precisa vender a mais",
+      "Desconto máximo sem prejuízo e mantendo 10% de margem; avisa quando o desconto muda a faixa de comissão",
+      "Vixe avisa preço defasado: custo de hoje acima do usado na última precificação, ou precificação com mais de 120 dias",
+      "Vixe avisa repasse da Shopee/ML diferente do esperado ou atrasado",
+      "Sugestão de compras com previsão por semana (12 semanas), seguindo a tendência de venda",
+    ],
+  },
+  {
+    data: "2026-10-06",
     titulo: "Inventário do estoque",
     itens: [
       "Estoque → Inventário: bipe o código de barras (ou digite o SKU) e conte por armazém ou o estoque geral",
