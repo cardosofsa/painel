@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { FormField, inputClass } from "@/components/ui/Modal";
+import { FormField } from "@/components/ui/Modal";
 import { CartaoAuth, ErroAuth } from "@/components/auth/CartaoAuth";
-import { SENHA_MIN } from "@/lib/validacao";
+import { CampoSenha } from "@/components/auth/CampoSenha";
 import { redefinirSenha } from "@/app/auth/actions";
 
 /**
@@ -88,29 +88,12 @@ export function ResetClient({ temSessao }: { temSessao: boolean }) {
   return (
     <CartaoAuth titulo="Definir nova senha" descricao="Escolha uma senha que você não use em outro site.">
       <form onSubmit={salvar}>
-        <FormField label={`Nova senha (mínimo ${SENHA_MIN} caracteres)`}>
-          <input
-            type="password"
-            required
-            autoFocus
-            minLength={SENHA_MIN}
-            autoComplete="new-password"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            className={inputClass}
-          />
+        <FormField label="Nova senha">
+          <CampoSenha valor={senha} onChange={setSenha} autoComplete="new-password" autoFocus regras />
         </FormField>
 
         <FormField label="Confirmar nova senha">
-          <input
-            type="password"
-            required
-            minLength={SENHA_MIN}
-            autoComplete="new-password"
-            value={confirmacao}
-            onChange={(e) => setConfirmacao(e.target.value)}
-            className={inputClass}
-          />
+          <CampoSenha valor={confirmacao} onChange={setConfirmacao} autoComplete="new-password" igualA={senha} />
         </FormField>
 
         {erro && <ErroAuth>{erro}</ErroAuth>}

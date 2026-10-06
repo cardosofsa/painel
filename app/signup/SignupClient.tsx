@@ -8,10 +8,11 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { CartaoAuth, ErroAuth } from "@/components/auth/CartaoAuth";
+import { CampoSenha } from "@/components/auth/CampoSenha";
 import { LinksLegais } from "@/components/legal/LinksLegais";
 import { BotaoGoogle, DivisorOu } from "@/components/auth/BotaoGoogle";
 import { traduzirErroAuth } from "@/lib/erros";
-import { SENHA_MIN, senhaSchema } from "@/lib/validacao";
+import { senhaSchema } from "@/lib/validacao";
 
 export function SignupClient() {
   const router = useRouter();
@@ -123,28 +124,12 @@ export function SignupClient() {
           />
         </FormField>
 
-        <FormField label={`Senha (mínimo ${SENHA_MIN} caracteres)`}>
-          <input
-            type="password"
-            required
-            minLength={SENHA_MIN}
-            autoComplete="new-password"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            className={inputClass}
-          />
+        <FormField label="Senha">
+          <CampoSenha valor={senha} onChange={setSenha} autoComplete="new-password" regras />
         </FormField>
 
         <FormField label="Confirmar senha">
-          <input
-            type="password"
-            required
-            minLength={SENHA_MIN}
-            autoComplete="new-password"
-            value={confirmarSenha}
-            onChange={(e) => setConfirmarSenha(e.target.value)}
-            className={inputClass}
-          />
+          <CampoSenha valor={confirmarSenha} onChange={setConfirmarSenha} autoComplete="new-password" igualA={senha} />
         </FormField>
 
         {erro && <ErroAuth>{erro}</ErroAuth>}

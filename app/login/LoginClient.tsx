@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { CartaoAuth, ErroAuth } from "@/components/auth/CartaoAuth";
+import { CampoSenha } from "@/components/auth/CampoSenha";
 import { LinksLegais } from "@/components/legal/LinksLegais";
 import { BotaoGoogle, DivisorOu } from "@/components/auth/BotaoGoogle";
 import { traduzirErroAuth, ERROS_LINK } from "@/lib/erros";
@@ -98,14 +99,7 @@ export function LoginClient() {
         </FormField>
 
         <FormField label="Senha">
-          <input
-            type="password"
-            required
-            autoComplete="current-password"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            className={inputClass}
-          />
+          <CampoSenha valor={senha} onChange={setSenha} autoComplete="current-password" />
         </FormField>
 
         {erro && <ErroAuth>{erro}</ErroAuth>}
