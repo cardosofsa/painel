@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { credenciaisML, trocarCodigoML } from "@/lib/marketplace/mercadolivre-api";
 import { aadTokenML } from "@/lib/marketplace/tokens";
 import { cifrar } from "@/lib/ia/cofre";
+import { origemDaRequisicao } from "@/lib/origem";
 
 function mesmoEstado(a: string, b: string): boolean {
   const x = Buffer.from(a);
@@ -14,11 +15,12 @@ function mesmoEstado(a: string, b: string): boolean {
 /** Volta da autorização do Mercado Livre: troca o código por tokens, cifra e grava a conexão. */
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
+  const origem = origemDaRequisicao(req.headers, req.nextUrl.origin);
   const code = p.get("code") ?? "";
   const loja = req.cookies.get("ml_loja")?.value ?? "";
   const volta = req.cookies.get("ml_volta")?.value === "/configuracoes" ? "/configuracoes" : "/vendas";
   const destino = (s: string) => {
-    const res = NextResponse.redirect(new URL(`${volta}?shopee=${s}`, req.url));
+    const res = NextResponse.redirect(new URL(`${volta}?shopee=${s}`, origem));
     for (const nome of ["ml_estado", "ml_loja", "ml_volta"]) res.cookies.delete({ name: nome, path: "/api/mercadolivre" });
     return res;
   };
@@ -35,7 +37,7 @@ export async function GET(req: NextRequest) {
   if (!user) return destino("ml_erro");
 
   try {
-    const t = await trocarCodigoML(c, code, new URL("/api/mercadolivre/callback", req.url).toString());
+    const t = await trocarCodigoML(c, code, new URL("/api/mercadolivre/callback", origem).toString());
     if (!t.userId || !t.refreshToken) throw new Error("Resposta sem user_id/refresh_token (marque offline_access no app).");
     const aad = aadTokenML(user.id, loja);
     const linha = {
