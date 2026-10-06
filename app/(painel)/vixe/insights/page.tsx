@@ -33,7 +33,7 @@ export default async function VixeInsightsPage() {
   const hoje = hojeIsoBrasil(agora);
   const vazio = Promise.resolve({ data: [] as never[], error: null });
 
-  const [vendasRes, itensRes, produtosRes, gruposRes, cprRes, parcelasRes] = await Promise.all([
+  const [vendasRes, itensRes, produtosRes, gruposRes, cprRes, parcelasRes, perfilRes] = await Promise.all([
     verVendas
       ? supabase.from("vendas").select("data_venda, total, lucro").neq("status", "cancelada").gte("data_venda", inicio).limit(5000)
       : vazio,
@@ -49,6 +49,7 @@ export default async function VixeInsightsPage() {
     supabase.from("produto_grupos").select("id, nome"),
     verFinanceiro ? supabase.from("contas_a_pagar_receber").select("tipo, valor, data_vencimento, referencia_venda_id").eq("status", "pendente") : vazio,
     verFinanceiro ? supabase.from("venda_parcelas").select("venda_id, valor, data_vencimento").eq("status", "pendente") : vazio,
+    supabase.from("perfil_negocio").select("nome_negocio, whatsapp").maybeSingle(),
   ]);
   const falhas = [vendasRes, itensRes, produtosRes, cprRes, parcelasRes].filter((r) => r.error).map((r) => r.error!.message);
 
@@ -56,6 +57,8 @@ export default async function VixeInsightsPage() {
   const itens = (itensRes.data ?? []) as unknown as ItemBruto[];
   const corte30 = agora.getTime() - 30 * 86_400_000;
   const itens30 = itens.filter((i) => i.vendas && new Date(i.vendas.data_venda).getTime() >= corte30);
+  const corte7 = agora.getTime() - 7 * 86_400_000;
+  const itens7 = itens.filter((i) => i.vendas && new Date(i.vendas.data_venda).getTime() >= corte7);
 
   const grupos = mapaGrupos(gruposRes.data ?? []);
   const produtos = ((produtosRes.data ?? []) as { id: string; nome: string; estoque: number; custo: number; grupo_id: string | null; variante_nome: string | null }[]).map(
@@ -84,6 +87,18 @@ export default async function VixeInsightsPage() {
       fluxo={verFinanceiro ? fluxoProximo(pendencias, hoje) : null}
       janelaParadoDias={JANELA_DIAS}
       falhas={falhas}
+      resumoSemana={
+        verVendas
+          ? {
+              semana: compararPeriodos((vendasRes.data ?? []) as VendaResumo[], agora, 7),
+              campeoes: rankingProdutos(itens7).slice(0, 5),
+              parados: verEstoque ? estoqueParado(produtos, vendidos).slice(0, 3) : [],
+              fluxo: verFinanceiro ? fluxoProximo(pendencias, hoje) : null,
+            }
+          : null
+      }
+      loja={(perfilRes.data?.nome_negocio as string | null)?.trim() || "Minha loja"}
+      whatsappDono={(perfilRes.data?.whatsapp as string | null) ?? null}
     />
   );
 }

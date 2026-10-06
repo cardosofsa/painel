@@ -11,6 +11,8 @@ import { formatBRL } from "@/lib/format";
 import { ROTULO_CATEGORIA, type AcaoAlerta, type AlertaVixe, type CategoriaAlerta, type Gravidade } from "@/lib/vixe/alertas";
 import { marcarAlertaLido } from "@/app/(painel)/alertas-actions";
 import { atualizarPrecoProduto } from "@/app/(painel)/precificacao/actions";
+import { criarPedidosReposicao } from "@/app/(painel)/compras/actions";
+import { toast } from "sonner";
 
 const ESTILO_GRAVIDADE: Record<Gravidade, { faixa: string; rotulo: string; chip: string }> = {
   alta: { faixa: "bg-negative", rotulo: "Urgente", chip: "bg-negative-soft text-negative" },
@@ -63,6 +65,24 @@ export function CentralAlertas({
       startTransition(async () => {
         const r = await executarComToast(atualizarPrecoProduto(acao.produtoId, acao.preco), { sucesso: "Preço atualizado", erro: "Erro ao mudar o preço" });
         if (r.ok) router.refresh();
+      });
+      return;
+    }
+    if (acao.tipo === "criar_pedidos") {
+      const ok = await confirm({
+        title: "Criar os pedidos de compra?",
+        message: `A Vixe cria um pedido "Para comprar" por fornecedor, com ${acao.itens.length} produto(s), o custo atual e uma parcela a pagar em 30 dias na sua primeira conta. Dá para editar ou cancelar em Compras.`,
+        confirmLabel: "Criar pedidos",
+      });
+      if (!ok) return;
+      startTransition(async () => {
+        const r = await executarComToast(criarPedidosReposicao(acao.itens.map((i) => ({ produto_id: i.produtoId, quantidade: i.quantidade }))), { erro: "Erro ao criar os pedidos" });
+        if (!r.ok) return;
+        const { criados, semFornecedor } = r.dado;
+        if (criados.length) toast.success(`${criados.length === 1 ? "Pedido criado" : `${criados.length} pedidos criados`}: ${criados.join("; ")}.`);
+        if (semFornecedor.length)
+          toast.warning(`Sem fornecedor no cadastro, ficaram de fora: ${semFornecedor.slice(0, 5).join(", ")}${semFornecedor.length > 5 ? "…" : ""}.`, { duration: 8000 });
+        router.refresh();
       });
     }
   }

@@ -83,7 +83,10 @@ export function ComprasClient({
   formasPagamento,
   sugestao,
   cnpjFornecedores = [],
+  iaDisponivel = false,
 }: {
+  /** IA disponível: a NF-e também pode ser lida pela foto do DANFE. */
+  iaDisponivel?: boolean;
   /** `?busca=` (busca global). */
   buscaInicial?: string;
   /** Pedido pré-preenchido vindo do alerta de estoque mínimo (?novo=…). */
@@ -404,6 +407,7 @@ export function ComprasClient({
           armazens={armazens}
           contas={contas}
           formasPagamento={formasPagamento}
+          iaDisponivel={iaDisponivel}
         />
       )}
       {importando && (

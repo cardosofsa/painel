@@ -57,6 +57,8 @@ import {
   type ContextoAtributos,
 } from "./prompts-textos";
 import { montarPromptFoto, esquemaFoto, interpretarFoto, hashFoto, type ContextoFoto, type ProdutoDaFoto } from "./prompts-foto";
+import { esquemaNfeFoto, hashNfeFoto, interpretarNfeFoto, montarPromptNfeFoto } from "./prompts-nfe-foto";
+import type { NfeCompra } from "@/lib/compras-nfe";
 import {
   montarPromptVitrine,
   esquemaVitrine,
@@ -483,5 +485,26 @@ export async function gerarProdutoPelaFotoIA(
     );
     if (!valor.nome && !valor.descricao) throw new Error("A IA não reconheceu um produto nesta foto. Tente outra foto, com o produto em destaque.");
     return { produto: valor, ...meta };
+  });
+}
+
+/**
+ * NF-e pela foto do DANFE (onda C). Conta como geração de "descricao", como a foto de
+ * produto (mesma cota, sem migração); o cache é pelo hash dos bytes da imagem.
+ */
+export async function gerarNfePelaFotoIA(supabase: SupabaseClient, imagem: { base64: string; mime: string; hash: string }): Promise<Resultado<NfeCompra>> {
+  return comResultado(async () => {
+    const { valor } = await executarEstruturado(
+      supabase,
+      "descricao",
+      hashNfeFoto(imagem.hash),
+      montarPromptNfeFoto(),
+      esquemaNfeFoto(),
+      interpretarNfeFoto,
+      { maxTokens: 3000, temperatura: 0.1 },
+      { base64: imagem.base64, mime: imagem.mime },
+    );
+    if (!valor.itens.length) throw new Error("Não consegui ler os itens desta foto. Tire outra, de frente, com a tabela de produtos inteira e bem iluminada.");
+    return valor;
   });
 }

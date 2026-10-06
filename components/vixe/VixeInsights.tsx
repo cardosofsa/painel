@@ -2,7 +2,8 @@ import Link from "next/link";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatBRL } from "@/lib/format";
-import type { ComparacaoPeriodos, FluxoProximo, ProdutoParado, ProdutoRanking } from "@/lib/vixe/insights";
+import type { ComparacaoPeriodos, FluxoProximo, ProdutoParado, ProdutoRanking, ResumoSemana } from "@/lib/vixe/insights";
+import { CartaoResumoSemana } from "./CartaoResumoSemana";
 
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`;
 
@@ -51,7 +52,14 @@ export function VixeInsights({
   fluxo,
   janelaParadoDias,
   falhas,
+  resumoSemana = null,
+  loja = "Minha loja",
+  whatsappDono = null,
 }: {
+  /** Onda C: resumo dos últimos 7 dias, pronto para mandar no WhatsApp. */
+  resumoSemana?: ResumoSemana | null;
+  loja?: string;
+  whatsappDono?: string | null;
   periodos: ComparacaoPeriodos | null;
   ranking: ProdutoRanking[] | null;
   parados: ProdutoParado[] | null;
@@ -62,6 +70,7 @@ export function VixeInsights({
 }) {
   return (
     <div className="space-y-5">
+      {resumoSemana && <CartaoResumoSemana resumo={resumoSemana} loja={loja} whatsapp={whatsappDono} />}
       {falhas.length > 0 && (
         <p className="text-xs text-negative border border-negative/30 bg-negative-soft rounded-md px-3 py-2">
           Parte dos dados não carregou ({falhas.join("; ")}). O que aparece abaixo está certo, mas pode estar incompleto.

@@ -15,6 +15,16 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Operação: NF-e pela foto, Vixe com ações e resumo da semana",
+    itens: [
+      "Compras → NF-e: sem o XML, tire uma foto do DANFE e a Vixe lê fornecedor, itens e valores (para conferir antes de salvar)",
+      "Vixe → Alertas: \"Criar pedidos de compra\" repõe tudo o que está acabando, um pedido por fornecedor",
+      "Vixe → Insights: resumo da semana (vs semana passada, campeões, parados e caixa) para mandar no WhatsApp",
+      "Página inicial com topo transparente",
+    ],
+  },
+  {
+    data: "2026-10-06",
     titulo: "Vender: avaliações da Shopee, compre junto e calendário que age",
     itens: [
       "Vixe → Avaliações: lê as avaliações da Shopee (sem resposta primeiro); a Vixe escreve a resposta e você publica direto na Shopee",

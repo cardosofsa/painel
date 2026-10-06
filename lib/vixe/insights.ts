@@ -139,3 +139,39 @@ export function fluxoProximo(pendencias: Pendencia[], hojeIso: string): FluxoPro
   }
   return { ...f, saldo30: f.receber.ate30 - f.pagar.ate30 };
 }
+
+// ---------- Resumo da semana (Fase 5, onda C) ----------
+
+export interface ResumoSemana {
+  semana: ComparacaoPeriodos;
+  campeoes: ProdutoRanking[];
+  parados: ProdutoParado[];
+  fluxo: FluxoProximo | null;
+}
+
+const pct = (v: number | null) => (v === null ? "" : ` (${v >= 0 ? "+" : ""}${Math.round(v * 100)}% vs semana passada)`);
+
+/**
+ * Texto do resumo da semana para o dono mandar para si (ou para o sócio) no WhatsApp: os 7
+ * últimos dias contra os 7 anteriores, os campeões, o que está parado e o caixa da semana que
+ * vem. Sem emoji em excesso, pensado para ler no celular.
+ */
+export function textoResumoSemana(r: ResumoSemana, loja: string, brl: (n: number) => string): string {
+  const a = r.semana.atual;
+  const linhas = [
+    `📅 Resumo da semana · ${loja}`,
+    "",
+    `Vendas: ${a.vendas}${pct(r.semana.variacao.vendas)}`,
+    `Faturamento: ${brl(a.faturamento)}${pct(r.semana.variacao.faturamento)}`,
+    `Lucro: ${brl(a.lucro)}${pct(r.semana.variacao.lucro)}`,
+  ];
+  if (a.vendas > 0) linhas.push(`Ticket médio: ${brl(a.ticketMedio)}`);
+  if (r.campeoes.length) linhas.push("", "Campeões da semana:", ...r.campeoes.slice(0, 5).map((c, i) => `${i + 1}. ${c.nome} · ${c.quantidade} un. · lucro ${brl(c.lucro)}`));
+  if (r.parados.length) linhas.push("", "Parados (sem venda há 60 dias):", ...r.parados.slice(0, 3).map((p) => `• ${p.nome} · ${brl(p.capital)} em estoque`));
+  if (r.fluxo) {
+    const { receber, pagar } = r.fluxo;
+    linhas.push("", "Próximos 7 dias:", `• A receber: ${brl(receber.ate7)}`, `• A pagar: ${brl(pagar.ate7)}`);
+    if (receber.atrasado > 0 || pagar.atrasado > 0) linhas.push(`• Atrasado: ${brl(receber.atrasado)} a receber, ${brl(pagar.atrasado)} a pagar`);
+  }
+  return linhas.join("\n");
+}
