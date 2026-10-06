@@ -7,6 +7,8 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar, pedidoCompraSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 import { z } from "zod";
+import { createHash } from "node:crypto";
+import { gerarNfePelaFotoIA } from "@/lib/ia/gerar";
 
 export interface ItemPedidoInput {
   produto_id: string | null;
@@ -321,5 +323,108 @@ export async function importarNfeCompra(
     revalidateTudo();
     revalidatePath("/fornecedores");
     return { numero: pedido.numero as string };
+  });
+}
+
+const nfeFotoSchema = z.object({
+  mime: z.enum(["image/jpeg", "image/png", "image/webp"], { message: "Use foto JPG, PNG ou WebP." }),
+  // A tela reduz a foto antes (≈ 1600 px): cabe no limite de 1 MB das Server Actions.
+  base64: z
+    .string()
+    .min(100, "Foto vazia.")
+    .max(950_000, "Foto grande demais. Tire de novo, mais perto da nota.")
+    .regex(/^[A-Za-z0-9+/=]+$/, "Foto inválida."),
+});
+
+/**
+ * Lê a NF-e pela foto do DANFE com a IA (onda C) e devolve o mesmo formato do XML. NÃO grava
+ * nada: a tela mostra para conferir e segue o fluxo de importação de sempre.
+ */
+export async function lerNfePorFoto(dados: z.input<typeof nfeFotoSchema>) {
+  return comResultado(async () => {
+    const v = validar(nfeFotoSchema, dados);
+    const supabase = await createClient();
+    const bytes = Buffer.from(v.base64, "base64");
+    const r = await gerarNfePelaFotoIA(supabase, { base64: v.base64, mime: v.mime, hash: createHash("sha256").update(bytes).digest("hex") });
+    if (!r.ok) throw new Error(r.erro);
+    return r.dado;
+  });
+}
+
+const reposicaoSchema = z
+  .array(z.object({ produto_id: z.string().uuid(), quantidade: z.number().int().min(1).max(1_000_000) }))
+  .min(1, "Nada para repor.")
+  .max(200, "Itens demais de uma vez.");
+
+/**
+ * Vixe com ações (onda C): repõe tudo o que está acabando de uma vez. Agrupa por fornecedor
+ * do produto (ou o da última compra dele) e cria um pedido "Para comprar" para cada um, com o custo atual e uma parcela a
+ * pagar em 30 dias (pendente, dá para editar), na primeira conta cadastrada. Produto sem
+ * fornecedor fica de fora e volta na resposta, para a pessoa resolver.
+ */
+export async function criarPedidosReposicao(itens: z.input<typeof reposicaoSchema>) {
+  return comResultado(async () => {
+    const lista = validar(reposicaoSchema, itens);
+    const supabase = await createClient();
+    const ids = [...new Set(lista.map((i) => i.produto_id))];
+    const [produtosRes, contasRes, fornecedoresRes, ultimasRes] = await Promise.all([
+      supabase.from("produtos").select("id, nome, custo, fornecedor_id").in("id", ids),
+      supabase.from("contas").select("id").order("criado_em").limit(1),
+      supabase.from("fornecedores").select("id, nome"),
+      // Sem fornecedor no cadastro: vale o da última compra daquele produto.
+      supabase.from("pedidos_compra_itens").select("produto_id, pedidos_compra!inner(fornecedor_id, data_pedido, status)").in("produto_id", ids).neq("pedidos_compra.status", "cancelado").limit(2000),
+    ]);
+    if (produtosRes.error) lancarErroSupabase(produtosRes.error);
+    const conta = (contasRes.data ?? [])[0]?.id as string | undefined;
+    if (!conta) throw new Error("Cadastre uma conta (caixa ou banco) em Configurações antes de criar pedidos.");
+    const fornecedores = new Map((fornecedoresRes.data ?? []).map((f) => [f.id as string, f as { id: string; nome: string }]));
+
+    const ultimoFornecedor = new Map<string, { fornecedor: string; data: string }>();
+    for (const l of (ultimasRes.data ?? []) as unknown as { produto_id: string; pedidos_compra: { fornecedor_id: string | null; data_pedido: string } | null }[]) {
+      const pc = l.pedidos_compra;
+      if (!pc?.fornecedor_id) continue;
+      const atual = ultimoFornecedor.get(l.produto_id);
+      if (!atual || pc.data_pedido > atual.data) ultimoFornecedor.set(l.produto_id, { fornecedor: pc.fornecedor_id, data: pc.data_pedido });
+    }
+
+    const qtd = new Map(lista.map((i) => [i.produto_id, i.quantidade]));
+    const porFornecedor = new Map<string, { produto_id: string; produto_nome: string; quantidade: number; custo_unitario: number }[]>();
+    const semFornecedor: string[] = [];
+    for (const p of produtosRes.data ?? []) {
+      const f = (p.fornecedor_id as string | null) ?? ultimoFornecedor.get(p.id as string)?.fornecedor ?? null;
+      if (!f || !fornecedores.has(f)) {
+        semFornecedor.push(p.nome as string);
+        continue;
+      }
+      const l = porFornecedor.get(f) ?? [];
+      l.push({ produto_id: p.id as string, produto_nome: String(p.nome).slice(0, 200), quantidade: qtd.get(p.id as string) ?? 1, custo_unitario: Math.max(0, Number(p.custo) || 0) });
+      porFornecedor.set(f, l);
+    }
+
+    const hoje = hojeIsoLocal();
+    const criados: string[] = [];
+    for (const [fornecedorId, itensPedido] of porFornecedor) {
+      const venc = dataLocal(hoje);
+      venc.setDate(venc.getDate() + 30);
+      const v = validar(pedidoCompraSchema, {
+        fornecedor_id: fornecedorId,
+        armazem_id: null,
+        nf: null,
+        nf_arquivo_path: null,
+        data_pedido: hoje,
+        data_entrega_prevista: null,
+        forma_pagamento: "A combinar",
+        conta_id: conta,
+        parcelado: true,
+        parcelas: 1,
+        intervalo_dias: 30,
+        data_primeiro_vencimento: hojeIsoLocal(venc),
+        itens: itensPedido,
+      });
+      const pedido = await gravarPedido(supabase, v, { observacao: "Criado pela Vixe (repor estoque)" });
+      criados.push(`${pedido.numero} · ${fornecedores.get(fornecedorId)?.nome ?? "fornecedor"}`);
+    }
+    if (criados.length) revalidateTudo();
+    return { criados, semFornecedor };
   });
 }

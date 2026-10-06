@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compararPeriodos, estoqueParado, fluxoProximo, rankingProdutos } from "./insights";
+import { compararPeriodos, estoqueParado, fluxoProximo, rankingProdutos, textoResumoSemana } from "./insights";
 
 describe("compararPeriodos", () => {
   const agora = new Date("2026-09-30T12:00:00Z");
@@ -71,5 +71,46 @@ describe("fluxoProximo", () => {
     expect(f.receber).toEqual({ atrasado: 100, ate7: 50, ate30: 80 });
     expect(f.pagar).toEqual({ atrasado: 0, ate7: 70, ate30: 70 });
     expect(f.saldo30).toBe(10);
+  });
+});
+
+describe("resumo da semana", () => {
+  it("monta o texto com variação, campeões, parados e caixa", () => {
+    const brl = (n: number) => `R$ ${n.toFixed(2)}`;
+    const t = textoResumoSemana(
+      {
+        semana: {
+          atual: { faturamento: 1000, lucro: 300, vendas: 10, ticketMedio: 100 },
+          anterior: { faturamento: 800, lucro: 300, vendas: 8, ticketMedio: 100 },
+          variacao: { faturamento: 0.25, lucro: 0, vendas: 0.25, ticketMedio: 0 },
+        },
+        campeoes: [{ chave: "a", produtoId: "a", nome: "Caneca", quantidade: 6, faturamento: 600, lucro: 200, participacaoLucro: 0.6 }],
+        parados: [{ id: "p", nome: "Pires", estoque: 4, capital: 40 }],
+        fluxo: { receber: { atrasado: 0, ate7: 150, ate30: 300 }, pagar: { atrasado: 20, ate7: 90, ate30: 200 }, saldo30: 100 },
+      },
+      "Loja X",
+      brl,
+    );
+    expect(t).toContain("Resumo da semana · Loja X");
+    expect(t).toContain("Faturamento: R$ 1000.00 (+25% vs semana passada)");
+    expect(t).toContain("1. Caneca · 6 un. · lucro R$ 200.00");
+    expect(t).toContain("• Pires · R$ 40.00 em estoque");
+    expect(t).toContain("• A receber: R$ 150.00");
+    expect(t).toContain("Atrasado: R$ 0.00 a receber, R$ 20.00 a pagar");
+  });
+
+  it("sem venda na semana anterior não mostra porcentagem", () => {
+    const t = textoResumoSemana(
+      {
+        semana: { atual: { faturamento: 50, lucro: 10, vendas: 1, ticketMedio: 50 }, anterior: { faturamento: 0, lucro: 0, vendas: 0, ticketMedio: 0 }, variacao: { faturamento: null, lucro: null, vendas: null, ticketMedio: null } },
+        campeoes: [],
+        parados: [],
+        fluxo: null,
+      },
+      "L",
+      (n) => String(n),
+    );
+    expect(t).toContain("Vendas: 1\n");
+    expect(t).not.toContain("Próximos 7 dias");
   });
 });

@@ -75,7 +75,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-background text-text-primary">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-border/60 bg-background/55 backdrop-blur-md backdrop-saturate-150">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <Marca />
           <nav className="flex items-center gap-1 sm:gap-2">

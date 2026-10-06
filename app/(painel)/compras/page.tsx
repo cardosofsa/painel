@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { hojeIsoLocal } from "@/lib/format";
 import { quantidadeSugeridaCompra } from "@/lib/alertas";
@@ -12,6 +13,9 @@ export const metadata: Metadata = { title: "Compras" };
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;
+
+// Leitura da NF-e pela foto (IA com visão) leva até ~40 s.
+export const maxDuration = 60;
 
 export default async function ComprasPage({ searchParams }: { searchParams: Promise<{ novo?: string; busca?: string }> }) {
   const { novo, busca } = await searchParams;
@@ -200,8 +204,12 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
     { consumo, prazoPorFornecedor, coberturaAlvo: 30 },
   ).map((l) => ({ ...l, tendencia: l.ritmo === "vendas" ? tendencia.get(l.produto.id) : undefined }));
 
+  // NF-e pela foto (onda C) precisa de uma IA com visão; sem IA o botão não aparece.
+  const iaDisponivel = await iaDisponivelParaConta(supabase);
+
   return (
     <ComprasClient
+      iaDisponivel={iaDisponivel}
       key={busca ?? "inicio"}
       buscaInicial={busca?.slice(0, 80) ?? ""}
       sugestao={sugestao}

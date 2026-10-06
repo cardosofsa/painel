@@ -5,6 +5,7 @@ import {
   alertasEstoqueMinimo,
   alertasMargem,
   alertasRuptura,
+  alertaReposicaoEmLote,
   alertasPrecoDefasado,
   alertasRepasses,
   alertasZonaMorta,
@@ -160,5 +161,19 @@ describe("repasses e preço defasado", () => {
     expect(custo.acoes[0]).toMatchObject({ href: "/precificacao?visao=raio-x" });
     expect(antiga.gravidade).toBe("baixa");
     expect(antiga.titulo).toContain("200 dias");
+  });
+});
+
+describe("reposição em lote", () => {
+  it("só com 2+ produtos, sem repetir, e com o botão de criar pedidos", () => {
+    expect(alertaReposicaoEmLote([{ produtoId: "a", quantidade: 3 }])).toEqual([]);
+    const [a] = alertaReposicaoEmLote([
+      { produtoId: "a", quantidade: 3 },
+      { produtoId: "a", quantidade: 3 },
+      { produtoId: "b", quantidade: 5 },
+      { produtoId: "c", quantidade: 0 },
+    ]);
+    expect(a.titulo).toBe("2 produtos para repor");
+    expect(a.acoes[0]).toEqual({ tipo: "criar_pedidos", rotulo: "Criar pedidos de compra (2)", itens: [{ produtoId: "a", quantidade: 3 }, { produtoId: "b", quantidade: 5 }] });
   });
 });

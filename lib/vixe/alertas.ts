@@ -25,7 +25,9 @@ export type AcaoAlerta =
   | { tipo: "link"; rotulo: string; href: string }
   | { tipo: "externo"; rotulo: string; href: string }
   | { tipo: "marcar_lido"; rotulo: string; alertaId: string }
-  | { tipo: "ajustar_preco"; rotulo: string; produtoId: string; produtoNome: string; preco: number };
+  | { tipo: "ajustar_preco"; rotulo: string; produtoId: string; produtoNome: string; preco: number }
+  /** Onda C: cria os pedidos de compra de uma vez (um por fornecedor). */
+  | { tipo: "criar_pedidos"; rotulo: string; itens: { produtoId: string; quantidade: number }[] };
 
 export interface AlertaVixe {
   /** Estável entre recargas: a tela usa como `key`. */
@@ -87,6 +89,28 @@ export function alertasRuptura(itens: AlertaRupturaEstoque[], comEstoqueMinimo: 
         acoes: [{ tipo: "link" as const, rotulo: "Criar pedido de compra", href: `/compras?novo=${r.produtoId}` }],
       };
     });
+}
+
+/**
+ * Vixe com ações (onda C): com 2+ produtos para repor, um cartão só que cria todos os pedidos
+ * de compra num clique (agrupados por fornecedor no servidor).
+ */
+export function alertaReposicaoEmLote(itens: { produtoId: string; quantidade: number }[]): AlertaVixe[] {
+  const unicos = [...new Map(itens.filter((i) => i.quantidade > 0).map((i) => [i.produtoId, i])).values()];
+  if (unicos.length < 2) return [];
+  return [
+    {
+      id: "repor-lote",
+      categoria: "estoque",
+      gravidade: "alta",
+      titulo: `${unicos.length} produtos para repor`,
+      detalhe: "A Vixe monta um pedido de compra por fornecedor com a quantidade sugerida (venda das últimas semanas ou o dobro do mínimo). Você confere em Compras.",
+      acoes: [
+        { tipo: "criar_pedidos", rotulo: `Criar pedidos de compra (${unicos.length})`, itens: unicos },
+        { tipo: "link", rotulo: "Ver sugestão de compras", href: "/compras" },
+      ],
+    },
+  ];
 }
 
 // ---------- Margem ----------

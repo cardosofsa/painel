@@ -11,12 +11,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AbaId } from "@/lib/acesso";
 import { hojeIsoBrasil } from "@/lib/format";
-import { calcularErosaoMargem, calcularPrecoDefasado, calcularPrevisaoRuptura, ultimaPrecificacaoPorProduto } from "@/lib/alertas";
+import { calcularErosaoMargem, calcularPrecoDefasado, calcularPrevisaoRuptura, quantidadeSugeridaCompra, ultimaPrecificacaoPorProduto } from "@/lib/alertas";
 import { situacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
 import { zonaMortaDeFaixa, type FaixaComissao } from "@/lib/pricing";
 import {
   alertasContasVencidas,
   DIAS_AVISO_PAGAR,
+  alertaReposicaoEmLote,
   alertasEstoqueMinimo,
   alertasMargem,
   alertasPrecoDefasado,
@@ -115,11 +116,11 @@ async function estoque(supabase: SupabaseClient): Promise<AlertaVixe[]> {
   const [alertasRes, produtosRes, saidasRes] = await Promise.all([
     // Só os de estoque: pedido novo (0050) também mora em `alertas`, mas é aviso do sino.
     supabase.from("alertas").select("id, mensagem, produto_id").eq("status", "novo").eq("tipo", "estoque_minimo").order("criado_em", { ascending: false }).limit(100),
-    supabase.from("produtos").select("id, nome, estoque").eq("ativo", true),
+    supabase.from("produtos").select("id, nome, estoque, estoque_minimo, saida_media_semanal, e_kit").eq("ativo", true),
     supabase.from("estoque_movimentacoes").select("produto_id, quantidade").eq("tipo", "saida").gte("data_movimentacao", hojeIsoBrasil(inicio)),
   ]);
   const minimos = ok<{ id: string; mensagem: string; produto_id: string | null }[]>(alertasRes);
-  const produtos = ok<{ id: string; nome: string; estoque: number }[]>(produtosRes);
+  const produtos = ok<{ id: string; nome: string; estoque: number; estoque_minimo: number; saida_media_semanal: number; e_kit?: boolean }[]>(produtosRes);
   const saidas = ok<{ produto_id: string | null; quantidade: number }[]>(saidasRes);
 
   const saidasPorProduto = new Map<string, number>();
@@ -127,7 +128,14 @@ async function estoque(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     if (s.produto_id) saidasPorProduto.set(s.produto_id, (saidasPorProduto.get(s.produto_id) ?? 0) + s.quantidade);
   }
   const comMinimo = new Set(minimos.map((m) => m.produto_id).filter((id): id is string => !!id));
-  return [...alertasEstoqueMinimo(minimos), ...alertasRuptura(calcularPrevisaoRuptura(produtos, saidasPorProduto), comMinimo)];
+  const ruptura = calcularPrevisaoRuptura(produtos, saidasPorProduto);
+  // Repor em lote (onda C): mínimo + ruptura, sem kit (o estoque dele vem dos componentes).
+  const porId = new Map(produtos.map((p) => [p.id, p]));
+  const repor = [...comMinimo, ...ruptura.map((r) => r.produtoId)]
+    .map((id) => porId.get(id))
+    .filter((p): p is (typeof produtos)[number] => !!p && !p.e_kit)
+    .map((p) => ({ produtoId: p.id, quantidade: quantidadeSugeridaCompra({ estoque: p.estoque, estoque_minimo: Number(p.estoque_minimo) || 0, saida_media_semanal: Number(p.saida_media_semanal) || 0 }) }));
+  return [...alertaReposicaoEmLote(repor), ...alertasEstoqueMinimo(minimos), ...alertasRuptura(ruptura, comMinimo)];
 }
 
 async function margem(supabase: SupabaseClient): Promise<AlertaVixe[]> {

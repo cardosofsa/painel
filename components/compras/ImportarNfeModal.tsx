@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileCode2 } from "lucide-react";
+import { Camera, FileCode2 } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +10,8 @@ import { Combobox } from "@/components/ui/Combobox";
 import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
 import { executarComToast } from "@/lib/acao-cliente";
 import { ajustarDuplicatas, digitosCnpj, interpretarNfeXml, type NfeCompra } from "@/lib/compras-nfe";
-import { importarNfeCompra } from "@/app/(painel)/compras/actions";
+import { importarNfeCompra, lerNfePorFoto } from "@/app/(painel)/compras/actions";
+import { reduzirFoto } from "@/lib/foto-cliente";
 import type { Opcao } from "@/app/(painel)/compras/ComprasClient";
 
 type Produto = Opcao & { custo: number; sku: string; codigo_barras?: string | null };
@@ -29,7 +30,10 @@ export function ImportarNfeModal({
   armazens,
   contas,
   formasPagamento,
+  iaDisponivel = false,
 }: {
+  /** Com IA disponível, aparece a opção de ler pela foto do DANFE. */
+  iaDisponivel?: boolean;
   onClose: () => void;
   produtos: Produto[];
   fornecedores: Opcao[];
@@ -47,6 +51,8 @@ export function ImportarNfeModal({
   const [pagamento, setPagamento] = useState<"nota" | "a_vista" | "a_prazo">("nota");
   const [vencimento, setVencimento] = useState(hojeIsoLocal());
   const [salvando, setSalvando] = useState(false);
+  const [lendoFoto, setLendoFoto] = useState(false);
+  const [daFoto, setDaFoto] = useState(false);
 
   const itensCombobox = useMemo(
     () => [{ id: SEM_VINCULO, rotulo: "Não vincular (não entra no estoque)" }, ...produtos.map((p) => ({ id: p.id, rotulo: p.nome, detalhe: p.sku, busca: `${p.sku} ${p.codigo_barras ?? ""}` }))],
@@ -55,18 +61,41 @@ export function ImportarNfeModal({
 
   async function ler(file: File) {
     try {
-      const n = interpretarNfeXml(await file.text());
-      setNota(n);
-      const porEan = new Map(produtos.filter((p) => p.codigo_barras).map((p) => [String(p.codigo_barras), p.id]));
-      const porSku = new Map(produtos.map((p) => [p.sku.toLowerCase(), p.id]));
-      setVinculos(n.itens.map((i) => (i.ean && porEan.get(i.ean)) || porSku.get(i.codigo.toLowerCase()) || ""));
-      const cnpj = digitosCnpj(n.emitente.cnpj);
-      setFornecedorId((cnpj && cnpjFornecedores.find((f) => digitosCnpj(f.cnpj) === cnpj)?.id) || "");
-      setPagamento(n.duplicatas.length ? "nota" : "a_vista");
-      if (n.emissao) setVencimento(n.emissao);
+      aplicarNota(interpretarNfeXml(await file.text()));
+      setDaFoto(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não deu para ler o XML.");
     }
+  }
+
+  /** Foto do DANFE (onda C): a IA lê e a nota segue o mesmo caminho do XML, para conferir. */
+  async function lerFoto(file: File) {
+    setLendoFoto(true);
+    try {
+      const foto = await reduzirFoto(file);
+      const r = await executarComToast(lerNfePorFoto(foto), { erro: "Não foi possível ler a foto" });
+      if (r.ok) {
+        aplicarNota(r.dado);
+        setDaFoto(true);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não deu para abrir a foto.");
+    } finally {
+      setLendoFoto(false);
+    }
+  }
+
+  function aplicarNota(n: NfeCompra) {
+    setNota(n);
+    const porEan = new Map(produtos.filter((p) => p.codigo_barras).map((p) => [String(p.codigo_barras), p.id]));
+    const porSku = new Map(produtos.map((p) => [p.sku.toLowerCase(), p.id]));
+    // Nota lida pela foto não traz EAN: o nome igual ao do cadastro também vincula.
+    const porNome = new Map(produtos.map((p) => [p.nome.trim().toLowerCase(), p.id]));
+    setVinculos(n.itens.map((i) => (i.ean && porEan.get(i.ean)) || porSku.get(i.codigo.toLowerCase()) || porNome.get(i.descricao.trim().toLowerCase()) || ""));
+    const cnpj = digitosCnpj(n.emitente.cnpj);
+    setFornecedorId((cnpj && cnpjFornecedores.find((f) => digitosCnpj(f.cnpj) === cnpj)?.id) || "");
+    setPagamento(n.duplicatas.length ? "nota" : "a_vista");
+    if (n.emissao) setVencimento(n.emissao);
   }
 
   // Mesma conta do servidor (quantidade inteira × custo + frete): as parcelas precisam fechar com ela.
@@ -128,17 +157,31 @@ export function ImportarNfeModal({
   const fracionado = nota?.itens.some((i) => !Number.isInteger(i.quantidade));
 
   return (
-    <Modal open onClose={onClose} title="Importar XML da NF-e" width="max-w-2xl" sujo={!!nota}>
+    <Modal open onClose={onClose} title={iaDisponivel ? "Importar NF-e (XML ou foto)" : "Importar XML da NF-e"} width="max-w-2xl" sujo={!!nota}>
       <div className="space-y-4">
         {!nota && (
           <>
             <p className="text-sm text-text-secondary">Use o XML que o fornecedor manda junto da nota (ou baixe no portal da NF-e). Itens, custos, frete e parcelas vêm da própria nota.</p>
             <CampoArquivo onArquivo={ler} rotulo="Escolher XML" aceita=".xml,text/xml,application/xml" />
+            {iaDisponivel && (
+              <div className="rounded-lg border border-border bg-surface-2 p-3">
+                <p className="text-sm text-text-primary font-medium flex items-center gap-1.5">
+                  <Camera size={15} className="text-accent" aria-hidden /> Sem o XML? Tire uma foto do DANFE
+                </p>
+                <p className="text-xs text-text-secondary mt-1 mb-2">A Vixe lê fornecedor, itens e valores da nota impressa. Confira tudo antes de salvar: foto pode ler errado.</p>
+                <CampoArquivo onArquivo={lerFoto} rotulo={lendoFoto ? "Lendo a nota…" : "Escolher ou tirar foto"} aceita="image/*" disabled={lendoFoto} />
+              </div>
+            )}
           </>
         )}
 
         {nota && (
           <>
+            {daFoto && (
+              <p className="text-sm rounded-md border border-accent bg-accent-soft px-3 py-2 text-text-primary">
+                Lida pela foto: confira quantidades, valores e o fornecedor antes de salvar.
+              </p>
+            )}
             <div className="flex items-start gap-3 rounded-md bg-surface-2 px-3 py-2.5 text-sm">
               <FileCode2 size={18} className="text-accent shrink-0 mt-0.5" />
               <div className="min-w-0">
