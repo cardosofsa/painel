@@ -1,10 +1,13 @@
 import { CalendarDays } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { proximasDatas } from "@/lib/calendario-comercial";
+import { dataLocal, hojeIsoBrasil } from "@/lib/format";
 
 /** Próximas datas que vendem (11.6), com quanto falta e o que preparar. */
 export function CalendarioComercial({ hoje, janela = 60 }: { hoje: Date; janela?: number }) {
-  const datas = proximasDatas(hoje, janela);
+  // `proximasDatas` conta pelo relógio local, que no servidor é UTC: depois das 21h
+  // "faltam 5 dias" virava 4. Passa a meia-noite local do dia de hoje no Brasil.
+  const datas = proximasDatas(dataLocal(hojeIsoBrasil(hoje)), janela);
   if (!datas.length) return null;
   return (
     <Card>

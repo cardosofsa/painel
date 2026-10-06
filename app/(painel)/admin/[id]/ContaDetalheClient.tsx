@@ -9,7 +9,7 @@ import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { SalesChart } from "@/components/charts/SalesChart";
-import { formatBRL, formatarDataCurta, formatarDataHora } from "@/lib/format";
+import { formatBRL, formatarDataCurta, formatarDataHora, formatarDataIso } from "@/lib/format";
 import { formatarDiffHistorico } from "@/lib/admin";
 import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta } from "@/lib/acesso";
 import { atualizarAcessoConta, definirTesteIaConta } from "../actions";
@@ -99,7 +99,9 @@ export function ContaDetalheClient({
 
   // O gráfico reaproveita SalesChart, que já formata o tooltip como moeda — aqui "vendas"
   // recebe o faturamento diário, mesma convenção usada em VendasClient.tsx.
-  const serieGrafico = atividade.map((d) => ({ dia: formatarDataCurta(`${d.dia}T00:00:00`), vendas: d.faturamento }));
+  // `d.dia` é coluna `date`: dia/mês direto da string. `formatarDataCurta` converte de fuso
+  // (é para `timestamptz`) e jogaria a meia-noite para a véspera no servidor.
+  const serieGrafico = atividade.map((d) => ({ dia: formatarDataIso(d.dia).slice(0, 5), vendas: d.faturamento }));
 
   return (
     <>

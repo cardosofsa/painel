@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil } from "@/lib/format";
 import { ROTULO_ETAPA, type Etapa } from "@/lib/pedidos-central";
 import { crediarioDoPerfil } from "@/lib/crediario-servidor";
 import { mensagensPendentes, type MensagemPendente, type ResumoDia } from "@/lib/whatsapp";
@@ -26,7 +26,7 @@ type PedidoBruto = { id: string; numero: string; cliente_nome: string; cliente_w
  * dos dois lugares.
  */
 export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = new Date()) {
-  const hoje = hojeIsoLocal(agora);
+  const hoje = hojeIsoBrasil(agora);
   const desde = new Date(agora);
   desde.setDate(desde.getDate() - 15);
   const limiteFiado = new Date(agora);
@@ -41,7 +41,7 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
       .from("venda_parcelas")
       .select("id, numero, total_parcelas, valor, data_vencimento, vendas!inner(numero, status, clientes(nome, whatsapp))")
       .eq("status", "pendente")
-      .lte("data_vencimento", limiteFiado.toISOString().slice(0, 10))
+      .lte("data_vencimento", hojeIsoBrasil(limiteFiado))
       .limit(500),
     supabase.from("mensagens_enviadas").select("chave").gte("enviada_em", new Date(agora.getTime() - 60 * 86_400_000).toISOString()),
     // Crediário de parcela única não tem `venda_parcelas`: é a própria conta a receber.
@@ -52,7 +52,7 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
       .eq("tipo", "receber")
       .eq("status", "pendente")
       .not("referencia_venda_id", "is", null)
-      .lte("data_vencimento", limiteFiado.toISOString().slice(0, 10))
+      .lte("data_vencimento", hojeIsoBrasil(limiteFiado))
       .limit(500),
   ]);
 
@@ -126,7 +126,7 @@ export async function carregarMensagens(supabase: SupabaseClient): Promise<Dados
   ]);
   const { loja, whatsappDono, mensagens, registroOk, hoje, pedidos, vendas, parcelas } = base;
 
-  const deHoje = vendas.filter((v) => v.status !== "cancelada" && hojeIsoLocal(new Date(v.data_venda)) === hoje);
+  const deHoje = vendas.filter((v) => v.status !== "cancelada" && hojeIsoBrasil(new Date(v.data_venda)) === hoje);
   const parados = PENDENTES.map((e) => ({ etapa: ROTULO_ETAPA[e], n: vendas.filter((v) => v.status !== "cancelada" && v.etapa === e).length }));
   const mkt = (mktRes.data ?? []) as { status_original: string | null }[];
   const naoProcessados = mkt.filter((m) => !/processed|printed/i.test(m.status_original ?? "")).length;

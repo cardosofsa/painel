@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { traduzirErroSupabase, traduzirErroAuth, traduzirErroIA, ERROS_LINK, trocarFiadoPorCrediario } from "./erros";
+import { formatBRL } from "./format";
 
 // O fallback loga o original no servidor de propósito; silenciar para o output do teste
 // ficar limpo, mas conferir que ele É chamado (é o que garante que o erro não se perde).
@@ -146,3 +147,21 @@ describe("nome antigo do crediário nas mensagens do banco", () => {
     expect(trocarFiadoPorCrediario('O cliente "Bia" não está autorizado a comprar fiado.')).toBe('O cliente "Bia" não está autorizado a comprar no crediário.');
   });
 });
+
+describe("valores do limite do crediário", () => {
+  it("o numeric cru do Postgres vira moeda: 'disponível 25.20' parecia 25 mil", () => {
+    const msg = traduzirErroSupabase({ code: "P0001", message: 'Limite de fiado insuficiente para "Mateus": disponível 25.20, necessário 29.90.' });
+    expect(msg).toBe(`Limite do crediário insuficiente para "Mateus": disponível ${formatBRL(25.2)}, necessário ${formatBRL(29.9)}.`);
+  });
+
+  it("limite estourado (disponível negativo) também", () => {
+    const msg = traduzirErroSupabase({ code: "P0001", message: 'Limite de fiado insuficiente para "Ana": disponível -5, necessário 20.' });
+    expect(msg).toContain(`disponível ${formatBRL(-5)}, necessário ${formatBRL(20)}.`);
+  });
+
+  it("não mexe no estoque, que é em unidades", () => {
+    const msg = traduzirErroSupabase({ code: "P0001", message: 'Estoque insuficiente de "Caneca": disponível 2, pedido 3.' });
+    expect(msg).toBe('Estoque insuficiente de "Caneca": disponível 2, pedido 3.');
+  });
+});
+

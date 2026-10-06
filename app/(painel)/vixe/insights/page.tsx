@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil } from "@/lib/format";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import {
   compararPeriodos,
@@ -27,7 +27,7 @@ export default async function VixeInsightsPage() {
 
   const agora = new Date();
   const inicio = new Date(agora.getTime() - JANELA_DIAS * 86_400_000).toISOString();
-  const hoje = hojeIsoLocal(agora);
+  const hoje = hojeIsoBrasil(agora);
   const vazio = Promise.resolve({ data: [] as never[], error: null });
 
   const [vendasRes, itensRes, produtosRes, gruposRes, cprRes, parcelasRes] = await Promise.all([

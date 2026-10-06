@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LojaOpcao } from "../precificacao-tipos";
 import { ratear, type LinhaVendida } from "./radar";
+import { hojeIsoBrasil } from "../format";
 
 /**
  * Dados do Vixe Radar (11.2). Código de SERVIDOR: lê as vendas e pedidos dos últimos
@@ -16,8 +17,9 @@ export interface DadosRadar {
 
 export async function carregarRadar(supabase: SupabaseClient, dias = 30): Promise<DadosRadar> {
   const inicio = new Date(Date.now() - dias * 86_400_000).toISOString();
-  const inicioDia = inicio.slice(0, 10);
-  const hojeDia = new Date().toISOString().slice(0, 10);
+  // Dia no Brasil: `toISOString()` é UTC e, depois das 21h, já estaria no dia seguinte.
+  const inicioDia = hojeIsoBrasil(new Date(inicio));
+  const hojeDia = hojeIsoBrasil();
   const [vendasRes, mktRes, produtosRes, canaisRes, lojasRes, faixasRes, perfilRes, anunciosRes] = await Promise.all([
     supabase
       .from("vendas")

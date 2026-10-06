@@ -9,6 +9,7 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { marcarAlertaLido, marcarTodosAlertasLidos } from "@/app/(painel)/alertas-actions";
 import { marcarMensagemEnviada } from "@/app/(painel)/vixe/mensagens/actions";
 import { linkWhatsapp, ROTULO_ASSUNTO, type MensagemPendente } from "@/lib/whatsapp";
+import { formatarDataHora, formatarDataIso } from "@/lib/format";
 
 export interface AlertaSino {
   id: string;
@@ -134,7 +135,7 @@ export function AlertasSino({ alertas, mensagens = [], verVixe = false }: { aler
                     )}
                     <div className="min-w-0">
                       <p className="text-text-primary leading-snug">{a.mensagem}</p>
-                      <p className="text-[11px] text-text-tertiary mt-0.5">{new Date(a.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</p>
+                      <p className="text-[11px] text-text-tertiary mt-0.5">{formatarDataHora(a.criado_em)}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 mt-2">
@@ -178,7 +179,8 @@ export function AlertasSino({ alertas, mensagens = [], verVixe = false }: { aler
                         {ROTULO_ASSUNTO[m.assunto]}: {m.cliente || "Cliente"} <span className="font-mono text-xs text-text-tertiary">{m.referencia}</span>
                       </p>
                       <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{m.texto}</p>
-                      <p className="text-[11px] text-text-tertiary mt-0.5">{new Date(m.quando).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</p>
+                      {/* Parcela traz o vencimento (coluna `date`): com hora, virava "véspera, 21:00". */}
+                      <p className="text-[11px] text-text-tertiary mt-0.5">{m.quando.length === 10 ? formatarDataIso(m.quando) : formatarDataHora(m.quando)}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 mt-2">

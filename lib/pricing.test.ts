@@ -338,8 +338,26 @@ describe("zonaMortaDeFaixa", () => {
     expect(z!.precoMelhor).toBe(79.99);
     // 84,90 → 84,90 - (11,886 + 16) = 57,014. 79,99 → 59,992. Diferença ≈ 2,98.
     expect(z!.ganhoLiquido).toBeCloseTo(2.98, 2);
-    // Empate em (59,992 + 16) / 0,86 = 88,36…
-    expect(z!.fim).toBeCloseTo(88.36, 1);
+    // Empate em (59,992 + 16) / 0,86 = 88,3628: R$ 88,36 ainda rende menos que R$ 79,99.
+    expect(z!.fim).toBe(88.36);
+  });
+
+  it("`fim` é o último centavo que ainda rende menos — nem um a mais, nem um a menos", () => {
+    // A tela dizia "entre R$ 80,00 e R$ 88,35", mas R$ 88,36 também perde para R$ 79,99.
+    const z = zonaMortaDeFaixa(SHOPEE, 84.9)!;
+    expect(zonaMortaDeFaixa(SHOPEE, z.fim)).not.toBeNull();
+    expect(zonaMortaDeFaixa(SHOPEE, Math.round((z.fim + 0.01) * 100) / 100)).toBeNull();
+  });
+
+  it("empate exato no centavo fica fora da zona: rende igual, não menos", () => {
+    // Até 9,99 sem comissão (recebe 9,99); de 10 em diante, 50%. Empata em 19,98 exatos.
+    const faixas: FaixaComissao[] = [
+      { min: 0, max: 9.99, comissaoPct: 0, tarifaFixa: 0 },
+      { min: 10, max: null, comissaoPct: 50, tarifaFixa: 0 },
+    ];
+    expect(zonaMortaDeFaixa(faixas, 12)!.fim).toBe(19.97);
+    expect(zonaMortaDeFaixa(faixas, 19.97)).not.toBeNull();
+    expect(zonaMortaDeFaixa(faixas, 19.98)).toBeNull();
   });
 
   it("acha a armadilha nas quatro viradas de faixa", () => {
