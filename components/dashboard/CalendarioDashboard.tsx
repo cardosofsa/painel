@@ -10,6 +10,8 @@ import { Chip, ChipRow } from "@/components/ui/Chip";
 import { Modal, FormField, campoBase, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { executarComToast } from "@/lib/acao-cliente";
+import { acoesDaData } from "@/lib/calendario-acoes";
+import { AcoesData } from "@/components/calendario/AcoesData";
 import { dataLocal, formatBRL } from "@/lib/format";
 import { UFS, daUf } from "@/lib/feriados";
 import { CAMADAS, diasAte, eventosDoMes, gradeDoMes, proximosEventos, type Camada, type EventoCalendario } from "@/lib/calendario-dashboard";
@@ -386,6 +388,9 @@ function ItemDoDia({ e, hoje, onEditar, onExcluir }: { e: EventoCalendario; hoje
               {preparar ? <span className="text-accent font-medium">Hora de preparar</span> : null}
               <span>{`faltam ${faltam} dia${faltam > 1 ? "s" : ""}`}</span>
             </div>
+          )}
+          {e.camada === "comercial" && faltam > 0 && (
+            <AcoesData acoes={acoesDaData({ id: e.id.replace(/^comercial:/, ""), preparar })} />
           )}
           {(e.camada === "pagar" || e.camada === "receber") && (
             <Link href={`/financeiro?aba=${e.camada === "pagar" ? "a-pagar" : "a-receber"}`} className="text-xs text-accent hover:underline mt-1 inline-block">

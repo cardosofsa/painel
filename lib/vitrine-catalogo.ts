@@ -286,3 +286,42 @@ export function textoConsultarProduto(nomeProduto: string, nomeCatalogo: string,
   const item = variante ? `${nomeProduto} (${variante})` : nomeProduto;
   return `Olá! Vi "${item}" no catálogo ${nomeCatalogo} e gostaria de saber o preço e a disponibilidade.`;
 }
+
+// ---------- Compre junto (Fase 5, onda B) ----------
+
+/** Linha de `compre_junto_publico` (0075): posição 1 = o par que mais saiu junto. */
+export interface ParCompreJunto {
+  produto_id: string;
+  relacionado_id: string;
+  posicao: number;
+}
+
+/**
+ * Até `max` itens para oferecer junto com `alvo`: primeiro os que saíram no mesmo pedido
+ * (pares da 0075, de qualquer variante do item), depois — para completar ou quando ainda não
+ * há vendas juntas — os mais vendidos da mesma categoria e, por fim, os mais vendidos da
+ * loja. Só itens com preço (dá para pôr no carrinho) e nunca o próprio item.
+ */
+export function sugestoesCompreJunto(itens: ItemVitrine[], pares: ParCompreJunto[], alvo: ItemVitrine, max = 3): ItemVitrine[] {
+  const itemDoProduto = new Map<string, ItemVitrine>();
+  for (const it of itens) for (const v of it.variantes) itemDoProduto.set(v.produto_id, it);
+  const doAlvo = new Set(alvo.variantes.map((v) => v.produto_id));
+  const escolhidos: ItemVitrine[] = [];
+  const vistos = new Set<string>([alvo.produto_id]);
+  const pegar = (it: ItemVitrine | undefined) => {
+    if (!it || vistos.has(it.produto_id) || it.preco === null || escolhidos.length >= max) return;
+    vistos.add(it.produto_id);
+    escolhidos.push(it);
+  };
+  [...pares]
+    .filter((p) => doAlvo.has(p.produto_id))
+    .sort((a, b) => a.posicao - b.posicao)
+    .forEach((p) => pegar(itemDoProduto.get(p.relacionado_id)));
+  if (alvo.categoria_nome)
+    itens
+      .filter((it) => it.categoria_nome === alvo.categoria_nome)
+      .sort((a, b) => a.ordem - b.ordem)
+      .forEach(pegar);
+  [...itens].sort((a, b) => a.ordem - b.ordem).forEach(pegar);
+  return escolhidos;
+}

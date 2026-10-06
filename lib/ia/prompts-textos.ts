@@ -22,6 +22,8 @@ export interface ContextoResposta {
   produto: ProdutoTextoIA;
   pergunta: string;
   nomeNegocio?: string | null;
+  /** Avaliação pública da Shopee (onda B): com as estrelas, vira resposta à avaliação. */
+  estrelas?: number | null;
 }
 
 /**
@@ -71,6 +73,7 @@ function blocoProduto(p: ProdutoTextoIA): string {
 }
 
 export function montarPromptResposta(ctx: ContextoResposta): string {
+  if (ctx.estrelas) return montarPromptAvaliacao(ctx, ctx.estrelas);
   return `Você responde perguntas de compradores em nome de uma loja brasileira${ctx.nomeNegocio ? ` (${limparCampo(ctx.nomeNegocio, 80)})` : ""}.
 
 ${blocoProduto(ctx.produto)}
@@ -80,6 +83,27 @@ Pergunta do comprador: ${limparCampo(ctx.pergunta, 500)}
 Responda em JSON com "texto": a resposta pronta para colar, cordial e objetiva, até ${LIMITE_TEXTO.resposta} caracteres.
 - Se a informação não estiver acima, diga com educação que vai confirmar e responder em seguida. Não chute.
 - Não prometa prazo de entrega nem frete.
+${REGRAS}`;
+}
+
+/** Resposta PÚBLICA a uma avaliação de produto: outros compradores vão ler. */
+function montarPromptAvaliacao(ctx: ContextoResposta, estrelas: number): string {
+  const ruim = estrelas <= 3;
+  return `Você responde uma avaliação pública de produto em nome de uma loja brasileira${ctx.nomeNegocio ? ` (${limparCampo(ctx.nomeNegocio, 80)})` : ""} num marketplace. Outros compradores vão ler a resposta.
+
+${blocoProduto(ctx.produto)}
+
+Avaliação: ${estrelas} de 5 estrelas
+Comentário do comprador: ${limparCampo(ctx.pergunta, 500)}
+
+Responda em JSON com "texto": a resposta pronta para publicar, até ${Math.min(LIMITE_TEXTO.resposta, 480)} caracteres.
+${
+  ruim
+    ? `- Agradeça, peça desculpas pela experiência sem discutir e sem culpar o comprador, e convide para resolver pelo chat da loja.
+- Não admita defeito nem prometa troca, reembolso, brinde ou desconto: diga que a loja vai ajudar a resolver.`
+    : "- Agradeça de forma calorosa e específica ao que o comprador elogiou; convide a voltar."
+}
+- Não use o nome do comprador. Não prometa prazo de entrega nem frete.
 ${REGRAS}`;
 }
 

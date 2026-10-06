@@ -15,6 +15,17 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Vender: avaliações da Shopee, compre junto e calendário que age",
+    itens: [
+      "Vixe → Avaliações: lê as avaliações da Shopee (sem resposta primeiro); a Vixe escreve a resposta e você publica direto na Shopee",
+      "Vitrine: \"Compre junto\" no produto, com o que mais sai no mesmo pedido (ou da mesma categoria)",
+      "Calendário: cada data do comércio na hora de preparar ganha atalhos (simular promoção, avisar clientes, repor, montar kit)",
+      "Vixe → Mensagens abre direto na campanha da data (?filtro=data)",
+    ],
+    migracao: "0075",
+  },
+  {
+    data: "2026-10-06",
     titulo: "Dinheiro: promoção, preço defasado, demanda e repasses",
     itens: [
       "Precificação → Promoção: desconto, cupom e comissão extra de campanha; mostra se compensa e quanto precisa vender a mais",

@@ -11,6 +11,7 @@ const SEGMENTOS: { href: string; rotulo: string }[] = [
   { href: "/vixe/insights", rotulo: "Insights" },
   { href: "/vixe/radar", rotulo: "Radar" },
   { href: "/vixe/mensagens", rotulo: "Mensagens" },
+  { href: "/vixe/avaliacoes", rotulo: "Avaliações" },
 ];
 
 export function SegmentosVixe() {

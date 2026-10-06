@@ -47,10 +47,11 @@ const ROTULO_HISTORICO: Record<string, string> = { ...ROTULO_ASSUNTO, recompra: 
  * mensagem sai da lista e fica no histórico. "Enviar a próxima" percorre a fila sem
  * precisar caçar o botão de cada cartão.
  */
-export function VixeMensagens({ dados, origem }: { dados: DadosMensagens; origem: string }) {
+export function VixeMensagens({ dados, origem, filtroInicial }: { dados: DadosMensagens; origem: string; filtroInicial?: string }) {
   const [, startTransition] = useTransition();
   const [feitas, setFeitas] = useState<Set<string>>(new Set());
-  const [filtro, setFiltro] = useState<Filtro>("todos");
+  // `?filtro=data` (atalho do calendário) abre direto na campanha da data.
+  const [filtro, setFiltro] = useState<Filtro>(() => (filtroInicial === "data" || filtroInicial === "recompra" || filtroInicial === "enviadas" ? filtroInicial : "todos"));
   const [modelosAbertos, setModelosAbertos] = useState(false);
   const resumo = textoResumoDia(dados.resumo, dados.loja);
   const link = dados.slugVitrine ? `${origem}/vitrine/${dados.slugVitrine}` : "";

@@ -20,7 +20,9 @@ import {
   decodificarCarrinho,
   limitesDePreco,
   montarCarrinho,
+  sugestoesCompreJunto,
   trocarVariante,
+  type ParCompreJunto,
   type FiltrosVitrine as Filtros,
   type ItemVitrine,
 } from "@/lib/vitrine-catalogo";
@@ -51,7 +53,10 @@ export function VitrineInterativa({
   produtoInicial = null,
   formasPagamento = [],
   freteAtivo = false,
+  paresCompreJunto = [],
 }: {
+  /** Pares de "compre junto" (0075); vazio = só a sugestão pela categoria. */
+  paresCompreJunto?: ParCompreJunto[];
   /** Cota frete no checkout (0055). */
   freteAtivo?: boolean;
   /** Produto (variante) vindo do link compartilhado: abre o pop-up dele direto. */
@@ -240,6 +245,8 @@ export function VitrineInterativa({
         negocioWhatsapp={negocioWhatsapp}
         onAdicionar={adicionarAoCarrinho}
         onClose={() => setProdutoAberto(null)}
+        sugestoes={produtoAberto ? sugestoesCompreJunto(itens, paresCompreJunto, produtoAberto) : []}
+        onAbrir={setProdutoAberto}
       />
 
       <CarrinhoVitrine

@@ -4,6 +4,8 @@ import { proximasDatas } from "@/lib/calendario-comercial";
 import { feriadosDoAno, naUf } from "@/lib/feriados";
 import { diasAte } from "@/lib/calendario-dashboard";
 import { dataLocal, hojeIsoBrasil } from "@/lib/format";
+import { acoesDaData } from "@/lib/calendario-acoes";
+import { AcoesData } from "@/components/calendario/AcoesData";
 
 type Linha = { id: string; nome: string; data: string; faltam: number; preparar: boolean; texto: string; feriado: boolean };
 
@@ -61,6 +63,7 @@ export function CalendarioComercial({ hoje, janela = 60, uf = null }: { hoje: Da
                 <span className="text-xs font-normal text-text-tertiary">{dataLocal(d.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
               </div>
               <div className="text-xs text-text-secondary">{d.texto}</div>
+              {!d.feriado && <AcoesData acoes={acoesDaData(d)} />}
             </div>
           </li>
         ))}
