@@ -99,9 +99,22 @@ O código não alcança nada disto, e sem isto o fluxo falha em produção:
 ## Banco de dados
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql` → a mais recente; confira a pasta). **Elas são aplicadas
-manualmente**: abra o SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem
-numérica.
+(`0001_init.sql` → a mais recente; confira a pasta). Aplique uma por vez, na ordem
+numérica, de um destes jeitos:
+
+- **SQL Editor do Supabase:** cole o conteúdo do arquivo e execute.
+- **Script, pela Management API:** com `SUPABASE_PROJECT_REF` e `SUPABASE_ACCESS_TOKEN`
+  (token pessoal, em *Account → Access Tokens*) no ambiente ou no `.env.local`:
+
+  ```bash
+  npm run db:verificar                             # consulta somente leitura
+  npm run db:migracao -- 0067_algo.sql             # testa no PGlite e mostra o que muda
+  npm run db:migracao -- 0067_algo.sql --aplicar   # aplica
+  ```
+
+  Sem `--aplicar`, nada vai ao Supabase: a migração roda no PGlite por cima das anteriores,
+  duas vezes (idempotência), e o script lista o que muda no schema. Ele recusa as anteriores
+  à 0021, a 0012 e a 0048 (esta depende de pg_cron/Vault e vai pelo SQL Editor).
 
 > ⚠️ **As migrações 0001-0020 não são replayáveis num banco novo sem edição.** Catorze delas
 > não são idempotentes, e duas *duplicam dados* se rodarem duas vezes: `0004` insere 4 canais
@@ -262,7 +275,7 @@ O app é um Next.js comum; o banco continua sendo o Supabase que já existe.
    confirmação de e-mail continua apontando para `localhost` e ninguém consegue ativar a conta.
 3. **Supabase → Authentication → Providers → Email** — mantenha a confirmação de e-mail
    ligada, para não entrar conta com e-mail inventado.
-4. Aplique todas as migrações pendentes no SQL Editor, em ordem.
+4. Aplique todas as migrações pendentes, em ordem (SQL Editor ou `npm run db:migracao`).
 
 Antes de abrir para terceiros, rode as duas conferências abaixo no SQL Editor.
 

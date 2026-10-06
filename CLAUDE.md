@@ -42,10 +42,33 @@ do projeto), separada da conta real; dados criados por ela são descartáveis.
 ## Banco de dados: convenções obrigatórias
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql`, `0002_...`, ...). **Elas são aplicadas manualmente pelo usuário** no SQL
-Editor do Supabase — o ambiente de desenvolvimento não tem credenciais do banco para aplicar
-migrações sozinho. Depois de escrever uma migração nova, ela precisa ser
-colada e rodada pelo usuário; não assuma que já está em produção só porque o arquivo existe.
+(`0001_init.sql`, `0002_...`, ...). Elas podem ser aplicadas de dois jeitos: pelo usuário,
+colando no SQL Editor do Supabase, ou por `scripts/supabase/aplicar-migracao.mjs`, que usa a
+Management API (precisa de `SUPABASE_PROJECT_REF` e `SUPABASE_ACCESS_TOKEN` no ambiente ou
+no `.env.local`). Não assuma que uma migração já está em produção só porque o arquivo existe.
+
+```bash
+npm run db:verificar                        # consulta somente leitura: token, projeto e rede
+npm run db:migracao -- 0067_algo.sql        # testa no PGlite e mostra o que muda (não envia nada)
+npm run db:migracao -- 0067_algo.sql --aplicar   # testa de novo e aplica no banco de produção
+```
+
+**Sempre avise antes de aplicar.** O banco é o de produção, com os dados reais do usuário.
+A ordem é obrigatória:
+
+1. `npm run test:sql` limpo e o script **sem** `--aplicar` (aplica no PGlite por cima das
+   anteriores, roda 2× para provar idempotência e lista tabelas, colunas, funções, policies
+   e triggers que mudam, mais avisos de DROP/UPDATE/DELETE).
+2. Mostre ao usuário esse resumo: o que muda e por quê, e o que pode quebrar no código que
+   está no ar.
+3. Só rode com `--aplicar` depois que ele disser que pode. Uma migração por vez, em ordem.
+   Autorização para uma migração não vale para a próxima.
+
+O script aplica uma migração por vez pelo nome do arquivo, recusa as anteriores à `0021`
+(não idempotentes), a `0012` (destrutiva) e a `0048` (pg_cron/Vault não rodam no PGlite:
+essa vai pelo SQL Editor). Nunca imprima o token nem o ref; o script não imprime. A
+Management API dá acesso de dono ao projeto inteiro: use para migração e para a consulta
+de verificação, não para ler ou editar dados de contas.
 
 Ao criar uma migração:
 
