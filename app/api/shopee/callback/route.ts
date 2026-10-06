@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { credenciaisShopee, trocarCodigo } from "@/lib/marketplace/shopee-api";
 import { aadToken } from "@/lib/marketplace/sincronizar";
 import { cifrar } from "@/lib/ia/cofre";
+import { origemDaRequisicao } from "@/lib/origem";
 
 function mesmoEstado(a: string, b: string): boolean {
   const x = Buffer.from(a);
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
   const shopId = Number(p.get("shop_id"));
   const volta = req.cookies.get("shopee_volta")?.value === "/configuracoes" ? "/configuracoes" : "/vendas";
   const destino = (s: string) => {
-    const res = NextResponse.redirect(new URL(`${volta}?shopee=${s}`, req.url));
+    const res = NextResponse.redirect(new URL(`${volta}?shopee=${s}`, origemDaRequisicao(req.headers, req.nextUrl.origin)));
     res.cookies.delete({ name: "shopee_estado", path: "/api/shopee" });
     res.cookies.delete({ name: "shopee_volta", path: "/api/shopee" });
     return res;
