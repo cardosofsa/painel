@@ -10,7 +10,8 @@ import { urlDoSite } from "@/lib/site";
 export const metadata: Metadata = { title: "Vixe · Mensagens" };
 
 /** Vixe → Mensagens (11.6): WhatsApp semi-automático, resumo do dia e calendário comercial. */
-export default async function VixeMensagensPage() {
+export default async function VixeMensagensPage({ searchParams }: { searchParams: Promise<{ filtro?: string }> }) {
+  const { filtro } = await searchParams;
   const supabase = await createClient();
   const [dados, uf, h] = await Promise.all([carregarMensagens(supabase), ufDoCalendario(supabase), headers()]);
   // Endereço do catálogo nas campanhas: o mesmo domínio em que a pessoa está, montado no
@@ -19,7 +20,7 @@ export default async function VixeMensagensPage() {
   const origem = host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : (urlDoSite() ?? "");
   return (
     <div className="space-y-4">
-      <VixeMensagens dados={dados} origem={origem} />
+      <VixeMensagens dados={dados} origem={origem} filtroInicial={filtro} />
       <CalendarioComercial hoje={new Date()} uf={uf} />
     </div>
   );

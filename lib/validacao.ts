@@ -756,6 +756,7 @@ export const iaFerramentaSchemas = {
     produto: produtoTextoIaSchema,
     pergunta: z.string().trim().min(3, "Cole a pergunta do cliente").max(500, "Pergunta longa demais"),
     nomeNegocio: z.string().trim().max(120).nullish(),
+    estrelas: z.number().int().min(1).max(5).nullish(),
   }),
   cobranca: z.object({
     parcelas: z
@@ -850,3 +851,11 @@ export const inventarioSchema = z.object({
   observacao: z.string().trim().max(300).nullish(),
 });
 export type InventarioInput = z.infer<typeof inventarioSchema>;
+
+// ---------- Avaliações da Shopee (Fase 5, onda B) ----------
+export const respostaAvaliacaoSchema = z.object({
+  conexaoId: z.string().uuid(),
+  commentId: z.number().int().positive(),
+  texto: z.string().trim().min(2, "Escreva a resposta").max(500, "A Shopee aceita até 500 caracteres"),
+});
+export type RespostaAvaliacaoInput = z.infer<typeof respostaAvaliacaoSchema>;

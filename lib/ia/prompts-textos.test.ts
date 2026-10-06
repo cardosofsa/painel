@@ -21,6 +21,16 @@ describe("prompts das ferramentas", () => {
     expect(p).not.toContain("Garantia");
   });
 
+  it("avaliação da Shopee: elogio agradece; nota baixa pede desculpas sem prometer troca", () => {
+    const boa = montarPromptResposta({ produto, pergunta: "Amei, chegou rápido", estrelas: 5 });
+    expect(boa).toContain("5 de 5 estrelas");
+    expect(boa).toContain("Agradeça de forma calorosa");
+    const ruim = montarPromptResposta({ produto, pergunta: "Veio quebrado", estrelas: 2 });
+    expect(ruim).toContain("peça desculpas");
+    expect(ruim).toContain("Não admita defeito nem prometa troca");
+    expect(ruim).not.toContain("Não chute");
+  });
+
   it("cobrança nunca ameaça e muda com o tom", () => {
     const base = { parcelas: [{ valor: 50, vencimento: "10/09/2026", atrasoDias: 20 }] };
     const g = montarPromptCobranca({ ...base, tom: "gentil" });

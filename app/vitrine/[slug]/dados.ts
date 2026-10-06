@@ -2,6 +2,7 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import type { LinhaCatalogoPublico } from "@/components/catalogo/VitrineView";
+import type { ParCompreJunto } from "@/lib/vitrine-catalogo";
 
 /**
  * Busca compartilhada entre `layout.tsx`, `page.tsx` e `generateMetadata` — os três
@@ -18,6 +19,13 @@ export const buscarCatalogoPublico = cache(async (slug: string): Promise<LinhaCa
   const { data, error } = await supabase.rpc("obter_catalogo_publico", { p_slug: slug });
   if (error) lancarErroSupabase(error);
   return (data ?? []) as LinhaCatalogoPublico[];
+});
+
+/** "Compre junto" (0075). Sem a migração ou com erro, lista vazia: a vitrine sugere pela categoria. */
+export const buscarCompreJunto = cache(async (slug: string): Promise<ParCompreJunto[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("compre_junto_publico", { p_slug: slug });
+  return error ? [] : ((data ?? []) as ParCompreJunto[]);
 });
 
 export interface AparenciaPublica {

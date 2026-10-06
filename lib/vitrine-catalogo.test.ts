@@ -12,6 +12,7 @@ import {
   textoConsultarProduto,
   trocarVariante,
   type LinhaCatalogoPublico,
+  sugestoesCompreJunto,
 } from "./vitrine-catalogo";
 import { pedidoVitrineSchema } from "./vitrine-pedido";
 
@@ -235,5 +236,35 @@ describe("pedidoVitrineSchema — e-mail e endereço opcionais", () => {
     expect(pedidoVitrineSchema.safeParse({ ...base, email: "sem-arroba" }).success).toBe(false);
     expect(pedidoVitrineSchema.safeParse({ ...base, cep: "123" }).success).toBe(false);
     expect(pedidoVitrineSchema.safeParse({ ...base, uf: "BAH" }).success).toBe(false);
+  });
+});
+
+describe("compre junto", () => {
+  const item = (id: string, categoria: string | null, ordem: number, preco: number | null = 10, variantes = [id]) => ({
+    produto_id: id,
+    produto_nome: id,
+    descricao: null,
+    imagem_url: null,
+    categoria_nome: categoria,
+    preco,
+    imagens_extra: [],
+    variantes: variantes.map((v) => ({ produto_id: v, variante_nome: null, preco, imagem_url: null, imagens_extra: [] })),
+    ordem,
+  });
+  const caneca = item("caneca", "Cozinha", 1, 10, ["caneca", "caneca-verde"]);
+  const itens = [caneca, item("colher", "Cozinha", 5), item("pires", "Cozinha", 2), item("prato", "Cozinha", 3, null), item("vela", "Casa", 1), item("pano", "Cozinha", 9)];
+
+  it("pares vendidos juntos primeiro (de qualquer variante), depois a mesma categoria por popularidade", () => {
+    const r = sugestoesCompreJunto(itens, [
+      { produto_id: "caneca-verde", relacionado_id: "vela", posicao: 1 },
+      { produto_id: "caneca", relacionado_id: "colher", posicao: 2 },
+    ], caneca);
+    expect(r.map((i) => i.produto_id)).toEqual(["vela", "colher", "pires"]);
+  });
+
+  it("sem pares: a categoria primeiro, depois os mais vendidos; sem 'Consultar' e sem o próprio item", () => {
+    expect(sugestoesCompreJunto(itens, [], caneca, 4).map((i) => i.produto_id)).toEqual(["pires", "colher", "pano", "vela"]);
+    expect(sugestoesCompreJunto(itens, [], item("x", null, 1)).map((i) => i.produto_id)).toEqual(["caneca", "vela", "pires"]);
+    expect(sugestoesCompreJunto([caneca], [], caneca)).toEqual([]);
   });
 });

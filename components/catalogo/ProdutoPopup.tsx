@@ -20,6 +20,8 @@ export function ProdutoPopup({
   negocioWhatsapp,
   onAdicionar,
   onClose,
+  sugestoes = [],
+  onAbrir,
 }: {
   /** Para montar o link de compartilhar o produto. */
   slug: string;
@@ -31,6 +33,10 @@ export function ProdutoPopup({
   /** Manda o item escolhido para o carrinho, que vive em `VitrineInterativa`. */
   onAdicionar: (item: ItemCarrinhoVitrine) => void;
   onClose: () => void;
+  /** "Compre junto" (0075): o que costuma sair no mesmo pedido. */
+  sugestoes?: ItemVitrine[];
+  /** Abre outro produto no lugar deste (clique numa sugestão). */
+  onAbrir?: (item: ItemVitrine) => void;
 }) {
   const [varianteId, setVarianteId] = useState<string | null>(() =>
     varianteInicial && item?.variantes.some((v) => v.produto_id === varianteInicial) ? varianteInicial : null,
@@ -192,6 +198,30 @@ export function ProdutoPopup({
           <button type="button" onClick={compartilhar} className="w-full mt-3 inline-flex items-center justify-center gap-1.5 text-sm text-text-secondary hover:text-accent py-1">
             <Share2 size={14} /> Compartilhar este produto
           </button>
+
+          {sugestoes.length > 0 && onAbrir && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="text-sm font-medium text-text-primary mb-2">Aproveite e leve</div>
+              <div className="grid grid-cols-3 gap-2">
+                {sugestoes.map((s) => (
+                  <button
+                    key={s.produto_id}
+                    type="button"
+                    onClick={() => onAbrir(s)}
+                    className="text-left rounded-md border border-border bg-surface-1 overflow-hidden hover:border-accent transition-colors"
+                  >
+                    <div className="aspect-square bg-surface-2 flex items-center justify-center">
+                      {s.imagem_url ? <ImagemStorage src={s.imagem_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon size={20} className="text-text-tertiary" />}
+                    </div>
+                    <div className="p-1.5">
+                      <div className="text-xs text-text-primary line-clamp-2 leading-snug">{s.produto_nome}</div>
+                      {s.preco !== null && <div className="text-xs font-mono text-accent mt-0.5">{formatBRL(s.preco)}</div>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </Modal>

@@ -7,7 +7,7 @@ import { DestaqueVitrine, SecoesFinaisVitrine } from "@/components/catalogo/Vitr
 import { agruparLinhas, decodificarCarrinho, montarCarrinho } from "@/lib/vitrine-catalogo";
 import { normalizarSecoes } from "@/lib/vixe/vitrine";
 import { createClient } from "@/lib/supabase/server";
-import { buscarAparenciaPublica, buscarCatalogoPublico, buscarEmpresaPublica, buscarFormasPagamentoPublicas, buscarFreteVitrine } from "@/app/vitrine/[slug]/dados";
+import { buscarAparenciaPublica, buscarCatalogoPublico, buscarCompreJunto, buscarEmpresaPublica, buscarFormasPagamentoPublicas, buscarFreteVitrine } from "@/app/vitrine/[slug]/dados";
 
 function linkWhatsapp(numero: string | null): string | null {
   const d = numero?.replace(/\D/g, "");
@@ -19,12 +19,13 @@ function linkWhatsapp(numero: string | null): string | null {
  * de um produto, que abre a mesma vitrine com aquele produto em destaque).
  */
 export async function VitrinePublica({ slug, carrinho, produtoInicial = null }: { slug: string; carrinho?: string; produtoInicial?: string | null }) {
-  const [linhas, aparencia, empresa, formasPagamento, freteAtivo] = await Promise.all([
+  const [linhas, aparencia, empresa, formasPagamento, freteAtivo, paresCompreJunto] = await Promise.all([
     buscarCatalogoPublico(slug),
     buscarAparenciaPublica(slug),
     buscarEmpresaPublica(slug),
     buscarFormasPagamentoPublicas(slug),
     buscarFreteVitrine(slug),
+    buscarCompreJunto(slug),
   ]);
 
   const nome = linhas[0]?.catalogo_nome;
@@ -93,6 +94,7 @@ export async function VitrinePublica({ slug, carrinho, produtoInicial = null }: 
               </div>
             ) : (
               <VitrineInterativa
+                paresCompreJunto={paresCompreJunto}
                 nome={nome}
                 slug={slug}
                 itens={itens}
