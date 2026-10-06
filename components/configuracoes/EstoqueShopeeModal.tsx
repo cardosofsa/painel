@@ -11,7 +11,7 @@ import type { DiferencaEstoque } from "@/lib/marketplace/estoque-shopee";
 import { definirEstoqueAutomatico, previaEstoqueShopee } from "@/app/(painel)/vendas/marketplace-actions";
 
 /**
- * Antes de ligar o envio automático de estoque de uma loja: "SERTÃO × Shopee" com o que vai
+ * Antes de ligar o envio automático de estoque de uma loja: "Sertão × Shopee" com o que vai
  * mudar em cada anúncio. Confirmar envia tudo agora e deixa automático daí em diante.
  */
 export function EstoqueShopeeModal({ lojaId, nomeLoja, onClose }: { lojaId: string; nomeLoja: string; onClose: () => void }) {
@@ -43,7 +43,7 @@ export function EstoqueShopeeModal({ lojaId, nomeLoja, onClose }: { lojaId: stri
   return (
     <Modal open onClose={onClose} title={`Estoque automático · ${nomeLoja}`} width="max-w-2xl">
       <p className="text-sm text-text-secondary mb-3">
-        O SERTÃO passa a mandar para a Shopee o saldo do armazém que abastece esta loja, a cada venda, compra recebida ou ajuste (e a cada 15 min). Confira antes o que vai mudar agora:
+        O Sertão passa a mandar para a Shopee o saldo do armazém que abastece esta loja, a cada venda, compra recebida ou ajuste (e a cada 15 min). Confira antes o que vai mudar agora:
       </p>
       {erro ? (
         <p className="text-sm text-negative">{erro}</p>
@@ -77,7 +77,7 @@ export function EstoqueShopeeModal({ lojaId, nomeLoja, onClose }: { lojaId: stri
                     <div className="truncate text-text-primary" title={d.nome ?? ""}>
                       {d.nome ?? `Anúncio ${d.itemId}`}
                     </div>
-                    {d.sku && <div className="text-[11px] font-mono text-text-tertiary">{d.sku}</div>}
+                    {d.sku && <div className="text-xs font-mono text-text-tertiary">{d.sku}</div>}
                   </div>
                   <span className="shrink-0 inline-flex items-center gap-1.5 font-mono">
                     <span className="text-text-tertiary">{d.de}</span>
@@ -88,10 +88,10 @@ export function EstoqueShopeeModal({ lojaId, nomeLoja, onClose }: { lojaId: stri
               ))}
             </div>
           ) : (
-            <p className="text-sm text-positive mb-4">O estoque da Shopee já está igual ao do SERTÃO.</p>
+            <p className="text-sm text-positive mb-4">O estoque da Shopee já está igual ao do Sertão.</p>
           )}
           <p className="text-xs text-text-tertiary mb-3">
-            Shopee à esquerda, SERTÃO à direita. Anúncios que vão para 0 ficam sem estoque na loja. As duas lojas que puxam do mesmo armazém recebem o mesmo saldo; a sincronização frequente evita vender o que já saiu na outra.
+            Shopee à esquerda, Sertão à direita. Anúncios que vão para 0 ficam sem estoque na loja. As duas lojas que puxam do mesmo armazém recebem o mesmo saldo; a sincronização frequente evita vender o que já saiu na outra.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={onClose}>

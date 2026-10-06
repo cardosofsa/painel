@@ -11,7 +11,7 @@ import { envioDoPedidoML, etiquetasML } from "@/lib/marketplace/mercadolivre-api
 import { baixarEtiquetas, montarShipOrder, parametroEnvio, programarEnvio, rastreio, type ModoEnvio } from "@/lib/marketplace/shopee-envio";
 
 /**
- * Envio da Shopee pelo SERTÃO (Fase 10.5): programar envio e imprimir etiquetas, um ou em
+ * Envio da Shopee pelo Sertão (Fase 10.5): programar envio e imprimir etiquetas, um ou em
  * massa. O estado fica em pedidos_marketplace (0054, `registrar_envio_marketplace`); a
  * etapa avança sozinha: ship_order → a Shopee marca PROCESSED (Para Imprimir, com baixa do
  * estoque pela importação) → etiqueta baixada → Para Retirada.

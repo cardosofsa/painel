@@ -1,5 +1,5 @@
 /*
- * Service worker do SERTÃO (Fase 11.4): só o necessário para o PDV abrir sem internet.
+ * Service worker do Sertão (Fase 11.4): só o necessário para o PDV abrir sem internet.
  *
  *  - /_next/static e /marca: cache-first (arquivos com hash, imutáveis);
  *  - /pdv (página): network-first; sem rede, a última versão guardada;

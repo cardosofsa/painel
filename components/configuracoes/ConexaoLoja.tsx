@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Boxes, PlugZap, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button, classesBotao } from "@/components/ui/Button";
+import { useConfirm } from "@/components/ui/ConfirmModal";
 import { executarComToast } from "@/lib/acao-cliente";
 import type { ConexaoResumo } from "@/lib/marketplace/pedidos-servidor";
 import { definirEstoqueAutomatico, desconectarShopee, sincronizarShopee } from "@/app/(painel)/vendas/marketplace-actions";
@@ -31,14 +32,13 @@ export function ConexaoLoja({
 }) {
   const [pending, startTransition] = useTransition();
   const [previa, setPrevia] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
   if (!apiLigada) return null;
 
   if (!conexao) {
     return (
-      <a href={`/api/${plataforma}/conectar?loja=${lojaId}&volta=configuracoes`} className="shrink-0">
-        <Button variant="secondary" size="sm">
-          <PlugZap size={13} /> Conectar API
-        </Button>
+      <a href={`/api/${plataforma}/conectar?loja=${lojaId}&volta=configuracoes`} className={`${classesBotao({ variant: "secondary", size: "sm" })} shrink-0`}>
+        <PlugZap size={13} /> Conectar API
       </a>
     );
   }
@@ -51,7 +51,7 @@ export function ConexaoLoja({
 
   return (
     <div className="flex flex-wrap items-center gap-2 shrink-0">
-      <span className={`text-[11px] max-w-[16rem] truncate ${situacao.classe}`} title={situacao.texto}>
+      <span className={`text-xs max-w-[16rem] truncate ${situacao.classe}`} title={situacao.texto}>
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-positive mr-1 align-middle" />
         {situacao.texto}
       </span>
@@ -59,8 +59,8 @@ export function ConexaoLoja({
         (conexao.estoque_auto ? (
           <button
             type="button"
-            title="O estoque do SERTÃO é enviado sozinho para os anúncios desta loja. Clique para desligar."
-            className="inline-flex items-center gap-1 text-[11px] rounded-full bg-positive-soft text-positive px-2 py-0.5"
+            title="O estoque do Sertão é enviado sozinho para os anúncios desta loja. Clique para desligar."
+            className="inline-flex items-center gap-1 text-xs rounded-full bg-positive-soft text-positive px-2 py-0.5"
             onClick={() =>
               startTransition(async () => {
                 await executarComToast(definirEstoqueAutomatico(lojaId, false), { sucesso: "Envio automático de estoque desligado", erro: "Erro ao desligar" });
@@ -90,10 +90,18 @@ export function ConexaoLoja({
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => startTransition(async () => void (await executarComToast(desconectarShopee(lojaId), { sucesso: "Loja desconectada", erro: "Erro ao desconectar" })))}
+        onClick={async () => {
+          const ok = await confirm({
+            title: `Desconectar ${nomeLoja}?`,
+            message: "Os pedidos param de chegar sozinhos e o estoque deixa de ser enviado. Para voltar, é preciso conectar de novo com o login da loja.",
+            confirmLabel: "Desconectar",
+          });
+          if (ok) startTransition(async () => void (await executarComToast(desconectarShopee(lojaId), { sucesso: "Loja desconectada", erro: "Erro ao desconectar" })));
+        }}
       >
         Desconectar
       </Button>
+      {ConfirmDialog}
       {previa && <EstoqueShopeeModal lojaId={lojaId} nomeLoja={nomeLoja} onClose={() => setPrevia(false)} />}
     </div>
   );

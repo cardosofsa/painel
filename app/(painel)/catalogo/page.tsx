@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { CatalogoClient, type Catalogo } from "./CatalogoClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Catálogo" };
 
 export default async function CatalogoPage() {
   const supabase = await createClient();

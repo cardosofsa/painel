@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { PlugZap, Store } from "lucide-react";
+import { PlugZap, Store, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ConectarMarketplace } from "@/components/configuracoes/ConectarMarketplace";
 import { ConexaoLoja } from "@/components/configuracoes/ConexaoLoja";
@@ -201,24 +201,24 @@ export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; loj
                     <div className="text-xs text-text-tertiary">{textoLimites(c)}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <button onClick={() => setModalLimites(c)} className="text-sm text-accent hover:underline">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Button variant="ghost" size="sm" onClick={() => setModalLimites(c)}>
                     Limites de texto
-                  </button>
+                  </Button>
                   {c.tipo_taxa === "faixas" && (
-                    <button onClick={() => setModalFaixas(c)} className="text-sm text-accent hover:underline">
-                      Editar Faixas
-                    </button>
+                    <Button variant="ghost" size="sm" onClick={() => setModalFaixas(c)}>
+                      Editar faixas
+                    </Button>
                   )}
-                  <button onClick={() => setModalLoja({ loja: null, canal: c })} className="text-sm text-accent hover:underline">
-                    + Adicionar Loja
-                  </button>
+                  <Button variant="secondary" size="sm" onClick={() => setModalLoja({ loja: null, canal: c })}>
+                    <Plus size={14} /> Loja
+                  </Button>
                   <RowMenu actions={[{ label: "Remover canal", onClick: () => removerCanalHandler(c), destructive: true }]} />
                 </div>
               </div>
               <div className="space-y-2">
                 {marcaDoNome(c.nome) === "shopee" && apiLigada && marketplace.ambiente === "teste" && (
-                  <div className="text-[11px] text-text-tertiary">API em modo Sandbox (teste)</div>
+                  <div className="text-xs text-text-tertiary">API em modo Sandbox (teste)</div>
                 )}
                 {lojasDoCanal.map((l) => {
                   const comissaoEfetiva = l.comissao_pct ?? c.comissao_pct_padrao;
@@ -279,13 +279,9 @@ export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; loj
                             plataforma="mercadolivre"
                           />
                         )}
-                        <button
-                          type="button"
-                          onClick={() => (c.tipo_taxa === "faixas" ? setModalFaixas(c) : setModalLoja({ loja: l, canal: c }))}
-                          className="text-xs text-accent hover:underline"
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => (c.tipo_taxa === "faixas" ? setModalFaixas(c) : setModalLoja({ loja: l, canal: c }))}>
                           Editar taxas
-                        </button>
+                        </Button>
                         <RowMenu
                           actions={[
                             { label: "Editar", onClick: () => setModalLoja({ loja: l, canal: c }) },
@@ -297,21 +293,26 @@ export function AbaCanais({ canais, lojas, marketplace }: { canais: Canal[]; loj
                   );
                 })}
                 {lojasDoCanal.length === 0 && (
-                  <p className="text-sm text-text-tertiary">Nenhuma loja cadastrada neste canal ainda.</p>
+                  <button
+                    type="button"
+                    onClick={() => setModalLoja({ loja: null, canal: c })}
+                    className="w-full rounded-md border border-dashed border-border px-3 py-3 text-sm text-text-tertiary hover:bg-surface-2 hover:text-text-primary"
+                  >
+                    Nenhuma loja neste canal. Clique para cadastrar a primeira.
+                  </button>
                 )}
               </div>
             </Card>
           );
         })}
         <Card className="border-dashed">
-          <div className="flex items-center justify-center gap-4">
-            <button onClick={() => setModalCanal(true)} className="text-sm text-accent hover:underline">
-              + Adicionar Canal
-            </button>
-            <span className="text-border">|</span>
-            <button onClick={restaurarCanaisPadraoHandler} className="text-sm text-accent hover:underline" disabled={pending}>
-              Restaurar Canais Padrão
-            </button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setModalCanal(true)}>
+              <Plus size={14} /> Adicionar canal
+            </Button>
+            <Button variant="ghost" size="sm" onClick={restaurarCanaisPadraoHandler} disabled={pending}>
+              Restaurar canais padrão
+            </Button>
           </div>
         </Card>
       </div>

@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { ClientesClient, type Cliente } from "./ClientesClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Clientes" };
 
 interface ResumoCliente {
   cliente_id: string;

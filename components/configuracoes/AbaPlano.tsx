@@ -23,7 +23,7 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
 
   if (!dados) {
     return (
-      <Card className="p-5 text-sm text-text-secondary">
+      <Card className="text-sm text-text-secondary">
         Os planos precisam da migração <span className="font-mono">0057_planos_assinaturas.sql</span>. Aplique no Supabase e recarregue a página.
       </Card>
     );
@@ -62,7 +62,7 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
 
   return (
     <div className="space-y-4 max-w-4xl">
-      <Card className="p-5">
+      <Card>
         <div className="text-xs text-text-tertiary mb-1">Seu plano agora</div>
         <div className="text-xl font-semibold text-text-primary mb-1">{efetivo?.nome ?? resumo.plano_efetivo}</div>
         <p className={`text-sm mb-4 ${situacao.tom === "negative" ? "text-negative" : situacao.tom === "positive" ? "text-positive" : "text-text-secondary"}`}>{situacao.texto}</p>

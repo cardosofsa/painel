@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { IconButton } from "@/components/ui/Button";
+import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
-import { History } from "lucide-react";
+import { Download, History } from "lucide-react";
+import { ExportarPrecificacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 import { formatBRL } from "@/lib/format";
 import { CalculadoraEmMassa } from "@/components/precificacao/CalculadoraEmMassa";
 import { VariacoesView } from "@/components/precificacao/VariacoesView";
@@ -66,6 +67,7 @@ export function PrecificacaoClient({
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
   iaDisponivel: boolean;
 }) {
+  const [exportandoSalvas, setExportandoSalvas] = useState(false);
   const estado = usePrecificacao({ historico, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa });
   const { visao, setVisao } = estado;
 
@@ -98,7 +100,6 @@ export function PrecificacaoClient({
           aliquotaDasPadrao={aliquotaDasPadrao}
           confirm={estado.confirm}
           setVisao={setVisao}
-          exportarAnunciosCsv={estado.exportarAnunciosCsv}
           iaDisponivel={iaDisponivel}
           empresa={empresa}
         />
@@ -125,9 +126,10 @@ export function PrecificacaoClient({
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-text-primary">Precificações Salvas</h2>
               <div className="flex items-center gap-3">
-                <button onClick={estado.exportarHistoricoCsv} className="text-xs text-accent hover:underline">
-                  Exportar CSV
-                </button>
+                {/* Exporta as mesmas que o cartão lista (as individuais); antes levava também as em massa. */}
+                <Button variant="secondary" size="sm" onClick={() => setExportandoSalvas(true)} disabled={!historico.some((h) => h.origem === "individual")}>
+                  <Download size={14} /> Exportar
+                </Button>
                 <IconButton onClick={() => setVisao("historico")} aria-label="Ver histórico completo" title="Ver histórico completo">
                   <History size={14} />
                 </IconButton>
@@ -158,7 +160,7 @@ export function PrecificacaoClient({
       )}
 
       {visao === "historico" && (
-        <HistoricoPrecificacoes estado={estado} anuncios={anuncios} acoesLigarProduto={acoesLigarProduto} />
+        <HistoricoPrecificacoes estado={estado} anuncios={anuncios} acoesLigarProduto={acoesLigarProduto} empresa={empresa} />
       )}
 
       <ModalVincularProduto
@@ -167,6 +169,13 @@ export function PrecificacaoClient({
         onFechar={estado.fecharVincular}
         onEscolher={estado.confirmarVinculo}
       />
+      {exportandoSalvas && (
+        <ExportarPrecificacoesModal
+          onClose={() => setExportandoSalvas(false)}
+          empresa={empresa}
+          grupos={[{ id: "individuais", rotulo: "Precificações individuais", lista: historico.filter((h) => h.origem === "individual") }]}
+        />
+      )}
       {estado.modaisExportacao}
       {estado.ConfirmDialog}
     </>

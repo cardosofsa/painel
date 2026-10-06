@@ -142,7 +142,7 @@ async function conexaoDaLoja(lojaId: string) {
   return { supabase, conexao: data as ConexaoShopee };
 }
 
-/** Prévia "SERTÃO × Shopee" antes de ligar o envio automático de estoque (0049). */
+/** Prévia "Sertão × Shopee" antes de ligar o envio automático de estoque (0049). */
 export async function previaEstoqueShopee(lojaId: string) {
   return comResultado(async (): Promise<{ total: number; semVinculo: number; diferencas: DiferencaEstoque[] }> => {
     const { supabase, conexao } = await conexaoDaLoja(lojaId);

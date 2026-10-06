@@ -16,7 +16,7 @@ import Link from "next/link";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
 import { formatBRL, formatarDataIso, hojeIsoLocal, classeValor } from "@/lib/format";
-import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
+import { matrizParaCsv, baixarArquivo, centavos } from "@/lib/csv";
 import type { ResumoFinanceiro } from "./page";
 import {
   criarMovimentacao,
@@ -205,25 +205,25 @@ export function FinanceiroClient({
     const linhas: (string | number)[][] = [];
 
     linhas.push(["Resumo do Período"]);
-    linhas.push(["Receita do Mês", receitaMensal.toFixed(2)]);
-    linhas.push(["Despesas do Mês", despesasMensais.toFixed(2)]);
-    linhas.push(["Resultado do Mês", resultadoMensal.toFixed(2)]);
-    linhas.push(["Saldo Líquido Realizado", saldoLiquido.toFixed(2)]);
-    linhas.push(["Saldo Atual em Contas", saldoAtual.toFixed(2)]);
-    linhas.push(["Saldo Projetado (30 dias)", saldoProjetado30Dias.toFixed(2)]);
+    linhas.push(["Receita do Mês", centavos(receitaMensal)]);
+    linhas.push(["Despesas do Mês", centavos(despesasMensais)]);
+    linhas.push(["Resultado do Mês", centavos(resultadoMensal)]);
+    linhas.push(["Saldo Líquido Realizado", centavos(saldoLiquido)]);
+    linhas.push(["Saldo Atual em Contas", centavos(saldoAtual)]);
+    linhas.push(["Saldo Projetado (30 dias)", centavos(saldoProjetado30Dias)]);
     linhas.push([]);
 
     linhas.push(["Lançamentos"]);
     linhas.push(["Data", "Descrição", "Categoria", "Conta", "Afeta Lucro", "Valor"]);
     for (const m of movimentacoes) {
-      linhas.push([formatarDataIso(m.data_movimentacao), m.descricao, m.categoria ?? "", m.conta_nome, m.afeta_lucro ? "Sim" : "Não", m.valor.toFixed(2)]);
+      linhas.push([formatarDataIso(m.data_movimentacao), m.descricao, m.categoria ?? "", m.conta_nome, m.afeta_lucro ? "Sim" : "Não", centavos(m.valor)]);
     }
     linhas.push([]);
 
     linhas.push(["Contas a Pagar & Receber Pendentes"]);
     linhas.push(["Tipo", "Descrição", "Vencimento", "Conta", "Valor"]);
     for (const c of contasPagarReceber.filter((c) => c.status === "pendente")) {
-      linhas.push([c.tipo === "pagar" ? "A Pagar" : "A Receber", c.descricao, formatarDataIso(c.data_vencimento), c.conta_nome ?? "", c.valor.toFixed(2)]);
+      linhas.push([c.tipo === "pagar" ? "A Pagar" : "A Receber", c.descricao, formatarDataIso(c.data_vencimento), c.conta_nome ?? "", centavos(c.valor)]);
     }
 
     baixarArquivo(`relatorio-financeiro-${hojeIso}.csv`, matrizParaCsv(linhas));

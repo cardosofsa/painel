@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { KeyRound, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -69,17 +69,17 @@ export function AbaIA({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-      <Card className="lg:col-span-2">
+    <div className="space-y-5">
+      <Card>
         <div className="flex items-start justify-between gap-3 mb-1">
           <div>
-            <h3 className="font-semibold text-text-primary">Suas IAs</h3>
+            <CardTitle>Suas IAs</CardTitle>
             <p className="text-xs text-text-tertiary mt-0.5 max-w-2xl">
               Use a sua própria conta de IA (Google Gemini, OpenAI, Anthropic ou OpenRouter). Você paga direto ao provedor
               pelo que usar, sem a cota do sistema. A chave é guardada criptografada e só o servidor a lê.
             </p>
           </div>
-          <Button variant="primary" onClick={() => setAdicionando(true)} disabled={!cofreOk} className="shrink-0">
+          <Button variant="secondary" size="sm" onClick={() => setAdicionando(true)} disabled={!cofreOk} className="shrink-0">
             <Plus size={14} />
             Adicionar IA
           </Button>
@@ -128,12 +128,12 @@ export function AbaIA({
       <Card>
         <div className="flex items-center gap-2 mb-1">
           <Sparkles size={16} className="text-accent" />
-          <h3 className="font-semibold text-text-primary">IA do sistema</h3>
+          <CardTitle>IA do sistema</CardTitle>
           {!usandoPropria && iaSistemaOk && <StatusChip label="Em uso" tone="positive" />}
         </div>
         <p className="text-xs text-text-tertiary mb-3">
           {iaSistemaOk
-            ? "É a IA que o SERTÃO oferece para você experimentar, com uso limitado. Para usar sem esse limite, cadastre a sua."
+            ? "É a IA que o Sertão oferece para você experimentar, com uso limitado. Para usar sem esse limite, cadastre a sua."
             : "A IA do sistema não está ativada neste momento. Cadastre a sua para usar os recursos de IA."}
         </p>
         {iaSistemaOk && teste && (

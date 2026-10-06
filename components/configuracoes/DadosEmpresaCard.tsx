@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
@@ -41,7 +41,7 @@ export function DadosEmpresaCard({ inicial }: { inicial: DadosEmpresaInput }) {
 
   return (
     <Card className="lg:col-span-2">
-      <h3 className="font-semibold text-text-primary mb-1">Dados da Empresa</h3>
+      <CardTitle className="mb-1">Dados da empresa</CardTitle>
       <p className="text-xs text-text-tertiary mb-4">Aparecem no cabeçalho do comprovante de venda.</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
@@ -102,7 +102,7 @@ export function DadosEmpresaCard({ inicial }: { inicial: DadosEmpresaInput }) {
       </div>
 
       <Button variant="primary" onClick={salvar} loading={pending} disabled={enviando}>
-        Salvar Dados da Empresa
+        Salvar dados da empresa
       </Button>
     </Card>
   );

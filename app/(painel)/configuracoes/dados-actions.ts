@@ -234,6 +234,6 @@ export async function backupCompleto() {
       // Tabela que não existe ainda (migração pendente) só fica de fora do arquivo.
       if (!resultados[i].error) dados[t] = resultados[i].data ?? [];
     });
-    return { geradoEm: new Date().toISOString(), sistema: "SERTÃO", dados };
+    return { geradoEm: new Date().toISOString(), sistema: "Sertão", dados };
   });
 }

@@ -11,7 +11,7 @@
  */
 
 export const ABAS = [
-  { id: "dashboard", label: "Dashboard", href: "/dashboard" },
+  { id: "dashboard", label: "Home", href: "/dashboard" },
   { id: "pdv", label: "PDV", href: "/pdv" },
   { id: "vendas", label: "Vendas", href: "/vendas" },
   { id: "precificacao", label: "Precificação", href: "/precificacao" },

@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { carregarComprovante } from "@/lib/comprovante-servidor";
 import type { DadosComprovante } from "@/lib/comprovante";
 import { ImprimirLote } from "./ImprimirLote";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Imprimir pedidos" };
 
 /**
  * Impressão de um ou vários pedidos (Para Imprimir): um comprovante por página, e a janela

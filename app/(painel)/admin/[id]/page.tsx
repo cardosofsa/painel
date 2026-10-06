@@ -6,6 +6,9 @@ import type { LinhaHistorico } from "../HistoricoAdmin";
 import { ContaDetalheClient, type UsoIa } from "./ContaDetalheClient";
 import { PlanoContaCard, type AssinaturaConta } from "@/components/admin/PlanoContaCard";
 import type { Plano } from "@/lib/planos";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Conta do cliente" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

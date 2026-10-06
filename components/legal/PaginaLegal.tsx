@@ -18,7 +18,7 @@ export function PaginaLegal({
       <div className="max-w-2xl mx-auto">
         <Link href="/login" className="flex items-center gap-2 mb-6 w-fit">
           <LogoSertao tamanho={34} />
-          <span className="font-semibold tracking-tight text-text-primary text-lg">SERTÃO</span>
+          <span className="font-semibold tracking-tight text-text-primary text-lg">Sertão</span>
         </Link>
         <article className="bg-surface-1 border border-border rounded-lg shadow-elev-1 p-6 sm:p-8 text-sm text-text-secondary leading-relaxed [&_h2]:text-text-primary [&_h2]:font-semibold [&_h2]:text-base [&_h2]:mt-6 [&_h2]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_p]:mb-2 [&_a]:text-accent [&_a:hover]:underline">
           <h1 className="text-xl font-semibold text-text-primary">{titulo}</h1>

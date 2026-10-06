@@ -111,7 +111,7 @@ export interface PedidoCentral {
   oculto: boolean;
   /** A etapa pode ser avançada aqui (pedidos do próprio sistema). */
   editavel: boolean;
-  /** Marketplace (0054): envio programado pelo SERTÃO, falha, rastreio e etiqueta baixada. */
+  /** Marketplace (0054): envio programado pelo Sertão, falha, rastreio e etiqueta baixada. */
   envio?: { programado: boolean; erro: string | null; rastreio: string | null; impressa: boolean };
 }
 
@@ -332,7 +332,7 @@ export function montarCentral(entrada: {
     const etapaPlataforma = etapaDoMarketplace(p.status, p.status_original);
     // Item sem produto antes de baixar: vai para Para Reservar (Não mapeado) até vincular.
     const naoMapeado = p.custo_incompleto && etapaPlataforma === "enviar";
-    // Etiqueta já baixada pelo SERTÃO (0054): pronto, esperando a coleta.
+    // Etiqueta já baixada pelo Sertão (0054): pronto, esperando a coleta.
     const etapa: Etapa = naoMapeado ? "reservar" : etapaPlataforma === "imprimir" && p.etiqueta_impressa_em ? "retirada" : etapaPlataforma;
     const cancelado = etapa === "cancelado";
     lista.push({

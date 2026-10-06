@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Produtos" };
 
 export default async function ProdutosPage({ searchParams }: { searchParams: Promise<{ busca?: string }> }) {
   const { busca } = await searchParams;

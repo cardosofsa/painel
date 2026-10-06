@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { carregarComprovante } from "@/lib/comprovante-servidor";
 import { CarneImpressao } from "@/components/comprovante/CarneImpressao";
 import { carregarCrediario } from "@/lib/crediario-servidor";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Carnê" };
 
 /**
  * Carnê do crediário para imprimir / salvar como PDF: uma lâmina por parcela. Mesmos dados

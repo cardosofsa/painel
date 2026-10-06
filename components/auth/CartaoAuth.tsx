@@ -23,7 +23,7 @@ export function CartaoAuth({
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2 mb-6">
           <LogoSertao tamanho={36} prioridade />
-          <span className="font-semibold tracking-tight text-text-primary text-lg">SERTÃO</span>
+          <span className="font-semibold tracking-tight text-text-primary text-lg">Sertão</span>
         </div>
 
         <div className="bg-surface-1 border border-border rounded-lg shadow-elev-1 p-6">

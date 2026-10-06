@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Truck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
@@ -44,7 +44,7 @@ export function AbaFrete({ frete, cofreOk, cepSugerido }: { frete: FreteConfig |
 
   if (frete === null) {
     return (
-      <Card className="p-5 text-sm text-text-secondary">
+      <Card className="text-sm text-text-secondary">
         O frete precisa da migração <span className="font-mono">0055_frete.sql</span>. Aplique no Supabase e recarregue a página.
       </Card>
     );
@@ -85,12 +85,12 @@ export function AbaFrete({ frete, cofreOk, cepSugerido }: { frete: FreteConfig |
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <Card className="p-5">
+      <Card>
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-start gap-3">
             <Truck size={20} className="text-accent mt-0.5" />
             <div>
-              <h3 className="font-medium text-text-primary">Melhor Envio</h3>
+              <CardTitle>Melhor Envio</CardTitle>
               <p className="text-sm text-text-secondary">Correios, Jadlog, Loggi, J&amp;T e outras, com cotação e etiqueta pelo saldo da sua conta.</p>
             </div>
           </div>
@@ -102,12 +102,12 @@ export function AbaFrete({ frete, cofreOk, cepSugerido }: { frete: FreteConfig |
         <FormField label={frete.conectado ? "Trocar token (deixe vazio para manter)" : "Token do Melhor Envio"}>
           <input className={inputClass} type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Cole aqui o token gerado no Melhor Envio" />
         </FormField>
-        <p className="text-[11px] text-text-tertiary -mt-2 mb-4">
+        <p className="text-xs text-text-tertiary -mt-2 mb-4">
           No Melhor Envio: Configurações → Permissões de acesso → Gerar novo token, com cotação, carrinho, compra, geração e impressão de etiquetas. Cole só aqui, nunca em
           conversas.
         </p>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Ambiente">
             <select className={inputClass} value={ambiente} onChange={(e) => setAmbiente(e.target.value as FreteConfig["ambiente"])}>
               <option value="producao">Produção</option>
@@ -128,23 +128,16 @@ export function AbaFrete({ frete, cofreOk, cepSugerido }: { frete: FreteConfig |
           <input type="checkbox" checked={naVitrine} onChange={(e) => setNaVitrine(e.target.checked)} /> Cotar frete no checkout da vitrine (o cliente escolhe a entrega)
         </label>
 
-        <div className="flex justify-between gap-2">
-          {frete.conectado ? (
-            <Button variant="ghost" onClick={desconectar} disabled={pending}>
-              Desconectar
-            </Button>
-          ) : (
-            <span />
-          )}
-          <Button variant="primary" loading={pending} onClick={salvar} disabled={!cofreOk && !!token}>
-            Salvar
+        {frete.conectado && (
+          <Button variant="destructive" size="sm" onClick={desconectar} disabled={pending}>
+            Desconectar
           </Button>
-        </div>
+        )}
       </Card>
 
       {frete.conectado && (
-        <Card className="p-5">
-          <h3 className="font-medium text-text-primary mb-1">Testar cotação e escolher serviços</h3>
+        <Card>
+          <CardTitle className="mb-1">Testar cotação e escolher serviços</CardTitle>
           <p className="text-sm text-text-secondary mb-3">Cota uma caixinha padrão (300 g, 16×11×4 cm) até o CEP. Marque os serviços que você aceita; nenhum marcado = todos.</p>
           <div className="flex gap-2 mb-3">
             <input className={`${inputClass} max-w-[10rem]`} inputMode="numeric" value={cepTeste} onChange={(e) => setCepTeste(e.target.value)} placeholder="CEP de destino" aria-label="CEP de destino" />
@@ -169,9 +162,15 @@ export function AbaFrete({ frete, cofreOk, cepSugerido }: { frete: FreteConfig |
               ))}
             </ul>
           )}
-          {cotacoes && cotacoes.length > 0 && <p className="text-[11px] text-text-tertiary mt-2">Depois de marcar, clique em Salvar acima.</p>}
         </Card>
       )}
+      {/* Um "Salvar" só, embaixo dos dois cartões: os serviços marcados na cotação também são
+          gravados por ele (antes o texto mandava "clicar em Salvar acima"). */}
+      <div className="flex justify-end">
+        <Button variant="primary" loading={pending} onClick={salvar} disabled={!cofreOk && !!token}>
+          Salvar frete
+        </Button>
+      </div>
       {ConfirmDialog}
     </div>
   );

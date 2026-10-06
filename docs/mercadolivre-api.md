@@ -4,7 +4,7 @@ A integração (Fase 10.8) funciona como a da Shopee:
 - os pedidos entram sozinhos em Vendas, com a margem real (tarifa de venda e frete do vendedor);
 - reservam e baixam o estoque pela esteira;
 - geram o repasse no Financeiro;
-- o estoque do SERTÃO é enviado aos anúncios;
+- o estoque do Sertão é enviado aos anúncios;
 - a etiqueta do Mercado Envios sai em **Para Imprimir**.
 
 ## 1. Criar o app no Mercado Livre
@@ -45,7 +45,7 @@ Em **Configurações → Canais de venda → Conectar marketplace → Mercado Li
 
 ## Como cada pedido anda
 
-| Mercado Livre | SERTÃO |
+| Mercado Livre | Sertão |
 |---|---|
 | Pagamento pendente | Aguardando pagamento |
 | Pago, envio em preparação (`handling`) | Para Enviar (estoque **reservado**) |
@@ -64,6 +64,6 @@ Diferenças em relação à Shopee:
 
 ## Limites conhecidos
 
-- **Mercado Envios Full:** o estoque fica no galpão do ML, mas o SERTÃO também baixa do estoque da loja. Use um armazém próprio para o Full, ou não vincule esses anúncios, até haver um tratamento específico.
+- **Mercado Envios Full:** o estoque fica no galpão do ML, mas o Sertão também baixa do estoque da loja. Use um armazém próprio para o Full, ou não vincule esses anúncios, até haver um tratamento específico.
 - **Envio próprio** (sem Mercado Envios): o pedido entra normalmente, mas não há etiqueta do ML.
-- As notificações leem o pedido de novo na API com o token da loja. Um aviso falso, no máximo, faz o SERTÃO reler um pedido de verdade.
+- As notificações leem o pedido de novo na API com o token da loja. Um aviso falso, no máximo, faz o Sertão reler um pedido de verdade.

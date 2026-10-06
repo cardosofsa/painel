@@ -27,7 +27,7 @@ const FORMATO_EXCEL: Record<string, string> = {
 export async function gerarXlsx<L>(t: TabelaExport<L>): Promise<Blob> {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  wb.creator = "SERTÃO";
+  wb.creator = "Sertão";
   const ws = wb.addWorksheet(t.titulo.slice(0, 31) || "Dados", { views: [{ state: "frozen", ySplit: 1 }] });
   ws.columns = t.colunas.map((c) => ({ header: c.rotulo, width: Math.max(10, c.largura ?? c.rotulo.length + 4), style: c.tipo && FORMATO_EXCEL[c.tipo] ? { numFmt: FORMATO_EXCEL[c.tipo] } : {} }));
   const cab = ws.getRow(1);

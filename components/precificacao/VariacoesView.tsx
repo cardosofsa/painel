@@ -12,6 +12,7 @@ import {
 } from "@/lib/precificacao-variacoes";
 import { type ResumoExport, useExportarPrecificacao } from "@/components/precificacao/resultado-compartilhado";
 import { TabelaVariacoes } from "@/components/precificacao/variacoes/TabelaVariacoes";
+import { ExportarVariacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 import { VariacoesSalvas } from "@/components/precificacao/variacoes/VariacoesSalvas";
 import { criarAnuncio, removerAnuncio, gerarDescricaoAnuncioIA, gerarTituloAnuncioIA, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
 import { GeradorIA } from "@/components/ia/GeradorIA";
@@ -34,7 +35,6 @@ export function VariacoesView({
   aliquotaDasPadrao,
   confirm,
   setVisao,
-  exportarAnunciosCsv,
   iaDisponivel,
   empresa = null,
 }: {
@@ -47,7 +47,6 @@ export function VariacoesView({
   iaDisponivel: boolean;
   confirm: (options: { title: string; message: string; confirmLabel?: string }) => Promise<boolean>;
   setVisao: (visao: "individual" | "variacoes" | "massa" | "historico") => void;
-  exportarAnunciosCsv: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [nomeAnuncio, setNomeAnuncio] = useState("");
@@ -67,6 +66,7 @@ export function VariacoesView({
   const [lucroDesejado, setLucroDesejado] = useState(30);
   const [precoFixo, setPrecoFixo] = useState(99.9);
   const [variacoes, setVariacoes] = useState<VariacaoLinha[]>(VARIACOES_INICIAIS);
+  const [exportandoAnuncios, setExportandoAnuncios] = useState(false);
   const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
   useEffect(() => {
@@ -431,11 +431,14 @@ export function VariacoesView({
       <VariacoesSalvas
         anuncios={anuncios}
         onExcluir={excluirAnuncio}
-        onExportarCsv={exportarAnunciosCsv}
+        onExportarCsv={() => setExportandoAnuncios(true)}
         onVerHistorico={() => setVisao("historico")}
       />
 
       {modaisExportacao}
+      {exportandoAnuncios && (
+        <ExportarVariacoesModal onClose={() => setExportandoAnuncios(false)} empresa={empresa} grupos={[{ id: "todos", rotulo: "Todos os anúncios", lista: anuncios }]} />
+      )}
     </div>
   );
 }

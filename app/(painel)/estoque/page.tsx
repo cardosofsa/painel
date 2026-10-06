@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { EstoqueClient, type SaldoArmazem } from "./EstoqueClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Estoque" };
 
 export default async function EstoquePage() {
   const supabase = await createClient();

@@ -10,7 +10,7 @@ import { escaparCampo, paraCsv, matrizParaCsv } from "./csv";
 describe("escaparCampo", () => {
   it("deixa texto simples intacto", () => {
     expect(escaparCampo("Camiseta")).toBe("Camiseta");
-    expect(escaparCampo(19.9)).toBe("19.9");
+    expect(escaparCampo(19.9)).toBe("19,9");
   });
 
   it("envolve em aspas quando há vírgula", () => {
@@ -39,32 +39,32 @@ describe("escaparCampo", () => {
 describe("paraCsv", () => {
   it("monta cabeçalho e corpo na ordem das colunas", () => {
     const csv = paraCsv([{ nome: "Ana", total: 10 }], ["nome", "total"]);
-    expect(csv).toBe("nome,total\nAna,10");
+    expect(csv).toBe("nome;total\nAna;10");
   });
 
   it("escapa valores problemáticos no corpo", () => {
     const csv = paraCsv([{ cliente: "Silva, João", valor: 99.9 }], ["cliente", "valor"]);
-    expect(csv).toBe('cliente,valor\n"Silva, João",99.9');
+    expect(csv).toBe('cliente;valor\n"Silva, João";99,9');
   });
 
   it("coluna ausente no objeto vira campo vazio, não 'undefined'", () => {
     const csv = paraCsv([{ nome: "Ana" }], ["nome", "telefone"]);
-    expect(csv).toBe("nome,telefone\nAna,");
+    expect(csv).toBe("nome;telefone\nAna;");
   });
 
   it("lista vazia devolve só o cabeçalho", () => {
-    expect(paraCsv([], ["a", "b"])).toBe("a,b\n");
+    expect(paraCsv([], ["a", "b"])).toBe("a;b\n");
   });
 });
 
 describe("matrizParaCsv", () => {
   it("aceita linhas de larguras diferentes, como num relatório com seções", () => {
     const csv = matrizParaCsv([["Resumo"], ["Receita", "100.00"], [], ["Itens"], ["Nome", "Valor"]]);
-    expect(csv).toBe("Resumo\nReceita,100.00\n\nItens\nNome,Valor");
+    expect(csv).toBe("Resumo\nReceita;100.00\n\nItens\nNome;Valor");
   });
 
   it("escapa cada campo da matriz", () => {
-    expect(matrizParaCsv([["Kit 2, azul", 5]])).toBe('"Kit 2, azul",5');
+    expect(matrizParaCsv([["Kit 2, azul", 5]])).toBe('"Kit 2, azul";5');
   });
 });
 
@@ -88,7 +88,7 @@ describe("escaparCampo — injeção de fórmula", () => {
 
   // O regressão que eu quase introduzi: o sistema exporta lucro negativo.
   it("NÃO mexe em número negativo — lucro negativo é dado, não fórmula", () => {
-    expect(escaparCampo(-10.5)).toBe("-10.5");
+    expect(escaparCampo(-10.5)).toBe("-10,5");
     expect(escaparCampo("-10.50")).toBe("-10.50");
     // Com vírgula, as aspas vêm do escape de CSV de sempre — mas sem o apóstrofo na frente.
     expect(escaparCampo("-1234,56")).toBe(`"-1234,56"`);
@@ -97,7 +97,7 @@ describe("escaparCampo — injeção de fórmula", () => {
 
   it("não mexe em texto comum nem em número positivo", () => {
     expect(escaparCampo("Camiseta Azul")).toBe("Camiseta Azul");
-    expect(escaparCampo(19.9)).toBe("19.9");
+    expect(escaparCampo(19.9)).toBe("19,9");
     expect(escaparCampo("2026-03-01")).toBe("2026-03-01");
   });
 
@@ -109,3 +109,29 @@ describe("escaparCampo — injeção de fórmula", () => {
     expect(escaparCampo("=1,2")).toBe(`"'=1,2"`);
   });
 });
+
+/**
+ * O Excel em português usa ";" para separar colunas e "," para decimal. Com "," de
+ * separador e "12.5" no número, o arquivo abria com tudo numa coluna só e o valor virava
+ * texto (ou data). O Google Planilhas detecta o ";" sozinho.
+ */
+describe("CSV no formato do Excel em português", () => {
+  it("separa colunas com ponto e vírgula", () => {
+    expect(matrizParaCsv([["a", "b", "c"]])).toBe("a;b;c");
+  });
+
+  it("número sai com vírgula decimal, sem separador de milhar", () => {
+    expect(escaparCampo(1234.56)).toBe("1234,56");
+    expect(escaparCampo(0.254)).toBe("0,254");
+    expect(escaparCampo(10)).toBe("10");
+  });
+
+  it("texto com ponto e vírgula vai entre aspas", () => {
+    expect(escaparCampo("Kit; azul")).toBe('"Kit; azul"');
+  });
+
+  it("texto que só parece número continua texto (SKU 1.20 não vira 1,20)", () => {
+    expect(escaparCampo("1.20")).toBe("1.20");
+  });
+});
+

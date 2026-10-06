@@ -21,7 +21,7 @@ export interface CampoAlterado {
 export type DetalhesHistorico = Record<string, CampoAlterado>;
 
 const ROTULOS: Record<AbaId, string> = {
-  dashboard: "Dashboard",
+  dashboard: "Home",
   pdv: "PDV",
   vendas: "Vendas",
   precificacao: "Precificação",

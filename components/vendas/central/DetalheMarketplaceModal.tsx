@@ -114,7 +114,7 @@ export function DetalheMarketplaceModal({ p, bruto, onClose }: { p: PedidoCentra
         )}
         <p className="text-xs text-text-tertiary mb-3">Status, envio e etiqueta são controlados na Shopee. Aqui o pedido atualiza a cada sincronização.</p>
         <Button variant="ghost" className="w-full" loading={pending} onClick={remover}>
-          Remover este pedido do SERTÃO
+          Remover este pedido do Sertão
         </Button>
       </Modal>
       {ConfirmDialog}

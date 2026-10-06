@@ -208,7 +208,7 @@ function ImportarRepassesModal({ contas, onClose }: { contas: { id: string; nome
               ))}
             </div>
           )}
-          {resumo.nao.length > 0 && <p className="text-xs text-text-secondary">Não encontrados: pedidos que ainda não foram importados ou sincronizados no SERTÃO ({resumo.nao.slice(0, 5).map((n) => n.numero).join(", ")}{resumo.nao.length > 5 ? "…" : ""}).</p>}
+          {resumo.nao.length > 0 && <p className="text-xs text-text-secondary">Não encontrados: pedidos que ainda não foram importados ou sincronizados no Sertão ({resumo.nao.slice(0, 5).map((n) => n.numero).join(", ")}{resumo.nao.length > 5 ? "…" : ""}).</p>}
           <Button variant="primary" className="w-full" onClick={onClose}>
             Fechar
           </Button>

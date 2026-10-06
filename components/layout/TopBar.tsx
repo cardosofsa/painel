@@ -104,7 +104,7 @@ export function TopBar({
         )}
       </div>
 
-      {/* Sem nome de negócio cadastrado, nada aparece — "SERTÃO" no lugar soava como se o
+      {/* Sem nome de negócio cadastrado, nada aparece — "Sertão" no lugar soava como se o
           sistema estivesse falando o próprio nome de volta pro dono. */}
       {nomeNegocio && <div className="hidden md:block max-w-[30%] truncate text-sm font-semibold text-text-primary text-center">{nomeNegocio}</div>}
 

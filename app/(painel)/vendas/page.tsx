@@ -5,6 +5,9 @@ import { credenciaisShopee, faltandoShopee } from "@/lib/marketplace/shopee-api"
 import { credenciaisML } from "@/lib/marketplace/mercadolivre-api";
 import { cofreDisponivel } from "@/lib/ia/cofre";
 import { VendasClient, type Venda } from "./VendasClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Vendas" };
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 120;

@@ -27,7 +27,7 @@ async function baixarModelo() {
   [
     ["Coluna", "Obrigatória", "Como preencher"],
     ["Pedido", "Não", "Número que agrupa as linhas: linhas com o mesmo número viram um pedido. Vazio = tudo num pedido só."],
-    ["SKU", "Sim", "SKU do produto exatamente como está cadastrado no SERTÃO."],
+    ["SKU", "Sim", "SKU do produto exatamente como está cadastrado no Sertão."],
     ["Quantidade", "Sim", "Número inteiro maior que zero."],
     ["Custo unitário", "Não", "Em reais. Vazio usa o custo do cadastro."],
     ["Fornecedor", "Não", "Nome do fornecedor cadastrado. Só a primeira linha de cada pedido conta. Vazio = o fornecedor escolhido na tela."],

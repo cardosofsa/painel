@@ -4,6 +4,9 @@ import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { normalizarSecoes } from "@/lib/vixe/vitrine";
 import { PersonalizarCatalogo } from "@/components/catalogo/personalizar/PersonalizarCatalogo";
 import type { AparenciaCatalogo } from "../../aparencia-actions";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Personalizar catálogo" };
 
 const PADRAO: AparenciaCatalogo = {
   cor_primaria: "#3b4d1f",

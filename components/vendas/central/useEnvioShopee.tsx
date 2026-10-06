@@ -30,7 +30,7 @@ function avisarFalhas(falhas: { numero: string; erro: string }[]) {
 }
 
 /**
- * Envio da Shopee pelo SERTÃO (Fase 10.5): Para Enviar → "Programar envio" (coleta ou
+ * Envio da Shopee pelo Sertão (Fase 10.5): Para Enviar → "Programar envio" (coleta ou
  * postagem) e Para Imprimir → "Imprimir etiquetas" (um PDF só). Só para lojas ligadas à API.
  */
 export function useEnvioShopee({ lojasApi }: { /** loja → plataforma ('shopee' | 'mercadolivre'), só com API ligada. */ lojasApi: Map<string, string> }) {

@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { FileText } from "lucide-react";
-import { Card } from "@/components/ui/Card";
+import { Card, CardTitle } from "@/components/ui/Card";
+import { Chip, ChipRow } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Badge";
 import { FormField, inputClass } from "@/components/ui/Modal";
@@ -60,7 +61,7 @@ export function AbaFiscal({ fiscal, cofreOk }: { fiscal: FiscalConfigTela | null
 
   if (fiscal === null) {
     return (
-      <Card className="p-5 text-sm text-text-secondary">
+      <Card className="text-sm text-text-secondary">
         O fiscal precisa da migração <span className="font-mono">0062_fiscal_nfe.sql</span>. Aplique no Supabase e recarregue a página.
       </Card>
     );
@@ -90,8 +91,8 @@ export function AbaFiscal({ fiscal, cofreOk }: { fiscal: FiscalConfigTela | null
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <Card className="p-5">
-        <h3 className="font-medium text-text-primary mb-1">Etapa Emitir: o que gerar por padrão</h3>
+      <Card>
+        <CardTitle className="mb-1">Etapa Emitir: o que gerar por padrão</CardTitle>
         <p className="text-sm text-text-secondary mb-4">Na hora de emitir você sempre pode trocar. &quot;Perguntar sempre&quot; abre a escolha sem nada marcado.</p>
         {(
           [
@@ -100,29 +101,23 @@ export function AbaFiscal({ fiscal, cofreOk }: { fiscal: FiscalConfigTela | null
           ] as const
         ).map(([k, rotulo]) => (
           <FormField key={k} label={rotulo}>
-            <div className="flex flex-wrap gap-2">
+            <ChipRow>
               {PADROES.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  aria-pressed={f[k] === p.id}
-                  onClick={() => setF((x) => ({ ...x, [k]: p.id }))}
-                  className={`text-sm rounded-md border px-3 py-1.5 ${f[k] === p.id ? "border-accent bg-accent-soft text-accent font-medium" : "border-border text-text-secondary hover:bg-surface-2"}`}
-                >
+                <Chip key={p.id} ativo={f[k] === p.id} onClick={() => setF((x) => ({ ...x, [k]: p.id }))}>
                   {p.rotulo}
-                </button>
+                </Chip>
               ))}
-            </div>
+            </ChipRow>
           </FormField>
         ))}
       </Card>
 
-      <Card className="p-5">
+      <Card>
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-start gap-3">
             <FileText size={20} className="text-accent mt-0.5" />
             <div>
-              <h3 className="font-medium text-text-primary">NF-e pelo emissor (Focus NFe)</h3>
+              <CardTitle>NF-e pelo emissor (Focus NFe)</CardTitle>
               <p className="text-sm text-text-secondary">
                 Você contrata o emissor e cadastra lá o certificado A1. Aqui fica só o token da API. Confirme CFOP, CSOSN e PIS/COFINS com o seu contador.
               </p>
@@ -131,16 +126,23 @@ export function AbaFiscal({ fiscal, cofreOk }: { fiscal: FiscalConfigTela | null
           <StatusChip tone={f.ligada ? "positive" : "neutral"} label={f.ligada ? "Ligada" : "Desligada"} />
         </div>
         {!cofreOk && <p className="text-sm text-negative mb-3">O cofre de chaves não está configurado neste servidor (IA_CHAVE_COFRE).</p>}
+        <h3 className="text-sm font-medium text-text-primary mt-2 mb-3">Conexão com o emissor</h3>
         <FormField label={f.ligada ? "Trocar token (deixe vazio para manter)" : "Token da API do emissor"}>
           <input className={inputClass} type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Cole só aqui, nunca em conversas" />
         </FormField>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Ambiente">
             <select className={inputClass} value={f.ambiente} onChange={(e) => setF((x) => ({ ...x, ambiente: e.target.value as FiscalConfigTela["ambiente"] }))}>
               <option value="homologacao">Homologação (teste, sem valor fiscal)</option>
               <option value="producao">Produção</option>
             </select>
           </FormField>
+          <FormField label="Série">
+            <input className={inputClass} inputMode="numeric" value={f.serie} onChange={(e) => setF((x) => ({ ...x, serie: Math.max(1, Math.min(999, Number(e.target.value) || 1)) }))} />
+          </FormField>
+        </div>
+        <h3 className="text-sm font-medium text-text-primary mt-2 mb-3 pt-4 border-t border-border">Tributação (confira com o contador)</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Regime (CRT)">
             <select className={inputClass} value={f.crt} onChange={(e) => setF((x) => ({ ...x, crt: Number(e.target.value) as 1 | 2 | 3 }))}>
               <option value={1}>1 · Simples Nacional</option>
@@ -149,28 +151,25 @@ export function AbaFiscal({ fiscal, cofreOk }: { fiscal: FiscalConfigTela | null
             </select>
           </FormField>
           {campo("inscricao_estadual", "Inscrição estadual")}
-          <FormField label="Série">
-            <input className={inputClass} inputMode="numeric" value={f.serie} onChange={(e) => setF((x) => ({ ...x, serie: Math.max(1, Math.min(999, Number(e.target.value) || 1)) }))} />
-          </FormField>
           {campo("cfop_padrao", "CFOP (dentro do estado)", "Ex.: 5102")}
           {campo("cfop_fora_estado", "CFOP (fora do estado)", "Ex.: 6102")}
           {campo("csosn_padrao", "CSOSN (ICMS)", "Ex.: 102 no Simples")}
           {campo("pis_cofins_cst", "CST PIS/COFINS", "Ex.: 07 ou 49")}
         </div>
         {campo("natureza", "Natureza da operação")}
-        <div className="flex justify-between gap-2">
-          {f.ligada ? (
-            <Button variant="ghost" onClick={desligar} disabled={pending}>
-              Desligar NF-e
-            </Button>
-          ) : (
-            <span />
-          )}
-          <Button variant="primary" loading={pending} onClick={salvar}>
-            Salvar
+        {f.ligada && (
+          <Button variant="destructive" size="sm" onClick={desligar} disabled={pending}>
+            Desligar NF-e
           </Button>
-        </div>
+        )}
       </Card>
+      {/* Um "Salvar" só, fora dos cartões: ele grava os dois (antes ficava no segundo, e quem
+          mexia só no primeiro não achava onde salvar). */}
+      <div className="flex justify-end">
+        <Button variant="primary" loading={pending} onClick={salvar}>
+          Salvar configurações fiscais
+        </Button>
+      </div>
       {ConfirmDialog}
     </div>
   );

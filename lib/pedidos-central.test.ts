@@ -148,7 +148,7 @@ describe("montarCentral", () => {
     expect(de("mkt:mp").etapa).toBe("imprimir");
   });
 
-  it("envio pelo SERTÃO (0054): sub-abas de Para Enviar e etiqueta baixada vai para Retirada", () => {
+  it("envio pelo Sertão (0054): sub-abas de Para Enviar e etiqueta baixada vai para Retirada", () => {
     const r = montarCentral({
       vendas: [],
       pedidosCatalogo: [],

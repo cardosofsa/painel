@@ -1,10 +1,10 @@
-# NF-e no SERTÃO
+# NF-e no Sertão
 
 Fase 11.7, migração `0062_fiscal_nfe.sql`.
 
 ## Etapa Emitir
 
-Ao avançar um pedido em **Para Emitir**, o SERTÃO pergunta o que gerar:
+Ao avançar um pedido em **Para Emitir**, o Sertão pergunta o que gerar:
 - **Comprovante do sistema:** não fiscal. O pedido segue para Para Enviar na hora.
 - **NF-e:** nota fiscal pelo emissor. Quando a Sefaz autoriza, o pedido segue para Para Enviar e o DANFE abre para imprimir.
 
@@ -31,19 +31,19 @@ Confira os preços atuais no site de cada um.
    - CFOP, CSOSN e CST de PIS/COFINS.
 2. No **Focus NFe**:
    1. Crie a conta e cadastre a empresa.
-   2. Envie o certificado A1 (arquivo .pfx e senha). O certificado fica no emissor, não no SERTÃO.
+   2. Envie o certificado A1 (arquivo .pfx e senha). O certificado fica no emissor, não no Sertão.
    3. Copie o token da API, de homologação ou de produção.
-3. Em **SERTÃO → Configurações → Fiscal**:
+3. Em **Sertão → Configurações → Fiscal**:
    1. Cole o token (só ali).
    2. Escolha o ambiente. Comece em **Homologação**: as notas de teste não têm valor fiscal.
    3. Preencha série, inscrição estadual e regras.
 4. Em **Produtos**, preencha o **NCM** (8 dígitos) e a origem de cada produto vendido com nota.
 5. Nos **clientes**, preencha o **CPF/CNPJ**. Para entrega, preencha também o endereço completo.
 
-Antes de chamar o emissor, o SERTÃO mostra o que falta: NCM, documento do cliente, endereço, CNPJ ou UF da empresa.
+Antes de chamar o emissor, o Sertão mostra o que falta: NCM, documento do cliente, endereço, CNPJ ou UF da empresa.
 
 ## Limites desta versão
 
 - Só NF-e modelo 55. A NFC-e (cupom do balcão) não está incluída.
-- Pedidos de marketplace (Shopee e Mercado Livre) ainda não emitem nota pelo SERTÃO.
+- Pedidos de marketplace (Shopee e Mercado Livre) ainda não emitem nota pelo Sertão.
 - Cancelamento e carta de correção são feitos pelo painel do emissor.

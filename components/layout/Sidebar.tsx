@@ -73,13 +73,13 @@ export function Sidebar({ abas, ehMaster, abasOperador = null }: { abas: string[
           <Link
             href="/dashboard"
             onClick={fechar}
-            title={recolhida ? "Dashboard" : undefined}
+            title={recolhida ? "Home" : undefined}
             className="shrink-0 hover:opacity-90 transition-opacity"
           >
             <LogoSertao tamanho={28} prioridade />
           </Link>
         )}
-        {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">SERTÃO</span>}
+        {!recolhida && <span className="font-semibold tracking-tight text-text-primary text-sm truncate">Sertão</span>}
       </div>
 
       <nav className="flex-1 py-2 px-3 overflow-y-auto space-y-0.5">
