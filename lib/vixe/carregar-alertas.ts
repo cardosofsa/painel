@@ -15,6 +15,7 @@ import { calcularErosaoMargem, calcularPrevisaoRuptura } from "@/lib/alertas";
 import { zonaMortaDeFaixa, type FaixaComissao } from "@/lib/pricing";
 import {
   alertasContasVencidas,
+  DIAS_AVISO_PAGAR,
   alertasEstoqueMinimo,
   alertasMargem,
   alertasRuptura,
@@ -71,7 +72,7 @@ export async function carregarAlertasVixe(supabase: SupabaseClient, abasLiberada
     tarefas.push(
       contas(supabase, hoje).then(
         (a) => void blocos.push(a),
-        (e) => void falhas.push(`contas e fiado (${mensagem(e)})`),
+        (e) => void falhas.push(`contas e crediário (${mensagem(e)})`),
       ),
     );
   }
@@ -149,15 +150,17 @@ async function contas(supabase: SupabaseClient, hoje: string): Promise<AlertaVix
       .limit(100),
     supabase
       .from("contas_a_pagar_receber")
-      .select("id, tipo, descricao, valor, data_vencimento, referencia_venda_id")
+      // `*`: valor_pago (pagamento parcial) só existe a partir da 0064. Vai até 7 dias à
+      // frente: conta a pagar que vence logo também é aviso.
+      .select("*")
       .eq("status", "pendente")
-      .lt("data_vencimento", hoje)
+      .lte("data_vencimento", diasDepois(hoje, DIAS_AVISO_PAGAR))
       .order("data_vencimento")
-      .limit(100),
+      .limit(150),
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
   ]);
   const parcelas = ok<ParcelaBruta[]>(parcelasRes as never);
-  const cpr = ok<{ id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; data_vencimento: string; referencia_venda_id: string | null }[]>(cprRes);
+  const cpr = ok<{ id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null }[]>(cprRes);
 
   // Venda parcelada no fiado tem as parcelas em `venda_parcelas`; a conta a receber ligada a
   // ela (se houver) seria o mesmo dinheiro contado duas vezes — mesma regra da 0030.
@@ -180,7 +183,7 @@ async function contas(supabase: SupabaseClient, hoje: string): Promise<AlertaVix
     })),
     ...cpr
       .filter((c) => !(c.referencia_venda_id && vendasComParcelas.has(c.referencia_venda_id)))
-      .map((c) => ({ id: c.id, tipo: c.tipo, descricao: c.descricao, valor: c.valor, vencimento: c.data_vencimento })),
+      .map((c) => ({ id: c.id, tipo: c.tipo, descricao: c.descricao, valor: Number(c.valor) - Number(c.valor_pago ?? 0), vencimento: c.data_vencimento })),
   ];
 
   const nomeNegocio = (perfilRes.data as { nome_negocio: string | null } | null)?.nome_negocio?.trim() || null;
@@ -219,4 +222,10 @@ async function precos(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     if (zona) itens.push({ produtoId: produto.id, produtoNome: produto.nome, preco: produto.preco_venda, canalNome: canais.get(canalId)!, zona });
   }
   return alertasZonaMorta(itens);
+}
+
+/** yyyy-mm-dd + n dias (datas locais, sem fuso). */
+function diasDepois(iso: string, n: number): string {
+  const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + n));
+  return d.toISOString().slice(0, 10);
 }

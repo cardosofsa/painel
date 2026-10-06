@@ -54,7 +54,7 @@ export const ROTULO_TIPO_FORMA: Record<TipoFormaPagamento, string> = {
   pix: "Pix",
   cartao_debito: "Cartão de Débito",
   cartao_credito: "Cartão de Crédito",
-  fiado: "Fiado",
+  fiado: "Crediário",
   outro: "Outro",
 };
 
@@ -87,7 +87,7 @@ export function FormaPagamentoModal({
       </FormField>
       <FormField
         label="Tipo"
-        dica="Define o comportamento no PDV: dinheiro/pix entram como entrada; cartão de crédito mostra vezes e taxa de maquineta; fiado não aparece na grade de pagamento (é o botão 'Venda Fiado')."
+        dica="Define o comportamento no PDV: dinheiro/pix entram como entrada; cartão de crédito mostra vezes e taxa de maquineta; crediário não aparece na grade de pagamento (é o botão 'Venda no crediário')."
       >
         <select className={inputClass} value={tipo} onChange={(e) => setTipo(e.target.value as TipoFormaPagamento)}>
           {(Object.keys(ROTULO_TIPO_FORMA) as TipoFormaPagamento[]).map((t) => (

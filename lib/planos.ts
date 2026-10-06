@@ -60,6 +60,23 @@ export function situacaoAssinatura(r: ResumoAssinatura, planos: Pick<Plano, "id"
   return { texto: r.periodo_fim ? `Plano ${nome(r.plano_id)} ativo até ${data(r.periodo_fim)}.` : `Plano ${nome(r.plano_id)} ativo.`, tom: "positive" };
 }
 
+/**
+ * Selo do plano no topo: "Plano Pro", ou "Teste · Pro" enquanto o teste grátis vale.
+ * Teste vencido mostra o plano que está valendo de fato.
+ */
+export function rotuloPlanoTopo(r: Pick<ResumoAssinatura, "plano_id" | "plano_efetivo" | "status">, planos: Pick<Plano, "id" | "nome">[]): string {
+  const nome = (id: string) => planos.find((p) => p.id === id)?.nome ?? id;
+  if (r.status === "teste" && r.plano_efetivo === r.plano_id) return `Teste · ${nome(r.plano_id)}`;
+  return `Plano ${nome(r.plano_efetivo)}`;
+}
+
+/** Existe plano ativo acima do que está valendo (pela ordem do catálogo)? Mostra "Fazer upgrade". */
+export function temPlanoAcima(r: Pick<ResumoAssinatura, "plano_efetivo">, planos: Pick<Plano, "id" | "ativo" | "ordem">[]): boolean {
+  const atual = planos.find((p) => p.id === r.plano_efetivo);
+  if (!atual) return false;
+  return planos.some((p) => p.ativo && p.ordem > atual.ordem);
+}
+
 export function rotuloLimite(n: number | null, unidade: string): string {
   if (n === null) return `${unidade} ilimitados`;
   return `${n.toLocaleString("pt-BR")} ${unidade}`;

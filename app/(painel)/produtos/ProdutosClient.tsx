@@ -127,6 +127,7 @@ function formVazio(armazemPadrao: string | null): ProdutoInput {
 }
 
 export function ProdutosClient({
+  buscaInicial = "",
   produtos,
   categorias,
   fornecedores,
@@ -138,6 +139,7 @@ export function ProdutosClient({
   grupos,
   iaDisponivel,
 }: {
+  buscaInicial?: string;
   produtos: Produto[];
   categorias: Opcao[];
   fornecedores: Opcao[];
@@ -157,7 +159,7 @@ export function ProdutosClient({
   const [ativoFiltro, setAtivoFiltro] = useState<"" | "ativos" | "inativos">("");
   const [exportando, setExportando] = useState(false);
   const [statusFiltro, setStatusFiltro] = useState<(typeof STATUS_FILTROS)[number]>("Todos");
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Produto | null>(null);
   const [form, setForm] = useState<ProdutoInput>(formVazio(armazens[0]?.id ?? null));

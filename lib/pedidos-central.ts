@@ -118,7 +118,10 @@ export interface PedidoCentral {
 export type SubEnvio = "programar" | "programando" | "falha";
 export const ROTULO_SUB_ENVIO: Record<SubEnvio, string> = { programar: "Para programar", programando: "Programando", falha: "Falha" };
 
-/** Sub-aba de Para Enviar (como no ERP): falha ao programar, já programado ou a programar. */
+/**
+ * Sub-aba de Para Enviar (como no ERP): falha ao programar, já programado ou a programar.
+ * Venda do sistema não tem `envio` e cai em "programar" (ela sai de Para Enviar ao programar).
+ */
 export function subEnvio(p: Pick<PedidoCentral, "envio">): SubEnvio {
   if (p.envio?.erro) return "falha";
   return p.envio?.programado ? "programando" : "programar";

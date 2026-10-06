@@ -461,7 +461,10 @@ export const pedidoCompraSchema = z.object({
   data_entrega_prevista: dataIso.nullable(),
   forma_pagamento: z.string().trim().max(100),
   conta_id: uuid,
+  /** true = a prazo (parcelas pendentes); false = à vista, já sai paga (0064). */
   parcelado: z.boolean(),
+  /** Dias entre as parcelas a prazo (30 = mesmo dia de cada mês). */
+  intervalo_dias: z.number().int("Intervalo inválido").min(1, "Intervalo mínimo de 1 dia").max(120, "Intervalo máximo de 120 dias").default(30),
   // Teto obrigatório: `Array.from({ length: parcelas })` com um número enorme vindo do
   // cliente aloca a lista inteira e derruba o processo Node antes de tocar no banco.
   parcelas: z.number().int("Número de parcelas inválido").min(1).max(48, "Máximo de 48 parcelas").nullable(),
@@ -477,6 +480,15 @@ export const pedidoCompraSchema = z.object({
     )
     .min(1, "O pedido precisa ter pelo menos um item")
     .max(500, "Pedido com itens demais"),
+});
+
+/** Pagamento de uma conta a pagar (0064): valor livre, data, conta e "dar por quitada". */
+export const pagamentoContaSchema = z.object({
+  id: uuid,
+  valor: z.number().finite("Valor inválido").positive("Informe o valor pago").max(100_000_000),
+  data: dataIso,
+  conta_id: uuid,
+  quitar: z.boolean(),
 });
 
 /**
@@ -589,6 +601,47 @@ export const dadosEmpresaSchema = z.object({
   bairro: z.string().trim().max(120).nullable(),
   cidade: z.string().trim().max(200).nullable(),
   uf: z.string().trim().max(2).nullable(),
+});
+
+/** Gasto com anúncios (0066): período, canal e as linhas (uma por anúncio/campanha). */
+export const gastosAnunciosSchema = z
+  .object({
+    periodo_inicio: dataIso,
+    periodo_fim: dataIso,
+    loja_id: uuidOpcional,
+    canal: z.string().trim().min(1, "Informe o canal").max(60),
+    origem: z.enum(["shopee_ads", "manual"]),
+    linhas: z
+      .array(
+        z.object({
+          campanha: z.string().trim().max(200),
+          sku: z.string().trim().max(100).nullable(),
+          valor: z.number().finite().min(0).max(10_000_000),
+          pedidos: z.number().int().min(0).max(10_000_000).nullable(),
+          vendas: z.number().finite().min(0).max(100_000_000).nullable(),
+        }),
+      )
+      .min(1, "Nenhum gasto para salvar")
+      .max(2000, "Linhas demais de uma vez"),
+  })
+  .refine((v) => v.periodo_fim >= v.periodo_inicio, { message: "O fim do período vem antes do início", path: ["periodo_fim"] });
+
+/** Repasses lidos do relatório da plataforma (0066). */
+export const repassesSchema = z.object({
+  conta_id: uuid,
+  itens: z
+    .array(z.object({ numero: z.string().trim().min(1).max(80), valor: z.number().finite().min(-10_000_000).max(10_000_000), data: dataIso.nullable() }))
+    .min(1, "Nenhum repasse para conciliar")
+    .max(5000, "No máximo 5.000 pedidos por vez"),
+});
+
+/** Pix e encargos do crediário (0065). Multa limitada a 2% pelo CDC; o banco também confere. */
+export const crediarioConfigSchema = z.object({
+  pix_chave: z.string().trim().max(77, "Chave Pix longa demais").nullable(),
+  pix_nome: z.string().trim().max(25, "O nome no Pix vai até 25 letras").nullable(),
+  pix_cidade: z.string().trim().max(15, "A cidade no Pix vai até 15 letras").nullable(),
+  multa_atraso_pct: z.number().finite().min(0).max(2, "A multa por atraso vai até 2% (Código de Defesa do Consumidor)"),
+  juros_mes_pct: z.number().finite().min(0).max(10, "Juros de até 10% ao mês"),
 });
 
 /** Chave de IA que o usuário cola: sem espaço/quebra de linha (sinal de cópia errada). */

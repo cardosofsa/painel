@@ -31,8 +31,10 @@ export function traduzirErroSupabase(erro: ErroSupabase): string {
   if (constraint && POR_CONSTRAINT[constraint]) return POR_CONSTRAINT[constraint];
 
   // P0001 é `raise exception` das nossas próprias RPCs: a mensagem já foi escrita em pt-BR
-  // pensando no usuário final ("Estoque insuficiente...", "PIN incorreto."). Passa direto.
-  if (erro.code === "P0001") return erro.message;
+  // pensando no usuário final ("Estoque insuficiente...", "PIN incorreto."). Passa direto —
+  // só o nome antigo "fiado" (dentro de `registrar_venda`, 0052) vira "crediário", o nome
+  // que a tela usa desde a 0064, sem reescrever a função de venda inteira.
+  if (erro.code === "P0001") return trocarFiadoPorCrediario(erro.message);
 
   switch (erro.code) {
     case "23505":
@@ -158,4 +160,14 @@ const POR_CODIGO_IA: Record<string, string> = {
 
 export function traduzirErroIA(codigo: string): string {
   return POR_CODIGO_IA[codigo] ?? "Não foi possível falar com a IA agora. Tente de novo em alguns instantes.";
+}
+
+/** "Venda fiado", "comprar fiado", "Limite de fiado" → crediário (mensagens antigas do banco). */
+export function trocarFiadoPorCrediario(msg: string): string {
+  return msg
+    .replace(/\bVenda fiado\b/g, "Venda no crediário")
+    .replace(/\bcomprar fiado\b/g, "comprar no crediário")
+    .replace(/\bde fiado\b/g, "do crediário")
+    .replace(/\bFiado\b/g, "Crediário")
+    .replace(/\bfiado\b/g, "crediário");
 }

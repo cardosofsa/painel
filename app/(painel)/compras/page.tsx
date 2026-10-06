@@ -3,13 +3,14 @@ import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { hojeIsoLocal } from "@/lib/format";
 import { quantidadeSugeridaCompra } from "@/lib/alertas";
 import { ComprasClient, type ItemPedido, type Pedido } from "./ComprasClient";
+import { resumoPagamento } from "@/lib/pagamentos";
 import { consumoDiario, diasDoPrazo, faltaReceber, statusAberto, sugestaoCompras } from "@/lib/compras";
 
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 90;
 
-export default async function ComprasPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
-  const { novo } = await searchParams;
+export default async function ComprasPage({ searchParams }: { searchParams: Promise<{ novo?: string; busca?: string }> }) {
+  const { novo, busca } = await searchParams;
   const supabase = await createClient();
 
   const inicio = new Date();
@@ -42,12 +43,13 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       supabase.from("fornecedores").select("id, nome, cnpj, prazo"),
       supabase
         .from("produtos")
-        .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo")
+        .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo, codigo_barras")
         .order("nome"),
       supabase.from("armazens").select("id, nome").order("nome"),
       supabase.from("contas").select("id, nome").order("nome"),
       supabase.from("formas_pagamento").select("id, nome").order("nome"),
-      supabase.from("contas_a_pagar_receber").select("referencia_pedido_compra_id, conta_id").not("referencia_pedido_compra_id", "is", null),
+      // `*`: valor_pago só existe a partir da 0064 (antes, conta 0 até quitar).
+      supabase.from("contas_a_pagar_receber").select("*").not("referencia_pedido_compra_id", "is", null),
       supabase.from("produto_grupos").select("id, nome"),
     ]);
 
@@ -74,6 +76,15 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       .filter((t) => t.referencia_pedido_compra_id && t.conta_id)
       .map((t) => [t.referencia_pedido_compra_id as string, t.conta_id as string]),
   );
+  // Parcelas de cada pedido → resumo do pagamento (quitadas, em aberto, atraso).
+  const hoje = hojeIsoLocal();
+  const parcelasPorPedido = new Map<string, { status: "pendente" | "pago" | "recebido"; valor: number; valor_pago: number; data_vencimento: string }[]>();
+  for (const t of titulosRes.data ?? []) {
+    const lista = parcelasPorPedido.get(t.referencia_pedido_compra_id) ?? [];
+    const pago = t.status === "pendente" ? Number(t.valor_pago ?? 0) : Number(t.valor_pago || t.valor);
+    lista.push({ status: t.status, valor: Number(t.valor), valor_pago: pago, data_vencimento: t.data_vencimento });
+    parcelasPorPedido.set(t.referencia_pedido_compra_id, lista);
+  }
 
   const pedidos: Pedido[] = (pedidosRes.data ?? []).map((p) => {
     const fornecedor = p.fornecedor_id ? fornecedoresPorId.get(p.fornecedor_id) : undefined;
@@ -97,6 +108,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       forma_pagamento: p.forma_pagamento,
       parcelas: p.parcelas,
       conta_nome: (contaIdPorPedidoId.get(p.id) && contasPorId.get(contaIdPorPedidoId.get(p.id)!)) ?? null,
+      pagamento: parcelasPorPedido.has(p.id) ? resumoPagamento(parcelasPorPedido.get(p.id)!, hoje) : null,
       itens: ((p.pedidos_compra_itens ?? []) as ItemPedido[]).map((i) => ({
         ...i,
         // Antes da 0042 não há `quantidade_recebida`: pedido recebido = tudo chegou.
@@ -167,10 +179,14 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
 
   return (
     <ComprasClient
+      key={busca ?? "inicio"}
+      buscaInicial={busca?.slice(0, 80) ?? ""}
       sugestao={sugestao}
       pedidoInicial={pedidoInicial}
       pedidos={pedidos}
       fornecedores={fornecedoresAtivosRes.data ?? []}
+      // XML da NF-e: o fornecedor é achado pelo CNPJ (inclusive inativo, que volta a valer).
+      cnpjFornecedores={(fornecedoresTodosRes.data ?? []).filter((f) => f.cnpj).map((f) => ({ id: f.id, nome: f.nome, cnpj: f.cnpj as string }))}
       produtos={produtos}
       armazens={armazensRes.data ?? []}
       contas={contasRes.data ?? []}

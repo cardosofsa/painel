@@ -170,7 +170,7 @@ export function CheckoutModal({
         <div className="font-mono text-4xl font-semibold text-text-primary">{formatBRL(total)}</div>
       </div>
 
-      <FormField label="Cliente (opcional, obrigatório no fiado)">
+      <FormField label="Cliente (opcional, obrigatório no crediário)">
         <div className="flex gap-2">
           <select
             className={inputClass}
@@ -181,7 +181,7 @@ export function CheckoutModal({
             {clientesLocais.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
-                {c.permite_fiado ? " (fiado liberado)" : ""}
+                {c.permite_fiado ? " (crediário liberado)" : ""}
               </option>
             ))}
           </select>
@@ -212,7 +212,7 @@ export function CheckoutModal({
               checked={novoFiado}
               onChange={(e) => setNovoFiado(e.target.checked)}
             />
-            Permitir fiado
+            Permitir crediário
           </label>
           <Button variant="secondary" className="w-full" onClick={cadastrarCliente} loading={criandoCliente}>
             Cadastrar e selecionar
@@ -330,7 +330,7 @@ export function CheckoutModal({
 
       {podeFiado && (
         <>
-          <FormField label="Vencimento do fiado (opcional — padrão 30 dias)">
+          <FormField label="Vencimento do crediário (opcional — padrão 30 dias)">
             <input type="date" className={inputClass} value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
           </FormField>
 
@@ -341,7 +341,7 @@ export function CheckoutModal({
               checked={parcelarFiado}
               onChange={(e) => setParcelarFiado(e.target.checked)}
             />
-            Parcelar o fiado
+            Parcelar o crediário
           </label>
 
           {parcelarFiado && (
@@ -379,7 +379,7 @@ export function CheckoutModal({
 
           {estouraLimite && (
             <p className="text-xs text-negative mb-3">
-              Este fiado ({formatBRL(restante)}) passa do crédito disponível de {cliente?.nome}
+              Este crediário ({formatBRL(restante)}) passa do crédito disponível de {cliente?.nome}
               {limiteDisponivel !== null && ` (${formatBRL(Math.max(0, limiteDisponivel))} livre)`} — o sistema pode
               recusar ao confirmar.
             </p>
@@ -393,10 +393,10 @@ export function CheckoutModal({
             variant="secondary"
             className="flex-1"
             disabled={!podeFiado || salvando}
-            title={podeFiado ? undefined : `${cliente.nome} não tem fiado liberado`}
+            title={podeFiado ? undefined : `${cliente.nome} não tem crediário liberado`}
             onClick={() => onConfirmar(montarDados("fiado"))}
           >
-            Venda Fiado
+            Venda no crediário
           </Button>
         )}
         <Button variant="primary" className="flex-1" loading={salvando} onClick={() => onConfirmar(montarDados("paga"))}>

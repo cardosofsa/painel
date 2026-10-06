@@ -5,6 +5,7 @@ import { StatusChip } from "@/components/ui/Badge";
 import { formatBRL, formatarDataIso } from "@/lib/format";
 import { faltaReceber, STATUS_COMPRA, type StatusCompra } from "@/lib/compras";
 import type { Pedido } from "@/app/(painel)/compras/ComprasClient";
+import { HistoricoPagamentos, type ContaOpcao } from "@/components/financeiro/HistoricoPagamentos";
 
 function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
@@ -15,8 +16,8 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
   );
 }
 
-/** Detalhe do pedido de compra: dados, itens com o que já chegou e o total. */
-export function DetalhePedidoModal({ pedido, onClose }: { pedido: Pedido; onClose: () => void }) {
+/** Detalhe do pedido de compra: dados, itens com o que já chegou, o total e os pagamentos. */
+export function DetalhePedidoModal({ pedido, contas, onClose }: { pedido: Pedido; contas: ContaOpcao[]; onClose: () => void }) {
   const st = STATUS_COMPRA[pedido.status as StatusCompra] ?? { rotulo: pedido.status, tom: "neutral" as const };
   return (
     <Modal open onClose={onClose} title={`Pedido ${pedido.numero}`}>
@@ -38,7 +39,7 @@ export function DetalhePedidoModal({ pedido, onClose }: { pedido: Pedido; onClos
           </Campo>
           <Campo rotulo="Forma de pagamento">
             {pedido.forma_pagamento ?? "—"}
-            {pedido.parcelas && pedido.parcelas > 1 ? ` em ${pedido.parcelas}x` : ""}
+            {pedido.pagamento && pedido.pagamento.total > 0 && (pedido.pagamento.total > 1 || pedido.pagamento.quitadas === 0) ? ` · a prazo${pedido.pagamento.total > 1 ? ` em ${pedido.pagamento.total}x` : ""}` : pedido.parcelas && pedido.parcelas > 1 ? ` em ${pedido.parcelas}x` : ""}
           </Campo>
           <Campo rotulo="Conta">{pedido.conta_nome ?? "—"}</Campo>
           {pedido.nf && <Campo rotulo="Nota fiscal">{pedido.nf}</Campo>}
@@ -76,6 +77,11 @@ export function DetalhePedidoModal({ pedido, onClose }: { pedido: Pedido; onClos
         <div className="flex items-center justify-between pt-3 border-t border-border">
           <span className="text-sm text-text-secondary">Valor total</span>
           <span className="font-mono text-text-primary font-semibold">{formatBRL(pedido.valor_total)}</span>
+        </div>
+
+        <div>
+          <div className="text-xs text-text-tertiary mb-2">Pagamentos</div>
+          <HistoricoPagamentos alvo={{ pedidoId: pedido.id }} contas={contas} />
         </div>
       </div>
     </Modal>

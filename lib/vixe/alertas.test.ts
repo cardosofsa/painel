@@ -62,7 +62,7 @@ describe("contas e fiado", () => {
     expect(diasEntre("2026-09-30", "2026-09-30")).toBe(0);
   });
 
-  it("só entra o que já venceu; mais atrasado primeiro", () => {
+  it("só entra o que já venceu (pagar que vence hoje vira aviso); mais atrasado primeiro", () => {
     const r = alertasContasVencidas(
       [
         { id: "1", tipo: "receber", descricao: "A", valor: 10, vencimento: "2026-09-29" },
@@ -72,7 +72,7 @@ describe("contas e fiado", () => {
       "2026-09-30",
       null,
     );
-    expect(r.map((x) => x.id)).toEqual(["conta-3", "conta-1"]);
+    expect(r.map((x) => x.id)).toEqual(["conta-3", "conta-1", "avencer-2"]);
     expect(r[0].gravidade).toBe("alta");
     expect(r[1].gravidade).toBe("media");
   });
@@ -110,5 +110,18 @@ describe("preço", () => {
     ]);
     expect(z.gravidade).toBe("media");
     expect(z.acoes[0]).toMatchObject({ tipo: "ajustar_preco", produtoId: "p", preco: 79.99 });
+  });
+});
+
+describe("conta a pagar a vencer", () => {
+  it("avisa até 7 dias antes; receber a vencer não vira alerta", () => {
+    const itens = [
+      { id: "a", tipo: "pagar" as const, descricao: "Pedido MV-1", valor: 50, vencimento: "2026-10-07" },
+      { id: "b", tipo: "pagar" as const, descricao: "Pedido MV-2", valor: 50, vencimento: "2026-10-20" },
+      { id: "c", tipo: "receber" as const, descricao: "Avulsa", valor: 50, vencimento: "2026-10-07" },
+    ];
+    const r = alertasContasVencidas(itens, "2026-10-05", null);
+    expect(r.map((x) => x.id)).toEqual(["avencer-a"]);
+    expect(r[0].titulo).toContain("vence em 2 dias");
   });
 });

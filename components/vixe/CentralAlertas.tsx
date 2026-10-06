@@ -133,7 +133,7 @@ export function CentralAlertas({
             <CircleCheck size={28} className="text-positive" />
             <p className="text-sm font-medium text-text-primary">Nada pendente{filtro !== "todas" ? ` em ${ROTULO_CATEGORIA[filtro]}` : ""}</p>
             <p className="text-xs text-text-tertiary max-w-sm">
-              A Vixe olha estoque, custos, contas vencidas, fiado e preços. Quando algo precisar de você, aparece aqui.
+              A Vixe olha estoque, custos, contas vencidas, crediário e preços. Quando algo precisar de você, aparece aqui.
             </p>
           </div>
         </Card>

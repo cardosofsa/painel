@@ -149,7 +149,7 @@ export default async function Home() {
             itens={[
               "Lucro e margem de cada venda, com o detalhe ao passar o mouse",
               "Faturamento e lucro por dia, por produto, curva ABC e por estado",
-              "Fiado com parcelas e comprovante em imagem",
+              "Crediário com parcelas, carnê e comprovante em imagem",
               "Financeiro com contas a pagar e a receber",
             ]}
             imagem={

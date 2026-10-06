@@ -40,6 +40,12 @@ export function somarDias(dia: string, n: number): string {
   return diaLocal(d);
 }
 
+/** Os últimos `n` dias até hoje (a janela inteira que a tela carregou). */
+export function periodoDosUltimosDias(n: number, agora = new Date()): Periodo {
+  const hoje = diaLocal(agora);
+  return { inicio: somarDias(hoje, -(Math.max(1, n) - 1)), fim: hoje };
+}
+
 export function periodoDoAtalho(a: AtalhoPeriodo, agora = new Date()): Periodo {
   const hoje = diaLocal(agora);
   switch (a) {

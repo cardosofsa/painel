@@ -8,7 +8,8 @@ interface ResumoCliente {
   total_comprado: number;
 }
 
-export default async function ClientesPage() {
+export default async function ClientesPage({ searchParams }: { searchParams: Promise<{ busca?: string }> }) {
+  const { busca } = await searchParams;
   const supabase = await createClient();
 
   // A soma por cliente é feita no banco. Antes esta página baixava a tabela `vendas`
@@ -38,5 +39,5 @@ export default async function ClientesPage() {
     total_comprado: resumoPorCliente.get(c.id)?.total ?? 0,
   }));
 
-  return <ClientesClient clientes={clientes} />;
+  return <ClientesClient key={busca ?? "inicio"} clientes={clientes} buscaInicial={busca?.slice(0, 80) ?? ""} />;
 }

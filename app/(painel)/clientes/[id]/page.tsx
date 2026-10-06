@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { carregarCrediario } from "@/lib/crediario-servidor";
 import { lancarErroSupabase } from "@/lib/erros";
 import { contatoDoNegocio } from "@/lib/empresa";
 import { ClienteDetalheClient, type ClienteDetalhe, type VendaCliente } from "./ClienteDetalheClient";
@@ -66,7 +67,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
     .filter((v) => v.total_parcelas_fiado && v.total_parcelas_fiado > 1)
     .map((v) => v.id);
 
-  const [cprRes, parcelasRes] = await Promise.all([
+  const [cprRes, parcelasRes, crediario] = await Promise.all([
     vendaIds.length > 0
       ? supabase
           .from("contas_a_pagar_receber")
@@ -76,6 +77,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
     vendaIdsParcelados.length > 0
       ? supabase.from("venda_parcelas").select("venda_id, status, data_pagamento").in("venda_id", vendaIdsParcelados)
       : Promise.resolve({ data: [] as ParcelaBruta[], error: null }),
+    carregarCrediario(supabase),
   ]);
 
   if (cprRes.error) lancarErroSupabase(cprRes.error);
@@ -126,6 +128,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       cliente={cliente}
       vendas={vendas}
       contas={contasRes.data ?? []}
+      regraCrediario={crediario.regra}
       fiadoEmUso={Number(fiadoEmUsoRes.data ?? 0)}
       nomeNegocio={perfilRes.data?.nome_negocio ?? null}
       logoUrl={perfilRes.data?.logo_url ?? null}

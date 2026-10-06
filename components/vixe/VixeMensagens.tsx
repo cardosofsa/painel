@@ -6,15 +6,15 @@ import { Copy, MessageCircle, Send } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { linkWhatsapp, textoResumoDia, type AssuntoMensagem } from "@/lib/whatsapp";
+import { linkWhatsapp, textoResumoDia, ROTULO_ASSUNTO, type AssuntoMensagem } from "@/lib/whatsapp";
 import type { DadosMensagens } from "@/lib/vixe/mensagens-servidor";
 import { marcarMensagemEnviada } from "@/app/(painel)/vixe/mensagens/actions";
 
-const ASSUNTO: Record<AssuntoMensagem, { rotulo: string; tom: string }> = {
-  pedido: { rotulo: "Pedido recebido", tom: "bg-surface-2 text-text-secondary" },
-  pago: { rotulo: "Pagamento confirmado", tom: "bg-positive-soft text-positive" },
-  enviado: { rotulo: "Enviado", tom: "bg-accent-soft text-accent" },
-  fiado: { rotulo: "Fiado", tom: "bg-negative-soft text-negative" },
+const TOM: Record<AssuntoMensagem, string> = {
+  pedido: "bg-surface-2 text-text-secondary",
+  pago: "bg-positive-soft text-positive",
+  enviado: "bg-accent-soft text-accent",
+  fiado: "bg-negative-soft text-negative",
 };
 
 /**
@@ -41,14 +41,14 @@ export function VixeMensagens({ dados }: { dados: DadosMensagens }) {
         {!dados.registroOk && <p className="text-xs text-negative">Sem a migração 0061 o SERTÃO não lembra o que já foi enviado: a lista volta ao recarregar.</p>}
         {lista.length === 0 ? (
           <Card>
-            <EmptyState icon={MessageCircle} title="Nenhum aviso pendente" description="Quando um pedido chegar, sair para entrega ou um fiado estiver vencendo, a mensagem pronta aparece aqui." />
+            <EmptyState icon={MessageCircle} title="Nenhum aviso pendente" description="Quando um pedido chegar, sair para entrega ou uma parcela do crediário estiver vencendo, a mensagem pronta aparece aqui." />
           </Card>
         ) : (
           lista.map((m) => (
             <Card key={m.chave} className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`text-[10px] font-medium rounded px-1.5 py-0.5 ${ASSUNTO[m.assunto].tom}`}>{ASSUNTO[m.assunto].rotulo}</span>
+                  <span className={`text-[10px] font-medium rounded px-1.5 py-0.5 ${TOM[m.assunto]}`}>{ROTULO_ASSUNTO[m.assunto]}</span>
                   <span className="font-medium text-text-primary truncate">{m.cliente || "Cliente"}</span>
                   <span className="text-xs font-mono text-text-tertiary">{m.referencia}</span>
                 </div>

@@ -28,6 +28,7 @@ export interface PedidoCompraInput {
   conta_id: string;
   parcelado: boolean;
   parcelas: number | null;
+  intervalo_dias?: number;
   data_primeiro_vencimento: string;
   itens: ItemPedidoInput[];
 }
@@ -53,7 +54,11 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
  * importação. `frete`/`observacao` (0042) só vão quando preenchidos: antes da migração as
  * colunas não existem, e mandá-las vazias derrubaria o cadastro.
  */
-async function gravarPedido(supabase: Supabase, v: PedidoCompraInput, extra: { frete?: number; observacao?: string | null } = {}) {
+async function gravarPedido(
+  supabase: Supabase,
+  v: PedidoCompraInput & { intervalo_dias: number },
+  extra: { frete?: number; observacao?: string | null; parcelasNota?: { valor: number; vencimento: string }[] | null } = {},
+) {
   const frete = Math.max(0, extra.frete ?? 0);
   const valorTotal = v.itens.reduce((acc, it) => acc + it.quantidade * it.custo_unitario, 0) + frete;
 
@@ -83,6 +88,30 @@ async function gravarPedido(supabase: Supabase, v: PedidoCompraInput, extra: { f
   const { error: erroItens } = await supabase.from("pedidos_compra_itens").insert(itensParaInserir);
   if (erroItens) lancarErroSupabase(erroItens);
 
+  // Duplicatas da nota (0065): cada parcela com o valor e o vencimento que vieram no XML.
+  if (extra.parcelasNota?.length) {
+    const { error } = await supabase.rpc("gerar_pagamento_compra_parcelas", { p_pedido: pedido.id, p_parcelas: extra.parcelasNota, p_conta_id: v.conta_id });
+    if (error?.code === "PGRST202") throw new Error("Usar as parcelas da nota precisa da migração 0065. O pedido foi criado sem parcelas; aplique a migração e lance o pagamento.");
+    if (error) lancarErroSupabase(error);
+    return pedido;
+  }
+
+  // Parcelas no banco, numa transação só (0064). À vista já nasce paga.
+  const { error: erroPagamento } = await supabase.rpc("gerar_pagamento_compra", {
+    p_pedido: pedido.id,
+    p_a_prazo: v.parcelado,
+    p_parcelas: v.parcelado ? Math.max(1, v.parcelas ?? 1) : 1,
+    p_primeiro_venc: v.data_primeiro_vencimento,
+    p_intervalo_dias: v.intervalo_dias,
+    p_conta_id: v.conta_id,
+  });
+  if (erroPagamento?.code === "PGRST202") await gravarParcelasSemMigracao(supabase, v, pedido, valorTotal);
+  else if (erroPagamento) lancarErroSupabase(erroPagamento);
+  return pedido;
+}
+
+/** Sem a 0064 a RPC não existe: grava as parcelas pendentes como antes (mensais). */
+async function gravarParcelasSemMigracao(supabase: Supabase, v: PedidoCompraInput, pedido: { id: string; numero: string }, valorTotal: number) {
   const parcelas = v.parcelado ? Math.max(1, v.parcelas ?? 1) : 1;
   const valorParcela = Math.round((valorTotal / parcelas) * 100) / 100;
   const titulos = Array.from({ length: parcelas }, (_, i) => {
@@ -92,16 +121,14 @@ async function gravarPedido(supabase: Supabase, v: PedidoCompraInput, extra: { f
       tipo: "pagar" as const,
       descricao: parcelas > 1 ? `Pedido ${pedido.numero} — parcela ${i + 1}/${parcelas}` : `Pedido ${pedido.numero}`,
       valor,
-      data_vencimento: somarMeses(v.data_primeiro_vencimento, i),
+      data_vencimento: v.parcelado ? somarMeses(v.data_primeiro_vencimento, i) : v.data_pedido,
       status: "pendente" as const,
       conta_id: v.conta_id,
       referencia_pedido_compra_id: pedido.id,
     };
   });
-
-  const { error: erroTitulos } = await supabase.from("contas_a_pagar_receber").insert(titulos);
-  if (erroTitulos) lancarErroSupabase(erroTitulos);
-  return pedido;
+  const { error } = await supabase.from("contas_a_pagar_receber").insert(titulos);
+  if (error) lancarErroSupabase(error);
 }
 
 export async function criarPedidoCompra(dados: PedidoCompraInput) {
@@ -146,8 +173,10 @@ export async function importarPedidosCompra(
         data_entrega_prevista: null,
         forma_pagamento: comum.forma_pagamento,
         conta_id: comum.conta_id,
-        parcelado: false,
-        parcelas: null,
+        // A planilha traz só um vencimento: vira uma parcela a pagar nessa data.
+        parcelado: true,
+        parcelas: 1,
+        intervalo_dias: 30,
         data_primeiro_vencimento: comum.data_primeiro_vencimento,
         itens: p.itens,
       });
@@ -247,5 +276,50 @@ export async function definirTransitoPedido(pedidoId: string, emTransito: boolea
     if (error) lancarErroSupabase(error);
     if (!data?.length) throw new Error("Este pedido já mudou de situação. Atualize a página.");
     revalidateTudo();
+  });
+}
+
+const nfeImportSchema = z.object({
+  novo_fornecedor: z.object({ nome: z.string().trim().min(1).max(200), cnpj: z.string().trim().max(32) }).nullable(),
+  frete: z.number().finite().min(0).max(10_000_000),
+  chave: z.string().regex(/^\d{44}$/).nullable(),
+  parcelas_nota: z
+    .array(z.object({ valor: z.number().finite().positive().max(10_000_000), vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .max(48)
+    .nullable(),
+});
+
+/**
+ * Pedido de compra a partir do XML da NF-e do fornecedor (Fase 13.4). A tela já leu a nota e
+ * a pessoa conferiu os vínculos; aqui: fornecedor (cria se for novo, pelo CNPJ), o pedido com
+ * o nº da nota e as parcelas — as duplicatas da nota quando vieram, ou o pagamento escolhido.
+ */
+export async function importarNfeCompra(
+  dados: Omit<PedidoCompraInput, "fornecedor_id"> & { fornecedor_id: string | null },
+  nota: { novo_fornecedor: { nome: string; cnpj: string } | null; frete: number; chave: string | null; parcelas_nota: { valor: number; vencimento: string }[] | null },
+) {
+  return comResultado(async () => {
+    const n = validar(nfeImportSchema, nota);
+    const supabase = await createClient();
+    let fornecedorId = dados.fornecedor_id;
+    if (!fornecedorId) {
+      if (!n.novo_fornecedor) throw new Error("Escolha o fornecedor.");
+      const { data, error } = await supabase
+        .from("fornecedores")
+        .insert({ nome: n.novo_fornecedor.nome, cnpj: n.novo_fornecedor.cnpj, contato: "", telefone: "", cidade: "", prazo: "", status: "ativo" })
+        .select("id")
+        .single();
+      if (error) lancarErroSupabase(error);
+      fornecedorId = data!.id as string;
+    }
+    const v = validar(pedidoCompraSchema, { ...dados, fornecedor_id: fornecedorId });
+    const pedido = await gravarPedido(supabase, v, {
+      frete: n.frete,
+      observacao: n.chave ? `NF-e ${n.chave}` : null,
+      parcelasNota: n.parcelas_nota,
+    });
+    revalidateTudo();
+    revalidatePath("/fornecedores");
+    return { numero: pedido.numero as string };
   });
 }

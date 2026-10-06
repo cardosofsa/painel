@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, ShoppingCart, Check, ArrowRight, Package } from "lucide-react";
+import { Bell, ShoppingCart, Check, ArrowRight, Package, MessageCircle, Send } from "lucide-react";
 import { IconeMarca } from "@/components/ui/IconeMarca";
 import { executarComToast } from "@/lib/acao-cliente";
 import { marcarAlertaLido, marcarTodosAlertasLidos } from "@/app/(painel)/alertas-actions";
+import { marcarMensagemEnviada } from "@/app/(painel)/vixe/mensagens/actions";
+import { linkWhatsapp, ROTULO_ASSUNTO, type MensagemPendente } from "@/lib/whatsapp";
 
 export interface AlertaSino {
   id: string;
@@ -22,12 +25,18 @@ export interface AlertaSino {
  * Sino da barra do topo: pedidos novos (catálogo, Shopee) e estoque mínimo. Pedido leva ao
  * pedido em Vendas; estoque abre um pedido de compra com o produto preenchido. Os dois
  * podem ser só marcados como lidos.
+ *
+ * Também cada aviso de WhatsApp de Vixe → Mensagens vira uma notificação: enviar ou pular
+ * grava em `mensagens_enviadas` (0061) e ele sai daqui e de lá.
  */
-export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
+export function AlertasSino({ alertas, mensagens = [], verVixe = false }: { alertas: AlertaSino[]; mensagens?: MensagemPendente[]; verVixe?: boolean }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [pending, startTransition] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
+  // Some na hora; a revalidação do layout confirma em seguida.
+  const [feitas, setFeitas] = useState<Set<string>>(new Set());
+  const whatsapp = mensagens.filter((m) => !feitas.has(m.chave));
 
   useEffect(() => {
     function fora(e: MouseEvent) {
@@ -46,6 +55,20 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
   function todosLidos() {
     startTransition(async () => {
       await executarComToast(marcarTodosAlertasLidos(), { erro: "Erro ao marcar os alertas" });
+    });
+  }
+
+  function concluirMensagem(chave: string) {
+    setFeitas((s) => new Set(s).add(chave));
+    startTransition(async () => {
+      const r = await executarComToast(marcarMensagemEnviada(chave), { erro: "Erro ao registrar a mensagem" });
+      // Não ficou registrada: volta para o sino, senão reapareceria só no próximo carregamento.
+      if (!r.ok)
+        setFeitas((s) => {
+          const n = new Set(s);
+          n.delete(chave);
+          return n;
+        });
     });
   }
 
@@ -68,7 +91,7 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
     });
   }
 
-  const total = alertas.length;
+  const total = alertas.length + whatsapp.length;
 
   return (
     <div className="relative" ref={ref}>
@@ -89,7 +112,7 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
         <div className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-2rem))] bg-surface-1 border border-border rounded-md shadow-elev-2 text-sm z-30">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="font-medium text-text-primary">Avisos</span>
-            {total > 1 && (
+            {alertas.length > 1 && (
               <button onClick={todosLidos} disabled={pending} className="text-xs text-accent hover:underline disabled:opacity-50">
                 Marcar todos como lidos
               </button>
@@ -146,7 +169,46 @@ export function AlertasSino({ alertas }: { alertas: AlertaSino[] }) {
                 </li>
                 );
               })}
+              {whatsapp.map((m) => (
+                <li key={m.chave} className="px-3 py-2.5">
+                  <div className="flex items-start gap-2">
+                    <MessageCircle size={15} className="text-positive shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-text-primary leading-snug">
+                        {ROTULO_ASSUNTO[m.assunto]}: {m.cliente || "Cliente"} <span className="font-mono text-xs text-text-tertiary">{m.referencia}</span>
+                      </p>
+                      <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{m.texto}</p>
+                      <p className="text-[11px] text-text-tertiary mt-0.5">{new Date(m.quando).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <a
+                      href={linkWhatsapp(m.whatsapp, m.texto)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => concluirMensagem(m.chave)}
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-accent text-accent-on text-xs font-medium hover:bg-accent-hover"
+                    >
+                      <Send size={12} />
+                      Enviar no WhatsApp
+                    </a>
+                    <button
+                      onClick={() => concluirMensagem(m.chave)}
+                      disabled={pending}
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border text-xs text-text-secondary hover:bg-surface-2 disabled:opacity-50"
+                    >
+                      Pular
+                    </button>
+                  </div>
+                </li>
+              ))}
             </ul>
+          )}
+          {/* Estoque, margem, preço, contas e crediário: a lista completa mora na Vixe. */}
+          {verVixe && (
+            <Link href="/vixe" onClick={() => setAberto(false)} className="block border-t border-border px-3 py-2 text-center text-xs text-accent hover:bg-surface-2">
+              Ver todos os alertas na Vixe ›
+            </Link>
           )}
         </div>
       )}

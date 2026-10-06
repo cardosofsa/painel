@@ -11,6 +11,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
+import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { formatBRL } from "@/lib/format";
 import {
   criarCategoria,
@@ -30,6 +31,7 @@ import {
   type ArmazemInput,
   type FormaPagamentoInput,
   type DadosEmpresaInput,
+  type CrediarioConfig,
 } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { AbaConta } from "@/components/configuracoes/AbaConta";
@@ -96,7 +98,22 @@ export const ICONES_CANAL: Record<string, LucideIcon> = {
 };
 
 const ABAS = ["Canais de Venda", "Categorias", "Armazéns", "Transações", "Frete", "Fiscal", "Equipe", "IA", "Dados", "Plano", "Conta"] as const;
-const ABAS_TABS = ABAS.map((a) => ({ value: a, label: a }));
+/** As 11 telas em 5 grupos: menos abas na tela, e o que é parecido fica junto. */
+const GRUPOS: { id: string; rotulo: string; abas: (typeof ABAS)[number][] }[] = [
+  { id: "vendas", rotulo: "Vendas", abas: ["Canais de Venda", "Transações", "Frete"] },
+  { id: "loja", rotulo: "Loja", abas: ["Conta", "Categorias", "Armazéns"] },
+  { id: "fiscal-ia", rotulo: "Fiscal e IA", abas: ["Fiscal", "IA"] },
+  { id: "equipe", rotulo: "Equipe e plano", abas: ["Equipe", "Plano"] },
+  { id: "dados", rotulo: "Dados", abas: ["Dados"] },
+];
+const GRUPOS_TABS = GRUPOS.map((g) => ({ value: g.id, label: g.rotulo }));
+const grupoDaAba = (a: (typeof ABAS)[number]) => GRUPOS.find((g) => g.abas.includes(a)) ?? GRUPOS[0];
+
+/** `?aba=plano` (link do plano no topo) → "Plano". Sem parâmetro ou desconhecido: a primeira. */
+function abaDaUrl(param: string | undefined): (typeof ABAS)[number] {
+  const alvo = (param ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return ABAS.find((a) => a.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, "-") === alvo) ?? "Canais de Venda";
+}
 
 export function ConfiguracoesClient({
   categorias,
@@ -116,7 +133,13 @@ export function ConfiguracoesClient({
   plano,
   fiscal,
   equipe,
+  abaUrl,
+  crediario = null,
 }: {
+  /** Pix e encargos do crediário (0065); null = migração ausente. */
+  crediario?: CrediarioConfig | null;
+  /** `?aba=` da URL: aba aberta ao entrar. */
+  abaUrl?: string;
   /** 0063; null = migração ausente. */
   equipe: DadosEquipe | null;
   /** 0062; null = migração ausente. */
@@ -142,7 +165,7 @@ export function ConfiguracoesClient({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [aba, setAba] = useState<(typeof ABAS)[number]>("Canais de Venda");
+  const [aba, setAba] = useState<(typeof ABAS)[number]>(() => abaDaUrl(abaUrl));
 
   const [modalConta, setModalConta] = useState<Conta | "novo" | null>(null);
   const [modalArmazem, setModalArmazem] = useState<Armazem | "novo" | null>(null);
@@ -243,7 +266,12 @@ export function ConfiguracoesClient({
     <>
       <PageHeader title="Configurações do Negócio" />
 
-      <Tabs tabs={ABAS_TABS} value={aba} onChange={setAba} className="mb-6" />
+      <Tabs tabs={GRUPOS_TABS} value={grupoDaAba(aba).id} onChange={(id) => setAba(GRUPOS.find((g) => g.id === id)?.abas[0] ?? aba)} className="mb-4" />
+      {grupoDaAba(aba).abas.length > 1 && (
+        <div className="mb-6">
+          <SubAbas itens={grupoDaAba(aba).abas.map((a) => ({ id: a, rotulo: a }))} valor={aba} onChange={setAba} />
+        </div>
+      )}
 
       <TabPanel key={aba} tabValue={aba}>
       {aba === "Canais de Venda" && <AbaCanais canais={canais} lojas={lojas} marketplace={marketplace} />}
@@ -412,7 +440,7 @@ export function ConfiguracoesClient({
       {aba === "IA" && <AbaIA ias={ias} cofreOk={cofreOk} iaSistemaOk={iaSistemaOk} teste={teste} />}
       {aba === "Dados" && <AbaDados armazens={armazens.map((a) => ({ id: a.id, nome: a.nome }))} />}
       {aba === "Conta" && (
-        <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} />
+        <AbaConta perfil={perfil} email={email} backup={{ categorias, canais, contas, armazens }} crediario={crediario} />
       )}
 
       </TabPanel>

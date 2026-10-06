@@ -3,6 +3,7 @@ import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { carregarVendasRelatorio } from "@/lib/relatorios-servidor";
 import { hojeIsoLocal, formatarDataIso, dataLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
+import type { PassoInicial } from "@/components/dashboard/PrimeirosPassos";
 import { DashboardClient, type Vencimento, type Compromisso } from "./DashboardClient";
 import { MasterDashboardClient } from "./MasterDashboardClient";
 import type { ContaAdmin } from "../admin/AdminClient";
@@ -85,11 +86,15 @@ export default async function DashboardPage() {
     compromissosRes,
     vendasRes,
     vendasRelatorio,
+    perfilRes,
+    lojasCountRes,
+    vendasCountRes,
+    mktCountRes,
   ] = await Promise.all([
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       supabase
         .from("produtos")
-        .select("id, sku, nome, estoque, estoque_minimo")
+        .select("id, sku, nome, estoque, estoque_minimo, ativo")
         .order("estoque_minimo", { ascending: false }),
       supabase
         .from("pedidos_compra")
@@ -99,7 +104,8 @@ export default async function DashboardPage() {
       supabase.from("fornecedores").select("id, nome"),
       supabase
         .from("contas_a_pagar_receber")
-        .select("id, tipo, descricao, valor, data_vencimento, status")
+        // `*`: valor_pago (pagamento parcial) só existe a partir da 0064.
+        .select("*")
         .eq("status", "pendente")
         .order("data_vencimento")
         .limit(8),
@@ -122,7 +128,23 @@ export default async function DashboardPage() {
         .gte("data_venda", inicioVendas.toISOString()),
       // Todas as origens (PDV, catálogo, Shopee) para o painel de vendas: este mês + o anterior.
       carregarVendasRelatorio(supabase, 62),
+      // Primeiros passos: o que já está configurado. `*`: onboarding_oculto só a partir da 0065.
+      supabase.from("perfil_negocio").select("*").maybeSingle(),
+      supabase.from("lojas_canal").select("id", { count: "exact", head: true }),
+      supabase.from("vendas").select("id", { count: "exact", head: true }),
+      supabase.from("pedidos_marketplace").select("id", { count: "exact", head: true }),
     ]);
+
+  const perfil = perfilRes.data as Record<string, unknown> | null;
+  const primeirosPassos: PassoInicial[] | null = perfil?.onboarding_oculto
+    ? null
+    : [
+        { id: "loja", rotulo: "Dados da loja", ajuda: "Nome, regime e alíquota do imposto.", href: "/configuracoes?aba=conta", feito: !!String(perfil?.nome_negocio ?? "").trim() },
+        { id: "conta", rotulo: "Conta de recebimento", ajuda: "Caixa, banco ou Pix onde o dinheiro entra.", href: "/configuracoes?aba=transacoes", feito: (contasRes.data ?? []).length > 0 },
+        { id: "produto", rotulo: "Primeiro produto", ajuda: "Com custo, para o lucro sair certo.", href: "/produtos", feito: (produtosRes.data ?? []).length > 0 },
+        { id: "canal", rotulo: "Canal de venda", ajuda: "Shopee, Mercado Livre, catálogo ou loja física.", href: "/configuracoes?aba=canais-de-venda", feito: (lojasCountRes.count ?? 0) > 0 },
+        { id: "venda", rotulo: "Primeira venda", ajuda: "Pelo PDV ou importando os pedidos.", href: "/pdv", feito: (vendasCountRes.count ?? 0) + (mktCountRes.count ?? 0) > 0 },
+      ];
 
   if (contasRes.error) throw new Error(contasRes.error.message);
   if (produtosRes.error) throw new Error(produtosRes.error.message);
@@ -155,7 +177,9 @@ export default async function DashboardPage() {
     precificacoesMes: precificacoesMesRes.count ?? 0,
   };
 
-  const produtosBaixoEstoque = (produtosRes.data ?? []).filter((p) => p.estoque <= p.estoque_minimo);
+  // Mesma regra do alerta de estoque mínimo (gatilho da 0034): produto ativo, com mínimo
+  // definido e no mínimo ou abaixo. Antes entrava produto inativo e mínimo 0 com estoque 0.
+  const produtosBaixoEstoque = (produtosRes.data ?? []).filter((p) => p.ativo !== false && p.estoque_minimo > 0 && p.estoque <= p.estoque_minimo);
 
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
   const pedidosPendentes = (pedidosRes.data ?? []).map((p) => ({
@@ -172,7 +196,7 @@ export default async function DashboardPage() {
       vencimento: formatarDataIso(c.data_vencimento),
       tipo: c.tipo === "pagar" ? "A Pagar" : "A Receber",
       descricao: c.descricao,
-      valor: c.tipo === "pagar" ? -c.valor : c.valor,
+      valor: c.tipo === "pagar" ? -(c.valor - Number(c.valor_pago ?? 0)) : c.valor,
     };
   });
 
@@ -188,6 +212,7 @@ export default async function DashboardPage() {
       vendas={vendas}
       compromissos={compromissos}
       vendasRelatorio={vendasRelatorio}
+      primeirosPassos={primeirosPassos}
     />
   );
 }

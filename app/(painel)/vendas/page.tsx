@@ -9,8 +9,8 @@ import { VendasClient, type Venda } from "./VendasClient";
 /** Janela máxima carregada; os filtros de período da tela recortam daqui. */
 const DIAS_JANELA = 120;
 
-export default async function VendasPage({ searchParams }: { searchParams: Promise<{ pedido?: string; shopee?: string }> }) {
-  const { pedido, shopee } = await searchParams;
+export default async function VendasPage({ searchParams }: { searchParams: Promise<{ pedido?: string; shopee?: string; busca?: string }> }) {
+  const { pedido, shopee, busca } = await searchParams;
   const supabase = await createClient();
 
   const inicio = new Date();
@@ -70,6 +70,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
 
   return (
     <VendasClient
+      key={busca ?? "inicio"}
       vendas={(vendasRes.data ?? []) as Venda[]}
       diasJanela={DIAS_JANELA}
       clientes={clientesRes.data ?? []}
@@ -79,6 +80,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       contas={contasRes.data ?? []}
       formasPagamentoPdv={formasPdvRes.data ?? []}
       pedidoInicial={pedido && /^P-\d{1,8}$/.test(pedido) ? pedido : null}
+      buscaInicial={busca?.slice(0, 80) ?? ""}
       marketplace={marketplace}
       faltandoShopee={[...faltandoShopee(), ...(cofreDisponivel() ? [] : ["IA_CHAVE_COFRE"])]}
       plataformasLigadas={cofreDisponivel() ? [...(credenciaisShopee() ? ["shopee"] : []), ...(credenciaisML() ? ["mercadolivre"] : [])] : []}

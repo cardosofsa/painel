@@ -11,20 +11,18 @@ import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Wallet, Receipt, AlertTriangle, TrendingDown, PackageX, ShieldCheck, Download } from "lucide-react";
+import { Wallet, Receipt, AlertTriangle, ShieldCheck, Download, History } from "lucide-react";
 import Link from "next/link";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
 import { formatBRL, formatarDataIso, hojeIsoLocal, classeValor } from "@/lib/format";
 import { matrizParaCsv, baixarArquivo } from "@/lib/csv";
-import type { AlertaErosaoMargem, AlertaRupturaEstoque } from "@/lib/alertas";
 import type { ResumoFinanceiro } from "./page";
 import {
   criarMovimentacao,
   criarDespesaFixa,
   retirarDespesaDaConta,
   desfazerRetiradaDespesa,
-  quitarContaPagarReceber,
   criarContaPagarReceber,
   type MovimentacaoInput,
   type DespesaFixaInput,
@@ -34,7 +32,15 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { LimparDadosModal } from "@/components/financeiro/LimparDadosModal";
 import { NovaMovimentacaoModal, NovaDespesaFixaModal, NovaCprModal } from "@/components/financeiro/ModaisFinanceiro";
 import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
+import { HistoricoPagamentosModal } from "@/components/financeiro/HistoricoPagamentos";
+import { ReceberContaModal, type ContaParaReceber } from "@/components/financeiro/ReceberContaModal";
+import type { RegraEncargos } from "@/lib/crediario";
+import { diasAntes, restanteParcela, situacaoParcela, SITUACAO_PARCELA } from "@/lib/pagamentos";
+import type { AlvoPagamentos } from "./pagamentos-actions";
 import { Chip } from "@/components/ui/Chip";
+import { Tabs, TabPanel } from "@/components/ui/Tabs";
+import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
+import { AbaRepasses, type PedidoRepasse } from "@/components/financeiro/AbaRepasses";
 
 export interface Conta {
   id: string;
@@ -78,10 +84,56 @@ export interface ContaPagarReceber {
   venda_id: string | null;
   venda_numero: string | null;
   total_parcelas_fiado: number | null;
+  /** 0064: quanto já foi pago, quando, e de que parcela/pedido de compra é. */
+  valor_pago: number;
+  data_pagamento: string | null;
+  parcela_numero: number | null;
+  total_parcelas: number | null;
+  pedido_id: string | null;
+  pedido_numero: string | null;
+  fornecedor_nome: string | null;
 }
 
-const FILTROS_PAGAR = ["Todos", "Vencidos", "Próximos 7 dias"] as const;
-const FILTROS_RECEBER = ["Todos", "Vencidos", "Fiado", "Próximos 7 dias"] as const;
+/** Uma linha do histórico: pagamento feito (fornecedor/conta) ou recebimento (crediário). */
+export interface ItemHistorico {
+  id: string;
+  tipo: "pago" | "recebido";
+  data: string;
+  valor: number;
+  descricao: string;
+  quem: string | null;
+  conta: string | null;
+  /** A parcela ficou quitada (ou ainda resta algo dela em aberto). */
+  quitado: boolean;
+}
+
+const ABAS_FIN = [
+  { id: "visao", rotulo: "Visão geral" },
+  { id: "a-pagar", rotulo: "A pagar" },
+  { id: "a-receber", rotulo: "A receber" },
+  { id: "historico", rotulo: "Histórico" },
+  { id: "lancamentos", rotulo: "Lançamentos" },
+  { id: "resultado", rotulo: "Resultado" },
+  { id: "repasses", rotulo: "Repasses" },
+] as const;
+type AbaFin = (typeof ABAS_FIN)[number]["id"];
+/** `?aba=a-pagar` (link da Vixe) → "A pagar". Desconhecido: Visão geral. */
+function abaFinDaUrl(param: string | undefined): AbaFin {
+  return ABAS_FIN.find((a) => a.id === param)?.id ?? "visao";
+}
+
+const FILTROS_PAGAR = ["Todos", "Vencidos", "Próximos 7 dias", "Pagos"] as const;
+const FILTROS_RECEBER = ["Todos", "Vencidos", "Crediário", "Próximos 7 dias"] as const;
+const PERIODOS_HISTORICO = [
+  { id: "30", rotulo: "30 dias", dias: 30 },
+  { id: "90", rotulo: "90 dias", dias: 90 },
+  { id: "tudo", rotulo: "Tudo", dias: null },
+] as const;
+const TIPOS_HISTORICO = [
+  { id: "todos", rotulo: "Tudo" },
+  { id: "pago", rotulo: "Pagos" },
+  { id: "recebido", rotulo: "Recebidos" },
+] as const;
 
 export function FinanceiroClient({
   contas,
@@ -90,18 +142,40 @@ export function FinanceiroClient({
   contasPagarReceber,
   fluxoCaixaDiario,
   despesasPorCategoria,
-  alertasErosaoMargem,
-  alertasRupturaEstoque,
   resumo,
+  historico,
+  historicoOk,
+  regraCrediario = null,
+  abaUrl,
+  dre = [],
+  gastosAnuncios = [],
+  lojasMarketplace = [],
+  anunciosOk = true,
+  repasses = [],
+  repassesOk = true,
 }: {
+  /** `?aba=` da URL. */
+  abaUrl?: string;
+  /** Resultado por mês (0066), do mais antigo ao atual. */
+  dre?: LinhaDre[];
+  gastosAnuncios?: GastoAnuncio[];
+  lojasMarketplace?: { id: string; nome: string; canal: string }[];
+  /** false = 0066 ausente. */
+  anunciosOk?: boolean;
+  repasses?: PedidoRepasse[];
+  repassesOk?: boolean;
+  /** Multa e juros do crediário (0065): a parcela atrasada já sugere o valor atualizado. */
+  regraCrediario?: RegraEncargos | null;
+  /** Pagamentos feitos e recebimentos de crediário, mais recente primeiro. */
+  historico: ItemHistorico[];
+  /** false = 0064 ausente (pagamentos a fornecedores ainda sem histórico). */
+  historicoOk: boolean;
   contas: Conta[];
   movimentacoes: Movimentacao[];
   despesasFixas: DespesaFixa[];
   contasPagarReceber: ContaPagarReceber[];
   fluxoCaixaDiario: { dia: string; entradas: number; saidas: number }[];
   despesasPorCategoria: { categoria: string; valor: number }[];
-  alertasErosaoMargem: AlertaErosaoMargem[];
-  alertasRupturaEstoque: AlertaRupturaEstoque[];
   resumo: ResumoFinanceiro;
 }) {
   const [pending, startTransition] = useTransition();
@@ -115,11 +189,16 @@ export function FinanceiroClient({
   const [incluirFluxoNoLucro, setIncluirFluxoNoLucro] = useState(false);
   const [filtroContaId, setFiltroContaId] = useState<string | null>(null);
   const [parcelasAbertas, setParcelasAbertas] = useState<{ vendaId: string; numero: string } | null>(null);
+  const [aba, setAba] = useState<AbaFin>(() => abaFinDaUrl(abaUrl));
+  const [recebendo, setRecebendo] = useState<ContaParaReceber | null>(null);
+  const [pagamentosAbertos, setPagamentosAbertos] = useState<{ alvo: AlvoPagamentos; titulo: string } | null>(null);
+  const [periodoHistorico, setPeriodoHistorico] = useState<(typeof PERIODOS_HISTORICO)[number]["id"]>("30");
+  const [tipoHistorico, setTipoHistorico] = useState<(typeof TIPOS_HISTORICO)[number]["id"]>("todos");
   const lancamentosRef = useRef<HTMLDivElement>(null);
 
   function verMovimentacoesDaConta(contaId: string) {
     setFiltroContaId(contaId);
-    lancamentosRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setAba("lancamentos");
   }
 
   function exportarRelatorio() {
@@ -161,7 +240,7 @@ export function FinanceiroClient({
   const resultadoMensal = receitaMensal - despesasMensais;
   const margemLiquidaPct = receitaMensal > 0 ? (resultadoMensal / receitaMensal) * 100 : 0;
 
-  const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + c.valor, 0);
+  const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
   const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente").reduce((a, c) => a + c.valor, 0);
 
   const hoje = new Date();
@@ -183,12 +262,13 @@ export function FinanceiroClient({
   const pagarFiltrado = contasPagar.filter((c) => {
     if (filtroPagar === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
     if (filtroPagar === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
+    if (filtroPagar === "Pagos") return c.status !== "pendente";
     return true;
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
     if (filtroReceber === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
-    if (filtroReceber === "Fiado") return c.venda_id !== null;
+    if (filtroReceber === "Crediário") return c.venda_id !== null;
     if (filtroReceber === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
     return true;
   });
@@ -200,10 +280,25 @@ export function FinanceiroClient({
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
   const pendentesEm30Dias = contasPagarReceber.filter((c) => c.status === "pendente" && c.data_vencimento <= em30DiasIso);
   const aReceberEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "receber").reduce((a, c) => a + c.valor, 0);
-  const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + c.valor, 0);
+  const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + restanteParcela(c), 0);
+
+  const periodoH = PERIODOS_HISTORICO.find((p) => p.id === periodoHistorico)!;
+  const desdeHistorico = periodoH.dias ? diasAntes(hojeIso, periodoH.dias) : "";
+  const historicoFiltrado = historico.filter((h) => h.data >= desdeHistorico && (tipoHistorico === "todos" || h.tipo === tipoHistorico));
+  const totalPagoHistorico = historicoFiltrado.filter((h) => h.tipo === "pago").reduce((a, h) => a + h.valor, 0);
+  const totalRecebidoHistorico = historicoFiltrado.filter((h) => h.tipo === "recebido").reduce((a, h) => a + h.valor, 0);
+
+  function abrirPagamentos(c: ContaPagarReceber) {
+    setPagamentosAbertos(
+      c.pedido_id
+        ? { alvo: { pedidoId: c.pedido_id }, titulo: `Pedido ${c.pedido_numero ?? ""}${c.fornecedor_nome ? ` · ${c.fornecedor_nome}` : ""}` }
+        : { alvo: { contaId: c.id }, titulo: c.descricao },
+    );
+  }
   const saldoProjetado30Dias = saldoAtual + aReceberEm30Dias - aPagarEm30Dias;
 
-  const totalAlertas = vencimentosProximos.length + alertasErosaoMargem.length + alertasRupturaEstoque.length;
+  const vencidos = vencimentosProximos.filter((c) => c.data_vencimento < hojeIso);
+  const vencendo = vencimentosProximos.filter((c) => c.data_vencimento >= hojeIso);
 
   const impactoNoLucro = incluirFluxoNoLucro
     ? resumo.saldo_liquido
@@ -213,18 +308,6 @@ export function FinanceiroClient({
   const movimentacoesFiltradas = filtroContaId ? movimentacoes.filter((m) => m.conta_id === filtroContaId) : movimentacoes;
   const entradasContaFiltrada = movimentacoesFiltradas.filter((m) => m.valor > 0).reduce((a, m) => a + m.valor, 0);
   const saidasContaFiltrada = movimentacoesFiltradas.filter((m) => m.valor < 0).reduce((a, m) => a + m.valor, 0);
-
-  async function quitar(c: ContaPagarReceber) {
-    const ok = await confirm({
-      title: c.tipo === "pagar" ? "Marcar como pago?" : "Marcar como recebido?",
-      message: `"${c.descricao}" (${formatBRL(c.valor)}) terá o saldo da conta atualizado imediatamente.`,
-      confirmLabel: "Confirmar",
-    });
-    if (!ok) return;
-    startTransition(async () => {
-      await executarComToast(quitarContaPagarReceber(c.id), { sucesso: "Status atualizado", erro: "Erro ao atualizar status" });
-    });
-  }
 
   function adicionarMovimentacao(dados: MovimentacaoInput) {
     startTransition(async () => {
@@ -298,63 +381,34 @@ export function FinanceiroClient({
         }
       />
 
-      <Card className="mb-5">
-        <div className="flex items-center gap-2 mb-3">
-          <h2 className="text-base font-semibold text-text-primary">Central de Alertas</h2>
-          {totalAlertas > 0 && <StatusChip label={String(totalAlertas)} tone="negative" />}
-        </div>
-        {totalAlertas === 0 ? (
-          <EmptyState icon={ShieldCheck} title="Tudo em dia" description="Nenhum vencimento próximo, erosão de margem ou risco de ruptura de estoque no momento." />
+      <Tabs tabs={ABAS_FIN.map((a) => ({ value: a.id, label: a.rotulo }))} value={aba} onChange={setAba} className="mb-5" />
+
+      <TabPanel key={aba} tabValue={aba}>
+      {aba === "visao" && (
+        <>
+      {/* Os alertas moram na Vixe (estoque, margem, preço, contas e crediário). Aqui fica só
+          o resumo do que é do Financeiro: o que venceu e o que vence nos próximos 7 dias. */}
+      <Link
+        href="/vixe"
+        className={`mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-4 py-2.5 text-sm hover:bg-surface-2 ${
+          vencidos.length > 0 ? "border-negative/40 bg-negative-soft" : "border-border bg-surface-1"
+        }`}
+      >
+        {vencimentosProximos.length === 0 ? (
+          <span className="inline-flex items-center gap-2 text-text-secondary">
+            <ShieldCheck size={15} className="text-positive" /> Nenhuma conta vencida ou vencendo nos próximos 7 dias.
+          </span>
         ) : (
-          <div className="space-y-2">
-            {vencimentosProximos.map((c) => (
-              <div key={c.id} className="flex items-center justify-between text-sm border border-border rounded-md px-3 py-2">
-                <div className="flex items-center gap-2">
-                  {/* "Vencido" precisa ser texto, não só a cor do ícone: quem não distingue
-                      as duas cores não tem como saber o que já passou do prazo. */}
-                  <AlertTriangle size={14} className={c.data_vencimento < hojeIso ? "text-negative" : "text-accent"} />
-                  <span className="text-text-primary">{c.descricao}</span>
-                  {c.data_vencimento < hojeIso && <StatusChip label="Vencido" tone="negative" />}
-                  <span className="text-xs text-text-tertiary">
-                    {c.tipo === "pagar" ? "a pagar" : "a receber"} em {formatarDataIso(c.data_vencimento)}
-                  </span>
-                </div>
-                <span className="font-mono text-text-secondary">{formatBRL(c.valor)}</span>
-              </div>
-            ))}
-            {alertasErosaoMargem.map((a) => (
-              <Link
-                key={a.produtoId}
-                href="/produtos"
-                className="flex items-center justify-between text-sm border border-border rounded-md px-3 py-2 hover:bg-surface-2/50"
-              >
-                <div className="flex items-center gap-2">
-                  <TrendingDown size={14} className="text-negative" />
-                  <span className="text-text-primary">{a.produtoNome}</span>
-                  <span className="text-xs text-text-tertiary">
-                    custo subiu {a.aumentoPct.toFixed(0)}% ({formatBRL(a.custoPrecificado)} → {formatBRL(a.custoRecente)})
-                  </span>
-                </div>
-              </Link>
-            ))}
-            {alertasRupturaEstoque.map((a) => (
-              <Link
-                key={a.produtoId}
-                href="/estoque"
-                className="flex items-center justify-between text-sm border border-border rounded-md px-3 py-2 hover:bg-surface-2/50"
-              >
-                <div className="flex items-center gap-2">
-                  <PackageX size={14} className="text-negative" />
-                  <span className="text-text-primary">{a.produtoNome}</span>
-                  <span className="text-xs text-text-tertiary">
-                    estoque acaba em ~{Math.max(0, Math.round(a.diasRestantes))} dias ({a.estoqueAtual} un.)
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
+          <span className="inline-flex items-center gap-2 text-text-primary">
+            <AlertTriangle size={15} className={vencidos.length > 0 ? "text-negative" : "text-accent"} />
+            {vencidos.length > 0 && <strong className="text-negative">{vencidos.length} vencida(s)</strong>}
+            {vencidos.length > 0 && vencendo.length > 0 && " · "}
+            {vencendo.length > 0 && `${vencendo.length} vencendo em 7 dias`}
+          </span>
         )}
-      </Card>
+        <span className="ml-auto text-accent">Ver todos os alertas na Vixe ›</span>
+      </Link>
+
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>
@@ -384,6 +438,7 @@ export function FinanceiroClient({
         </Card>
       </div>
 
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card className="lg:col-span-2">
           <h2 className="text-base font-semibold text-text-primary mb-1">Fluxo de Caixa — Últimos 30 dias</h2>
@@ -396,6 +451,7 @@ export function FinanceiroClient({
           <CategoryBarChart data={despesasPorCategoria} />
         </Card>
       </div>
+
 
       <Card className="mb-5">
         <h2 className="text-base font-semibold text-text-primary mb-1">Projeção de Fluxo de Caixa</h2>
@@ -422,245 +478,337 @@ export function FinanceiroClient({
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-        <Card padding="nenhum" className="overflow-hidden">
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary">Contas a Pagar</h2>
-              <p className="text-sm text-negative">{formatBRL(totalAPagar)} pendente</p>
+      <div className="mb-5">
+      <Card>
+        <h2 className="text-base font-semibold text-text-primary mb-1">Saldos em Conta</h2>
+        <p className="text-xs text-text-tertiary mb-4">Tempo real</p>
+        <div className="space-y-4">
+          {contas.map((c) => (
+            <div key={c.id} className="flex items-center justify-between text-sm border-b border-border pb-3 last:border-0 last:pb-0">
+              <div>
+                <div className="text-text-primary">{c.nome}</div>
+                <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+              </div>
+              <div className="text-right">
+                <div className="font-mono text-text-primary">{formatBRL(c.saldo)}</div>
+                <button onClick={() => verMovimentacoesDaConta(c.id)} className="text-xs text-accent hover:underline">
+                  Ver mais
+                </button>
+              </div>
             </div>
-            <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
-              + Novo
-            </button>
+          ))}
+          {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
+        </div>
+      </Card>
+      </div>
+        </>
+      )}
+
+      {aba === "a-pagar" && (
+      <Card padding="nenhum" className="overflow-hidden">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary">Contas a Pagar</h2>
+            <p className="text-sm text-negative">{formatBRL(totalAPagar)} pendente</p>
           </div>
-          <div className="flex gap-2 flex-wrap px-5 pb-4">
-            {FILTROS_PAGAR.map((f) => (
-              <Chip key={f} onClick={() => setFiltroPagar(f)} ativo={filtroPagar === f}>
-                {f}
-              </Chip>
-            ))}
+          <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
+            + Novo
+          </button>
+        </div>
+        <div className="flex gap-2 flex-wrap px-5 pb-4">
+          {FILTROS_PAGAR.map((f) => (
+            <Chip key={f} onClick={() => setFiltroPagar(f)} ativo={filtroPagar === f}>
+              {f}
+            </Chip>
+          ))}
+        </div>
+        {pagarFiltrado.length === 0 ? (
+          <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a pagar encontrada para esse filtro." />
+        ) : (
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Descrição</Th>
+                <Th>Conta</Th>
+                <Th align="right">Valor</Th>
+                <Th>Vencimento</Th>
+                <Th>Status</Th>
+                <Th align="right"></Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {pagarFiltrado.map((c) => {
+                const sit = situacaoParcela(c, hojeIso);
+                return (
+                  <Tr key={c.id}>
+                    <Td>
+                      <button type="button" onClick={() => abrirPagamentos(c)} className="text-left hover:underline">
+                        {c.descricao}
+                      </button>
+                      {c.fornecedor_nome && <div className="text-xs text-text-tertiary">{c.fornecedor_nome}</div>}
+                    </Td>
+                    <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
+                    <Td align="right" mono className="text-negative">
+                      {formatBRL(c.status === "pendente" ? restanteParcela(c) : c.valor_pago || c.valor)}
+                      {c.status === "pendente" && c.valor_pago > 0 && <div className="text-[11px] text-text-tertiary">de {formatBRL(c.valor)}</div>}
+                    </Td>
+                    <Td mono>
+                      {formatarDataIso(c.data_vencimento)}
+                      {c.status !== "pendente" && c.data_pagamento && <div className="text-[11px] text-text-tertiary">pago {formatarDataIso(c.data_pagamento)}</div>}
+                    </Td>
+                    <Td>
+                      <StatusChip label={SITUACAO_PARCELA[sit].rotulo} tone={SITUACAO_PARCELA[sit].tom} />
+                    </Td>
+                    <Td align="right">
+                      <RowMenu
+                        actions={[
+                          ...(c.status === "pendente" ? [{ label: "Registrar pagamento", onClick: () => abrirPagamentos(c) }] : []),
+                          { label: c.pedido_id ? "Histórico do pedido" : "Histórico de pagamentos", onClick: () => abrirPagamentos(c) },
+                        ]}
+                      />
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
+      </Card>
+      )}
+
+      {aba === "a-receber" && (
+      <Card padding="nenhum" className="overflow-hidden">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary">Contas a Receber</h2>
+            <p className="text-sm text-positive">{formatBRL(totalAReceber)} pendente</p>
           </div>
-          {pagarFiltrado.length === 0 ? (
-            <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a pagar encontrada para esse filtro." />
-          ) : (
-            <Table>
-              <Thead>
-                <tr>
-                  <Th>Descrição</Th>
-                  <Th>Conta</Th>
-                  <Th align="right">Valor</Th>
-                  <Th>Vencimento</Th>
-                  <Th>Status</Th>
-                  <Th align="right"></Th>
-                </tr>
-              </Thead>
-              <tbody>
-                {pagarFiltrado.map((c) => (
+          <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
+            + Novo
+          </button>
+        </div>
+        <div className="flex gap-2 flex-wrap px-5 pb-4">
+          {FILTROS_RECEBER.map((f) => (
+            <Chip key={f} onClick={() => setFiltroReceber(f)} ativo={filtroReceber === f}>
+              {f}
+            </Chip>
+          ))}
+        </div>
+        {receberFiltrado.length === 0 ? (
+          <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a receber encontrada para esse filtro." />
+        ) : (
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Descrição</Th>
+                <Th>Conta</Th>
+                <Th align="right">Valor</Th>
+                <Th>Vencimento</Th>
+                <Th>Status</Th>
+                <Th align="right"></Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {receberFiltrado.map((c) => {
+                // Fiado parcelado (0030): a "verdade" está nas parcelas, não num clique
+                // único — o status do registro "pai" muda sozinho quando a última é paga.
+                const parcelado = c.venda_id !== null && (c.total_parcelas_fiado ?? 1) > 1;
+                return (
                   <Tr key={c.id}>
                     <Td>{c.descricao}</Td>
                     <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
-                    <Td align="right" mono className="text-negative">
+                    <Td align="right" mono className="text-positive">
                       {formatBRL(c.valor)}
                     </Td>
                     <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
                     <Td>
-                      <StatusChip label={c.status === "pendente" ? "Pendente" : "Pago"} tone={c.status === "pendente" ? "neutral" : "positive"} />
+                      <StatusChip label={c.status === "pendente" ? "Pendente" : "Recebido"} tone={c.status === "pendente" ? "neutral" : "positive"} />
                     </Td>
                     <Td align="right">
-                      {c.status === "pendente" && (
-                        <RowMenu actions={[{ label: "Marcar pago", onClick: () => quitar(c) }]} />
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </Card>
-
-        <Card padding="nenhum" className="overflow-hidden">
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary">Contas a Receber</h2>
-              <p className="text-sm text-positive">{formatBRL(totalAReceber)} pendente</p>
-            </div>
-            <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
-              + Novo
-            </button>
-          </div>
-          <div className="flex gap-2 flex-wrap px-5 pb-4">
-            {FILTROS_RECEBER.map((f) => (
-              <Chip key={f} onClick={() => setFiltroReceber(f)} ativo={filtroReceber === f}>
-                {f}
-              </Chip>
-            ))}
-          </div>
-          {receberFiltrado.length === 0 ? (
-            <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a receber encontrada para esse filtro." />
-          ) : (
-            <Table>
-              <Thead>
-                <tr>
-                  <Th>Descrição</Th>
-                  <Th>Conta</Th>
-                  <Th align="right">Valor</Th>
-                  <Th>Vencimento</Th>
-                  <Th>Status</Th>
-                  <Th align="right"></Th>
-                </tr>
-              </Thead>
-              <tbody>
-                {receberFiltrado.map((c) => {
-                  // Fiado parcelado (0030): a "verdade" está nas parcelas, não num clique
-                  // único — o status do registro "pai" muda sozinho quando a última é paga.
-                  const parcelado = c.venda_id !== null && (c.total_parcelas_fiado ?? 1) > 1;
-                  return (
-                    <Tr key={c.id}>
-                      <Td>{c.descricao}</Td>
-                      <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
-                      <Td align="right" mono className="text-positive">
-                        {formatBRL(c.valor)}
-                      </Td>
-                      <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
-                      <Td>
-                        <StatusChip label={c.status === "pendente" ? "Pendente" : "Recebido"} tone={c.status === "pendente" ? "neutral" : "positive"} />
-                      </Td>
-                      <Td align="right">
-                        {parcelado ? (
+                      {parcelado ? (
+                        <RowMenu
+                          actions={[
+                            {
+                              label: "Visualizar parcelas",
+                              onClick: () => setParcelasAbertas({ vendaId: c.venda_id!, numero: c.venda_numero ?? "" }),
+                            },
+                          ]}
+                        />
+                      ) : (
+                        c.status === "pendente" && (
                           <RowMenu
                             actions={[
                               {
-                                label: "Visualizar parcelas",
-                                onClick: () => setParcelasAbertas({ vendaId: c.venda_id!, numero: c.venda_numero ?? "" }),
+                                label: "Receber",
+                                onClick: () =>
+                                  setRecebendo({ id: c.id, descricao: c.descricao, valor: c.valor, valor_pago: c.valor_pago, data_vencimento: c.data_vencimento, conta_id: c.conta_id, crediario: c.venda_id !== null }),
                               },
                             ]}
                           />
-                        ) : (
-                          c.status === "pendente" && (
-                            <RowMenu actions={[{ label: "Marcar recebido", onClick: () => quitar(c) }]} />
-                          )
-                        )}
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </tbody>
-            </Table>
-          )}
-        </Card>
-      </div>
+                        )
+                      )}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
+      </Card>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-        <Card ref={lancamentosRef} padding="nenhum" className="lg:col-span-2 overflow-hidden">
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base font-semibold text-text-primary">Lançamentos Recentes</h2>
-              {contaFiltrada && (
-                <button
-                  onClick={() => setFiltroContaId(null)}
-                  className="text-xs bg-accent-soft text-accent rounded-full px-2.5 py-1 flex items-center gap-1 hover:opacity-80"
-                >
-                  {contaFiltrada.nome} ×
-                </button>
-              )}
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-xs text-text-secondary flex items-center gap-1">
-                Incluir fluxo financeiro no lucro
-                <InfoTooltip text="Quando ligado, compras de estoque e outros ajustes de caixa contam como impacto direto no lucro. Quando desligado, só entram no lucro os lançamentos marcados como 'afeta o lucro'." />
-              </span>
-              <input
-                type="checkbox"
-                checked={incluirFluxoNoLucro}
-                onChange={(e) => setIncluirFluxoNoLucro(e.target.checked)}
-                className="w-4 h-4 accent-accent"
-              />
-            </label>
+      {aba === "historico" && (
+      <Card padding="nenhum" className="overflow-hidden mb-5">
+        <div className="flex items-start justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary">Histórico de pagamentos</h2>
+            <p className="text-sm text-text-secondary">
+              Pago <span className="font-mono text-negative">{formatBRL(totalPagoHistorico)}</span> · Recebido <span className="font-mono text-positive">{formatBRL(totalRecebidoHistorico)}</span>
+            </p>
           </div>
-          {contaFiltrada && (
-            <div className="flex items-center gap-4 px-5 pb-4 text-xs text-text-secondary">
-              <span>Entradas: <span className="font-mono text-positive">{formatBRL(entradasContaFiltrada)}</span></span>
-              <span>Saídas: <span className="font-mono text-negative">{formatBRL(Math.abs(saidasContaFiltrada))}</span></span>
-              <span>
-                Saldo dos lançamentos listados:{" "}
-                <span className={`font-mono ${classeValor(entradasContaFiltrada + saidasContaFiltrada)}`}>
-                  {formatBRL(entradasContaFiltrada + saidasContaFiltrada)}
-                </span>
-              </span>
-            </div>
-          )}
-          {movimentacoesFiltradas.length === 0 ? (
-            <EmptyState
-              icon={Receipt}
-              title="Nenhum lançamento ainda"
-              description={contaFiltrada ? "Nenhuma movimentação encontrada para esta conta." : "Registre entradas e saídas para acompanhar o fluxo de caixa."}
-            />
-          ) : (
+          <div className="flex gap-2 flex-wrap">
+            {TIPOS_HISTORICO.map((t) => (
+              <Chip key={t.id} onClick={() => setTipoHistorico(t.id)} ativo={tipoHistorico === t.id}>
+                {t.rotulo}
+              </Chip>
+            ))}
+            <span className="w-px bg-border mx-1" aria-hidden />
+            {PERIODOS_HISTORICO.map((p) => (
+              <Chip key={p.id} onClick={() => setPeriodoHistorico(p.id)} ativo={periodoHistorico === p.id}>
+                {p.rotulo}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        {!historicoOk && <p className="px-5 pb-3 text-xs text-negative">Os pagamentos a fornecedores entram aqui depois da migração 0064.</p>}
+        {historicoFiltrado.length === 0 ? (
+          <EmptyState icon={History} title="Nenhum pagamento no período" description="Cada parcela paga a fornecedor ou recebida no crediário aparece aqui, com data e valor." />
+        ) : (
+          <div className="max-h-[28rem] overflow-y-auto">
             <Table>
               <Thead>
                 <tr>
                   <Th>Data</Th>
-                  <Th>Descrição / Origem</Th>
-                  <Th>Categoria</Th>
+                  <Th>Descrição</Th>
                   <Th>Conta</Th>
-                  <Th>Afeta Lucro</Th>
                   <Th align="right">Valor</Th>
+                  <Th>Situação</Th>
                 </tr>
               </Thead>
               <tbody>
-                {movimentacoesFiltradas.map((m) => (
-                  <Tr key={m.id}>
-                    <Td mono>{formatarDataIso(m.data_movimentacao)}</Td>
+                {historicoFiltrado.map((h) => (
+                  <Tr key={h.id}>
+                    <Td mono>{formatarDataIso(h.data)}</Td>
                     <Td>
-                      <div>{m.descricao}</div>
-                      <div className="text-xs text-text-tertiary">{m.origem}</div>
+                      <div>{h.descricao}</div>
+                      {h.quem && <div className="text-xs text-text-tertiary">{h.quem}</div>}
                     </Td>
-                    <Td>{m.categoria}</Td>
-                    <Td>{m.conta_nome}</Td>
+                    <Td className="text-text-secondary">{h.conta ?? "—"}</Td>
+                    <Td align="right" mono className={h.tipo === "pago" ? "text-negative" : "text-positive"}>
+                      {h.tipo === "pago" ? "−" : "+"}
+                      {formatBRL(h.valor)}
+                    </Td>
                     <Td>
-                      <StatusChip label={m.afeta_lucro ? "Sim" : "Só caixa"} tone={m.afeta_lucro ? "positive" : "neutral"} />
-                    </Td>
-                    <Td align="right" mono className={m.valor >= 0 ? "text-positive" : "text-negative"}>
-                      {m.valor >= 0 ? "+" : "-"} {formatBRL(Math.abs(m.valor))}
+                      <StatusChip label={h.quitado ? "Quitado" : "Pago em parte"} tone={h.quitado ? "positive" : "neutral"} />
                     </Td>
                   </Tr>
                 ))}
               </tbody>
             </Table>
-          )}
-          <div className="flex items-center justify-between px-5 py-3 border-t border-border">
-            <span className="text-sm text-text-secondary flex items-center gap-1">
-              Impacto no lucro (lançamentos acima)
-              <InfoTooltip text="Soma apenas dos lançamentos considerados no lucro, conforme o toggle acima." />
-            </span>
-            <span className={`font-mono font-medium ${impactoNoLucro >= 0 ? "text-positive" : "text-negative"}`}>
-              {formatBRL(impactoNoLucro)}
-            </span>
           </div>
-        </Card>
+        )}
+      </Card>
+      )}
 
-        <Card>
-          <h2 className="text-base font-semibold text-text-primary mb-1">Saldos em Conta</h2>
-          <p className="text-xs text-text-tertiary mb-4">Tempo real</p>
-          <div className="space-y-4">
-            {contas.map((c) => (
-              <div key={c.id} className="flex items-center justify-between text-sm border-b border-border pb-3 last:border-0 last:pb-0">
-                <div>
-                  <div className="text-text-primary">{c.nome}</div>
-                  <div className="text-xs text-text-tertiary">{c.detalhe}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono text-text-primary">{formatBRL(c.saldo)}</div>
-                  <button onClick={() => verMovimentacoesDaConta(c.id)} className="text-xs text-accent hover:underline">
-                    Ver mais
-                  </button>
-                </div>
-              </div>
-            ))}
-            {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
+      {aba === "lancamentos" && (
+        <>
+      <Card ref={lancamentosRef} padding="nenhum" className="overflow-hidden mb-5">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-base font-semibold text-text-primary">Lançamentos Recentes</h2>
+            {contaFiltrada && (
+              <button
+                onClick={() => setFiltroContaId(null)}
+                className="text-xs bg-accent-soft text-accent rounded-full px-2.5 py-1 flex items-center gap-1 hover:opacity-80"
+              >
+                {contaFiltrada.nome} ×
+              </button>
+            )}
           </div>
-        </Card>
-      </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="text-xs text-text-secondary flex items-center gap-1">
+              Incluir fluxo financeiro no lucro
+              <InfoTooltip text="Quando ligado, compras de estoque e outros ajustes de caixa contam como impacto direto no lucro. Quando desligado, só entram no lucro os lançamentos marcados como 'afeta o lucro'." />
+            </span>
+            <input
+              type="checkbox"
+              checked={incluirFluxoNoLucro}
+              onChange={(e) => setIncluirFluxoNoLucro(e.target.checked)}
+              className="w-4 h-4 accent-accent"
+            />
+          </label>
+        </div>
+        {contaFiltrada && (
+          <div className="flex items-center gap-4 px-5 pb-4 text-xs text-text-secondary">
+            <span>Entradas: <span className="font-mono text-positive">{formatBRL(entradasContaFiltrada)}</span></span>
+            <span>Saídas: <span className="font-mono text-negative">{formatBRL(Math.abs(saidasContaFiltrada))}</span></span>
+            <span>
+              Saldo dos lançamentos listados:{" "}
+              <span className={`font-mono ${classeValor(entradasContaFiltrada + saidasContaFiltrada)}`}>
+                {formatBRL(entradasContaFiltrada + saidasContaFiltrada)}
+              </span>
+            </span>
+          </div>
+        )}
+        {movimentacoesFiltradas.length === 0 ? (
+          <EmptyState
+            icon={Receipt}
+            title="Nenhum lançamento ainda"
+            description={contaFiltrada ? "Nenhuma movimentação encontrada para esta conta." : "Registre entradas e saídas para acompanhar o fluxo de caixa."}
+          />
+        ) : (
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Data</Th>
+                <Th>Descrição / Origem</Th>
+                <Th>Categoria</Th>
+                <Th>Conta</Th>
+                <Th>Afeta Lucro</Th>
+                <Th align="right">Valor</Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {movimentacoesFiltradas.map((m) => (
+                <Tr key={m.id}>
+                  <Td mono>{formatarDataIso(m.data_movimentacao)}</Td>
+                  <Td>
+                    <div>{m.descricao}</div>
+                    <div className="text-xs text-text-tertiary">{m.origem}</div>
+                  </Td>
+                  <Td>{m.categoria}</Td>
+                  <Td>{m.conta_nome}</Td>
+                  <Td>
+                    <StatusChip label={m.afeta_lucro ? "Sim" : "Só caixa"} tone={m.afeta_lucro ? "positive" : "neutral"} />
+                  </Td>
+                  <Td align="right" mono className={m.valor >= 0 ? "text-positive" : "text-negative"}>
+                    {m.valor >= 0 ? "+" : "-"} {formatBRL(Math.abs(m.valor))}
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+          <span className="text-sm text-text-secondary flex items-center gap-1">
+            Impacto no lucro (lançamentos acima)
+            <InfoTooltip text="Soma apenas dos lançamentos considerados no lucro, conforme o toggle acima." />
+          </span>
+          <span className={`font-mono font-medium ${impactoNoLucro >= 0 ? "text-positive" : "text-negative"}`}>
+            {formatBRL(impactoNoLucro)}
+          </span>
+        </div>
+      </Card>
 
       <Card padding="nenhum" className="overflow-hidden">
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
@@ -713,6 +861,13 @@ export function FinanceiroClient({
           </Table>
         )}
       </Card>
+        </>
+      )}
+
+      {aba === "resultado" && <AbaResultado dre={dre} gastos={gastosAnuncios} lojas={lojasMarketplace} anunciosOk={anunciosOk} />}
+
+      {aba === "repasses" && <AbaRepasses pedidos={repasses} contas={contas} repassesOk={repassesOk} />}
+      </TabPanel>
 
       {/*
         O `key` amarrado ao estado de abertura zera o formulário ao REABRIR, em vez de
@@ -729,8 +884,11 @@ export function FinanceiroClient({
         vendaId={parcelasAbertas?.vendaId ?? null}
         vendaNumero={parcelasAbertas?.numero ?? null}
         contas={contas}
+        regra={regraCrediario}
         onClose={() => setParcelasAbertas(null)}
       />
+      <ReceberContaModal key={`receber-${recebendo?.id ?? "fechado"}`} conta={recebendo} contas={contas} regra={regraCrediario} onClose={() => setRecebendo(null)} />
+      <HistoricoPagamentosModal aberto={pagamentosAbertos} contas={contas} onClose={() => setPagamentosAbertos(null)} />
       {ConfirmDialog}
     </>
   );

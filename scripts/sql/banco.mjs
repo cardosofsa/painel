@@ -12,7 +12,7 @@ import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import fs from "node:fs";
 
 const DIR = new URL("../../supabase/migrations/", import.meta.url);
-const PULAR = new Set(["0048_sincronizacao_automatica.sql"]);
+export const PULAR = new Set(["0048_sincronizacao_automatica.sql"]);
 
 const AUTH_MINIMO = `
   create schema if not exists auth;
@@ -42,12 +42,17 @@ export async function lerMigracao(nome) {
   return fs.readFileSync(new URL(nome, DIR), "utf8");
 }
 
-/** Cria o banco e aplica as migrações. Lança no primeiro erro (com o nome do arquivo). */
-export async function criarBancoDeTeste({ verbose = false } = {}) {
+/**
+ * Cria o banco e aplica as migrações. Lança no primeiro erro (com o nome do arquivo).
+ * Com `antesDe`, para na migração anterior a esse arquivo (usado por
+ * scripts/supabase/aplicar-migracao.mjs para testar uma migração por cima das anteriores).
+ */
+export async function criarBancoDeTeste({ verbose = false, antesDe } = {}) {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(AUTH_MINIMO);
   let n = 0;
   for (const f of migracoes()) {
+    if (antesDe && f >= antesDe) break;
     if (PULAR.has(f)) continue;
     if (f.startsWith("0016")) await db.exec("drop function if exists obter_catalogo_publico(text)");
     try {

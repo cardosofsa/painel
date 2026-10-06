@@ -11,7 +11,8 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Truck } from "lucide-react";
-import { formatBRL } from "@/lib/format";
+import Link from "next/link";
+import { formatBRL, formatarDataIso } from "@/lib/format";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
@@ -33,11 +34,16 @@ const FORM_VAZIO: FornecedorInput = {
 export function FornecedoresClient({
   fornecedores,
   comprasNoTrimestre,
+  emAberto,
 }: {
   fornecedores: Fornecedor[];
   comprasNoTrimestre: number;
+  /** Quanto falta pagar por fornecedor (0064); null = migração ausente. */
+  emAberto: Record<string, { valor: number; atrasado: number; proximo: string | null }> | null;
 }) {
   const [pending, startTransition] = useTransition();
+  const totalAberto = Object.values(emAberto ?? {}).reduce((s, a) => s + a.valor, 0);
+  const totalAtrasado = Object.values(emAberto ?? {}).reduce((s, a) => s + a.atrasado, 0);
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Fornecedor | null>(null);
@@ -102,7 +108,7 @@ export function FornecedoresClient({
         actions={<Button variant="primary" onClick={abrirNovo}>+ Cadastrar Fornecedor</Button>}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${emAberto ? "lg:grid-cols-3" : ""} gap-4 mb-5`}>
         <Card>
           <CardEyebrow>Fornecedores Cadastrados</CardEyebrow>
           <HeroMetric value={String(fornecedores.length)} caption={`${ativos} ativos`} />
@@ -111,6 +117,15 @@ export function FornecedoresClient({
           <CardEyebrow>Compras no Trimestre</CardEyebrow>
           <HeroMetric value={formatBRL(comprasNoTrimestre)} accent />
         </Card>
+        {emAberto && (
+          <Card>
+            <CardEyebrow>A pagar a fornecedores</CardEyebrow>
+            <HeroMetric value={formatBRL(totalAberto)} caption={totalAtrasado > 0 ? `${formatBRL(totalAtrasado)} atrasado` : "nada atrasado"} />
+            <Link href="/compras" className="text-xs text-accent hover:underline mt-3 inline-block">
+              Ver em Compras ›
+            </Link>
+          </Card>
+        )}
       </div>
 
       <Card padding="nenhum" className="overflow-hidden">
@@ -124,6 +139,7 @@ export function FornecedoresClient({
                 <Th>Contato</Th>
                 <Th>Cidade / UF</Th>
                 <Th>Prazo</Th>
+                {emAberto && <Th align="right">Em aberto</Th>}
                 <Th>Status</Th>
                 <Th align="right">Ações</Th>
               </tr>
@@ -143,6 +159,20 @@ export function FornecedoresClient({
                   </Td>
                   <Td>{f.cidade}</Td>
                   <Td>{f.prazo}</Td>
+                  {emAberto && (
+                    <Td align="right">
+                      {emAberto[f.id] ? (
+                        <div>
+                          <div className={`font-mono ${emAberto[f.id].atrasado > 0 ? "text-negative" : "text-text-primary"}`}>{formatBRL(emAberto[f.id].valor)}</div>
+                          <div className="text-xs text-text-tertiary">
+                            {emAberto[f.id].atrasado > 0 ? `${formatBRL(emAberto[f.id].atrasado)} atrasado` : emAberto[f.id].proximo ? `vence ${formatarDataIso(emAberto[f.id].proximo)}` : ""}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-text-tertiary">—</span>
+                      )}
+                    </Td>
+                  )}
                   <Td>
                     <StatusChip
                       label={f.status === "ativo" ? "Ativo" : "Inativo"}

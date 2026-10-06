@@ -24,7 +24,7 @@ const TOM_ETAPA: Record<PedidoCentral["etapa"], string> = {
   cancelado: "text-negative",
 };
 
-const ROTULO_PAGTO: Record<PedidoCentral["pagamento"], string> = { pago: "Pago", fiado: "Fiado", pendente: "A confirmar", cancelado: "Cancelado" };
+const ROTULO_PAGTO: Record<PedidoCentral["pagamento"], string> = { pago: "Pago", fiado: "Crediário", pendente: "A confirmar", cancelado: "Cancelado" };
 
 /**
  * Um pedido na central: nº, produtos, valor com lucro (detalhe no hover), comprador,

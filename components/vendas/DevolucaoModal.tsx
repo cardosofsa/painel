@@ -15,7 +15,7 @@ type Forma = "reembolso" | "abater" | "troca" | "nenhum";
 const FORMAS: { id: Forma; rotulo: string; ajuda: string }[] = [
   { id: "reembolso", rotulo: "Devolver o dinheiro", ajuda: "Sai do caixa escolhido." },
   { id: "troca", rotulo: "Trocar por outro produto", ajuda: "Vira crédito: o PDV abre com esse valor de desconto." },
-  { id: "abater", rotulo: "Abater do fiado", ajuda: "Reduz o que o cliente ainda deve desta venda." },
+  { id: "abater", rotulo: "Abater do crediário", ajuda: "Reduz o que o cliente ainda deve desta venda." },
   { id: "nenhum", rotulo: "Sem estorno", ajuda: "Só registra a devolução e o estoque." },
 ];
 

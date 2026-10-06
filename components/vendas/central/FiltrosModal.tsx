@@ -9,7 +9,7 @@ export type FiltrosExtras = Omit<FiltrosCentral, "periodo" | "canais" | "busca">
 
 const PAGAMENTOS: { id: Pagamento; rotulo: string }[] = [
   { id: "pago", rotulo: "Pago" },
-  { id: "fiado", rotulo: "Fiado" },
+  { id: "fiado", rotulo: "Crediário" },
   { id: "pendente", rotulo: "A confirmar" },
   { id: "cancelado", rotulo: "Cancelado" },
 ];

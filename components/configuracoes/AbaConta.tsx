@@ -9,10 +9,12 @@ import { StatusChip } from "@/components/ui/Badge";
 import { executarComToast } from "@/lib/acao-cliente";
 import { ContaCard } from "@/app/(painel)/configuracoes/ContaCard";
 import { DadosEmpresaCard } from "@/components/configuracoes/DadosEmpresaCard";
+import { CrediarioCard } from "@/components/configuracoes/CrediarioCard";
 import {
   salvarPerfilNegocio,
   definirPinAdmin,
   type PerfilNegocioInput,
+  type CrediarioConfig,
 } from "@/app/(painel)/configuracoes/actions";
 import type { PerfilNegocio } from "@/app/(painel)/configuracoes/ConfiguracoesClient";
 
@@ -21,7 +23,10 @@ export function AbaConta({
   perfil,
   email,
   backup,
+  crediario = null,
 }: {
+  /** 0065; null = migração ausente. */
+  crediario?: CrediarioConfig | null;
   perfil: PerfilNegocio;
   email: string;
   /** O que o botão "Exportar Backup" grava no JSON. */
@@ -158,6 +163,8 @@ export function AbaConta({
     </Card>
 
     <DadosEmpresaCard inicial={perfil.empresa} />
+
+    <CrediarioCard inicial={crediario} nomePadrao={perfil.nome_negocio} cidadePadrao={perfil.empresa.cidade ?? ""} />
 
     <Card className="lg:col-span-2">
       <h3 className="font-semibold text-text-primary mb-2">Backup & Exportação</h3>

@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient";
 
-export default async function ProdutosPage() {
+export default async function ProdutosPage({ searchParams }: { searchParams: Promise<{ busca?: string }> }) {
+  const { busca } = await searchParams;
   const supabase = await createClient();
 
   const [
@@ -132,6 +133,9 @@ export default async function ProdutosPage() {
 
   return (
     <ProdutosClient
+      // `?busca=` (busca global) já abre filtrado; remonta ao trocar de busca.
+      key={busca ?? "inicio"}
+      buscaInicial={busca?.slice(0, 80) ?? ""}
       produtos={produtos}
       categorias={categoriasRes.data ?? []}
       fornecedores={fornecedoresRes.data ?? []}

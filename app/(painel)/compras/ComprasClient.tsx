@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PackageSearch, Lightbulb, ClipboardList } from "lucide-react";
+import { PackageSearch, Lightbulb, ClipboardList, Wallet, FileCode2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -17,12 +17,14 @@ import { formatBRL, formatarDataIso, hojeIsoLocal, dataLocal } from "@/lib/forma
 import { executarComToast } from "@/lib/acao-cliente";
 import { ORDEM_STATUS, STATUS_COMPRA, faltaReceber, statusAberto, type LinhaSugestao, type StatusCompra } from "@/lib/compras";
 import type { TabelaExport } from "@/lib/exportar";
+import type { ResumoPagamento } from "@/lib/pagamentos";
 import { cancelarPedidoCompra, definirTransitoPedido, obterUrlNotaFiscal, type FormaPagamento, type ItemPedidoInput } from "./actions";
 import { NovoPedidoModal } from "@/components/compras/NovoPedidoModal";
 import { ReceberPedidoModal } from "@/components/compras/ReceberPedidoModal";
 import { DetalhePedidoModal } from "@/components/compras/DetalhePedidoModal";
 import { SugestaoCompras } from "@/components/compras/SugestaoCompras";
 import { ImportarPedidosModal } from "@/components/compras/ImportarPedidosModal";
+import { ImportarNfeModal } from "@/components/compras/ImportarNfeModal";
 
 export interface ItemPedido {
   id?: string;
@@ -53,6 +55,8 @@ export interface Pedido {
   forma_pagamento: FormaPagamento | null;
   parcelas: number | null;
   conta_nome: string | null;
+  /** Parcelas a pagar do pedido (0064): pagas, em aberto, atraso. null = sem parcelas. */
+  pagamento?: ResumoPagamento | null;
   itens: ItemPedido[];
 }
 
@@ -61,7 +65,7 @@ export interface Opcao {
   nome: string;
 }
 
-type Secao = "sugestao" | "todos" | StatusCompra;
+type Secao = "sugestao" | "todos" | "a_pagar" | StatusCompra;
 const PERIODOS = [
   { valor: "7", rotulo: "Últimos 7 dias" },
   { valor: "mes", rotulo: "Este mês" },
@@ -69,6 +73,7 @@ const PERIODOS = [
 ] as const;
 
 export function ComprasClient({
+  buscaInicial = "",
   pedidoInicial,
   pedidos,
   fornecedores,
@@ -77,12 +82,17 @@ export function ComprasClient({
   contas,
   formasPagamento,
   sugestao,
+  cnpjFornecedores = [],
 }: {
+  /** `?busca=` (busca global). */
+  buscaInicial?: string;
   /** Pedido pré-preenchido vindo do alerta de estoque mínimo (?novo=…). */
   pedidoInicial: { fornecedorId: string | null; item: ItemPedidoInput } | null;
   pedidos: Pedido[];
   fornecedores: Opcao[];
-  produtos: (Opcao & { custo: number; sku: string })[];
+  produtos: (Opcao & { custo: number; sku: string; codigo_barras?: string | null })[];
+  /** Fornecedores com CNPJ (XML da NF-e acha pelo CNPJ). */
+  cnpjFornecedores?: { id: string; nome: string; cnpj: string }[];
   armazens: Opcao[];
   contas: Opcao[];
   formasPagamento: Opcao[];
@@ -91,14 +101,15 @@ export function ComprasClient({
   const [, startTransition] = useTransition();
   const router = useRouter();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [secao, setSecao] = useState<Secao>(pedidos.some((p) => statusAberto(p.status)) ? "todos" : sugestao.length ? "sugestao" : "todos");
+  const [secao, setSecao] = useState<Secao>(buscaInicial || pedidos.some((p) => statusAberto(p.status)) ? "todos" : sugestao.length ? "sugestao" : "todos");
   const [novoPedido, setNovoPedido] = useState<{ fornecedorId: string | null; itens?: ItemPedidoInput[]; item?: ItemPedidoInput } | null>(pedidoInicial);
   const [detalhe, setDetalhe] = useState<Pedido | null>(null);
   const [receber, setReceber] = useState<Pedido | null>(null);
   const [importando, setImportando] = useState(false);
+  const [importandoNfe, setImportandoNfe] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const [periodo, setPeriodo] = useState("");
   const [fornecedorFiltro, setFornecedorFiltro] = useState("");
 
@@ -112,7 +123,9 @@ export function ComprasClient({
     const agora = new Date();
     const t = busca.trim().toLowerCase();
     return pedidos.filter((p) => {
-      if (secao !== "todos" && secao !== "sugestao" && p.status !== secao) return false;
+      if (secao === "a_pagar") {
+        if (!p.pagamento || p.pagamento.emAberto <= 0) return false;
+      } else if (secao !== "todos" && secao !== "sugestao" && p.status !== secao) return false;
       if (fornecedorFiltro && p.fornecedor_id !== fornecedorFiltro) return false;
       if (t && !p.numero.toLowerCase().includes(t) && !p.fornecedor_nome.toLowerCase().includes(t) && !p.itens.some((i) => i.produto_nome.toLowerCase().includes(t))) return false;
       if (periodo) {
@@ -128,6 +141,7 @@ export function ComprasClient({
   }, [pedidos, secao, busca, periodo, fornecedorFiltro]);
 
   const abertos = pedidos.filter((p) => statusAberto(p.status));
+  const aPagar = pedidos.filter((p) => (p.pagamento?.emAberto ?? 0) > 0);
   const capitalComprometido = abertos.reduce((acc, p) => acc + p.valor_total, 0);
   const inicioDoMes = hojeIsoLocal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const recebidosMes = pedidos.filter((p) => p.status === "recebido" && (p.data_recebimento ?? "") >= inicioDoMes);
@@ -211,8 +225,11 @@ export function ComprasClient({
         title="Compras & Reposição"
         actions={
           <>
+            <Button variant="secondary" onClick={() => setImportandoNfe(true)}>
+              <FileCode2 size={14} /> XML da NF-e
+            </Button>
             <Button variant="secondary" onClick={() => setImportando(true)}>
-              Importar
+              Importar planilha
             </Button>
             <Button variant="secondary" onClick={() => setExportando(true)} disabled={pedidos.length === 0}>
               Exportar
@@ -257,6 +274,10 @@ export function ComprasClient({
           </div>
           {itemMenu("todos", "Tudo", pedidos.length)}
           {ORDEM_STATUS.map((s) => itemMenu(s, STATUS_COMPRA[s].rotulo, contagem[s]))}
+          <div className="px-3 pt-3 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-tertiary flex items-center gap-1.5">
+            <Wallet size={12} /> Pagamentos
+          </div>
+          {itemMenu("a_pagar", "A pagar", aPagar.length)}
         </nav>
 
         <div className="min-w-0">
@@ -314,6 +335,7 @@ export function ComprasClient({
                         <Th>Destino</Th>
                         <Th>Data</Th>
                         <Th align="right">Valor</Th>
+                        <Th>Pagamento</Th>
                         <Th>Situação</Th>
                         <Th align="right"></Th>
                       </tr>
@@ -339,6 +361,9 @@ export function ComprasClient({
                             <Td align="right" mono>
                               {formatBRL(p.valor_total)}
                             </Td>
+                            <Td className="cursor-pointer" onClick={() => setDetalhe(p)}>
+                              <CelulaPagamento pagamento={p.pagamento ?? null} />
+                            </Td>
                             <Td>
                               <StatusChip label={st.rotulo} tone={st.tom} />
                               {p.status === "parcial" && <div className="text-[11px] text-text-tertiary mt-0.5">faltam {falta}</div>}
@@ -347,6 +372,7 @@ export function ComprasClient({
                               <RowMenu
                                 actions={[
                                   { label: "Ver pedido", onClick: () => setDetalhe(p) },
+                                  ...((p.pagamento?.emAberto ?? 0) > 0 ? [{ label: "Registrar pagamento", onClick: () => setDetalhe(p) }] : []),
                                   ...(statusAberto(p.status) ? [{ label: p.status === "parcial" ? "Receber o que falta" : "Receber", onClick: () => setReceber(p) }] : []),
                                   ...(p.status === "pendente" ? [{ label: "Marcar em trânsito", onClick: () => transito(p, true) }] : []),
                                   ...(p.status === "em_transito" ? [{ label: "Voltar para Para comprar", onClick: () => transito(p, false) }] : []),
@@ -367,8 +393,19 @@ export function ComprasClient({
         </div>
       </div>
 
-      {detalhe && <DetalhePedidoModal pedido={detalhe} onClose={() => setDetalhe(null)} />}
+      {detalhe && <DetalhePedidoModal pedido={detalhe} contas={contas} onClose={() => setDetalhe(null)} />}
       {receber && <ReceberPedidoModal pedido={receber} armazens={armazens} onClose={() => setReceber(null)} />}
+      {importandoNfe && (
+        <ImportarNfeModal
+          onClose={() => setImportandoNfe(false)}
+          produtos={produtos}
+          fornecedores={fornecedores}
+          cnpjFornecedores={cnpjFornecedores}
+          armazens={armazens}
+          contas={contas}
+          formasPagamento={formasPagamento}
+        />
+      )}
       {importando && (
         <ImportarPedidosModal onClose={() => setImportando(false)} produtos={produtos} fornecedores={fornecedores} armazens={armazens} contas={contas} formasPagamento={formasPagamento} />
       )}
@@ -404,5 +441,21 @@ export function ComprasClient({
       )}
       {ConfirmDialog}
     </>
+  );
+}
+
+/** "2/5 pagas · R$ 300 em aberto" (vermelho com parcela atrasada). */
+function CelulaPagamento({ pagamento }: { pagamento: ResumoPagamento | null }) {
+  if (!pagamento || pagamento.total === 0) return <span className="text-text-tertiary">—</span>;
+  if (pagamento.emAberto <= 0) return <StatusChip label="Quitado" tone="positive" />;
+  return (
+    <div className="text-xs">
+      <div className={pagamento.atrasado ? "text-negative font-medium" : "text-text-primary"}>
+        {formatBRL(pagamento.emAberto)} em aberto{pagamento.atrasado ? " · atrasado" : ""}
+      </div>
+      <div className="text-text-tertiary">
+        {pagamento.quitadas}/{pagamento.total} pagas{pagamento.proximoVencimento ? ` · vence ${formatarDataIso(pagamento.proximoVencimento)}` : ""}
+      </div>
+    </div>
   );
 }

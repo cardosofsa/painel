@@ -164,6 +164,8 @@ describe("montarCentral", () => {
     expect(["a", "b", "c"].map((id) => subEnvio(de(id)))).toEqual(["programar", "programando", "falha"]);
     expect(de("d").etapa).toBe("retirada");
     expect(de("d").envio?.rastreio).toBe("BR1");
+    // Venda do sistema (#V-…) em Para Enviar conta em "Para programar".
+    expect(subEnvio({})).toBe("programar");
   });
 
   it("filtros: canal/loja, busca por SKU, UF, prejuízo, sem custo", () => {

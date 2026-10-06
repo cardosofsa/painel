@@ -5,6 +5,8 @@
  */
 
 import { formatBRL } from "./format";
+import { encargosAtraso, type RegraEncargos } from "./crediario";
+import { gerarPixCopiaECola } from "./pix";
 
 /** wa.me com DDI do Brasil quando faltar. Sem número, abre para escolher o contato. */
 export function linkWhatsapp(numero: string | null | undefined, texto: string): string {
@@ -18,6 +20,13 @@ const ola = (nome: string | null | undefined) => (primeiroNome(nome) ? `Oi, ${pr
 const dataBR = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR");
 
 export type AssuntoMensagem = "pedido" | "pago" | "enviado" | "fiado";
+
+export const ROTULO_ASSUNTO: Record<AssuntoMensagem, string> = {
+  pedido: "Pedido recebido",
+  pago: "Pagamento confirmado",
+  enviado: "Enviado",
+  fiado: "Crediário",
+};
 
 export interface MensagemPendente {
   chave: string;
@@ -44,11 +53,24 @@ export function textoEnviado(p: { nome: string | null; numero: string; loja: str
   return `${ola(p.nome)} Seu pedido ${p.numero} da ${p.loja} saiu para entrega${como}.${rastreio} Qualquer coisa, é só chamar.`;
 }
 
-export function textoFiado(p: { nome: string | null; valor: number; vencimento: string; loja: string; vencido: boolean; parcela?: string | null }): string {
+export function textoFiado(p: {
+  nome: string | null;
+  valor: number;
+  vencimento: string;
+  loja: string;
+  vencido: boolean;
+  parcela?: string | null;
+  /** Valor com multa e juros (0065), quando a loja cobra e a parcela atrasou. */
+  atualizado?: number | null;
+  /** Pix copia-e-cola do valor a pagar. */
+  pix?: string | null;
+}): string {
   const qual = p.parcela ? `a parcela ${p.parcela}` : "o valor";
+  const comEncargos = p.vencido && p.atualizado && p.atualizado > p.valor + 0.004 ? ` Com multa e juros do atraso, hoje fica ${formatBRL(p.atualizado)}.` : "";
+  const pix = p.pix ? `\n\nPra facilitar, o Pix copia e cola:\n${p.pix}` : "";
   return p.vencido
-    ? `${ola(p.nome)} Passando para lembrar que ${qual} de ${formatBRL(p.valor)} na ${p.loja} venceu em ${dataBR(p.vencimento)}. Consegue acertar? Se já pagou, desconsidere. 🙏`
-    : `${ola(p.nome)} Lembrete amigo: ${qual} de ${formatBRL(p.valor)} na ${p.loja} vence em ${dataBR(p.vencimento)}. Qualquer dúvida, estou por aqui!`;
+    ? `${ola(p.nome)} Passando para lembrar que ${qual} de ${formatBRL(p.valor)} na ${p.loja} venceu em ${dataBR(p.vencimento)}.${comEncargos} Consegue acertar? Se já pagou, desconsidere. 🙏${pix}`
+    : `${ola(p.nome)} Lembrete amigo: ${qual} de ${formatBRL(p.valor)} na ${p.loja} vence em ${dataBR(p.vencimento)}. Qualquer dúvida, estou por aqui!${pix}`;
 }
 
 export interface EntradaMensagens {
@@ -57,6 +79,8 @@ export interface EntradaMensagens {
   pedidosCatalogo: { id: string; numero: string; cliente_nome: string; cliente_whatsapp: string; total: number; status: string; criado_em: string; venda_id: string | null }[];
   vendas: { id: string; numero: string; cliente: string | null; whatsapp: string | null; total: number; etapa: string | null; status: string; rastreio: string | null; logistica: string | null; data: string; doCatalogo: boolean }[];
   parcelas: { id: string; venda_numero: string; cliente: string | null; whatsapp: string | null; valor: number; vencimento: string; numero: number; total_parcelas: number }[];
+  /** Pix e multa/juros da loja (0065). Sem isso, a cobrança vai só com o valor. */
+  crediario?: { pix: { chave: string; nome: string; cidade: string } | null; regra: RegraEncargos } | null;
 }
 
 /** O que mandar agora, menos o que já foi enviado (chave). Mais recente primeiro. */
@@ -82,6 +106,15 @@ export function mensagensPendentes(e: EntradaMensagens, enviadas: Set<string>): 
   for (const p of e.parcelas) {
     if (!p.whatsapp || p.vencimento > limite) continue;
     const vencido = p.vencimento < e.hoje;
+    const atualizado = vencido ? encargosAtraso(p.valor, p.vencimento, e.hoje, e.crediario?.regra).total : p.valor;
+    let pix: string | null = null;
+    if (e.crediario?.pix) {
+      try {
+        pix = gerarPixCopiaECola({ ...e.crediario.pix, valor: atualizado, txid: `${p.venda_numero}P${p.numero}` });
+      } catch {
+        pix = null;
+      }
+    }
     add({
       chave: `fiado:${p.id}:${vencido ? "vencido" : "vence"}`,
       assunto: "fiado",
@@ -89,7 +122,7 @@ export function mensagensPendentes(e: EntradaMensagens, enviadas: Set<string>): 
       whatsapp: p.whatsapp,
       quando: p.vencimento,
       referencia: p.venda_numero,
-      texto: textoFiado({ nome: p.cliente, valor: p.valor, vencimento: p.vencimento, loja: e.loja, vencido, parcela: p.total_parcelas > 1 ? `${p.numero}/${p.total_parcelas}` : null }),
+      texto: textoFiado({ nome: p.cliente, valor: p.valor, vencimento: p.vencimento, loja: e.loja, vencido, parcela: p.total_parcelas > 1 ? `${p.numero}/${p.total_parcelas}` : null, atualizado, pix }),
     });
   }
   return saida.sort((a, b) => b.quando.localeCompare(a.quando));

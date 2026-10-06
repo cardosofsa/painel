@@ -15,7 +15,7 @@ export default async function VixeTextosPage() {
   // Fiado é dado do Financeiro/Clientes: sem uma dessas abas, a ferramenta de cobrança some.
   const verFiado = abas.includes("financeiro") || abas.includes("clientes");
 
-  const [produtosRes, gruposRes, categoriasRes, parcelasRes, perfilRes, catalogoRes] = await Promise.all([
+  const [produtosRes, gruposRes, categoriasRes, parcelasRes, perfilRes, catalogoRes, unicasRes] = await Promise.all([
     verProdutos
       ? supabase.from("produtos").select("id, nome, descricao, preco_venda, garantia_dias, estoque, categoria_id, grupo_id, variante_nome").eq("ativo", true).order("nome")
       : Promise.resolve({ data: [], error: null }),
@@ -26,6 +26,17 @@ export default async function VixeTextosPage() {
       : Promise.resolve({ data: [], error: null }),
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
     supabase.from("catalogos").select("slug").eq("ativo", true).order("criado_em").limit(1).maybeSingle(),
+    // Crediário de parcela única: a dívida é a própria conta a receber (sem `venda_parcelas`).
+    verFiado
+      ? supabase
+          .from("contas_a_pagar_receber")
+          .select("*, vendas!inner(cliente_id, cliente_nome, total_parcelas_fiado, clientes(whatsapp))")
+          .eq("tipo", "receber")
+          .eq("status", "pendente")
+          .not("referencia_venda_id", "is", null)
+          .order("data_vencimento")
+          .limit(500)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (produtosRes.error) throw new Error(produtosRes.error.message);
 
@@ -48,7 +59,11 @@ export default async function VixeTextosPage() {
   const hoje = hojeIsoLocal();
   const porCliente = new Map<string, ClienteCobranca>();
   type Parcela = { valor: number; data_vencimento: string; vendas: { cliente_id: string | null; cliente_nome: string | null; clientes: { whatsapp: string | null } | null } | null };
-  for (const p of (parcelasRes.data ?? []) as unknown as Parcela[]) {
+  type Unica = { valor: number; valor_pago?: number | null; data_vencimento: string; vendas: (Parcela["vendas"] & { total_parcelas_fiado: number | null }) | null };
+  const unicas: Parcela[] = ((unicasRes.data ?? []) as unknown as Unica[])
+    .filter((c) => c.vendas && (c.vendas.total_parcelas_fiado ?? 1) <= 1)
+    .map((c) => ({ valor: Number(c.valor) - Number(c.valor_pago ?? 0), data_vencimento: c.data_vencimento, vendas: c.vendas }));
+  for (const p of [...((parcelasRes.data ?? []) as unknown as Parcela[]), ...unicas]) {
     const id = p.vendas?.cliente_id;
     if (!id) continue;
     const c = porCliente.get(id) ?? { id, nome: p.vendas?.cliente_nome ?? "Cliente", whatsapp: p.vendas?.clientes?.whatsapp ?? null, parcelas: [] };

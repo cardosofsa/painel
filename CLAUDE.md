@@ -11,8 +11,15 @@ com isolamento de dados garantido pelo banco (RLS), não pela aplicação. Toda 
 com o usuário deve ser em pt-BR.
 
 Stack: Next.js 16 (App Router, Turbopack) + React 19 + TypeScript `strict`, Supabase
-(Postgres + Auth + Storage, só a chave anônima — **não existe nem deve existir service role
-key no projeto**), Tailwind CSS 4, Recharts, sonner (toasts), lucide-react, Zod, Vitest.
+(Postgres + Auth + Storage), Tailwind CSS 4, Recharts, sonner (toasts), lucide-react, Zod, Vitest.
+
+**Chave anônima por padrão; service role só em rota de servidor sem sessão.** Telas e Server
+Actions usam a anon key + RLS. A `SUPABASE_SERVICE_ROLE_KEY` existe e passa só por
+`clienteServico()` (`lib/supabase/servico.ts`), usada onde não há usuário logado: cron da
+Shopee (`app/api/cron/shopee`), webhooks (`api/mercadolivre/notificacoes`, `api/cobranca/webhook`)
+e a vitrine pública (`api/vitrine/frete`, `api/vitrine/pedido`). Ela ignora RLS: toda consulta
+ali filtra `user_id` explicitamente. **Nunca** use `clienteServico()` em tela ou Server Action
+de usuário logado — lá a trava é o RLS.
 
 ## Comandos
 
@@ -35,10 +42,33 @@ do projeto), separada da conta real; dados criados por ela são descartáveis.
 ## Banco de dados: convenções obrigatórias
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql`, `0002_...`, ...). **Elas são aplicadas manualmente pelo usuário** no SQL
-Editor do Supabase — este ambiente não tem service role key nem credenciais para aplicar
-migrações ou fazer `git push` sozinho. Depois de escrever uma migração nova, ela precisa ser
-colada e rodada pelo usuário; não assuma que já está em produção só porque o arquivo existe.
+(`0001_init.sql`, `0002_...`, ...). Elas podem ser aplicadas de dois jeitos: pelo usuário,
+colando no SQL Editor do Supabase, ou por `scripts/supabase/aplicar-migracao.mjs`, que usa a
+Management API (precisa de `SUPABASE_PROJECT_REF` e `SUPABASE_ACCESS_TOKEN` no ambiente ou
+no `.env.local`). Não assuma que uma migração já está em produção só porque o arquivo existe.
+
+```bash
+npm run db:verificar                        # consulta somente leitura: token, projeto e rede
+npm run db:migracao -- 0067_algo.sql        # testa no PGlite e mostra o que muda (não envia nada)
+npm run db:migracao -- 0067_algo.sql --aplicar   # testa de novo e aplica no banco de produção
+```
+
+**Sempre avise antes de aplicar.** O banco é o de produção, com os dados reais do usuário.
+A ordem é obrigatória:
+
+1. `npm run test:sql` limpo e o script **sem** `--aplicar` (aplica no PGlite por cima das
+   anteriores, roda 2× para provar idempotência e lista tabelas, colunas, funções, policies
+   e triggers que mudam, mais avisos de DROP/UPDATE/DELETE).
+2. Mostre ao usuário esse resumo: o que muda e por quê, e o que pode quebrar no código que
+   está no ar.
+3. Só rode com `--aplicar` depois que ele disser que pode. Uma migração por vez, em ordem.
+   Autorização para uma migração não vale para a próxima.
+
+O script aplica uma migração por vez pelo nome do arquivo, recusa as anteriores à `0021`
+(não idempotentes), a `0012` (destrutiva) e a `0048` (pg_cron/Vault não rodam no PGlite:
+essa vai pelo SQL Editor). Nunca imprima o token nem o ref; o script não imprime. A
+Management API dá acesso de dono ao projeto inteiro: use para migração e para a consulta
+de verificação, não para ler ou editar dados de contas.
 
 Ao criar uma migração:
 
@@ -125,8 +155,14 @@ Por isso o corpo de toda action vai dentro de `comResultado()` e todo ponto de c
 `lib/acao.ts`. **Chamar uma action sem `executar()` engole o erro em silêncio** — o
 TypeScript não reclama de retorno ignorado. É a única armadilha do desenho.
 
-**IA (Gemini).** Única chamada externa do projeto e única env sem `NEXT_PUBLIC_`
-(`GEMINI_API_KEY`). `lib/ia/gemini.ts` **não pode** ser importado por Client Component — a
+**Chamadas externas** (todas do servidor, nunca do navegador): IA (Gemini do sistema; OpenAI,
+Anthropic e OpenRouter com a chave da própria conta, guardada no cofre — `lib/ia/provedores/`),
+Shopee e Mercado Livre (`lib/marketplace/`), Melhor Envio (`lib/frete/`), Focus NFe
+(`lib/fiscal/`) e ViaCEP. Segredos sem `NEXT_PUBLIC_`: `SUPABASE_SERVICE_ROLE_KEY`,
+`CRON_SECRET`, `GEMINI_API_KEY`, `IA_CHAVE_COFRE`, `ACESSO_SEGREDO`, `SHOPEE_*`, `ML_*` (lista
+completa no README).
+
+**IA (Gemini).** `lib/ia/gemini.ts` **não pode** ser importado por Client Component — a
 chave iria para o bundle. Em `lib/ia/gerar.ts` a ordem é obrigatória: `ia_buscar_sugestao`
 (autentica + cache) → `ia_consumir` (cota) → `chamarGemini`. Inverter abre a chave para
 conta suspensa ou cobra cota por resposta que já estava no cache. A cota e o cache moram

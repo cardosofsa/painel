@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estourosNoPlano, percentualUso, rotuloLimite, situacaoAssinatura, type Plano, type ResumoAssinatura } from "./planos";
+import { estourosNoPlano, percentualUso, rotuloLimite, rotuloPlanoTopo, situacaoAssinatura, temPlanoAcima, type Plano, type ResumoAssinatura } from "./planos";
 
 const planos = [
   { id: "gratis", nome: "Grátis" },
@@ -17,6 +17,25 @@ describe("situação da assinatura", () => {
     expect(situacaoAssinatura(base, planos, agora).texto).toBe("Plano Pro ativo.");
     expect(situacaoAssinatura({ ...base, status: "atrasada" }, planos, agora).tom).toBe("negative");
     expect(situacaoAssinatura({ ...base, plano_efetivo: "gratis", periodo_fim: "2026-09-01T00:00:00.000Z" }, planos, agora).texto).toContain("período pago terminou");
+  });
+});
+
+describe("selo do plano no topo", () => {
+  it("plano ativo, teste em andamento e teste vencido", () => {
+    expect(rotuloPlanoTopo(base, planos)).toBe("Plano Pro");
+    expect(rotuloPlanoTopo({ ...base, status: "teste" }, planos)).toBe("Teste · Pro");
+    expect(rotuloPlanoTopo({ ...base, status: "teste", plano_efetivo: "gratis" }, planos)).toBe("Plano Grátis");
+  });
+  it("upgrade só quando existe plano ativo acima", () => {
+    const catalogo = [
+      { id: "gratis", ativo: true, ordem: 1 },
+      { id: "basico", ativo: true, ordem: 2 },
+      { id: "pro", ativo: true, ordem: 3 },
+      { id: "antigo", ativo: false, ordem: 9 },
+    ];
+    expect(temPlanoAcima({ plano_efetivo: "pro" }, catalogo)).toBe(false);
+    expect(temPlanoAcima({ plano_efetivo: "basico" }, catalogo)).toBe(true);
+    expect(temPlanoAcima({ plano_efetivo: "sumiu" }, catalogo)).toBe(false);
   });
 });
 

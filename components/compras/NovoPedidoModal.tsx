@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { formatBRL, hojeIsoLocal } from "@/lib/format";
+import { formatBRL, formatarDataIso, hojeIsoLocal, numeroOuNulo } from "@/lib/format";
+import { previaParcelas } from "@/lib/pagamentos";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { executarComToast } from "@/lib/acao-cliente";
 import { criarPedidoCompra, type FormaPagamento, type ItemPedidoInput } from "@/app/(painel)/compras/actions";
@@ -57,6 +58,7 @@ export function NovoPedidoModal({
   const [parcelado, setParcelado] = useState(false);
   const [parcelas, setParcelas] = useState(2);
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => hojeIsoLocal());
+  const [intervaloDias, setIntervaloDias] = useState(30);
   const [itens, setItens] = useState<ItemPedidoInput[]>(itensIniciais(pedidoInicial));
   // `fechar()` já devolve todos esses campos ao padrão ao fechar (confirmado ou não), então
   // basta comparar contra os valores de abertura pra saber se há algo pra perder — não
@@ -115,6 +117,7 @@ export function NovoPedidoModal({
     setParcelado(false);
     setParcelas(2);
     setDataPrimeiraParcela(hojeIsoLocal());
+    setIntervaloDias(30);
     setItens([]);
     onClose();
   }
@@ -155,6 +158,7 @@ export function NovoPedidoModal({
           conta_id: contaId,
           parcelado,
           parcelas: parcelado ? parcelas : null,
+          intervalo_dias: intervaloDias,
           data_primeiro_vencimento: parcelado ? dataPrimeiraParcela : dataPedido,
           itens,
         }),
@@ -242,46 +246,51 @@ export function NovoPedidoModal({
           </select>
         </FormField>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Pagamento">
-          <div className="flex h-9 rounded-md border border-border overflow-hidden text-sm">
-            <button
-              type="button"
-              onClick={() => setParcelado(false)}
-              className={`flex-1 ${!parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
-            >
-              À Vista
-            </button>
-            <button
-              type="button"
-              onClick={() => setParcelado(true)}
-              className={`flex-1 border-l border-border ${parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
-            >
-              Parcelado
-            </button>
-          </div>
-        </FormField>
-        {parcelado && (
-          <FormField label="Número de Parcelas">
-            <input
-              type="number"
-              min={1}
-              className={inputClass}
-              value={parcelas}
-              onChange={(e) => setParcelas(Number(e.target.value) || 1)}
-            />
-          </FormField>
-        )}
-      </div>
+      <FormField label="Pagamento">
+        <div className="flex h-9 rounded-md border border-border overflow-hidden text-sm">
+          <button
+            type="button"
+            onClick={() => setParcelado(false)}
+            className={`flex-1 ${!parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
+          >
+            À vista (já paguei)
+          </button>
+          <button
+            type="button"
+            onClick={() => setParcelado(true)}
+            className={`flex-1 border-l border-border ${parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
+          >
+            A prazo
+          </button>
+        </div>
+      </FormField>
+      {!parcelado && <p className="-mt-2 mb-4 text-xs text-text-tertiary">Sai da conta escolhida na data do pedido e já fica quitado.</p>}
       {parcelado && (
-        <FormField label="Data da 1ª Parcela">
-          <input
-            type="date"
-            className={inputClass}
-            value={dataPrimeiraParcela}
-            onChange={(e) => setDataPrimeiraParcela(e.target.value)}
-          />
-        </FormField>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <FormField label="Parcelas">
+              <input type="number" min={1} max={48} className={inputClass} value={parcelas} onChange={(e) => setParcelas(Math.min(48, Math.max(1, Math.trunc(numeroOuNulo(e.target.value) ?? 1))))} />
+            </FormField>
+            <FormField label="1º vencimento">
+              <input type="date" className={inputClass} value={dataPrimeiraParcela} onChange={(e) => setDataPrimeiraParcela(e.target.value)} />
+            </FormField>
+            <FormField label="Intervalo">
+              <select className={inputClass} value={intervaloDias} onChange={(e) => setIntervaloDias(Number(e.target.value))}>
+                <option value={7}>Toda semana</option>
+                <option value={15}>A cada 15 dias</option>
+                <option value={28}>A cada 28 dias</option>
+                <option value={30}>Todo mês</option>
+              </select>
+            </FormField>
+          </div>
+          {valorTotal > 0 && dataPrimeiraParcela && (
+            <div className="-mt-2 mb-4 rounded-md bg-surface-2 px-3 py-2 text-xs text-text-secondary">
+              {previaParcelas(valorTotal, parcelas, dataPrimeiraParcela, intervaloDias)
+                .map((x, i) => `${i + 1}ª ${formatBRL(x.valor)} em ${formatarDataIso(x.vencimento)}`)
+                .join(" · ")}
+            </div>
+          )}
+        </>
       )}
 
       <div className="mb-2 flex items-center justify-between">

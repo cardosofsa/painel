@@ -7,8 +7,9 @@ Uso pessoal, um usuário por conta, com isolamento de dados no banco.
 ## Stack
 
 - **Next.js 16** (App Router, Turbopack) + **React 19** + **TypeScript** (`strict`)
-- **Supabase** — Postgres, Auth e Storage. O app usa apenas a chave anônima; o isolamento
-  entre contas é feito por Row Level Security no banco.
+- **Supabase** — Postgres, Auth e Storage. Telas e ações usam a chave anônima; o isolamento
+  entre contas é feito por Row Level Security no banco. A service role key só é usada por
+  rotas de servidor sem usuário logado (cron, webhooks, vitrine pública).
 - **Tailwind CSS 4**, **Recharts** (gráficos), **sonner** (toasts), **lucide-react** (ícones)
 
 ## Como rodar
@@ -28,8 +29,15 @@ Variáveis de ambiente (em `.env.local`):
 | `NEXT_PUBLIC_SITE_URL` | Opcional em dev, **recomendada em produção**: base dos links enviados por e-mail |
 | `GEMINI_API_KEY` | Opcional. Liga a geração de texto por IA. **Sem prefixo `NEXT_PUBLIC_`** — ver [Geração por IA](#geração-por-ia) |
 | `GEMINI_MODEL` | Opcional. Padrão `gemini-3.5-flash-lite` |
+| `IA_CHAVE_COFRE` | Chave-mestra (32 bytes em base64) do cofre que guarda chaves de IA, frete e NF-e de cada conta |
+| `ACESSO_SEGREDO` | Opcional. Assina o cookie de acesso do middleware (sem ela, usa `IA_CHAVE_COFRE`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Só servidor. Cron, webhooks e vitrine pública (frete e pedido). Sem ela, esses recursos ficam desligados |
+| `CRON_SECRET` | Protege `/api/cron/shopee` (sincronização automática) |
+| `SHOPEE_PARTNER_ID`, `SHOPEE_PARTNER_KEY`, `SHOPEE_AMBIENTE`, `SHOPEE_HOST` | API da Shopee (ver `docs/shopee-api.md`) |
+| `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | API do Mercado Livre (ver `docs/mercadolivre-api.md`) |
 
-Não existe service role key no projeto, e não deve existir: tudo passa pelo RLS.
+A service role key ignora o RLS: só `lib/supabase/servico.ts` a lê, e só rotas sem usuário
+logado a usam, sempre filtrando `user_id` explícito. Tela e Server Action nunca.
 
 ## Autenticação
 
@@ -91,9 +99,22 @@ O código não alcança nada disto, e sem isto o fluxo falha em produção:
 ## Banco de dados
 
 As migrações ficam em `supabase/migrations/`, numeradas em ordem de aplicação
-(`0001_init.sql` → `0026_endurecimento_storage_vitrine_fks.sql`). **Elas são aplicadas
-manualmente**: abra o SQL Editor do Supabase, cole o conteúdo do arquivo e execute, na ordem
-numérica.
+(`0001_init.sql` → a mais recente; confira a pasta). Aplique uma por vez, na ordem
+numérica, de um destes jeitos:
+
+- **SQL Editor do Supabase:** cole o conteúdo do arquivo e execute.
+- **Script, pela Management API:** com `SUPABASE_PROJECT_REF` e `SUPABASE_ACCESS_TOKEN`
+  (token pessoal, em *Account → Access Tokens*) no ambiente ou no `.env.local`:
+
+  ```bash
+  npm run db:verificar                             # consulta somente leitura
+  npm run db:migracao -- 0067_algo.sql             # testa no PGlite e mostra o que muda
+  npm run db:migracao -- 0067_algo.sql --aplicar   # aplica
+  ```
+
+  Sem `--aplicar`, nada vai ao Supabase: a migração roda no PGlite por cima das anteriores,
+  duas vezes (idempotência), e o script lista o que muda no schema. Ele recusa as anteriores
+  à 0021, a 0012 e a 0048 (esta depende de pg_cron/Vault e vai pelo SQL Editor).
 
 > ⚠️ **As migrações 0001-0020 não são replayáveis num banco novo sem edição.** Catorze delas
 > não são idempotentes, e duas *duplicam dados* se rodarem duas vezes: `0004` insere 4 canais
@@ -245,15 +266,16 @@ real: toda requisição já passava pelo proxy, que consulta a sessão antes de 
 
 O app é um Next.js comum; o banco continua sendo o Supabase que já existe.
 
-1. **Vercel** — importe o repositório e configure as duas variáveis de ambiente:
-   `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (as mesmas do `.env.local`).
+1. **Vercel** — importe o repositório e configure as variáveis de ambiente da tabela de
+   [Como rodar](#como-rodar). O mínimo é `NEXT_PUBLIC_SUPABASE_URL` e
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`; as demais ligam IA, marketplaces, cron e vitrine.
    A chave anônima é pública por natureza; quem protege os dados é o RLS.
 2. **Supabase → Authentication → URL Configuration** — ponha o domínio de produção em
    *Site URL* e em *Redirect URLs* (`https://SEU-DOMINIO/auth/callback`). Sem isso o link de
    confirmação de e-mail continua apontando para `localhost` e ninguém consegue ativar a conta.
 3. **Supabase → Authentication → Providers → Email** — mantenha a confirmação de e-mail
    ligada, para não entrar conta com e-mail inventado.
-4. Aplique todas as migrações pendentes no SQL Editor, em ordem.
+4. Aplique todas as migrações pendentes, em ordem (SQL Editor ou `npm run db:migracao`).
 
 Antes de abrir para terceiros, rode as duas conferências abaixo no SQL Editor.
 

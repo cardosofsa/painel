@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { ExportarModal } from "@/components/ui/ExportarModal";
 import { executarComToast } from "@/lib/acao-cliente";
-import { periodoAnterior, periodoDoAtalho, rotuloPeriodo, type Periodo } from "@/lib/periodo";
+import { periodoAnterior, periodoDoAtalho, periodoDosUltimosDias, rotuloPeriodo, type Periodo } from "@/lib/periodo";
 import {
   contarEtapas,
   filtrarCentral,
@@ -95,6 +95,7 @@ export function VendasClient({
   contas,
   formasPagamentoPdv,
   pedidoInicial,
+  buscaInicial = "",
   marketplace,
   lojasMarketplace,
   produtosMarketplace,
@@ -121,6 +122,8 @@ export function VendasClient({
   contas: ContaPdv[];
   formasPagamentoPdv: FormaPagamentoPdv[];
   pedidoInicial: string | null;
+  /** `?busca=` (busca global): já filtra e abre a janela inteira, não só hoje. */
+  buscaInicial?: string;
   marketplace: DadosMarketplace;
   lojasMarketplace: LojaMarketplace[];
   produtosMarketplace: ProdutoMarketplace[];
@@ -146,14 +149,15 @@ export function VendasClient({
     [vendas, pedidos, marketplace.pedidos, lojasMarketplace, disponivel],
   );
 
-  const [periodo, setPeriodo] = useState<Periodo>(() => periodoDoAtalho("hoje"));
+  const [periodo, setPeriodo] = useState<Periodo>(() => (buscaInicial ? periodoDosUltimosDias(diasJanela) : periodoDoAtalho("hoje")));
   const [canais, setCanais] = useState<string[]>([]);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const [extras, setExtras] = useState<FiltrosExtras>(EXTRAS_VAZIOS);
   const filtros: FiltrosCentral = useMemo(() => ({ periodo, canais, busca, ...extras }), [periodo, canais, busca, extras]);
   const contagem = useMemo(() => contarEtapas(lista, filtros), [lista, filtros]);
   const [etapa, setEtapa] = useState<Etapa | "todos" | "oculto">(() => {
     const c = contarEtapas(lista, { ...FILTROS_VAZIOS, periodo: periodoDoAtalho("hoje") });
+    if (buscaInicial) return "todos";
     return c.emitir > 0 ? "emitir" : c.imprimir > 0 ? "imprimir" : "todos";
   });
   const [motivo, setMotivo] = useState<MotivoReserva | "todos">("todos");
@@ -161,7 +165,8 @@ export function VendasClient({
   const daEtapa = useMemo(() => filtrarCentral(lista, filtros, etapa), [lista, filtros, etapa]);
   const filtrados = useMemo(() => {
     if (etapa === "reservar" && motivo !== "todos") return daEtapa.filter((p) => p.motivoReserva === motivo);
-    if (etapa === "enviar" && sub !== "todos") return daEtapa.filter((p) => p.origem === "marketplace" && subEnvio(p) === sub);
+    // Pedidos do sistema (#V-…) entram também: em Para Enviar ainda não foram programados.
+    if (etapa === "enviar" && sub !== "todos") return daEtapa.filter((p) => subEnvio(p) === sub);
     return daEtapa;
   }, [daEtapa, etapa, motivo, sub]);
   const conexoesLigadas = useMemo(() => marketplace.conexoes.filter((c) => plataformasLigadas.includes(c.plataforma)), [marketplace.conexoes, plataformasLigadas]);
@@ -379,7 +384,7 @@ export function VendasClient({
               itens={(["todos", "programar", "programando", "falha"] as const).map((m) => ({
                 id: m,
                 rotulo: m === "todos" ? "Todos" : ROTULO_SUB_ENVIO[m],
-                n: m === "todos" ? daEtapa.length : daEtapa.filter((p) => p.origem === "marketplace" && subEnvio(p) === m).length,
+                n: m === "todos" ? daEtapa.length : daEtapa.filter((p) => subEnvio(p) === m).length,
               }))}
             />
           )}
@@ -406,7 +411,7 @@ export function VendasClient({
                   checked={false}
                   onChange={(e) => setSelecionados(e.target.checked ? new Set(selecionaveis.map((p) => p.chave)) : new Set())}
                 />
-                Selecionar todos desta página (para imprimir lista de separação, romaneio…)
+                Selecionar todos
               </label>
             )
           )}
