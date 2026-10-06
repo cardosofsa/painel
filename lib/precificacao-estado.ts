@@ -126,8 +126,12 @@ export function usePrecificacao({
 
   const lojaSelecionada = useMemo(() => lojas.find((l) => l.id === lojaId) ?? null, [lojas, lojaId]);
 
+  // Canal de faixas sem nenhuma faixa cadastrada cai na comissão da loja (igual ao kit):
+  // com a lista vazia o motor de faixas cobraria 0% e R$ 0.
+  const usaFaixas = modoTaxas === "loja" && lojaSelecionada?.tipoTaxa === "faixas" && lojaSelecionada.faixas.length > 0;
+
   const taxas: TaxasPlataforma = useMemo(() => {
-    if (modoTaxas === "loja" && lojaSelecionada && lojaSelecionada.tipoTaxa === "fixo") {
+    if (modoTaxas === "loja" && lojaSelecionada && !usaFaixas) {
       return {
         impostoPct: impostoPct / 100,
         taxaFixa: lojaSelecionada.taxaFixa,
@@ -143,7 +147,7 @@ export function usePrecificacao({
       taxaVariavelPct: taxaVariavelPct / 100,
       taxaAdicionalPct: taxaAdicionalPct / 100,
     };
-  }, [modoTaxas, lojaSelecionada, impostoPct, taxaFixa, taxaVariavelPct, taxaAdicionalPct]);
+  }, [modoTaxas, lojaSelecionada, usaFaixas, impostoPct, taxaFixa, taxaVariavelPct, taxaAdicionalPct]);
 
   const taxasBaseFaixas = useMemo(
     () => ({
@@ -154,8 +158,6 @@ export function usePrecificacao({
     }),
     [impostoPct, taxaAdicionalPct, lojaSelecionada],
   );
-
-  const usaFaixas = modoTaxas === "loja" && lojaSelecionada?.tipoTaxa === "faixas";
 
   const { resultado, faixaShopee } = useMemo(() => {
     const parametro =

@@ -2,6 +2,7 @@
 
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { campoBase } from "@/components/ui/Modal";
+import { formatBRL } from "@/lib/format";
 import type { LinhaEmMassa, LojaMassa, ProdutoMassa } from "@/lib/precificacao-massa";
 
 const NUM = `${campoBase} text-right tabular`;
@@ -45,7 +46,8 @@ export function TabelaEntradaMassa({
       <tbody>
         {linhas.map((l) => {
           const loja = lojas.find((lj) => lj.id === l.lojaId);
-          const isFaixa = loja?.tipoTaxa === "faixas";
+          // Sem faixa cadastrada o cálculo usa a comissão da loja (lib/precificacao-massa.ts).
+          const isFaixa = loja?.tipoTaxa === "faixas" && loja.faixas.length > 0;
           const sugestoes = sugestaoAbertaId === l.id ? sugestoesPorNome(l.nome) : [];
           return (
             <Tr key={l.id}>
@@ -112,6 +114,9 @@ export function TabelaEntradaMassa({
               <Td align="right">
                 {isFaixa ? (
                   <span className="text-xs text-text-tertiary">Automático</span>
+                ) : loja ? (
+                  // Com loja, o cálculo usa a comissão dela: campo editável aqui era ignorado.
+                  <span className="text-xs text-text-secondary font-mono">{loja.comissaoPct}%</span>
                 ) : (
                   <input
                     type="number"
@@ -126,6 +131,8 @@ export function TabelaEntradaMassa({
               <Td align="right">
                 {isFaixa ? (
                   <span className="text-xs text-text-tertiary">Automático</span>
+                ) : loja ? (
+                  <span className="text-xs text-text-secondary font-mono">{formatBRL(loja.taxaFixa)}</span>
                 ) : (
                   <input
                     type="number"

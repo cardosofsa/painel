@@ -51,7 +51,8 @@ export function TabelaVariacoes({
   podeSalvar: boolean;
 }) {
   const [expandida, setExpandida] = useState<string | null>(null);
-  const rotuloParametro = modo === "margem" ? "Margem %" : modo === "lucro" ? "Lucro (R$)" : "Preço (R$)";
+  const rotuloParametro =
+    modo === "margem" ? "Margem %" : modo === "markup" ? "Markup %" : modo === "lucro" ? "Lucro (R$)" : "Preço (R$)";
 
   return (
     <Card padding="nenhum" className="overflow-hidden">
@@ -114,7 +115,7 @@ export function TabelaVariacoes({
                   <Td align="right">
                     <input
                       type="number"
-                      step={modo === "margem" ? "0.1" : "0.01"}
+                      step={modo === "margem" || modo === "markup" ? "0.1" : "0.01"}
                       value={v.parametroOverride ?? parametroPadrao}
                       onChange={(e) => onAtualizar(v.id, "parametroOverride", e.target.value)}
                       className={`${NUM} w-24`}

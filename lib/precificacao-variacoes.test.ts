@@ -86,4 +86,27 @@ describe("calcularVariacao", () => {
     expect(r.faixa?.comissaoPct).toBe(14);
     expect(r.taxas.taxaFixa).toBe(16);
   });
+
+  it("markup: bate o markup sobre o custo (antes caía no preço fixo)", () => {
+    const r = calcularVariacao({ ...cfgBase, modo: "markup", parametroPadrao: 50 }, { ...unidade, multiplicador: 2 });
+    // (20 × 1,5 + 4) / (1 - 0,2 - 0,06)
+    expect(r.resultado.precoVenda).toBeCloseTo(34 / 0.74, 4);
+    expect(r.resultado.markupSobreCustoPct).toBeCloseTo(0.5, 4);
+  });
+
+  it("markup com faixas: o % vira fração (antes 50 virava 5.000%)", () => {
+    const r = calcularVariacao({ ...cfgBase, modo: "markup", parametroPadrao: 50, loja: lojaFaixas }, unidade);
+    expect(r.resultado.viavel).toBe(true);
+    expect(r.resultado.markupSobreCustoPct).toBeCloseTo(0.5, 4);
+    expect(r.resultado.precoVenda).toBeLessThan(80);
+  });
+
+  it("loja de faixas sem faixa cadastrada usa a comissão da loja, não 0%", () => {
+    const vazia: LojaVariacao = { ...lojaFaixas, comissaoPct: 10, taxaFixa: 2, faixas: [] };
+    const r = calcularVariacao({ ...cfgBase, loja: vazia }, unidade);
+    // (10 + 2) / (1 - 0,10 - 0,06 - 0,25)
+    expect(r.resultado.precoVenda).toBeCloseTo(12 / 0.59, 4);
+    expect(r.taxas.taxaVariavelPct).toBe(0.1);
+    expect(r.faixa).toBeNull();
+  });
 });
