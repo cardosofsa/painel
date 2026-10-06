@@ -5,10 +5,12 @@ import { PrecificacaoClient } from "./PrecificacaoClient";
 import type { LojaOpcao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
 import type { Concorrente } from "@/lib/pricing";
 import type { Metadata } from "next";
+import { VISOES_PRECIFICACAO } from "@/lib/precificacao-tipos";
 
 export const metadata: Metadata = { title: "Precificação" };
 
-export default async function PrecificacaoPage() {
+export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string }> }) {
+  const { visao } = await searchParams;
   const supabase = await createClient();
   const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes] =
     await Promise.all([
@@ -116,6 +118,7 @@ export default async function PrecificacaoPage() {
       // Lido no servidor: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no cliente o
       // bundler trocaria por `undefined` calado e o botão sumiria sempre.
       iaDisponivel={iaDisponivel}
+      visaoInicial={VISOES_PRECIFICACAO.find((v) => v === visao)}
     />
   );
 }

@@ -11,14 +11,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AbaId } from "@/lib/acesso";
 import { hojeIsoBrasil } from "@/lib/format";
-import { calcularErosaoMargem, calcularPrevisaoRuptura } from "@/lib/alertas";
+import { calcularErosaoMargem, calcularPrecoDefasado, calcularPrevisaoRuptura, ultimaPrecificacaoPorProduto } from "@/lib/alertas";
+import { situacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
 import { zonaMortaDeFaixa, type FaixaComissao } from "@/lib/pricing";
 import {
   alertasContasVencidas,
   DIAS_AVISO_PAGAR,
   alertasEstoqueMinimo,
   alertasMargem,
+  alertasPrecoDefasado,
+  alertasRepasses,
   alertasRuptura,
+  resumirRepasses,
   alertasZonaMorta,
   ordenarAlertas,
   type AlertaVixe,
@@ -75,6 +79,12 @@ export async function carregarAlertasVixe(supabase: SupabaseClient, abasLiberada
         (e) => void falhas.push(`contas e crediário (${mensagem(e)})`),
       ),
     );
+    tarefas.push(
+      repasses(supabase, hoje).then(
+        (a) => void blocos.push(a),
+        (e) => void falhas.push(`repasses (${mensagem(e)})`),
+      ),
+    );
   }
   if (tem(abas, "precificacao", "produtos")) {
     categorias.push("preco");
@@ -121,12 +131,47 @@ async function estoque(supabase: SupabaseClient): Promise<AlertaVixe[]> {
 }
 
 async function margem(supabase: SupabaseClient): Promise<AlertaVixe[]> {
-  const linhas = ok<{ produto_id: string; produto_nome: string; custo_compra: number; custo_precificacao: number }[]>(
-    await supabase.rpc("custos_recentes_por_produto"),
-  );
+  const [custosRes, produtosRes, precRes] = await Promise.all([
+    supabase.rpc("custos_recentes_por_produto"),
+    supabase.from("produtos").select("id, nome, custo").eq("ativo", true),
+    // Só o necessário para achar a última de cada produto (a mais recente vem primeiro).
+    supabase.from("precificacoes").select("produto_id, custo, criado_em").not("produto_id", "is", null).order("criado_em", { ascending: false }).limit(3000),
+  ]);
+  const linhas = ok<{ produto_id: string; produto_nome: string; custo_compra: number; custo_precificacao: number }[]>(custosRes);
   const compras = new Map(linhas.map((c) => [c.produto_id, { custo_unitario: c.custo_compra, produto_nome: c.produto_nome }]));
   const precificacoes = new Map(linhas.map((c) => [c.produto_id, { custo: c.custo_precificacao }]));
-  return alertasMargem(calcularErosaoMargem(precificacoes, compras));
+  const erosao = calcularErosaoMargem(precificacoes, compras);
+  // Preço defasado (Fase 5): custo de HOJE contra o da última precificação. Quem já tem o
+  // aviso de erosão (última compra) não recebe outro cartão sobre o mesmo produto.
+  const defasado = calcularPrecoDefasado(
+    ok<{ id: string; nome: string; custo: number }[]>(produtosRes).map((p) => ({ ...p, custo: Number(p.custo) })),
+    ultimaPrecificacaoPorProduto(ok<{ produto_id: string | null; custo: number; criado_em: string }[]>(precRes)),
+    new Date(),
+    new Set(erosao.map((e) => e.produtoId)),
+  );
+  return [...alertasMargem(erosao), ...alertasPrecoDefasado(defasado)];
+}
+
+/** Repasses da Shopee/ML (0066): divergentes e atrasados dos últimos 120 dias. */
+async function repasses(supabase: SupabaseClient, hoje: string): Promise<AlertaVixe[]> {
+  const r = await supabase
+    .from("pedidos_marketplace")
+    // `*`: repasse_recebido só existe a partir da 0066.
+    .select("*")
+    .not("status", "in", "(cancelado,nao_pago,devolvido)")
+    .gte("pago_em", new Date(Date.now() - 120 * 86_400_000).toISOString())
+    .limit(2000);
+  const linhas = ok<Record<string, unknown>[]>(r);
+  // Sem a 0066 a conciliação não existe: nada a avisar (a aba Repasses explica).
+  if (linhas.length === 0 || !("repasse_recebido" in linhas[0])) return [];
+  const pedidos = linhas
+    .filter((l) => l.repasse !== null && l.repasse !== undefined)
+    .map((l) => ({
+      repasse: Number(l.repasse),
+      repasse_recebido: l.repasse_recebido === null ? null : Number(l.repasse_recebido),
+      pago_em: typeof l.pago_em === "string" ? hojeIsoBrasil(new Date(l.pago_em)) : null,
+    }));
+  return alertasRepasses(resumirRepasses(pedidos, hoje, situacaoRepasse));
 }
 
 interface ParcelaBruta {

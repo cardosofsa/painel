@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { situacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
 import {
   alertasContasVencidas,
   alertasEstoqueMinimo,
   alertasMargem,
   alertasRuptura,
+  alertasPrecoDefasado,
+  alertasRepasses,
   alertasZonaMorta,
   diasEntre,
+  resumirRepasses,
   mensagemCobranca,
   ordenarAlertas,
   type AlertaVixe,
@@ -123,5 +127,38 @@ describe("conta a pagar a vencer", () => {
     const r = alertasContasVencidas(itens, "2026-10-05", null);
     expect(r.map((x) => x.id)).toEqual(["avencer-a"]);
     expect(r[0].titulo).toContain("vence em 2 dias");
+  });
+});
+
+describe("repasses e preço defasado", () => {
+  it("resume divergentes e atrasados e gera um alerta para cada", () => {
+    const r = resumirRepasses(
+      [
+        { repasse: 100, repasse_recebido: 100.02, pago_em: "2026-09-01" },
+        { repasse: 100, repasse_recebido: 40, pago_em: "2026-09-01" },
+        { repasse: 80, repasse_recebido: null, pago_em: "2026-09-01" },
+        { repasse: 80, repasse_recebido: null, pago_em: "2026-10-01" },
+      ],
+      "2026-10-06",
+      situacaoRepasse,
+    );
+    expect(r).toEqual({ divergentes: 1, diferenca: 60, atrasados: 1, valorAtrasado: 80 });
+    const a = alertasRepasses(r);
+    expect(a.map((x) => x.id)).toEqual(["repasse-divergente", "repasse-atrasado"]);
+    expect(a[0].gravidade).toBe("alta");
+    expect(a[0].acoes[0]).toMatchObject({ href: "/financeiro?aba=repasses" });
+    expect(alertasRepasses({ divergentes: 0, diferenca: 0, atrasados: 0, valorAtrasado: 0 })).toEqual([]);
+  });
+
+  it("preço defasado leva ao Raio-X; precificação velha é aviso leve", () => {
+    const [custo, antiga] = alertasPrecoDefasado([
+      { produtoId: "a", produtoNome: "Caneca", custoPrecificado: 10, custoAtual: 12, aumentoPct: 20, dias: 30, motivo: "custo" },
+      { produtoId: "b", produtoNome: "Copo", custoPrecificado: 5, custoAtual: 5, aumentoPct: 0, dias: 200, motivo: "antiga" },
+    ]);
+    expect(custo.gravidade).toBe("alta");
+    expect(custo.titulo).toContain("preço defasado");
+    expect(custo.acoes[0]).toMatchObject({ href: "/precificacao?visao=raio-x" });
+    expect(antiga.gravidade).toBe("baixa");
+    expect(antiga.titulo).toContain("200 dias");
   });
 });
