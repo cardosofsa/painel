@@ -802,3 +802,21 @@ export const movimentacaoArmazemSchema = z
     motivo: z.string().trim().max(200).nullable(),
   })
   .refine((v) => v.tipo !== "transferencia" || (!!v.destinoId && v.destinoId !== v.armazemId), "Escolha um armazém de destino diferente do de origem.");
+
+// ---------- Vixe → Mensagens (0069) ----------
+export const modeloMensagemSchema = z.object({
+  assunto: z.enum(["pedido", "pago", "enviado", "fiado_vence", "fiado_vencido", "data_comercial", "recompra"]),
+  texto: z.string().trim().min(1, "Escreva o texto da mensagem").max(1000, "A mensagem pode ter no máximo 1.000 caracteres"),
+});
+export type ModeloMensagemInput = z.infer<typeof modeloMensagemSchema>;
+
+export const mensagemEnviadaSchema = z.object({
+  chave: z.string().min(3).max(120),
+  assunto: z.string().max(30).nullish(),
+  cliente: z.string().max(120).nullish(),
+  referencia: z.string().max(60).nullish(),
+  whatsapp: z.string().max(30).nullish(),
+  texto: z.string().max(2000).nullish(),
+  pulada: z.boolean().optional(),
+});
+export type MensagemEnviadaInput = z.infer<typeof mensagemEnviadaSchema>;
