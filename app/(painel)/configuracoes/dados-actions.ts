@@ -6,6 +6,7 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { comResultado } from "@/lib/acao";
 import { validar } from "@/lib/validacao";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
+import { montarBackup } from "@/lib/backup";
 
 /**
  * Central de Dados (Configurações → Dados, Fase 8.5). Tudo é buscado no clique, não ao
@@ -204,36 +205,35 @@ export async function carregarOpcoesImportacaoPedidos() {
 export async function backupCompleto() {
   return comResultado(async () => {
     const supabase = await createClient();
-    const tabelas = [
-      "perfil_negocio",
-      "categorias",
-      "fornecedores",
-      "armazens",
-      "produto_grupos",
-      "produtos",
-      "clientes",
-      "canais",
-      "lojas_canal",
-      "faixas_comissao_canal",
-      "contas",
-      "formas_pagamento",
-      "precificacoes",
-      "pedidos_compra",
-      "pedidos_compra_itens",
-      "vendas",
-      "venda_itens",
-      "venda_parcelas",
-      "contas_a_pagar_receber",
-      "movimentacoes_financeiras",
-      "estoque_movimentacoes",
-      "catalogos",
-    ] as const;
-    const resultados = await Promise.all(tabelas.map((t) => supabase.from(t).select("*").limit(50000)));
-    const dados: Record<string, unknown[]> = {};
-    tabelas.forEach((t, i) => {
-      // Tabela que não existe ainda (migração pendente) só fica de fora do arquivo.
-      if (!resultados[i].error) dados[t] = resultados[i].data ?? [];
-    });
-    return { geradoEm: new Date().toISOString(), sistema: "Sertão", dados };
+    // Sessão do usuário: o RLS já limita à conta (lib/backup.ts, mesma lista do cron semanal).
+    return montarBackup(supabase, null);
+  });
+}
+
+/** Backups automáticos da semana (0076): os arquivos da própria pasta no bucket `backups`. */
+export async function listarBackupsAutomaticos() {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
+    const { data, error } = await supabase.storage.from("backups").list(auth.user.id, { limit: 20, sortBy: { column: "name", order: "desc" } });
+    // Sem a 0076 o bucket não existe: lista vazia, a tela explica.
+    if (error) return [] as { nome: string; tamanho: number | null }[];
+    return (data ?? [])
+      .filter((a) => /^\d{4}-\d{2}-\d{2}\.json$/.test(a.name))
+      .map((a) => ({ nome: a.name, tamanho: (a.metadata as { size?: number } | null)?.size ?? null }));
+  });
+}
+
+/** Link de download (1 minuto) de um backup automático da própria conta. */
+export async function linkBackupAutomatico(nome: string) {
+  return comResultado(async () => {
+    if (!/^\d{4}-\d{2}-\d{2}\.json$/.test(nome)) throw new Error("Arquivo inválido.");
+    const supabase = await createClient();
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
+    const { data, error } = await supabase.storage.from("backups").createSignedUrl(`${auth.user.id}/${nome}`, 60, { download: `sertao-backup-${nome}` });
+    if (error || !data) throw new Error("Não foi possível gerar o link deste backup.");
+    return data.signedUrl;
   });
 }

@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "db:verificar": "node scripts/supabase/aplicar-migracao.mjs --verificar",
     "db:migracao": "node scripts/supabase/aplicar-migracao.mjs",
-    "test:sql": "node scripts/sql/reserva.mjs && node scripts/sql/anotacoes.mjs && node scripts/sql/envio.mjs && node scripts/sql/frete.mjs && node scripts/sql/mercadolivre.mjs && node scripts/sql/planos.mjs && node scripts/sql/kits.mjs && node scripts/sql/devolucoes.mjs && node scripts/sql/offline.mjs && node scripts/sql/mensagens.mjs && node scripts/sql/fiscal.mjs && node scripts/sql/operadores.mjs && node scripts/sql/compras-prazo.mjs && node scripts/sql/crediario.mjs && node scripts/sql/dre.mjs && node scripts/sql/dividas.mjs && node scripts/sql/calendario.mjs && node scripts/sql/mensagens-modelos.mjs && node scripts/sql/seguranca-auditoria.mjs && node scripts/sql/raio-x.mjs && node scripts/sql/ia-imagens.mjs && node scripts/sql/limite-usuarios.mjs && node scripts/sql/inventario.mjs && node scripts/sql/compre-junto.mjs"
+    "test:sql": "node scripts/sql/reserva.mjs && node scripts/sql/anotacoes.mjs && node scripts/sql/envio.mjs && node scripts/sql/frete.mjs && node scripts/sql/mercadolivre.mjs && node scripts/sql/planos.mjs && node scripts/sql/kits.mjs && node scripts/sql/devolucoes.mjs && node scripts/sql/offline.mjs && node scripts/sql/mensagens.mjs && node scripts/sql/fiscal.mjs && node scripts/sql/operadores.mjs && node scripts/sql/compras-prazo.mjs && node scripts/sql/crediario.mjs && node scripts/sql/dre.mjs && node scripts/sql/dividas.mjs && node scripts/sql/calendario.mjs && node scripts/sql/mensagens-modelos.mjs && node scripts/sql/seguranca-auditoria.mjs && node scripts/sql/raio-x.mjs && node scripts/sql/ia-imagens.mjs && node scripts/sql/limite-usuarios.mjs && node scripts/sql/inventario.mjs && node scripts/sql/compre-junto.mjs && node scripts/sql/plataforma.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

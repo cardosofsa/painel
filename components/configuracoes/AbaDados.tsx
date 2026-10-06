@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { BackupsAutomaticos } from "./BackupsAutomaticos";
 import { toast } from "sonner";
 import { Boxes, ShoppingCart, ArrowLeftRight, Receipt, Wallet, DatabaseBackup } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -238,6 +239,7 @@ export function AbaDados({ armazens }: { armazens: { id: string; nome: string }[
           <Button variant="secondary" loading={carregando === "backup"} onClick={baixarBackup}>
             Baixar backup
           </Button>
+          <BackupsAutomaticos />
         </Secao>
       </div>
 
