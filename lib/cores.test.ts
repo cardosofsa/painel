@@ -77,6 +77,15 @@ for (const [tema, t] of [
       expect(contraste(t["--text-secondary"], t["--text-tertiary"])).toBeGreaterThanOrEqual(1.3);
     });
 
+    it("faixa da marca: texto e texto suave legíveis sobre o fundo e sobre o realce", () => {
+      for (const fundo of ["--marca-fundo", "--marca-realce"] as const) {
+        expect(contraste(t["--marca-texto"], t[fundo])).toBeGreaterThanOrEqual(AA_TEXTO);
+        expect(contraste(t["--marca-texto-suave"], t[fundo])).toBeGreaterThanOrEqual(AA_TEXTO);
+      }
+      // O fundo da marca é escuro nos dois temas: o problema era o verde-limão do escuro.
+      expect(luminancia(t["--marca-fundo"])).toBeLessThan(0.08);
+    });
+
     it("texto sobre o accent (botão primário) é legível", () => {
       expect(contraste(t["--accent-on"], t["--accent"])).toBeGreaterThanOrEqual(AA_TEXTO);
     });

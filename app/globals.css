@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `dark:` segue o tema escolhido no sistema (atributo no <html>), não só o do aparelho. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ============================================================
    Tokens. A fonte da verdade é este arquivo; DESIGN.md descreve o que está aqui.
 
@@ -35,6 +38,16 @@
   --accent-hover: #2c3a17;
   --accent-soft: #e8ede0;
   --accent-on: #ffffff;
+
+  /* Faixa da marca (lateral do login/cadastro, chamada final da página inicial). Não usa o
+     accent porque no escuro ele vira um verde-limão claro com texto preto: berrante, e
+     o fundo da marca precisa continuar escuro nos dois temas. */
+  --marca-fundo: #2f3e18;
+  --marca-realce: #44592a;
+  --marca-borda: #4f6532;
+  --marca-texto: #f7f8f2;
+  --marca-texto-suave: #d3dbc3;
+  --marca-sol: #e9b949;
 
   --positive: #15803d;
   --positive-soft: #f0fdf4;
@@ -92,6 +105,13 @@
   --accent-soft: #232b18;
   --accent-on: #0a0a0c;
 
+  --marca-fundo: #141b0c;
+  --marca-realce: #222d14;
+  --marca-borda: #2c3a1b;
+  --marca-texto: #eef2e6;
+  --marca-texto-suave: #b4c09e;
+  --marca-sol: #e0b04a;
+
   --positive: #4ade80;
   --positive-soft: #14291d;
   --negative: #f87171;
@@ -126,6 +146,13 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
   --color-accent-on: var(--accent-on);
+
+  --color-marca-fundo: var(--marca-fundo);
+  --color-marca-realce: var(--marca-realce);
+  --color-marca-borda: var(--marca-borda);
+  --color-marca-texto: var(--marca-texto);
+  --color-marca-texto-suave: var(--marca-texto-suave);
+  --color-marca-sol: var(--marca-sol);
 
   --color-positive: var(--positive);
   --color-positive-soft: var(--positive-soft);
@@ -252,6 +279,25 @@ body {
     14px 100%,
     14px 100%;
   background-attachment: local, local, scroll, scroll;
+}
+
+/* Página inicial: seção que entra ao rolar (`components/landing/Revelar.tsx`). Só o que
+   o script marcou como "aguardando" fica escondido; sem script, tudo aparece. */
+.revelar {
+  transition:
+    opacity 600ms var(--curva),
+    transform 600ms var(--curva);
+}
+.revelar[data-revelar="aguardando"] {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+/* Fundo do topo da página inicial: brilho do accent suave, segue o tema pelos tokens. */
+.fundo-hero {
+  background:
+    radial-gradient(60% 55% at 85% 20%, var(--accent-soft) 0%, transparent 70%),
+    radial-gradient(40% 40% at 5% 0%, var(--accent-soft) 0%, transparent 70%);
 }
 
 /*

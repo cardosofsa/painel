@@ -121,6 +121,10 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     "/api/mercadolivre/notificacoes",
     // Webhook do provedor de cobrança (10.9): valida a assinatura do evento; sem provedor, 404.
     "/api/cobranca/webhook",
+    // Buscadores e prévias de link (WhatsApp, redes) leem estes sem sessão.
+    "/robots.txt",
+    "/sitemap.xml",
+    "/opengraph-image",
   ]);
 
   /**
