@@ -104,7 +104,7 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
                 </div>
                 {p.descricao && <p className="text-xs text-text-secondary mb-3">{p.descricao}</p>}
                 <ul className="space-y-1 text-sm text-text-secondary mb-4 flex-1">
-                  {[rotuloLimite(p.limite_produtos, "produtos"), p.limite_lojas === 0 ? "Sem marketplace conectado" : rotuloLimite(p.limite_lojas, "lojas conectadas"), rotuloLimite(p.limite_usuarios, "usuários"), rotuloLimite(p.limite_ia_mes, "gerações de IA/mês")].map((t) => (
+                  {[rotuloLimite(p.limite_produtos, "produtos"), p.limite_lojas === 0 ? "Sem marketplace conectado" : rotuloLimite(p.limite_lojas, "lojas conectadas"), rotuloLimite(p.limite_usuarios, "usuários"), rotuloLimite(p.limite_ia_mes, "gerações de IA/mês"), ...(p.limite_imagens_mes !== undefined ? [rotuloLimite(p.limite_imagens_mes, "imagens com IA/mês")] : [])].map((t) => (
                     <li key={t} className="flex items-start gap-1.5">
                       <Check size={14} className="text-accent mt-0.5 shrink-0" /> {t}
                     </li>

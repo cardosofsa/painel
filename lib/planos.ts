@@ -15,6 +15,8 @@ export interface Plano {
   limite_lojas: number | null;
   limite_usuarios: number | null;
   limite_ia_mes: number | null;
+  /** Imagens com IA por mês (0072). Ausente antes da migração. */
+  limite_imagens_mes?: number | null;
   ativo: boolean;
   ordem: number;
 }

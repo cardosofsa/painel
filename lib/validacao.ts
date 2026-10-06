@@ -830,3 +830,12 @@ export const precoPraticadoSchema = z.object({
   observacao: z.string().trim().max(200).nullish(),
 });
 export type PrecoPraticadoInput = z.infer<typeof precoPraticadoSchema>;
+
+// ---------- Estúdio de IA (0072) ----------
+export const imagemIASchema = z.object({
+  produtoId: z.string().uuid(),
+  tipo: z.enum(["fundo_branco", "ambiente", "capa_selo", "variacao_cor", "medidas", "livre"]),
+  extra: z.string().trim().max(160).nullish(),
+  fotoUrl: z.string().url().max(1000).nullish(),
+});
+export type ImagemIAInput = z.infer<typeof imagemIASchema>;

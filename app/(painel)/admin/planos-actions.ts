@@ -49,6 +49,8 @@ const planoSchema = z.object({
   limite_lojas: limite,
   limite_usuarios: z.number().int().min(1).max(10_000).nullable(),
   limite_ia_mes: limite,
+  // 0072. Ausente (migração não aplicada) não vai no upsert.
+  limite_imagens_mes: limite.optional(),
   ativo: z.boolean(),
   ordem: z.number().int().min(0).max(100),
 });

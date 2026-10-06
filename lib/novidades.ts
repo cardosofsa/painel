@@ -15,6 +15,17 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Estúdio de IA e anúncio para a Shopee",
+    itens: [
+      "Imagens do produto com IA (Gemini): fundo branco, ambiente, capa com selo, outra cor, medidas e pedido livre",
+      "Cota de imagens por plano (Grátis 5, Essencial 50, Pro 300 por mês), editável no admin",
+      "\"Montar anúncio Shopee\": título e descrição com IA, preço, fotos na ordem, hashtags e checklist",
+      "Defina GEMINI_API_KEY (e, se quiser, GEMINI_IMAGE_MODEL) na Vercel para ligar as imagens",
+    ],
+    migracao: "0072",
+  },
+  {
+    data: "2026-10-06",
     titulo: "Raio-X da precificação",
     itens: [
       "Compara o preço que você usa em cada anúncio com o preço ideal da sua regra",

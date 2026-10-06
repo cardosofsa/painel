@@ -1,6 +1,7 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
+import { Megaphone, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { ProductThumb } from "@/components/ui/ProductThumb";
@@ -8,6 +9,8 @@ import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { GerarPelaFoto } from "./GerarPelaFoto";
+import { EstudioIAModal } from "./EstudioIAModal";
+import { AnuncioShopeeModal } from "./AnuncioShopeeModal";
 import { CamposEnvio, type DimensoesEnvio } from "@/components/produtos/CamposEnvio";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
@@ -69,6 +72,8 @@ export function ProdutoFormModal({
   salvar: () => void;
   salvando: boolean;
 }) {
+  const [estudioAberto, setEstudioAberto] = useState(false);
+  const [anuncioAberto, setAnuncioAberto] = useState(false);
   function atualizarInsumoProduto(id: string, campo: keyof ComponenteKit, valor: string) {
     setForm((prev) => ({
       ...prev,
@@ -165,8 +170,50 @@ export function ProdutoFormModal({
                 </div>
               ))}
             </div>
-            <CampoArquivo onArquivo={adicionarFotoExtra} disabled={enviandoImagem} rotulo="Adicionar foto" />
-            <p className="text-xs text-text-tertiary mt-1">Aparecem na galeria do pop-up de produto no catálogo público.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <CampoArquivo onArquivo={adicionarFotoExtra} disabled={enviandoImagem} rotulo="Adicionar foto" />
+              {iaDisponivel && (
+                <Button type="button" variant="secondary" size="sm" onClick={() => setEstudioAberto(true)}>
+                  <Wand2 size={14} /> Estúdio de IA
+                </Button>
+              )}
+              <Button type="button" variant="secondary" size="sm" onClick={() => setAnuncioAberto(true)}>
+                <Megaphone size={14} /> Montar anúncio Shopee
+              </Button>
+            </div>
+            <p className="text-xs text-text-tertiary mt-1">Aparecem na galeria do pop-up de produto no catálogo público. O Estúdio de IA cria capa em fundo branco, foto de ambiente, selo, outra cor e medidas a partir da sua foto.</p>
+            {anuncioAberto && (
+              <AnuncioShopeeModal
+                produto={{
+                  id: editandoAtual.id,
+                  nome: form.nome || editandoAtual.nome,
+                  sku: form.sku || null,
+                  descricao: form.descricao ?? null,
+                  preco: form.preco_venda || null,
+                  custo: custoComposto(form.custo_base, form.insumos),
+                  palavrasChave: form.palavras_chave ?? [],
+                  fotos: [form.imagem_url, ...editandoAtual.imagens.map((i) => i.url)].filter((u): u is string => !!u),
+                  pesoG: form.peso_g ?? null,
+                  medidas: { altura: form.altura_cm ?? null, largura: form.largura_cm ?? null, comprimento: form.comprimento_cm ?? null },
+                }}
+                iaDisponivel={iaDisponivel}
+                onEstudio={
+                  iaDisponivel
+                    ? () => {
+                        setAnuncioAberto(false);
+                        setEstudioAberto(true);
+                      }
+                    : undefined
+                }
+                onClose={() => setAnuncioAberto(false)}
+              />
+            )}
+            {estudioAberto && (
+              <EstudioIAModal
+                produto={{ id: editandoAtual.id, nome: form.nome || editandoAtual.nome, imagemPrincipal: form.imagem_url ?? null, imagens: editandoAtual.imagens }}
+                onClose={() => setEstudioAberto(false)}
+              />
+            )}
           </FormField>
         ) : (
           <p className="text-xs text-text-tertiary -mt-1">Salve o produto pra poder adicionar fotos extras.</p>
