@@ -15,11 +15,32 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Inventário do estoque",
+    itens: [
+      "Estoque → Inventário: bipe o código de barras (ou digite o SKU) e conte por armazém ou o estoque geral",
+      "Diferenças destacadas, com sobra e falta em unidades e em valor de custo",
+      'Aplicar lança entradas e saídas com o motivo "Inventário" e guarda o histórico',
+      "A contagem fica salva no navegador até aplicar",
+    ],
+    migracao: "0074",
+  },
+  {
+    data: "2026-10-06",
+    titulo: "Limite de usuários do plano",
+    itens: [
+      "O limite de usuários do plano passa a valer: você + operadores ativos (Grátis 1, Essencial 2, Pro 5), editável no admin",
+      "Configurações → Plano mostra o uso de usuários e de imagens com IA do mês",
+      "Desativar operador continua sempre liberado",
+    ],
+    migracao: "0073",
+  },
+  {
+    data: "2026-10-06",
     titulo: "Estúdio de IA e anúncio para a Shopee",
     itens: [
       "Imagens do produto com IA (Gemini): fundo branco, ambiente, capa com selo, outra cor, medidas e pedido livre",
       "Cota de imagens por plano (Grátis 5, Essencial 50, Pro 300 por mês), editável no admin",
-      "\"Montar anúncio Shopee\": título e descrição com IA, preço, fotos na ordem, hashtags e checklist",
+      '"Montar anúncio Shopee": título e descrição com IA, preço, fotos na ordem, hashtags e checklist',
       "Defina GEMINI_API_KEY (e, se quiser, GEMINI_IMAGE_MODEL) na Vercel para ligar as imagens",
     ],
     migracao: "0072",
@@ -52,7 +73,7 @@ export const NOVIDADES: Novidade[] = [
     titulo: "Vixe → Mensagens: modelos próprios, recompra e campanhas",
     itens: [
       "Cada conta escreve o próprio texto de cada aviso, com variáveis e prévia",
-      "Filtros por tipo e \"Enviar a próxima\" para percorrer a fila",
+      'Filtros por tipo e "Enviar a próxima" para percorrer a fila',
       "Recompra: clientes na hora de comprar de novo e clientes sumidos",
       "Campanha da próxima data do comércio para os clientes",
       "Histórico do que foi enviado, com reenviar",
@@ -62,13 +83,22 @@ export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
     titulo: "Login e cadastro no modo noturno, página inicial e título da aba",
-    itens: ["Faixa da marca escura nos dois temas", "Mostrar/ocultar senha e regra da senha ao vivo", "Página inicial com capturas nos dois temas, animações e SEO", "A aba mostra só o nome da tela"],
+    itens: [
+      "Faixa da marca escura nos dois temas",
+      "Mostrar/ocultar senha e regra da senha ao vivo",
+      "Página inicial com capturas nos dois temas, animações e SEO",
+      "A aba mostra só o nome da tela",
+    ],
     pr: 8,
   },
   {
     data: "2026-10-06",
     titulo: "Dívidas antigas, calendário com feriados e página inicial nova",
-    itens: ["Dívida antiga de fornecedor e crediário antigo de cliente", "Calendário no Home com feriados do estado e da cidade e datas do comércio", "Planos e preços na página inicial"],
+    itens: [
+      "Dívida antiga de fornecedor e crediário antigo de cliente",
+      "Calendário no Home com feriados do estado e da cidade e datas do comércio",
+      "Planos e preços na página inicial",
+    ],
     migracao: "0067 e 0068",
     pr: 7,
   },

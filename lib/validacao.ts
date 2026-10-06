@@ -839,3 +839,14 @@ export const imagemIASchema = z.object({
   fotoUrl: z.string().url().max(1000).nullish(),
 });
 export type ImagemIAInput = z.infer<typeof imagemIASchema>;
+
+// ---------- Inventário (0074) ----------
+export const inventarioSchema = z.object({
+  armazemId: z.string().uuid().nullable(),
+  itens: z
+    .array(z.object({ produto_id: z.string().uuid(), contado: z.number().int("Contagem em unidades inteiras").min(0).max(1_000_000) }))
+    .min(1, "Conte pelo menos um produto antes de aplicar.")
+    .max(5000, "Inventário grande demais: aplique em partes de até 5.000 produtos."),
+  observacao: z.string().trim().max(300).nullish(),
+});
+export type InventarioInput = z.infer<typeof inventarioSchema>;

@@ -57,6 +57,8 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
         { rotulo: "Produtos", usado: resumo.uso.produtos, limite: efetivo.limite_produtos, unidade: "produtos" },
         { rotulo: "Lojas conectadas (API)", usado: resumo.uso.lojas, limite: efetivo.limite_lojas, unidade: "lojas" },
         { rotulo: "Gerações de IA neste mês", usado: resumo.uso.ia_mes, limite: efetivo.limite_ia_mes, unidade: "gerações" },
+        ...(resumo.uso.usuarios !== undefined ? [{ rotulo: "Usuários (você + operadores ativos)", usado: resumo.uso.usuarios, limite: efetivo.limite_usuarios, unidade: "usuários" }] : []),
+        ...(resumo.uso.imagens_mes !== undefined && efetivo.limite_imagens_mes !== undefined ? [{ rotulo: "Imagens com IA neste mês", usado: resumo.uso.imagens_mes, limite: efetivo.limite_imagens_mes, unidade: "imagens" }] : []),
       ]
     : [];
 

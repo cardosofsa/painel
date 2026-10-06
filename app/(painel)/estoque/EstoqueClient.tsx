@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowRightLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, ChevronRight, ClipboardCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
+import { Button, classesBotao } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { BarraFiltros, FiltroChips, FiltroSelect } from "@/components/ui/BarraFiltros";
@@ -105,9 +105,14 @@ export function EstoqueClient({
       <PageHeader
         title="Armazéns & Estoque"
         actions={
-          <Button variant="primary" onClick={() => setModal({ armazemId: armazemFiltro || null })} disabled={armazens.length === 0}>
-            Registrar Movimentação
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/estoque/inventario" className={classesBotao({ variant: "secondary" })}>
+              <ClipboardCheck size={15} aria-hidden /> Inventário
+            </Link>
+            <Button variant="primary" onClick={() => setModal({ armazemId: armazemFiltro || null })} disabled={armazens.length === 0}>
+              Registrar Movimentação
+            </Button>
+          </div>
         }
       />
 
