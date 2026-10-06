@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Layers } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal, campoBase } from "@/components/ui/Modal";
@@ -136,7 +137,9 @@ export function HistoricoPrecificacoes({
                       checked={todasFiltradasMarcadas}
                       onChange={(e) =>
                         setSelecionadas((s) =>
-                          e.target.checked ? Array.from(new Set([...s, ...historicoFiltrado.map((h) => h.id)])) : s.filter((id) => !historicoFiltrado.some((h) => h.id === id)),
+                          e.target.checked
+                            ? Array.from(new Set([...s, ...historicoFiltrado.map((h) => h.id)]))
+                            : s.filter((id) => !historicoFiltrado.some((h) => h.id === id)),
                         )
                       }
                     />
@@ -155,7 +158,13 @@ export function HistoricoPrecificacoes({
                 {historicoFiltrado.map((h) => (
                   <Tr key={h.id}>
                     <Td>
-                      <input type="checkbox" aria-label={`Selecionar ${h.produto_nome}`} className="w-4 h-4 accent-accent" checked={selecionadas.includes(h.id)} onChange={() => alternar(h.id)} />
+                      <input
+                        type="checkbox"
+                        aria-label={`Selecionar ${h.produto_nome}`}
+                        className="w-4 h-4 accent-accent"
+                        checked={selecionadas.includes(h.id)}
+                        onChange={() => alternar(h.id)}
+                      />
                     </Td>
                     <Td mono>{new Date(h.criado_em).toLocaleDateString("pt-BR")}</Td>
                     <Td>{h.produto_nome}</Td>
@@ -175,7 +184,13 @@ export function HistoricoPrecificacoes({
                     <Td align="right">
                       <RowMenu
                         actions={[
-                          { label: "Ver", onClick: () => { setHistoricoDetalhe(h); setMostrarDetalheHistorico(false); } },
+                          {
+                            label: "Ver",
+                            onClick: () => {
+                              setHistoricoDetalhe(h);
+                              setMostrarDetalheHistorico(false);
+                            },
+                          },
                           { label: "Duplicar", onClick: () => duplicarHistorico(h) },
                           ...acoesLigarProduto(h),
                           { label: "Remover", onClick: () => removerHistorico(h), destructive: true },
@@ -219,9 +234,7 @@ export function HistoricoPrecificacoes({
                 <div className="text-sm space-y-1.5 border-t border-border pt-3">
                   <div className="flex justify-between text-text-secondary">
                     <span>Data</span>
-                    <span className="font-mono text-text-primary">
-                      {new Date(historicoDetalhe.criado_em).toLocaleDateString("pt-BR")}
-                    </span>
+                    <span className="font-mono text-text-primary">{new Date(historicoDetalhe.criado_em).toLocaleDateString("pt-BR")}</span>
                   </div>
                   {historicoDetalhe.canal && (
                     <div className="flex justify-between text-text-secondary">
@@ -268,7 +281,9 @@ export function HistoricoPrecificacoes({
                     <div className="flex justify-between text-xs text-text-tertiary">
                       <span>Anúncio pago por venda</span>
                       <span className="font-mono">
-                        {historicoDetalhe.anuncio.tipo === "percentual" ? `${historicoDetalhe.anuncio.valor}% do preço` : formatBRL(historicoDetalhe.anuncio.valor)}
+                        {historicoDetalhe.anuncio.tipo === "percentual"
+                          ? `${historicoDetalhe.anuncio.valor}% do preço`
+                          : formatBRL(historicoDetalhe.anuncio.valor)}
                       </span>
                     </div>
                   )}
@@ -363,7 +378,11 @@ export function HistoricoPrecificacoes({
               </div>
             ))}
             {anuncios.length === 0 && (
-              <p className="text-sm text-text-tertiary text-center py-8">Nenhum produto com variações salvo ainda.</p>
+              <EmptyState
+                icon={Layers}
+                title="Nenhum produto com variações salvo ainda"
+                description="Precifique as variações de um anúncio (cor, tamanho, kit) e salve para ver aqui."
+              />
             )}
           </div>
         </Card>
@@ -380,10 +399,18 @@ export function HistoricoPrecificacoes({
         />
       )}
       {exportando === "variacoes" && (
-        <ExportarVariacoesModal onClose={() => setExportando(null)} empresa={empresa} grupos={[{ id: "todos", rotulo: "Todos os anúncios", lista: anuncios }]} />
+        <ExportarVariacoesModal
+          onClose={() => setExportando(null)}
+          empresa={empresa}
+          grupos={[{ id: "todos", rotulo: "Todos os anúncios", lista: anuncios }]}
+        />
       )}
       {anunciosExportar && (
-        <ExportarVariacoesModal onClose={() => setAnunciosExportar(null)} empresa={empresa} grupos={[{ id: "este", rotulo: anunciosExportar[0]?.nome_anuncio ?? "Anúncio", lista: anunciosExportar }]} />
+        <ExportarVariacoesModal
+          onClose={() => setAnunciosExportar(null)}
+          empresa={empresa}
+          grupos={[{ id: "este", rotulo: anunciosExportar[0]?.nome_anuncio ?? "Anúncio", lista: anunciosExportar }]}
+        />
       )}
     </>
   );

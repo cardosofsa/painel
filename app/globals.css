@@ -264,6 +264,23 @@ body {
   animation: esmaecer-entrada var(--duracao-rapida) var(--curva);
 }
 
+/* Carregamento (components/ui/Skeleton.tsx): um brilho atravessa o bloco, em vez do
+   piscar do `animate-pulse`. Em tokens, então funciona nos dois temas. */
+@keyframes esqueleto-brilho {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.esqueleto {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: esqueleto-brilho 1.6s ease-in-out infinite;
+}
+
 /* Sombra de rolagem horizontal: avisa que a tabela continua para o lado. Sem isto, no
    celular o usuário vê 2,5 de 9 colunas e não tem nenhum sinal de que há mais. */
 .rolagem-lateral {

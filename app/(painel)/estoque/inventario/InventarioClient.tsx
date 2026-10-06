@@ -206,6 +206,7 @@ export function InventarioClient({
     <>
       <PageHeader
         title="Inventário"
+        descricao="Conte o estoque, veja as diferenças e ajuste tudo de uma vez."
         actions={
           <Link href="/estoque" className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary">
             <ArrowLeft size={15} aria-hidden /> Voltar ao estoque
