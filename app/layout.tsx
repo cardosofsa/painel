@@ -27,8 +27,8 @@ export const metadata: Metadata = {
   // Base dos links absolutos da prévia (Open Graph); sem ela o WhatsApp não acha a imagem.
   metadataBase: site ? new URL(site) : undefined,
   // A guia mostra só o nome da tela ("Precificação"): com várias abas abertas, o nome do
-  // sistema em todas só ocupava espaço. A marca fica no ícone da guia e na página inicial.
-  title: { default: "Sertão — gestão para quem vende online", template: "%s" },
+  // sistema em todas só ocupava espaço. A página inicial mostra só "Sertão".
+  title: { default: "Sertão", template: "%s" },
   description: "Precificação com as taxas de cada canal, estoque, compras, vendas, catálogo e financeiro para quem vende online.",
   applicationName: "Sertão",
   openGraph: {

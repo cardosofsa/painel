@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Calculator, CalendarDays, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Calculator, CalendarDays, ShieldCheck } from "lucide-react";
+import { BotaoTema } from "@/components/layout/BotaoTema";
 import { LogoSertao } from "@/components/ui/LogoSertao";
 
 const DESTAQUES = [
@@ -14,19 +15,9 @@ const DESTAQUES = [
  *
  * Em tela grande, divide em duas: à esquerda a marca e o que o sistema resolve (quem chega
  * pelo login também está decidindo se fica), à direita o formulário. No celular, só o
- * formulário. O logo leva de volta à página inicial.
+ * formulário. O logo e o "Voltar ao início" levam à página inicial; o tema troca ali mesmo.
  */
-export function CartaoAuth({
-  titulo,
-  descricao,
-  children,
-  rodape,
-}: {
-  titulo: string;
-  descricao?: string;
-  children: ReactNode;
-  rodape?: ReactNode;
-}) {
+export function CartaoAuth({ titulo, descricao, children, rodape }: { titulo: string; descricao?: string; children: ReactNode; rodape?: ReactNode }) {
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] bg-background">
       {/* Faixa da marca: tokens `--marca-*`, escuros nos dois temas. Com `bg-accent` o
@@ -60,7 +51,16 @@ export function CartaoAuth({
         <p className="relative text-xs text-marca-texto-suave">Gestão para quem vende online e no WhatsApp.</p>
       </aside>
 
-      <main className="flex items-center justify-center px-4 py-8">
+      <main className="relative flex items-center justify-center px-4 pt-16 pb-8 lg:py-8">
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+          >
+            <ArrowLeft size={16} aria-hidden /> Voltar ao início
+          </Link>
+          <BotaoTema />
+        </div>
         <div className="w-full max-w-sm">
           <Link href="/" className="flex items-center gap-2 mb-6 w-fit rounded-md lg:hidden">
             <LogoSertao tamanho={36} prioridade />

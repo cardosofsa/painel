@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sun, Moon, LogOut, Settings, Menu, UserRound, BadgeCheck, ArrowUpCircle } from "lucide-react";
+import { LogOut, Settings, Menu, UserRound, BadgeCheck, ArrowUpCircle } from "lucide-react";
 import Link from "next/link";
 import { sairOperador } from "@/app/(painel)/operador/actions";
-import { useTheme } from "./ThemeContext";
+import { BotaoTema } from "./BotaoTema";
 import { useSidebarMobile } from "./SidebarMobileContext";
 import { createClient } from "@/lib/supabase/client";
 import { AlertasSino, type AlertaSino } from "./AlertasSino";
@@ -36,7 +36,6 @@ export function TopBar({
   operador?: string | null;
   exigeOperador?: boolean;
 }) {
-  const { theme, toggleTheme } = useTheme();
   const { alternar: alternarSidebar } = useSidebarMobile();
   const router = useRouter();
   const [menuAberto, setMenuAberto] = useState(false);
@@ -63,7 +62,8 @@ export function TopBar({
     // Encerra o turno do operador junto (11.8).
     await sairOperador().catch(() => undefined);
     await supabase.auth.signOut();
-    router.push("/login");
+    // Saiu: volta para a página inicial (não para o login).
+    router.push("/");
     router.refresh();
   }
 
@@ -109,47 +109,48 @@ export function TopBar({
       {nomeNegocio && <div className="hidden md:block max-w-[30%] truncate text-sm font-semibold text-text-primary text-center">{nomeNegocio}</div>}
 
       <div className="flex-1 basis-0 min-w-0 flex items-center justify-end gap-4">
-      {(operador || exigeOperador) && (
-        <Link href="/operador" className="hidden sm:inline-flex items-center gap-1.5 mr-1 rounded-full border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-surface-2" title="Trocar quem está operando">
-          <UserRound size={13} className="text-accent" /> {operador ?? "Ninguém operando"} · trocar
-        </Link>
-      )}
-
-      <PaletaComandos abas={abas} />
-
-      <AlertasSino alertas={alertas} mensagens={mensagens} verVixe={verVixe} />
-
-      <button
-        onClick={toggleTheme}
-        aria-label={theme === "light" ? "Ativar tema escuro" : "Ativar tema claro"}
-        title={theme === "light" ? "Ativar tema escuro" : "Ativar tema claro"}
-        className="w-8 h-8 rounded-md flex items-center justify-center text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-      >
-        {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
-      </button>
-
-      <div className="relative" ref={menuRef}>
-        <button
-          onClick={() => setMenuAberto((v) => !v)}
-          className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-on text-xs font-semibold"
-        >
-          {inicial}
-        </button>
-        {menuAberto && (
-          <div className="absolute right-0 mt-2 w-56 bg-surface-1 border border-border rounded-md shadow-elev-2 py-1 text-sm">
-            <div className="px-3 py-2 border-b border-border">
-              <div className="text-text-primary font-medium truncate">{email ?? "Usuário"}</div>
-              <div className="text-text-tertiary text-xs">Conta Supabase</div>
-            </div>
-            <Link href="/configuracoes" onClick={() => setMenuAberto(false)} className="flex items-center gap-2 px-3 py-2 text-text-secondary hover:bg-surface-2 hover:text-text-primary">
-              <Settings size={14} /> Configurações
-            </Link>
-            <button onClick={sair} className="w-full flex items-center gap-2 px-3 py-2 text-negative hover:bg-negative-soft text-left">
-              <LogOut size={14} /> Sair
-            </button>
-          </div>
+        {(operador || exigeOperador) && (
+          <Link
+            href="/operador"
+            className="hidden sm:inline-flex items-center gap-1.5 mr-1 rounded-full border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-surface-2"
+            title="Trocar quem está operando"
+          >
+            <UserRound size={13} className="text-accent" /> {operador ?? "Ninguém operando"} · trocar
+          </Link>
         )}
-      </div>
+
+        <PaletaComandos abas={abas} />
+
+        <AlertasSino alertas={alertas} mensagens={mensagens} verVixe={verVixe} />
+
+        <BotaoTema />
+
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuAberto((v) => !v)}
+            className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-on text-xs font-semibold"
+          >
+            {inicial}
+          </button>
+          {menuAberto && (
+            <div className="absolute right-0 mt-2 w-56 bg-surface-1 border border-border rounded-md shadow-elev-2 py-1 text-sm">
+              <div className="px-3 py-2 border-b border-border">
+                <div className="text-text-primary font-medium truncate">{email ?? "Usuário"}</div>
+                <div className="text-text-tertiary text-xs">Conta Supabase</div>
+              </div>
+              <Link
+                href="/configuracoes"
+                onClick={() => setMenuAberto(false)}
+                className="flex items-center gap-2 px-3 py-2 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+              >
+                <Settings size={14} /> Configurações
+              </Link>
+              <button onClick={sair} className="w-full flex items-center gap-2 px-3 py-2 text-negative hover:bg-negative-soft text-left">
+                <LogOut size={14} /> Sair
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

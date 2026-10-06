@@ -9,7 +9,7 @@ export function SairButton() {
 
   async function sair() {
     await createClient().auth.signOut();
-    router.push("/login");
+    router.push("/");
     router.refresh();
   }
 
