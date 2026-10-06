@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { AlertTriangle } from "lucide-react";
+import { reportarErroNavegador } from "@/app/erros-actions";
 
 /**
  * Boundary do painel autenticado.
@@ -23,6 +24,8 @@ export default function PainelErrorBoundary({
 
   useEffect(() => {
     console.error(error);
+    // Observabilidade (0076): vai para o Admin → Erros. Disparo e esquece.
+    reportarErroNavegador({ mensagem: error.message, rota: window.location.pathname, digest: error.digest ?? null }).catch(() => undefined);
   }, [error]);
 
   return (

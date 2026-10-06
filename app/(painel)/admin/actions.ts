@@ -77,3 +77,47 @@ export async function definirTesteIaConta(userId: string, dias: number, limite: 
     revalidatePath(`/admin/${userId}`);
   });
 }
+
+// ---------- Plataforma (0076): erros do app e uso de IA ----------
+
+export interface ErroAppLinha {
+  id: number;
+  criado_em: string;
+  onde: "servidor" | "navegador";
+  mensagem: string;
+  rota: string | null;
+  digest: string | null;
+  email: string | null;
+}
+
+export interface UsoIALinha {
+  user_id: string;
+  email: string;
+  negocio: string | null;
+  geracoes: number;
+  cache_hits: number;
+  imagens: number;
+}
+
+/** Erros recentes do app. A RPC confere `e_master()`; sem a 0076, `migracaoOk: false`. */
+export async function carregarErrosApp() {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("admin_erros_app", { p_limite: 300 });
+    if (error?.code === "PGRST202") return { migracaoOk: false, erros: [] as ErroAppLinha[] };
+    if (error) lancarErroSupabase(error);
+    return { migracaoOk: true, erros: (data ?? []) as ErroAppLinha[] };
+  });
+}
+
+/** Uso de IA por conta desde `inicio` (yyyy-mm-dd). A RPC confere `e_master()`. */
+export async function carregarUsoIA(inicio: string) {
+  return comResultado(async () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio)) throw new Error("Data inválida.");
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("admin_uso_ia", { p_inicio: inicio });
+    if (error?.code === "PGRST202") return { migracaoOk: false, linhas: [] as UsoIALinha[] };
+    if (error) lancarErroSupabase(error);
+    return { migracaoOk: true, linhas: ((data ?? []) as UsoIALinha[]).map((l) => ({ ...l, geracoes: Number(l.geracoes), cache_hits: Number(l.cache_hits), imagens: Number(l.imagens) })) };
+  });
+}

@@ -15,6 +15,17 @@ export interface Novidade {
 export const NOVIDADES: Novidade[] = [
   {
     data: "2026-10-06",
+    titulo: "Plataforma: erros, uso de IA, backup semanal e CI",
+    itens: [
+      "Admin → Erros: o que quebra no ar (servidor e navegador), com rota e código",
+      "Admin → Uso de IA: gerações e imagens da IA do sistema por conta, com custo estimado",
+      "Backup automático toda segunda; as 4 últimas cópias ficam em Configurações → Dados",
+      "CI no GitHub: lint, tipos, testes, testes de banco e E2E das páginas públicas a cada PR",
+    ],
+    migracao: "0076",
+  },
+  {
+    data: "2026-10-06",
     titulo: "Operação: NF-e pela foto, Vixe com ações e resumo da semana",
     itens: [
       "Compras → NF-e: sem o XML, tire uma foto do DANFE e a Vixe lê fornecedor, itens e valores (para conferir antes de salvar)",
