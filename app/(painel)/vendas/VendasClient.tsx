@@ -62,6 +62,7 @@ import { DevolucaoModal } from "@/components/vendas/DevolucaoModal";
 import { useEmissao, type FiscalResumo, type NotaResumo } from "@/components/vendas/central/useEmissao";
 import { comprovanteLink, montarAcoesPedido, tabelaPedidos } from "@/components/vendas/central/acoesPedido";
 import { ImportarShopeeModal, type LojaMarketplace, type ProdutoMarketplace } from "@/components/vendas/marketplace/ImportarShopeeModal";
+import { formatarDataHora } from "@/lib/format";
 
 import type { Venda } from "./tipos-venda";
 export type { Venda, VendaItem } from "./tipos-venda";
@@ -311,7 +312,7 @@ export function VendasClient({
               variant="secondary"
               loading={sincronizando || sincronizandoSozinho}
               onClick={sincronizar}
-              title={ultimaSync ? `Última sincronização: ${new Date(ultimaSync).toLocaleString("pt-BR")}` : "Puxa agora os pedidos das lojas conectadas à API"}
+              title={ultimaSync ? `Última sincronização: ${formatarDataHora(ultimaSync)}` : "Puxa agora os pedidos das lojas conectadas à API"}
             >
               <RefreshCw size={14} /> {sincronizandoSozinho ? "Sincronizando…" : "Sincronizar pedidos"}
             </Button>

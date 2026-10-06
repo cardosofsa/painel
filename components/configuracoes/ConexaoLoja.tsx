@@ -8,6 +8,7 @@ import { executarComToast } from "@/lib/acao-cliente";
 import type { ConexaoResumo } from "@/lib/marketplace/pedidos-servidor";
 import { definirEstoqueAutomatico, desconectarShopee, sincronizarShopee } from "@/app/(painel)/vendas/marketplace-actions";
 import { EstoqueShopeeModal } from "@/components/configuracoes/EstoqueShopeeModal";
+import { formatarDataHora } from "@/lib/format";
 
 /**
  * Situação da API de UMA loja da Shopee, dentro do cartão da loja em Canais de venda:
@@ -45,7 +46,7 @@ export function ConexaoLoja({
   const situacao = conexao.ultimo_erro
     ? { texto: `Erro: ${conexao.ultimo_erro}`, classe: "text-negative" }
     : conexao.ultima_sincronizacao
-      ? { texto: `Sincronizada ${new Date(conexao.ultima_sincronizacao).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`, classe: "text-text-tertiary" }
+      ? { texto: `Sincronizada ${formatarDataHora(conexao.ultima_sincronizacao)}`, classe: "text-text-tertiary" }
       : { texto: "Conectada, ainda não sincronizada", classe: "text-text-tertiary" };
 
   return (

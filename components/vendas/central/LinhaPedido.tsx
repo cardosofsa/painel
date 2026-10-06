@@ -5,12 +5,11 @@ import { TagPedido } from "./TagPedido";
 import { Button } from "@/components/ui/Button";
 import { RowMenu, type RowMenuAction } from "@/components/ui/RowMenu";
 import { IconeMarca } from "@/components/ui/IconeMarca";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatarDataHora } from "@/lib/format";
 import { LOGISTICAS, PROXIMA, ROTULO_ETAPA, ROTULO_MOTIVO, type PedidoCentral } from "@/lib/pedidos-central";
 
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
-const dataHora = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+const dataHora = (iso: string | null) => (iso ? formatarDataHora(iso) : null);
 
 const TOM_ETAPA: Record<PedidoCentral["etapa"], string> = {
   pagamento: "text-text-tertiary",

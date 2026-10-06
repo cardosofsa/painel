@@ -440,10 +440,15 @@ export function zonaMortaDeFaixa(faixas: FaixaComissao[], precoVenda: number): Z
   const proporcao = 1 - faixaAtual.comissaoPct / 100;
   if (proporcao <= 0) return null;
   const precoEmpate = (liquidoMelhor + faixaAtual.tarifaFixa) / proporcao;
+  // Último centavo ESTRITAMENTE abaixo do empate. `arredondar(empate - 0,01)` errava para
+  // baixo quando o empate cai no meio do centavo (88,3628 → 88,35, mas 88,36 ainda rende
+  // menos). O arredondamento a 6 casas antes do `ceil` absorve o ruído do ponto flutuante
+  // num empate exato (19,98 vira 1998,0000000002 e o `ceil` pularia um centavo).
+  const centavosEmpate = Math.ceil(Math.round(precoEmpate * 1e8) / 1e6);
 
   return {
     inicio: faixaAtual.min,
-    fim: arredondar(precoEmpate - 0.01),
+    fim: (centavosEmpate - 1) / 100,
     precoMelhor,
     ganhoLiquido: arredondar(liquidoMelhor - liquidoAtual),
   };

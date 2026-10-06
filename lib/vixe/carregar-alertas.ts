@@ -10,7 +10,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AbaId } from "@/lib/acesso";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil } from "@/lib/format";
 import { calcularErosaoMargem, calcularPrevisaoRuptura } from "@/lib/alertas";
 import { zonaMortaDeFaixa, type FaixaComissao } from "@/lib/pricing";
 import {
@@ -42,7 +42,7 @@ function tem(abas: Abas, ...ids: AbaId[]) {
 
 export async function carregarAlertasVixe(supabase: SupabaseClient, abasLiberadas: AbaId[]): Promise<ResultadoAlertas> {
   const abas: Abas = new Set(abasLiberadas);
-  const hoje = hojeIsoLocal();
+  const hoje = hojeIsoBrasil();
   const falhas: string[] = [];
   const categorias: CategoriaAlerta[] = [];
   const blocos: AlertaVixe[][] = [];
@@ -106,7 +106,7 @@ async function estoque(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     // Só os de estoque: pedido novo (0050) também mora em `alertas`, mas é aviso do sino.
     supabase.from("alertas").select("id, mensagem, produto_id").eq("status", "novo").eq("tipo", "estoque_minimo").order("criado_em", { ascending: false }).limit(100),
     supabase.from("produtos").select("id, nome, estoque").eq("ativo", true),
-    supabase.from("estoque_movimentacoes").select("produto_id, quantidade").eq("tipo", "saida").gte("data_movimentacao", hojeIsoLocal(inicio)),
+    supabase.from("estoque_movimentacoes").select("produto_id, quantidade").eq("tipo", "saida").gte("data_movimentacao", hojeIsoBrasil(inicio)),
   ]);
   const minimos = ok<{ id: string; mensagem: string; produto_id: string | null }[]>(alertasRes);
   const produtos = ok<{ id: string; nome: string; estoque: number }[]>(produtosRes);

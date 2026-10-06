@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { formatarDataIso, hojeIsoLocal, numeroOuNulo, formatarMargemPct, classeValor, dataLocal } from "./format";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { formatarDataIso, hojeIsoLocal, numeroOuNulo, formatarMargemPct, classeValor, dataLocal, formatarDataHora, formatarDataCurta, hojeIsoBrasil } from "./format";
 
 /**
  * O fuso é o ponto crítico aqui. O Brasil é UTC-3, então `new Date("2026-01-01")` — lido
@@ -40,6 +40,36 @@ describe("hojeIsoLocal", () => {
 
   it("formata com zero à esquerda", () => {
     expect(hojeIsoLocal(new Date(2026, 0, 5, 10, 0, 0))).toBe("2026-01-05");
+  });
+});
+
+/**
+ * O servidor (Vercel) roda em UTC; o navegador, no horário de Brasília. Um `timestamptz`
+ * formatado sem fuso saía 3 horas adiantado no HTML do servidor, e o React acusava erro de
+ * hidratação em Vendas. Estes testes forçam UTC, que é onde o bug aparece.
+ */
+describe("fuso fixo de Brasília (servidor em UTC)", () => {
+  const tzOriginal = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = "UTC";
+  });
+  afterAll(() => {
+    if (tzOriginal === undefined) delete process.env.TZ;
+    else process.env.TZ = tzOriginal;
+  });
+
+  it("formatarDataHora mostra a hora de Brasília, não a do servidor", () => {
+    expect(formatarDataHora("2026-10-02T04:58:00Z")).toBe("02/10/2026, 01:58");
+  });
+
+  it("formatarDataCurta: 1h30 UTC do dia 6 ainda é dia 5 no Brasil", () => {
+    expect(formatarDataCurta("2026-10-06T01:30:00Z")).toBe("05/10");
+  });
+
+  it("hojeIsoBrasil: depois das 21h o servidor já está no dia seguinte, o Brasil não", () => {
+    expect(hojeIsoBrasil(new Date("2026-10-06T01:30:00Z"))).toBe("2026-10-05");
+    expect(hojeIsoBrasil(new Date("2026-10-06T03:00:00Z"))).toBe("2026-10-06");
+    expect(hojeIsoBrasil(new Date("2026-01-05T13:00:00Z"))).toBe("2026-01-05");
   });
 });
 

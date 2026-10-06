@@ -1,3 +1,5 @@
+import { formatBRL } from "./format";
+
 /**
  * Traduz o erro cru do Postgres/Supabase para uma frase que faça sentido para quem usa o
  * sistema. Sem isso, o texto do banco ("duplicate key value violates unique constraint...")
@@ -34,7 +36,7 @@ export function traduzirErroSupabase(erro: ErroSupabase): string {
   // pensando no usuário final ("Estoque insuficiente...", "PIN incorreto."). Passa direto —
   // só o nome antigo "fiado" (dentro de `registrar_venda`, 0052) vira "crediário", o nome
   // que a tela usa desde a 0064, sem reescrever a função de venda inteira.
-  if (erro.code === "P0001") return trocarFiadoPorCrediario(erro.message);
+  if (erro.code === "P0001") return moedaNoLimiteDoCrediario(trocarFiadoPorCrediario(erro.message));
 
   switch (erro.code) {
     case "23505":
@@ -170,4 +172,14 @@ export function trocarFiadoPorCrediario(msg: string): string {
     .replace(/\bde fiado\b/g, "do crediário")
     .replace(/\bFiado\b/g, "Crediário")
     .replace(/\bfiado\b/g, "crediário");
+}
+
+/**
+ * "disponível 25.20, necessário 29.90" → "disponível R$ 25,20, necessário R$ 29,90".
+ * O banco interpola o `numeric` cru, com ponto: para quem lê em pt-BR, "25.20" é vinte e
+ * cinco mil. Só na mensagem de limite — a de estoque usa a mesma frase, mas em unidades.
+ */
+function moedaNoLimiteDoCrediario(msg: string): string {
+  if (!msg.startsWith("Limite do crediário insuficiente")) return msg;
+  return msg.replace(/\b(disponível|necessário) (-?\d+(?:\.\d+)?)/g, (_, rotulo: string, n: string) => `${rotulo} ${formatBRL(Number(n))}`);
 }

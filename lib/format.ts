@@ -1,3 +1,11 @@
+/**
+ * Fuso de quem usa o sistema. O servidor (Vercel) roda em UTC e o navegador no horário de
+ * Brasília: sem fuso explícito, o mesmo instante sai com 3 horas de diferença entre o HTML
+ * do servidor e o do cliente (erro de hidratação), e o "hoje" do servidor vira o dia
+ * seguinte depois das 21h.
+ */
+export const FUSO_HORARIO = "America/Sao_Paulo";
+
 export function formatBRL(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -29,13 +37,13 @@ export function dataLocal(iso: string): Date {
 /** Formata um `timestamptz` (que já carrega fuso) com data e hora. */
 export function formatarDataHora(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: FUSO_HORARIO });
 }
 
 /** Formata um `timestamptz` só com dia e mês, para colunas estreitas. */
 export function formatarDataCurta(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: FUSO_HORARIO });
 }
 
 /**
@@ -78,4 +86,17 @@ export function numeroOuNulo(valor: string): number | null {
  */
 export function hojeIsoLocal(data = new Date()): string {
   return data.toLocaleDateString("sv-SE");
+}
+
+/**
+ * Hoje (AAAA-MM-DD) no horário de Brasília, valha onde o código rodar. Use no SERVIDOR
+ * sempre que o "hoje" for o agora: lá `hojeIsoLocal()` lê o fuso da máquina (UTC), e
+ * depois das 21h uma conta que vence amanhã aparecia como vencendo hoje.
+ *
+ * Só para instantes (o `new Date()` de agora, um `timestamptz`). Uma meia-noite montada
+ * com `new Date(ano, mês, dia)` continua indo para `hojeIsoLocal`: convertida de fuso,
+ * ela recuaria para a véspera.
+ */
+export function hojeIsoBrasil(agora = new Date()): string {
+  return agora.toLocaleDateString("sv-SE", { timeZone: FUSO_HORARIO });
 }
