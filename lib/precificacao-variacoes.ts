@@ -2,6 +2,7 @@ import {
   resolverComFaixas,
   resolverPorLucro,
   resolverPorMargem,
+  resolverPorMarkup,
   resultadoParaPreco,
   type FaixaComissao,
   type ModoCalculo,
@@ -31,7 +32,7 @@ export interface LojaVariacao {
 /** Tudo que a tela digitou e que vale para todas as variações do anúncio. */
 export interface ConfigVariacoes {
   modo: ModoCalculo;
-  /** Margem em %, lucro em R$ ou preço em R$, conforme `modo`. */
+  /** Margem em %, markup em %, lucro em R$ ou preço em R$, conforme `modo`. */
   parametroPadrao: number;
   custoUnitarioBase: number;
   impostoPct: number;
@@ -54,10 +55,10 @@ export interface ResultadoVariacao {
   faixa: FaixaComissao | null;
 }
 
-/** Taxas da loja de comissão fixa, ou as digitadas à mão. */
+/** Taxas da loja de comissão fixa (ou de faixas sem nenhuma faixa cadastrada), ou as digitadas à mão. */
 function taxasSemFaixa(cfg: ConfigVariacoes): TaxasPlataforma {
   const base = { impostoPct: cfg.impostoPct / 100, taxaAdicionalPct: cfg.taxaAdicionalPct / 100 };
-  if (cfg.loja && cfg.loja.tipoTaxa === "fixo") {
+  if (cfg.loja) {
     return {
       ...base,
       taxaFixa: cfg.loja.taxaFixa,
@@ -72,9 +73,12 @@ function taxasSemFaixa(cfg: ConfigVariacoes): TaxasPlataforma {
 export function calcularVariacao(cfg: ConfigVariacoes, v: VariacaoLinha): ResultadoVariacao {
   const custo = v.custoManual ?? cfg.custoUnitarioBase * v.multiplicador;
   const bruto = v.parametroOverride ?? cfg.parametroPadrao;
-  const parametro = cfg.modo === "margem" ? bruto / 100 : bruto;
+  // Margem e markup chegam em % da tela; o motor de preço trabalha em fração.
+  const parametro = cfg.modo === "margem" || cfg.modo === "markup" ? bruto / 100 : bruto;
 
-  if (cfg.loja?.tipoTaxa === "faixas") {
+  // Canal de faixas sem faixa cadastrada usa a comissão da loja, como no kit: com a lista
+  // vazia o motor cobraria 0% e R$ 0, e o preço sairia baixo sem aviso.
+  if (cfg.loja?.tipoTaxa === "faixas" && cfg.loja.faixas.length > 0) {
     const base = {
       impostoPct: cfg.impostoPct / 100,
       taxaAdicionalPct: cfg.taxaAdicionalPct / 100,
@@ -94,8 +98,10 @@ export function calcularVariacao(cfg: ConfigVariacoes, v: VariacaoLinha): Result
   const resultado =
     cfg.modo === "margem"
       ? resolverPorMargem(custo, parametro, taxas)
-      : cfg.modo === "lucro"
-        ? resolverPorLucro(custo, parametro, taxas)
-        : resultadoParaPreco(parametro, custo, taxas);
+      : cfg.modo === "markup"
+        ? resolverPorMarkup(custo, parametro, taxas)
+        : cfg.modo === "lucro"
+          ? resolverPorLucro(custo, parametro, taxas)
+          : resultadoParaPreco(parametro, custo, taxas);
   return { custo, resultado, faixa: null, taxas };
 }

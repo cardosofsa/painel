@@ -63,6 +63,7 @@ export function VariacoesView({
   const [impostoPct, setImpostoPct] = useState(aliquotaDasPadrao);
   const [modo, setModo] = useState<ModoCalculo>("margem");
   const [margemPct, setMargemPct] = useState(28);
+  const [markupPct, setMarkupPct] = useState(50);
   const [lucroDesejado, setLucroDesejado] = useState(30);
   const [precoFixo, setPrecoFixo] = useState(99.9);
   const [variacoes, setVariacoes] = useState<VariacaoLinha[]>(VARIACOES_INICIAIS);
@@ -77,7 +78,8 @@ export function VariacoesView({
   const produtoVinculado = produtos.find((p) => p.id === produtoId);
   const limiteDescricao = limiteEfetivo("descricao", lojaSelecionada?.limiteDescricao ?? LIMITE_DESCRICAO_ANUNCIO);
   const canaisAgrupados = useMemo(() => Array.from(new Set(lojas.map((l) => l.canalNome))), [lojas]);
-  const parametroPadrao = modo === "margem" ? margemPct : modo === "lucro" ? lucroDesejado : precoFixo;
+  const parametroPadrao =
+    modo === "margem" ? margemPct : modo === "markup" ? markupPct : modo === "lucro" ? lucroDesejado : precoFixo;
 
   const config: ConfigVariacoes = {
     modo,
@@ -313,15 +315,22 @@ export function VariacoesView({
           </div>
           <div>
             <label className="text-xs text-text-secondary mb-1.5 block">
-              {modo === "margem" ? "Margem Líquida Alvo (%)" : modo === "lucro" ? "Lucro Líquido Desejado (R$)" : "Preço de Venda (R$)"}
+              {modo === "margem"
+                ? "Margem Líquida Alvo (%)"
+                : modo === "markup"
+                  ? "Markup sobre Custo (%)"
+                  : modo === "lucro"
+                    ? "Lucro Líquido Desejado (R$)"
+                    : "Preço de Venda (R$)"}
             </label>
             <input
               type="number"
-              step={modo === "margem" ? "0.1" : "0.01"}
+              step={modo === "margem" || modo === "markup" ? "0.1" : "0.01"}
               value={parametroPadrao}
               onChange={(e) => {
                 const valor = Number(e.target.value) || 0;
                 if (modo === "margem") setMargemPct(valor);
+                else if (modo === "markup") setMarkupPct(valor);
                 else if (modo === "lucro") setLucroDesejado(valor);
                 else setPrecoFixo(valor);
               }}

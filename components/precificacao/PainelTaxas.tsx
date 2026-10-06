@@ -125,7 +125,7 @@ export function PainelTaxas({ estado, lojas, iaDisponivel = false }: { estado: E
 
       {modoTaxas === "loja" &&
         lojaSelecionada &&
-        (lojaSelecionada.tipoTaxa === "faixas" ? (
+        (lojaSelecionada.tipoTaxa === "faixas" && lojaSelecionada.faixas.length > 0 ? (
           faixaShopee && (
             <>
               <p className="text-xs text-text-tertiary mt-2 bg-surface-2 rounded-md p-2">

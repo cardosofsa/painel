@@ -82,11 +82,12 @@ export function CalculadoraEmMassa({
         }
         if (campo === "lojaId") {
           const loja = lojas.find((lj) => lj.id === valor);
+          const comissaoDaLoja = loja && !(loja.tipoTaxa === "faixas" && loja.faixas.length > 0);
           return {
             ...l,
             lojaId: valor || null,
-            comissaoPct: loja && loja.tipoTaxa === "fixo" ? loja.comissaoPct : l.comissaoPct,
-            taxaFixa: loja && loja.tipoTaxa === "fixo" ? loja.taxaFixa : l.taxaFixa,
+            comissaoPct: comissaoDaLoja ? loja.comissaoPct : l.comissaoPct,
+            taxaFixa: comissaoDaLoja ? loja.taxaFixa : l.taxaFixa,
           };
         }
         return { ...l, [campo]: Number(valor) || 0 };

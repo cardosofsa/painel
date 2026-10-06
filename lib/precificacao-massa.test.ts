@@ -88,3 +88,14 @@ describe("taxasDaLinha", () => {
     expect(taxasDaLinha({ linha: l, loja: null, faixa: null })).toEqual({ taxaVariavelPct: 0.3, taxaFixa: 7 });
   });
 });
+
+describe("canal de faixas sem faixa cadastrada", () => {
+  it("usa a comissão da loja, não 0% (igual ao kit)", () => {
+    const vazia: LojaMassa = { ...lojaFaixas, id: "l3", faixas: [] };
+    const [r] = calcularResultadosEmMassa([linha({ lojaId: "l3", margemPct: 25, impostoPct: 6 })], [vazia]);
+    // (10 + 2) / (1 - 0,10 - 0,06 - 0,25)
+    expect(r.resultado.precoVenda).toBeCloseTo(12 / 0.59, 4);
+    expect(r.faixa).toBeNull();
+    expect(taxasDaLinha(r)).toEqual({ taxaVariavelPct: 0.1, taxaFixa: 2 });
+  });
+});

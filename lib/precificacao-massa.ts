@@ -95,7 +95,8 @@ export function calcularResultadosEmMassa(linhas: LinhaEmMassa[], lojas: LojaMas
     let resultado: ResultadoPrecificacao;
     let faixa: FaixaComissao | null = null;
 
-    if (loja?.tipoTaxa === "faixas") {
+    // Sem faixa cadastrada, usa a comissão da loja (igual ao kit), não 0%.
+    if (loja?.tipoTaxa === "faixas" && loja.faixas.length > 0) {
       const r = resolverComFaixas(
         l.custo,
         "margem",
