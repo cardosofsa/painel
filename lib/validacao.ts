@@ -412,6 +412,32 @@ export const contaPagarReceberSchema = z.object({
   conta_id: uuidOpcional,
 });
 
+/**
+ * Paginação do histórico de precificações: `antesDe` é o `criado_em` da última linha já na
+ * tela (cursor), `limite` vai até 5.000 ("carregar tudo" para filtrar e exportar).
+ */
+export const paginaHistoricoSchema = z.object({
+  antesDe: z.string().datetime({ offset: true, message: "Cursor inválido" }).nullable(),
+  limite: z.number().int().min(1).max(5000),
+});
+
+/** Dívida/conta de antes do sistema (0067): parcelas geradas no banco, "já pago" sem mexer no caixa. */
+export const dividaAntigaSchema = z
+  .object({
+    tipo: z.enum(["pagar", "receber"]),
+    fornecedor_id: uuidOpcional,
+    cliente_id: uuidOpcional,
+    descricao: textoCurto,
+    valor_total: dinheiro.refine((v) => v > 0, "Informe o valor total da dívida"),
+    parcelas: z.number().int("Parcelas inválidas").min(1, "Pelo menos 1 parcela").max(48, "No máximo 48 parcelas"),
+    primeiro_vencimento: dataIso,
+    intervalo_dias: z.number().int().min(1).max(120),
+    ja_pago: dinheiro,
+    conta_id: uuidOpcional,
+  })
+  .refine((d) => d.ja_pago <= d.valor_total, { message: "O valor já pago não pode passar do total", path: ["ja_pago"] })
+  .refine((d) => (d.tipo === "pagar" ? !d.cliente_id : !d.fornecedor_id), { message: "A pagar se liga a fornecedor; a receber, a cliente", path: ["tipo"] });
+
 /** O período alimenta um DELETE em massa — daí o cuidado extra com a ordem das datas. */
 export const periodoSchema = z
   .object({ dataInicio: dataIso, dataFim: dataIso })

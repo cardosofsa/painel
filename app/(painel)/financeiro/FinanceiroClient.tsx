@@ -11,7 +11,7 @@ import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Wallet, Receipt, AlertTriangle, ShieldCheck, Download, History } from "lucide-react";
+import { Wallet, Receipt, AlertTriangle, ShieldCheck, Download, History, Plus } from "lucide-react";
 import Link from "next/link";
 import { CashFlowChart } from "@/components/charts/CashFlowChart";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
@@ -31,6 +31,7 @@ import {
 import { executarComToast } from "@/lib/acao-cliente";
 import { LimparDadosModal } from "@/components/financeiro/LimparDadosModal";
 import { NovaMovimentacaoModal, NovaDespesaFixaModal, NovaCprModal } from "@/components/financeiro/ModaisFinanceiro";
+import { DividaAntigaModal, type InicioDividaAntiga } from "@/components/financeiro/DividaAntigaModal";
 import { ParcelasVendaModal } from "@/components/financeiro/ParcelasVendaModal";
 import { HistoricoPagamentosModal } from "@/components/financeiro/HistoricoPagamentos";
 import { ReceberContaModal, type ContaParaReceber } from "@/components/financeiro/ReceberContaModal";
@@ -92,6 +93,9 @@ export interface ContaPagarReceber {
   pedido_id: string | null;
   pedido_numero: string | null;
   fornecedor_nome: string | null;
+  /** Conta a receber ligada direto ao cliente (crediário antigo, 0067). */
+  cliente_id: string | null;
+  cliente_nome: string | null;
 }
 
 /** Uma linha do histórico: pagamento feito (fornecedor/conta) ou recebimento (crediário). */
@@ -153,7 +157,12 @@ export function FinanceiroClient({
   anunciosOk = true,
   repasses = [],
   repassesOk = true,
+  fornecedores = [],
+  clientes = [],
 }: {
+  /** Para "Lançar dívida antiga" (0067). */
+  fornecedores?: { id: string; nome: string }[];
+  clientes?: { id: string; nome: string }[];
   /** `?aba=` da URL. */
   abaUrl?: string;
   /** Resultado por mês (0066), do mais antigo ao atual. */
@@ -184,7 +193,9 @@ export function FinanceiroClient({
   const [filtroReceber, setFiltroReceber] = useState<(typeof FILTROS_RECEBER)[number]>("Todos");
   const [modalMovimentacao, setModalMovimentacao] = useState(false);
   const [modalDespesa, setModalDespesa] = useState(false);
-  const [modalCpr, setModalCpr] = useState(false);
+  // Abre já do lado certo: o "+ Novo" de A receber abria em "A Pagar".
+  const [modalCpr, setModalCpr] = useState<"pagar" | "receber" | null>(null);
+  const [dividaAntiga, setDividaAntiga] = useState<InicioDividaAntiga | null>(null);
   const [modalLimpar, setModalLimpar] = useState(false);
   const [incluirFluxoNoLucro, setIncluirFluxoNoLucro] = useState(false);
   const [filtroContaId, setFiltroContaId] = useState<string | null>(null);
@@ -241,7 +252,8 @@ export function FinanceiroClient({
   const margemLiquidaPct = receitaMensal > 0 ? (resultadoMensal / receitaMensal) * 100 : 0;
 
   const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
-  const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente").reduce((a, c) => a + c.valor, 0);
+  // O que falta (valor - valor_pago): recebido em parte (0065) não conta de novo.
+  const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
 
   const hoje = new Date();
   const em7Dias = new Date(hoje);
@@ -268,7 +280,7 @@ export function FinanceiroClient({
 
   const receberFiltrado = contasReceber.filter((c) => {
     if (filtroReceber === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
-    if (filtroReceber === "Crediário") return c.venda_id !== null;
+    if (filtroReceber === "Crediário") return c.venda_id !== null || c.cliente_id !== null;
     if (filtroReceber === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
     return true;
   });
@@ -279,7 +291,7 @@ export function FinanceiroClient({
 
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
   const pendentesEm30Dias = contasPagarReceber.filter((c) => c.status === "pendente" && c.data_vencimento <= em30DiasIso);
-  const aReceberEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "receber").reduce((a, c) => a + c.valor, 0);
+  const aReceberEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "receber").reduce((a, c) => a + restanteParcela(c), 0);
   const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + restanteParcela(c), 0);
 
   const periodoH = PERIODOS_HISTORICO.find((p) => p.id === periodoHistorico)!;
@@ -333,7 +345,7 @@ export function FinanceiroClient({
     startTransition(async () => {
       const r = await executarComToast(criarContaPagarReceber(dados), { erro: "Erro ao adicionar registro" });
       if (r.ok) {
-        setModalCpr(false);
+        setModalCpr(null);
         toast.success("Registro adicionado");
       }
     });
@@ -511,9 +523,14 @@ export function FinanceiroClient({
             <h2 className="text-base font-semibold text-text-primary">Contas a Pagar</h2>
             <p className="text-sm text-negative">{formatBRL(totalAPagar)} pendente</p>
           </div>
-          <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
-            + Novo
-          </button>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setDividaAntiga({ tipo: "pagar" })}>
+              Dívida antiga
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setModalCpr("pagar")}>
+              <Plus size={14} /> Nova conta
+            </Button>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap px-5 pb-4">
           {FILTROS_PAGAR.map((f) => (
@@ -583,9 +600,14 @@ export function FinanceiroClient({
             <h2 className="text-base font-semibold text-text-primary">Contas a Receber</h2>
             <p className="text-sm text-positive">{formatBRL(totalAReceber)} pendente</p>
           </div>
-          <button onClick={() => setModalCpr(true)} className="text-sm text-accent hover:underline shrink-0">
-            + Novo
-          </button>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setDividaAntiga({ tipo: "receber" })}>
+              Crediário antigo
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setModalCpr("receber")}>
+              <Plus size={14} /> Nova conta
+            </Button>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap px-5 pb-4">
           {FILTROS_RECEBER.map((f) => (
@@ -615,10 +637,14 @@ export function FinanceiroClient({
                 const parcelado = c.venda_id !== null && (c.total_parcelas_fiado ?? 1) > 1;
                 return (
                   <Tr key={c.id}>
-                    <Td>{c.descricao}</Td>
+                    <Td>
+                      {c.descricao}
+                      {c.cliente_nome && <div className="text-xs text-text-tertiary">{c.cliente_nome}</div>}
+                    </Td>
                     <Td className="text-text-secondary">{c.conta_nome ?? "—"}</Td>
                     <Td align="right" mono className="text-positive">
-                      {formatBRL(c.valor)}
+                      {formatBRL(c.status === "pendente" ? restanteParcela(c) : c.valor)}
+                      {c.status === "pendente" && c.valor_pago > 0 && <div className="text-xs text-text-tertiary">de {formatBRL(c.valor)}</div>}
                     </Td>
                     <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
                     <Td>
@@ -641,7 +667,7 @@ export function FinanceiroClient({
                               {
                                 label: "Receber",
                                 onClick: () =>
-                                  setRecebendo({ id: c.id, descricao: c.descricao, valor: c.valor, valor_pago: c.valor_pago, data_vencimento: c.data_vencimento, conta_id: c.conta_id, crediario: c.venda_id !== null }),
+                                  setRecebendo({ id: c.id, descricao: c.descricao, valor: c.valor, valor_pago: c.valor_pago, data_vencimento: c.data_vencimento, conta_id: c.conta_id, crediario: c.venda_id !== null || c.cliente_id !== null }),
                               },
                             ]}
                           />
@@ -877,7 +903,8 @@ export function FinanceiroClient({
       */}
       <NovaMovimentacaoModal key={`mov-${modalMovimentacao}`} open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contas} onSave={adicionarMovimentacao} salvando={pending} />
       <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />
-      <NovaCprModal key={`cpr-${modalCpr}`} open={modalCpr} onClose={() => setModalCpr(false)} contas={contas} onSave={adicionarCpr} salvando={pending} />
+      <NovaCprModal key={`cpr-${modalCpr}`} open={!!modalCpr} tipoInicial={modalCpr ?? "pagar"} onClose={() => setModalCpr(null)} contas={contas} onSave={adicionarCpr} salvando={pending} />
+      <DividaAntigaModal key={`divida-${dividaAntiga?.tipo ?? "fechado"}`} inicio={dividaAntiga} fornecedores={fornecedores} clientes={clientes} onClose={() => setDividaAntiga(null)} />
       <LimparDadosModal open={modalLimpar} onClose={() => setModalLimpar(false)} confirm={confirm} />
       <ParcelasVendaModal
         key={`parcelas-${parcelasAbertas?.vendaId ?? "fechado"}`}

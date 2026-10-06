@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diasAntes, previaParcelas, restanteParcela, resumoPagamento, situacaoParcela } from "./pagamentos";
+import { diasAntes, distribuirJaPago, previaParcelas, restanteParcela, resumoPagamento, situacaoParcela } from "./pagamentos";
 
 const hoje = "2026-10-05";
 const p = (o: Partial<{ status: "pendente" | "pago"; valor: number; valor_pago: number; data_vencimento: string }>) => ({
@@ -49,3 +49,30 @@ describe("diasAntes", () => {
     expect(diasAntes("2026-01-10", 30)).toBe("2025-12-11");
   });
 });
+
+/** Prévia da dívida antiga: mesma regra de `lancar_divida_antiga` (0067). */
+describe("distribuirJaPago", () => {
+  it("abate primeiro as parcelas mais antigas", () => {
+    const r = distribuirJaPago(previaParcelas(300, 3, "2026-11-05", 30), 150);
+    expect(r.map((x) => [x.valor, x.jaPago, x.quitada])).toEqual([
+      [100, 100, true],
+      [100, 50, false],
+      [100, 0, false],
+    ]);
+  });
+
+  it("nada pago: todas em aberto", () => {
+    expect(distribuirJaPago(previaParcelas(100, 2, "2026-11-01", 30), 0).every((x) => x.jaPago === 0 && !x.quitada)).toBe(true);
+  });
+
+  it("pago a mais não passa do total (o banco recusa; a prévia não inventa crédito)", () => {
+    const r = distribuirJaPago(previaParcelas(100, 2, "2026-11-01", 30), 500);
+    expect(r.reduce((s, x) => s + x.jaPago, 0)).toBe(100);
+  });
+
+  it("centavos não se perdem na divisão", () => {
+    const r = distribuirJaPago(previaParcelas(100, 3, "2026-11-01", 30), 66.66);
+    expect(r.map((x) => x.jaPago)).toEqual([33.33, 33.33, 0]);
+  });
+});
+

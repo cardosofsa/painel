@@ -10,12 +10,14 @@ import {
   precoProdutoSchema,
   concorrenteSchema,
   vincularProdutoPrecificacaoSchema,
+  paginaHistoricoSchema,
 } from "@/lib/validacao";
 import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
 import { gerarComIA } from "@/lib/ia/gerar";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { truncarEmPalavra } from "@/lib/ia/texto";
 import { comResultado } from "@/lib/acao";
+import type { PrecificacaoHist } from "@/lib/precificacao-tipos";
 
 export interface PrecificacaoInput {
   produto_id: string | null;
@@ -345,3 +347,20 @@ export async function gerarTituloAnuncioIA(contexto: unknown) {
   const supabase = await createClient();
   return gerarComIA(supabase, "titulo", contexto);
 }
+
+/**
+ * Mais linhas do histórico: a tela abre com as 50 mais recentes, e filtrar ou exportar
+ * "todas" alcançava só essas. `antesDe` = `criado_em` da última linha carregada.
+ */
+export async function carregarHistoricoPrecificacoes(antesDe: string | null, limite: number) {
+  return comResultado(async () => {
+    const v = validar(paginaHistoricoSchema, { antesDe, limite });
+    const supabase = await createClient();
+    let consulta = supabase.from("precificacoes").select("*").order("criado_em", { ascending: false }).limit(v.limite);
+    if (v.antesDe) consulta = consulta.lt("criado_em", v.antesDe);
+    const { data, error } = await consulta;
+    if (error) lancarErroSupabase(error);
+    return (data ?? []) as PrecificacaoHist[];
+  });
+}
+

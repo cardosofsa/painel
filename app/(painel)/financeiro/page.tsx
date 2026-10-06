@@ -26,6 +26,9 @@ interface LinhaCpr {
   total_parcelas?: number | null;
   referencia_pedido_compra_id: string | null;
   pedidos_compra: { numero: string; fornecedores: { nome: string } | null } | null;
+  /** 0018 / 0067: dono da conta avulsa ou da dívida antiga. */
+  cliente_id?: string | null;
+  fornecedor_id?: string | null;
 }
 
 interface PagamentoBruto {
@@ -94,6 +97,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     gastosRes,
     lojasRes,
     repassesRes,
+    fornecedoresRes,
+    clientesRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -145,7 +150,14 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .gte("pago_em", new Date(hoje.getTime() - 120 * 86_400_000).toISOString())
       .order("pago_em", { ascending: false })
       .limit(1000),
+    // Para "Lançar dívida antiga" (0067) e para dar nome a conta ligada direto a eles.
+    supabase.from("fornecedores").select("id, nome").order("nome"),
+    supabase.from("clientes").select("id, nome").order("nome"),
   ]);
+  const fornecedores = (fornecedoresRes.data ?? []) as { id: string; nome: string }[];
+  const clientes = (clientesRes.data ?? []) as { id: string; nome: string }[];
+  const nomeFornecedor = new Map(fornecedores.map((f) => [f.id, f.nome]));
+  const nomeCliente = new Map(clientes.map((c) => [c.id, c.nome]));
 
   const lojasMarketplace = ((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => ({ id: l.id, nome: l.nome, canal: l.canais?.nome ?? "Loja" }));
   const nomeLoja = new Map(lojasMarketplace.map((l) => [l.id, `${l.canal} · ${l.nome}`]));
@@ -230,7 +242,9 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     total_parcelas: c.total_parcelas ?? null,
     pedido_id: c.referencia_pedido_compra_id ?? null,
     pedido_numero: c.pedidos_compra?.numero ?? null,
-    fornecedor_nome: c.pedidos_compra?.fornecedores?.nome ?? null,
+    fornecedor_nome: c.pedidos_compra?.fornecedores?.nome ?? (c.fornecedor_id ? (nomeFornecedor.get(c.fornecedor_id) ?? null) : null),
+    cliente_id: c.cliente_id ?? null,
+    cliente_nome: c.cliente_id ? (nomeCliente.get(c.cliente_id) ?? null) : null,
   }));
 
   // Histórico: pagamentos a fornecedores/contas (0064) + recebimentos de crediário.
@@ -317,6 +331,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
         repasse_recebido_em: (p.repasse_recebido_em as string | null) ?? null,
       }))}
       repassesOk={repassesOk}
+      fornecedores={fornecedores}
+      clientes={clientes}
     />
   );
 }

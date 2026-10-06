@@ -80,6 +80,24 @@ export function previaParcelas(total: number, n: number, primeiroVenc: string, i
   });
 }
 
+/**
+ * Prévia da dívida antiga (0067): o que já foi pago abate as parcelas na ordem, da mais
+ * antiga para a mais nova — a mesma regra de `lancar_divida_antiga` no banco, para a tela
+ * mostrar exatamente o que vai ser gravado.
+ */
+export function distribuirJaPago(
+  parcelas: { valor: number; vencimento: string }[],
+  jaPago: number,
+): { valor: number; vencimento: string; jaPago: number; quitada: boolean }[] {
+  let resto = Math.round(Math.max(0, jaPago) * 100);
+  return parcelas.map((p) => {
+    const centavos = Math.round(p.valor * 100);
+    const pago = Math.min(resto, centavos);
+    resto -= pago;
+    return { ...p, jaPago: pago / 100, quitada: pago >= centavos };
+  });
+}
+
 /** Igual ao `date + interval 'n months'` do Postgres: dia 31 em mês curto vira o último dia. */
 function somarMesesUtc(a: number, m: number, d: number, meses: number): Date {
   const alvo = new Date(Date.UTC(a, m - 1 + meses, 1));

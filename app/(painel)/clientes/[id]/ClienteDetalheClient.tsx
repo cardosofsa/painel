@@ -22,6 +22,9 @@ import type { Conta } from "@/app/(painel)/financeiro/FinanceiroClient";
 import { obterParcelasVenda } from "@/app/(painel)/financeiro/actions";
 import { useResumoFiadoImagem } from "@/components/clientes/ResumoFiadoImagem";
 import type { RegraEncargos } from "@/lib/crediario";
+import { SITUACAO_PARCELA, situacaoParcela } from "@/lib/pagamentos";
+import { DividaAntigaModal } from "@/components/financeiro/DividaAntigaModal";
+import { ReceberContaModal, type ContaParaReceber } from "@/components/financeiro/ReceberContaModal";
 
 export interface ClienteDetalhe {
   id: string;
@@ -31,6 +34,17 @@ export interface ClienteDetalhe {
   permite_fiado: boolean;
   limite_fiado: number;
   status: "ativo" | "inativo";
+}
+
+/** Crediário de antes do sistema (0067): conta a receber do cliente, sem venda. */
+export interface ContaAntigaCliente {
+  id: string;
+  descricao: string;
+  valor: number;
+  valor_pago: number;
+  data_vencimento: string;
+  status: "pendente" | "pago" | "recebido";
+  conta_id: string | null;
 }
 
 export interface VendaCliente {
@@ -92,6 +106,7 @@ export function ClienteDetalheClient({
   contas,
   regraCrediario = null,
   fiadoEmUso,
+  crediarioAntigo = [],
   nomeNegocio,
   logoUrl,
   contatoNegocio,
@@ -102,6 +117,7 @@ export function ClienteDetalheClient({
   /** Multa e juros do crediário (0065). */
   regraCrediario?: RegraEncargos | null;
   fiadoEmUso: number;
+  crediarioAntigo?: ContaAntigaCliente[];
   nomeNegocio: string | null;
   logoUrl: string | null;
   /** Telefone/WhatsApp/Instagram do negócio, para o rodapé das imagens. */
@@ -111,6 +127,8 @@ export function ClienteDetalheClient({
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [parcelasVenda, setParcelasVenda] = useState<{ id: string; numero: string } | null>(null);
   const [enviandoResumoId, setEnviandoResumoId] = useState<string | null>(null);
+  const [lancandoAntigo, setLancandoAntigo] = useState(false);
+  const [recebendo, setRecebendo] = useState<ContaParaReceber | null>(null);
   const { abrirResumo, modais: modaisResumoFiado } = useResumoFiadoImagem(nomeNegocio, logoUrl, contatoNegocio);
   const { gerar: gerarComprovante, oculto: comprovanteOculto } = useComprovanteImagem();
   const hoje = hojeIsoLocal();
@@ -296,11 +314,17 @@ export function ClienteDetalheClient({
 
       {/* Box Fiado — três estados: liberado, nunca usado (cadeado total), desligado com histórico (cadeado só no saldo) */}
       <Card className="mb-5">
-        <CardHeader>
+        <CardHeader
+          acoes={
+            <Button variant="secondary" size="sm" onClick={() => setLancandoAntigo(true)}>
+              Lançar crediário antigo
+            </Button>
+          }
+        >
           <CardTitle>Crediário</CardTitle>
         </CardHeader>
 
-        {!cliente.permite_fiado && !jaComprouFiado ? (
+        {!cliente.permite_fiado && !jaComprouFiado && crediarioAntigo.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-text-tertiary">
             <Lock size={24} className="mb-2 opacity-50" />
             <p className="text-sm opacity-70">Crediário não liberado para este cliente.</p>
@@ -324,6 +348,46 @@ export function ClienteDetalheClient({
               <div className="flex items-center gap-2 mb-4 text-text-tertiary">
                 <Lock size={16} />
                 <span className="text-sm">Crediário desligado — saldo indisponível. Histórico abaixo continua visível.</span>
+              </div>
+            )}
+
+            {crediarioAntigo.length > 0 && (
+              <div className="mb-4">
+                <div className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">De antes do sistema</div>
+                <div className="border border-border rounded-md divide-y divide-border">
+                  {crediarioAntigo.map((c) => {
+                    const falta = Math.max(0, c.valor - c.valor_pago);
+                    const aberta = c.status === "pendente";
+                    // Mesmo rótulo do Financeiro ("Pago em parte"), para a parcela não mudar de nome entre telas.
+                    const situacao = SITUACAO_PARCELA[situacaoParcela(c, hoje)];
+                    return (
+                      <div key={c.id} className="px-3 py-2.5 flex items-center justify-between gap-3 text-sm">
+                        <div className="min-w-0">
+                          <div className="text-text-primary truncate">{c.descricao}</div>
+                          <div className="text-xs text-text-tertiary">
+                            Vence {formatarDataIso(c.data_vencimento)}
+                            {aberta && c.valor_pago > 0 ? ` · falta ${formatBRL(falta)}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono text-text-primary">{formatBRL(c.valor)}</span>
+                          <StatusChip label={aberta ? situacao.rotulo : "Recebido"} tone={situacao.tom} />
+                          {aberta && (
+                            <RowMenu
+                              actions={[
+                                {
+                                  label: "Receber",
+                                  onClick: () =>
+                                    setRecebendo({ id: c.id, descricao: c.descricao, valor: c.valor, valor_pago: c.valor_pago, data_vencimento: c.data_vencimento, conta_id: c.conta_id, crediario: true }),
+                                },
+                              ]}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -471,6 +535,14 @@ export function ClienteDetalheClient({
         contas={contas}
         onClose={() => setParcelasVenda(null)}
       />
+      <DividaAntigaModal
+        key={lancandoAntigo ? "divida-aberta" : "divida-fechada"}
+        inicio={lancandoAntigo ? { tipo: "receber", clienteId: cliente.id } : null}
+        fornecedores={[]}
+        clientes={[{ id: cliente.id, nome: cliente.nome }]}
+        onClose={() => setLancandoAntigo(false)}
+      />
+      <ReceberContaModal key={`receber-${recebendo?.id ?? "fechado"}`} conta={recebendo} contas={contas} regra={regraCrediario} onClose={() => setRecebendo(null)} />
       {modaisResumoFiado}
       {comprovanteOculto}
     </>

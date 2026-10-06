@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { carregarCrediario } from "@/lib/crediario-servidor";
 import { lancarErroSupabase } from "@/lib/erros";
 import { contatoDoNegocio } from "@/lib/empresa";
-import { ClienteDetalheClient, type ClienteDetalhe, type VendaCliente } from "./ClienteDetalheClient";
+import { ClienteDetalheClient, type ClienteDetalhe, type VendaCliente, type ContaAntigaCliente } from "./ClienteDetalheClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Cliente" };
@@ -70,7 +70,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
     .filter((v) => v.total_parcelas_fiado && v.total_parcelas_fiado > 1)
     .map((v) => v.id);
 
-  const [cprRes, parcelasRes, crediario] = await Promise.all([
+  const [cprRes, parcelasRes, crediario, antigoRes] = await Promise.all([
     vendaIds.length > 0
       ? supabase
           .from("contas_a_pagar_receber")
@@ -81,6 +81,15 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       ? supabase.from("venda_parcelas").select("venda_id, status, data_pagamento").in("venda_id", vendaIdsParcelados)
       : Promise.resolve({ data: [] as ParcelaBruta[], error: null }),
     carregarCrediario(supabase),
+    // Crediário de antes do sistema (0067): conta a receber do cliente sem venda. Sem a
+    // migração a coluna `origem_saldo_inicial` não existe — a lista só fica vazia.
+    supabase
+      .from("contas_a_pagar_receber")
+      .select("id, descricao, valor, valor_pago, data_vencimento, status, conta_id")
+      .eq("cliente_id", id)
+      .eq("tipo", "receber")
+      .is("referencia_venda_id", null)
+      .order("data_vencimento"),
   ]);
 
   if (cprRes.error) lancarErroSupabase(cprRes.error);
@@ -133,6 +142,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       contas={contasRes.data ?? []}
       regraCrediario={crediario.regra}
       fiadoEmUso={Number(fiadoEmUsoRes.data ?? 0)}
+      crediarioAntigo={antigoRes.error ? [] : ((antigoRes.data ?? []) as ContaAntigaCliente[]).map((c) => ({ ...c, valor: Number(c.valor), valor_pago: Number(c.valor_pago ?? 0) }))}
       nomeNegocio={perfilRes.data?.nome_negocio ?? null}
       logoUrl={perfilRes.data?.logo_url ?? null}
       contatoNegocio={contatoDoNegocio(perfilRes.data)}
