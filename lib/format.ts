@@ -100,3 +100,8 @@ export function hojeIsoLocal(data = new Date()): string {
 export function hojeIsoBrasil(agora = new Date()): string {
   return agora.toLocaleDateString("sv-SE", { timeZone: FUSO_HORARIO });
 }
+
+/** Hora (0–23) de um instante no horário de Brasília, não no do processo. */
+export function horaBrasil(d: Date): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: FUSO_HORARIO }).format(d));
+}
