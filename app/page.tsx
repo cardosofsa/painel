@@ -4,6 +4,11 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import {
   ArrowRight,
+  ClipboardCheck,
+  Gauge,
+  MessageCircle,
+  ShoppingBag,
+  Wand2,
   BarChart3,
   Boxes,
   Calculator,
@@ -16,6 +21,7 @@ import {
   Smartphone,
   Sparkles,
   Store,
+  UsersRound,
   X,
 } from "lucide-react";
 import { IconeCacto } from "@/components/ui/IconeCacto";
@@ -27,9 +33,10 @@ import { formatBRL } from "@/lib/format";
 import { rotuloLimite } from "@/lib/planos";
 import { Contador, Revelar } from "@/components/landing/Revelar";
 import { ImagemTema } from "@/components/landing/ImagemTema";
+import { BotaoTema } from "@/components/layout/BotaoTema";
 
 export const metadata: Metadata = {
-  title: { absolute: "Sertão — gestão para quem vende online" },
+  title: { absolute: "Sertão" },
   description:
     "Precificação com as taxas da Shopee e do Mercado Livre, estoque, compras, vendas, catálogo com pedido pelo WhatsApp, financeiro e calendário de feriados e datas do comércio.",
 };
@@ -48,8 +55,8 @@ interface PlanoPublico {
 
 /**
  * Página inicial pública. Quem já entrou vai direto para o painel; quem não entrou vê o que
- * o Sertão faz. O bloco "Entrar com o Google" é exigido pelo Google para verificar o login:
- * a página inicial precisa explicar a finalidade do app e como ele usa os dados da conta.
+ * o Sertão faz. O uso dos dados do login com Google está explicado na Política de
+ * Privacidade (`/privacidade`), que fica no rodapé.
  *
  * As imagens (`public/landing/*.webp`) são capturas da conta de teste, sem dado real.
  */
@@ -80,9 +87,13 @@ export default async function Home() {
                 Planos
               </a>
             )}
+            <a href="#novidades" className="hidden md:inline text-sm text-text-secondary hover:text-text-primary px-2">
+              Novidades
+            </a>
             <a href="#perguntas" className="hidden md:inline text-sm text-text-secondary hover:text-text-primary px-2">
               Perguntas
             </a>
+            <BotaoTema />
             <Link href="/login" className="text-sm font-medium text-text-primary px-3 py-1.5 rounded-md hover:bg-surface-2">
               Entrar
             </Link>
@@ -197,6 +208,7 @@ export default async function Home() {
               "Pedidos de compra: para comprar, em trânsito, parcial e completado",
               "Compras a prazo e dívidas antigas com fornecedor no mesmo lugar",
               "Sugestão de compra pelo estoque mínimo e aviso antes de acabar",
+              "Inventário com leitor de código de barras: conta, vê a diferença e ajusta",
             ]}
             invertido
             imagem={
@@ -268,6 +280,7 @@ export default async function Home() {
               "Avisa o que pede atenção: estoque acabando, conta atrasada, margem baixa",
               "Sugere preço e estratégia (cupom, kit, anúncio) com o lucro recalculado pelo sistema",
               "Escreve títulos, descrições e respostas para clientes",
+              "Mensagens prontas de cobrança, pedido e recompra para mandar no WhatsApp, uma atrás da outra",
             ]}
             invertido
             imagem={
@@ -278,12 +291,65 @@ export default async function Home() {
           />
         </div>
 
+        {/* O que chegou por último: sem captura ainda, em cartões. */}
+        <section id="novidades" className="bg-surface-1 border-y border-border scroll-mt-14">
+          <div className="max-w-6xl mx-auto px-4 py-14 sm:py-20">
+            <p className="text-center text-sm font-medium text-accent">Novidades</p>
+            <h2 className="mt-1 text-2xl sm:text-3xl font-semibold tracking-tight text-center">Do preço ao anúncio pronto</h2>
+            <p className="mt-2 text-center text-text-secondary max-w-2xl mx-auto">
+              O Sertão agora confere o preço que você pratica, cria as fotos do produto e monta o anúncio da Shopee.
+            </p>
+            <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {(
+                [
+                  [
+                    Gauge,
+                    "Raio-X do preço",
+                    "Compara o preço de cada anúncio com o preço ideal da sua regra e mostra quanto você ganha ou perde por mês, com nota e dicas.",
+                  ],
+                  [
+                    Wand2,
+                    "Estúdio de fotos com IA",
+                    "A partir da foto do produto: fundo branco, foto de ambiente, capa com selo, outra cor e imagem de medidas.",
+                  ],
+                  [
+                    ShoppingBag,
+                    "Anúncio Shopee pronto",
+                    "Título e descrição com IA, preço, fotos na ordem, hashtags e um checklist do que a Shopee pede. É só copiar e colar.",
+                  ],
+                  [
+                    ClipboardCheck,
+                    "Inventário com leitor",
+                    "Bipe o código de barras, veja sobra e falta em unidades e em reais e ajuste o estoque de uma vez.",
+                  ],
+                  [
+                    MessageCircle,
+                    "Mensagens que vendem",
+                    "Cobrança com Pix, aviso de pedido, cliente sumido e datas do comércio: modelos seus, enviados em sequência.",
+                  ],
+                  [UsersRound, "Equipe no tamanho do plano", "Operadores com PIN, acesso só às telas liberadas e comissão por venda."],
+                ] as [typeof Lock, string, string][]
+              ).map(([Icone, t, d]) => (
+                <Revelar key={t}>
+                  <div className="h-full rounded-xl border border-border bg-background p-5">
+                    <span className="w-10 h-10 rounded-lg bg-accent-soft text-accent flex items-center justify-center">
+                      <Icone size={20} aria-hidden />
+                    </span>
+                    <h3 className="mt-3 font-semibold">{t}</h3>
+                    <p className="mt-1 text-sm text-text-secondary leading-relaxed">{d}</p>
+                  </div>
+                </Revelar>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Planilha × Sertão */}
-        <section className="bg-surface-1 border-y border-border">
+        <section>
           <div className="max-w-4xl mx-auto px-4 py-14 sm:py-20">
             <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-center">Ainda na planilha?</h2>
             <p className="mt-2 text-center text-text-secondary">A planilha anota. O Sertão calcula, avisa e guarda o histórico.</p>
-            <div className="mt-8 overflow-x-auto rounded-lg border border-border bg-background">
+            <div className="mt-8 overflow-x-auto rounded-lg border border-border bg-surface-1">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left">
@@ -307,6 +373,9 @@ export default async function Home() {
                       ["Aviso de produto acabando e conta vencendo", false, true],
                       ["Catálogo online com pedido pelo WhatsApp", false, true],
                       ["Feriados do seu estado e datas do comércio", false, true],
+                      ["Preço praticado comparado com o ideal", false, true],
+                      ["Fotos e anúncio da Shopee feitos com IA", false, true],
+                      ["Inventário com leitor de código de barras", "manual", true],
                       ["Cada um vê só a própria conta", false, true],
                     ] as [string, "manual" | boolean, boolean][]
                   ).map(([linha, planilha, sertao]) => (
@@ -414,6 +483,14 @@ export default async function Home() {
                 "Não. Eles abrem o link, montam o pedido e enviam pelo WhatsApp. Você confirma no painel.",
               ],
               [
+                "A IA cria as fotos do produto?",
+                "Sim. No Estúdio de IA você parte de uma foto sua e gera capa com fundo branco, foto de ambiente, capa com selo, outra cor ou imagem de medidas. A imagem só vai para o produto se você adicionar, e cada plano tem uma cota mensal.",
+              ],
+              [
+                "Como sei se estou cobrando pouco num anúncio?",
+                "O Raio-X da precificação compara o preço que você usa (digitado, pela média dos pedidos ou o preço no ar na Shopee e no Mercado Livre) com o preço ideal da sua regra, e mostra quanto ganha ou perde por mês.",
+              ],
+              [
                 "A IA usa meus dados para outra coisa?",
                 "Não. A Vixe recebe só os números da tela que você está usando, para responder àquele pedido. Você também pode usar a sua própria chave de IA.",
               ],
@@ -457,19 +534,6 @@ export default async function Home() {
               </Link>
             </div>
           </div>
-        </section>
-
-        {/* Exigido pelo Google para verificar o login */}
-        <section className="max-w-3xl mx-auto px-4 pb-10 text-sm text-text-secondary leading-relaxed">
-          <h2 className="font-semibold text-text-primary mb-1.5">Entrar com o Google</h2>
-          <p>
-            Você pode entrar com sua conta Google. O Sertão recebe apenas seu nome, e-mail e foto de perfil, usados para identificar sua conta. Não acessamos
-            seus e-mails, contatos ou arquivos, e não compartilhamos esses dados. Veja os detalhes na{" "}
-            <Link href="/privacidade" className="text-accent hover:underline">
-              Política de Privacidade
-            </Link>
-            .
-          </p>
         </section>
       </main>
 
