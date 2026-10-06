@@ -68,7 +68,7 @@ export function QrCatalogoModal({ catalogo, onClose }: { catalogo: { nome: strin
           // eslint-disable-next-line @next/next/no-img-element -- data URL gerada aqui
           <img src={dataUrl} alt={`QR code do catálogo ${catalogo.nome}`} className="w-64 h-64 rounded-md border border-border bg-white" />
         ) : (
-          <div className="w-64 h-64 rounded-md border border-border bg-surface-2 animate-pulse" />
+          <div className="w-64 h-64 rounded-md border border-border esqueleto" />
         )}
         <p className="text-xs text-text-tertiary mt-2 break-all text-center">{url}</p>
         <div className="grid grid-cols-2 gap-2 w-full mt-4">

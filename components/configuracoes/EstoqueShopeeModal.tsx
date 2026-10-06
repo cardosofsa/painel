@@ -50,7 +50,7 @@ export function EstoqueShopeeModal({ lojaId, nomeLoja, onClose }: { lojaId: stri
       ) : !previa ? (
         <div className="space-y-2" aria-busy>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-10 rounded-md bg-surface-2 animate-pulse" />
+            <div key={i} className="h-10 rounded-md esqueleto" />
           ))}
           <p className="text-xs text-text-tertiary">Lendo os anúncios da loja na Shopee…</p>
         </div>

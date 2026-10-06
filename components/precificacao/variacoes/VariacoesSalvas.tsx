@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { Layers } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
 import type { AnuncioSalvo } from "@/lib/precificacao-estado";
 
@@ -66,7 +68,11 @@ export function VariacoesSalvas({
           </div>
         ))}
         {anuncios.length === 0 && (
-          <p className="text-sm text-text-tertiary text-center py-8">Nenhum produto com variações salvo ainda.</p>
+          <EmptyState
+            icon={Layers}
+            title="Nenhum produto com variações salvo ainda"
+            description="Precifique as variações de um anúncio (cor, tamanho, kit) e salve para ver aqui."
+          />
         )}
       </div>
     </Card>
