@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { IconeMarca } from "@/components/ui/IconeMarca";
-import { VendasComparadasChart, type PontoComparado } from "@/components/charts/VendasComparadasChart";
+import { VendasComparadasChart, type PontoComparado } from "@/components/charts/dinamicos";
 import { formatBRL, hojeIsoBrasil } from "@/lib/format";
 import { periodoAnterior, periodoDoAtalho, somarDias, type AtalhoPeriodo, type Periodo } from "@/lib/periodo";
 import { porChave, porProduto, seriePorHora, type VendaRelatorio } from "@/lib/relatorios-vendas";

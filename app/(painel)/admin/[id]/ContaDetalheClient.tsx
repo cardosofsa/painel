@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { FormField, inputClass } from "@/components/ui/Modal";
-import { SalesChart } from "@/components/charts/SalesChart";
+import { SalesChart } from "@/components/charts/dinamicos";
 import { formatBRL, formatarDataCurta, formatarDataHora, formatarDataIso, formatarData } from "@/lib/format";
 import { formatarDiffHistorico } from "@/lib/admin";
 import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta } from "@/lib/acesso";

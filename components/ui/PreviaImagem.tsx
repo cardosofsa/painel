@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { toBlob } from "html-to-image";
 import { Copy, Download, Share2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -36,7 +35,10 @@ export function useCapturaImagem() {
     if (!pendente || !ref.current) return;
     const node = ref.current;
     const { nome, titulo, texto, onFechar } = pendente;
-    toBlob(node, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true })
+    // `html-to-image` só desce quando alguém pede a imagem: estático, ele ia no
+    // JavaScript de toda tela que tem o botão (comprovante, precificação, fiado, exportar).
+    import("html-to-image")
+      .then(({ toBlob }) => toBlob(node, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true }))
       .then((blob) => {
         if (!blob) throw new Error("vazio");
         setPrevia({ blob, url: URL.createObjectURL(blob), nome, titulo, texto, onFechar });

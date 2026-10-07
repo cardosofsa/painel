@@ -1,7 +1,7 @@
 "use client";
 
 import { ComposedChart, Area, Line, XAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { COR_SERIE, COR_POSITIVA, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, TICK_EIXO, formatarMoedaTooltip } from "./tema";
+import { ALTURA_GRAFICO, COR_SERIE, COR_POSITIVA, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, TICK_EIXO, formatarMoedaTooltip } from "./tema";
 
 /**
  * Faturamento (área, cor da marca) e lucro (linha, verde) por dia. Legenda obrigatória:
@@ -9,7 +9,7 @@ import { COR_SERIE, COR_POSITIVA, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, TICK_EI
  */
 export function FaturamentoLucroChart({ data }: { data: { dia: string; faturamento: number; lucro: number }[] }) {
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height={ALTURA_GRAFICO.faturamentoLucro}>
       <ComposedChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <defs>
           <linearGradient id="fatGrad" x1="0" y1="0" x2="0" y2="1">

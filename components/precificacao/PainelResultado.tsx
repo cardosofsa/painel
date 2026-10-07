@@ -7,7 +7,7 @@ import { StatusChip } from "@/components/ui/Badge";
 import { inputClass } from "@/components/ui/Modal";
 import { formatBRL } from "@/lib/format";
 import { pctPorModo } from "@/lib/pricing";
-import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";
+import { PriceBreakdownChart } from "@/components/charts/dinamicos";
 import { precoPsicologico, DetalhamentoPrecificacao, SimuladorPreco } from "@/components/precificacao/resultado-compartilhado";
 import type { EstadoPrecificacao, ProdutoOpcao, LojaOpcao } from "@/lib/precificacao-estado";
 import { ID_ESTRATEGIA_VIXE } from "@/components/precificacao/PainelEstrategiaVixe";

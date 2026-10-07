@@ -55,3 +55,19 @@ export const CURSOR_BARRA = { fill: "var(--surface-2)" } as const;
 
 export const formatarMoedaTooltip = (valor: unknown) =>
   Number(valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/**
+ * Altura de cada gráfico, num lugar só porque o esqueleto de carregamento
+ * (`dinamicos.tsx`) precisa reservar exatamente o mesmo espaço: o Recharts chega depois,
+ * sob demanda, e um esqueleto de outra altura faria a tela pular quando ele entrasse.
+ */
+export const ALTURA_GRAFICO = {
+  fluxoCaixa: 220,
+  categorias: 180,
+  faturamentoLucro: 240,
+  crescimento: 160,
+  composicaoPreco: 220,
+  historicoPreco: 140,
+  vendas: 160,
+  vendasComparadas: 260,
+} as const;

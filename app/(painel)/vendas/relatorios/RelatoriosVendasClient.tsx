@@ -11,7 +11,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Chip } from "@/components/ui/Chip";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { ExportarModal } from "@/components/ui/ExportarModal";
-import { FaturamentoLucroChart } from "@/components/charts/FaturamentoLucroChart";
+import { FaturamentoLucroChart } from "@/components/charts/dinamicos";
 import { formatBRL } from "@/lib/format";
 import { porChave, porProduto, serieDiaria, totais, variacao, type LinhaProduto, type VendaRelatorio } from "@/lib/relatorios-vendas";
 import type { TabelaExport } from "@/lib/exportar";

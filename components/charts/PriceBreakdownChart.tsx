@@ -1,7 +1,7 @@
 "use client";
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { CORES_CATEGORICAS, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, formatarMoedaTooltip } from "./tema";
+import { ALTURA_GRAFICO, CORES_CATEGORICAS, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, formatarMoedaTooltip } from "./tema";
 
 /**
  * Composição do preço: para onde vai cada real cobrado (custo, imposto, comissão, lucro).
@@ -17,7 +17,7 @@ export function PriceBreakdownChart({ data }: { data: { nome: string; valor: num
   const dados = data.filter((d) => d.valor > 0).slice(0, CORES_CATEGORICAS.length);
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={ALTURA_GRAFICO.composicaoPreco}>
       <PieChart>
         <Pie data={dados} dataKey="valor" nameKey="nome" innerRadius={55} outerRadius={80} paddingAngle={2}>
           {dados.map((d, i) => (

@@ -1,7 +1,7 @@
 "use client";
 
 import { Bar, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { COR_SERIE, CORES_CATEGORICAS, ESTILO_ROTULO_TOOLTIP, ESTILO_TOOLTIP, TICK_EIXO } from "./tema";
+import { ALTURA_GRAFICO, COR_SERIE, CORES_CATEGORICAS, ESTILO_ROTULO_TOOLTIP, ESTILO_TOOLTIP, TICK_EIXO } from "./tema";
 import { formatBRL } from "@/lib/format";
 
 export interface PontoComparado {
@@ -18,7 +18,7 @@ export interface PontoComparado {
  */
 export function VendasComparadasChart({ data, rotuloComparacao }: { data: PontoComparado[]; rotuloComparacao: string }) {
   return (
-    <ResponsiveContainer width="100%" height={260}>
+    <ResponsiveContainer width="100%" height={ALTURA_GRAFICO.vendasComparadas}>
       <ComposedChart data={data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
         <XAxis dataKey="rotulo" axisLine={false} tickLine={false} tick={TICK_EIXO} dy={4} minTickGap={12} />
         <YAxis yAxisId="valor" hide />

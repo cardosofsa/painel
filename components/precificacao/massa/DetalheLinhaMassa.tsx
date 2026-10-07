@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
-import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";
+import { PriceBreakdownChart } from "@/components/charts/dinamicos";
 import { formatBRL } from "@/lib/format";
 import { taxasDaLinha, type ResultadoLinhaMassa } from "@/lib/precificacao-massa";
 import {

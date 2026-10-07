@@ -1,7 +1,7 @@
 "use client";
 
 import { ProductThumb } from "@/components/ui/ProductThumb";
-import { PriceHistoryChart } from "@/components/charts/PriceHistoryChart";
+import { PriceHistoryChart } from "@/components/charts/dinamicos";
 import { formatBRL, formatarDataHora, classeValor } from "@/lib/format";
 import type {
   Produto,

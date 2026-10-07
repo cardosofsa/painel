@@ -2,9 +2,10 @@
  * Marcas de marketplaces, redes sociais e meios de pagamento, reconhecidas pelo NOME (do
  * canal, da loja, da origem). PURO, coberto por `marcas.test.ts`.
  *
- * O desenho vem do `simple-icons` quando ele tem a marca; quando não tem (Mercado Livre,
- * Amazon, Shein, Magalu e outras saíram ou nunca entraram por questão de marca registrada),
- * o ícone mostra um selo com a cor e a sigla da marca (`components/ui/IconeMarca.tsx`).
+ * O desenho vem de `lib/marcas-desenhos.ts` (copiado do `simple-icons`) quando ele tem a
+ * marca; quando não tem (Mercado Livre, Amazon, Shein, Magalu e outras saíram ou nunca
+ * entraram por questão de marca registrada), o ícone mostra um selo com a cor e a sigla da
+ * marca (`components/ui/IconeMarca.tsx`).
  */
 
 export type IdMarca =

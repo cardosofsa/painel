@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Trophy } from "lucide-react";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { GrowthChart } from "@/components/charts/GrowthChart";
+import { GrowthChart } from "@/components/charts/dinamicos";
 import { formatBRL, hojeIsoLocal } from "@/lib/format";
 import type { ContaAdmin } from "./AdminClient";
 
