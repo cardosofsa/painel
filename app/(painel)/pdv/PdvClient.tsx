@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ShoppingCart } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -24,6 +24,8 @@ import {
   type ProdutoPdv,
 } from "./tipos";
 import type { DadosComprovante } from "@/lib/comprovante";
+import { acaoDoAtalho, ehCampoEditavel, DICA_ATALHOS_PDV } from "@/lib/pdv-atalhos";
+import type { PixLoja } from "./PixPagamento";
 
 const CARRINHO_VAZIO: EstadoCarrinho = {
   itens: [],
@@ -42,7 +44,10 @@ export function PdvClient({
   creditoTroca = null,
   userId = null,
   operadorId = null,
+  pix = null,
 }: {
+  /** Pix da loja (perfil_negocio) para o QR no pagamento; null = não configurado. */
+  pix?: PixLoja | null;
   /** 11.8: turno atual (vai com a venda guardada sem internet). */
   operadorId?: string | null;
   /** Dono das vendas guardadas sem internet (11.4). */
@@ -78,6 +83,9 @@ export function PdvClient({
    * o botão "Venda Fiado" vinha habilitado por engano.
    */
   const [vendaSeq, setVendaSeq] = useState(0);
+  const [busca, setBusca] = useState("");
+  const buscaRef = useRef<HTMLInputElement>(null);
+  const [descontoAberto, setDescontoAberto] = useState(false);
 
   const subtotal = calcularSubtotal(estado.itens);
   const desconto = calcularDesconto(estado, subtotal);
@@ -262,6 +270,60 @@ export function PdvClient({
     });
   }
 
+  // Atalhos de teclado. A ref guarda o último estado para o listener ser registrado uma vez.
+  const atalhoRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  useEffect(() => {
+    atalhoRef.current = (e: KeyboardEvent) => {
+      if (e.repeat && (e.key === "F4" || e.key === "F2" || e.key === "F8")) return;
+      const outroModal = !checkoutAberto && !!document.querySelector('[role="dialog"]');
+      const acao = acaoDoAtalho({
+        key: e.key,
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        meta: e.metaKey,
+        emCampo: ehCampoEditavel(document.activeElement as HTMLElement | null),
+        checkoutAberto,
+        outroModalAberto: outroModal,
+      });
+      // "finalizar" é do CheckoutModal (atalhoFinalizar), que tem os dados do pagamento.
+      if (!acao || acao === "finalizar") return;
+      e.preventDefault();
+      const ultimo = estado.itens[estado.itens.length - 1];
+      switch (acao) {
+        case "buscar":
+          buscaRef.current?.focus();
+          buscaRef.current?.select();
+          break;
+        case "cobrar":
+          abrirCheckout();
+          break;
+        case "desconto":
+          if (estado.itens.length === 0) break;
+          setDescontoAberto(true);
+          // O campo só existe depois do render; pega o visível (o carrinho do desktop).
+          requestAnimationFrame(() => {
+            const campos = Array.from(document.querySelectorAll<HTMLInputElement>("[data-pdv-desconto]"));
+            campos.find((c) => c.offsetParent !== null)?.focus();
+          });
+          break;
+        case "limpar":
+          setBusca("");
+          break;
+        case "mais":
+          if (ultimo) alterarQuantidade(ultimo.produto_id, ultimo.quantidade + 1);
+          break;
+        case "menos":
+          if (ultimo) alterarQuantidade(ultimo.produto_id, ultimo.quantidade - 1);
+          break;
+      }
+    };
+  });
+  useEffect(() => {
+    const ouvir = (e: KeyboardEvent) => atalhoRef.current(e);
+    window.addEventListener("keydown", ouvir);
+    return () => window.removeEventListener("keydown", ouvir);
+  }, []);
+
   const carrinho = (
     <Carrinho
       estado={estado}
@@ -273,6 +335,8 @@ export function PdvClient({
       onLimpar={limpar}
       onFinalizar={abrirCheckout}
       freteConectado={freteConectado}
+      descontoAberto={descontoAberto}
+      onDescontoAberto={setDescontoAberto}
     />
   );
 
@@ -287,21 +351,44 @@ export function PdvClient({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 pb-20 lg:pb-0">
-        <GradeProdutos produtos={produtosNaTela} quantidadeNoCarrinho={quantidadeNoCarrinho} onAdicionar={adicionar} />
+        <GradeProdutos
+          produtos={produtosNaTela}
+          quantidadeNoCarrinho={quantidadeNoCarrinho}
+          onAdicionar={adicionar}
+          busca={busca}
+          onBusca={setBusca}
+          buscaRef={buscaRef}
+          dica={DICA_ATALHOS_PDV}
+        />
 
         {/* Desktop: carrinho sempre visível ao lado. */}
         <Card className="hidden lg:flex flex-col sticky top-4 h-[calc(100vh-8rem)]">{carrinho}</Card>
       </div>
 
-      {/* Celular: barra fixa que abre o carrinho em tela cheia. */}
+      {/* Celular/tablet: barra fixa. No celular (< sm) ela se divide: o carrinho à esquerda e
+          "Cobrar" grande à direita, que vai direto ao pagamento. */}
       {totalItens > 0 && (
-        <button
-          onClick={() => setCarrinhoAberto(true)}
-          className="lg:hidden fixed bottom-0 inset-x-0 z-40 h-14 bg-accent text-accent-on font-medium flex items-center justify-center gap-2"
-        >
-          <ShoppingCart size={16} />
-          {totalItens} {totalItens === 1 ? "item" : "itens"} = {formatBRL(total)}
-        </button>
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex gap-2 bg-surface-1 border-t border-border shadow-elev-2 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-0 sm:border-0">
+          <button
+            type="button"
+            onClick={() => setCarrinhoAberto(true)}
+            className="h-14 max-sm:px-4 max-sm:rounded-md max-sm:border max-sm:border-border max-sm:bg-surface-2 max-sm:text-text-primary sm:flex-1 sm:bg-accent sm:text-accent-on font-medium flex items-center justify-center gap-2"
+            aria-label={`Ver carrinho: ${totalItens} ${totalItens === 1 ? "item" : "itens"}`}
+          >
+            <ShoppingCart size={16} />
+            <span className="sm:hidden font-mono">{totalItens}</span>
+            <span className="max-sm:hidden">
+              {totalItens} {totalItens === 1 ? "item" : "itens"} = {formatBRL(total)}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={abrirCheckout}
+            className="sm:hidden flex-1 h-14 rounded-md bg-accent text-accent-on text-lg font-semibold flex items-center justify-center gap-2"
+          >
+            Cobrar <span className="font-mono">{formatBRL(total)}</span>
+          </button>
+        </div>
       )}
 
       <Modal open={carrinhoAberto} onClose={() => setCarrinhoAberto(false)} title="Carrinho" width="max-w-lg">
@@ -317,6 +404,8 @@ export function PdvClient({
         formasPagamento={formasPagamento}
         contas={contas}
         salvando={pending}
+        pix={pix}
+        atalhoFinalizar
         onVoltar={() => {
           setCheckoutAberto(false);
           setCarrinhoAberto(true);

@@ -36,9 +36,9 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-          // O app não usa nenhuma dessas APIs; negar por padrão evita que um script de
-          // terceiro injetado consiga pedir acesso.
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
+          // Negar por padrão evita que um script de terceiro injetado consiga pedir acesso.
+          // Câmera só para a própria origem: leitor de código de barras do PDV no celular.
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), interest-cohort=()" },
         ],
       },
     ];

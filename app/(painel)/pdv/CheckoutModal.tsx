@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Banknote, ChevronLeft, CreditCard, Link2, MoreHorizontal, Smartphone, UserPlus, Wallet } from "lucide-react";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,8 @@ import { obterFiadoEmUsoCliente } from "./actions";
 import { dividirEmParcelas, calcularRestante, calcularTaxaMaquineta } from "@/lib/pdv";
 import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 import { executarComToast } from "@/lib/acao-cliente";
+import { valorEmPix } from "@/lib/pdv-atalhos";
+import { PixPagamento, type PixLoja } from "./PixPagamento";
 
 /** Ícone por forma de pagamento conhecida; o resto cai no genérico. */
 const ICONES: { padrao: RegExp; icone: typeof Banknote }[] = [
@@ -50,7 +52,16 @@ export function CheckoutModal({
   salvando,
   onConfirmar,
   formaInicial = null,
+  pix,
+  atalhoFinalizar = false,
 }: {
+  /**
+   * Pix da loja para o QR na tela. `undefined` = a tela não carregou a config (não mostra
+   * nada); `null` = carregou e não há Pix (mostra o link para Configurações).
+   */
+  pix?: PixLoja | null;
+  /** F4 finaliza a venda (paga) enquanto o modal está aberto — atalho do PDV. */
+  atalhoFinalizar?: boolean;
   /** Forma já escolhida (ex.: no checkout do catálogo): vem marcada se existir aqui. */
   formaInicial?: string | null;
   aberto: boolean;
@@ -135,6 +146,31 @@ export function CheckoutModal({
       setNovoFiado(false);
     }
   }
+
+  const pixValor = valorEmPix({
+    total,
+    entradaValor,
+    entradaPix: entradaForma === "pix",
+    formaPrincipalPix: formaSelecionada?.tipo === "pix",
+  });
+
+  // F4 = "Finalizar Venda". A ref evita re-registrar o listener a cada tecla do formulário.
+  const finalizarRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    finalizarRef.current = () => {
+      if (!salvando) onConfirmar(montarDados("paga"));
+    };
+  });
+  useEffect(() => {
+    if (!aberto || !atalhoFinalizar) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "F4" || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+      e.preventDefault();
+      finalizarRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [aberto, atalhoFinalizar]);
 
   function montarDados(status: "paga" | "fiado"): DadosCheckout {
     // `forma_pagamento` é sempre a forma do "tender" principal — a RPC só usa
@@ -269,13 +305,15 @@ export function CheckoutModal({
                 <button
                   key={f.nome}
                   onClick={() => setFormaPagamento(f.nome)}
-                  className={`h-16 rounded-md border flex flex-col items-center justify-center gap-1 text-sm transition-colors ${
+                  type="button"
+                  aria-pressed={ativo}
+                  className={`h-16 max-sm:h-20 max-sm:text-base rounded-md border flex flex-col items-center justify-center gap-1 text-sm transition-colors ${
                     ativo
                       ? "bg-accent-soft border-accent-soft text-accent"
                       : "bg-surface-1 border-border text-text-secondary hover:text-text-primary"
                   }`}
                 >
-                  <Icone size={18} />
+                  <Icone size={18} className="max-sm:size-6" />
                   {f.nome}
                 </button>
               );
@@ -283,6 +321,14 @@ export function CheckoutModal({
           </div>
         )}
       </FormField>
+
+      {pix !== undefined && pixValor > 0 && (
+        <PixPagamento
+          pix={pix}
+          valor={pixValor}
+          rotulo={entradaValor > 0 && pixValor < total ? (entradaForma === "pix" ? "Entrada em Pix" : "Restante em Pix") : "Valor da venda em Pix"}
+        />
+      )}
 
       {formaSelecionada?.tipo === "cartao_credito" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -399,7 +445,14 @@ export function CheckoutModal({
             Venda no crediário
           </Button>
         )}
-        <Button variant="primary" className="flex-1" loading={salvando} onClick={() => onConfirmar(montarDados("paga"))}>
+        <Button
+          variant="primary"
+          className="flex-1 max-sm:h-12 max-sm:text-base"
+          loading={salvando}
+          onClick={() => onConfirmar(montarDados("paga"))}
+          title={atalhoFinalizar ? "Finalizar (F4)" : undefined}
+          aria-keyshortcuts={atalhoFinalizar ? "F4" : undefined}
+        >
           Finalizar Venda
         </Button>
       </div>
