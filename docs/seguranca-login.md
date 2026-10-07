@@ -39,49 +39,52 @@ neste sistema."
 | Mandar para `/auth/mfa` quem tem fator e entrou só com a senha | `lib/supabase/middleware.ts` + `lib/rotas-auth.ts` | **Roteamento.** A lista de fatores vem do cookie da sessão, que o dono do navegador consegue editar |
 | Conferir o código | GoTrue (`/factors/:id/verify`) | Limite de tentativas por IP — por isso o código da entrada vai do navegador, não de Server Action |
 | Trocar senha, e-mail ou desativar fator com fator ativo | GoTrue (exige sessão `aal2`) | `insufficient_aal` → "Confirme o código do app autenticador…" |
-| Ler/gravar dados com sessão `aal1` de conta com fator | **Ainda não existe** | Ver "Pendente" abaixo |
+| Ler/gravar dados com sessão `aal1` de conta com fator | Banco: `conta_ativa()` e `e_master()` (`0080`) | Ver "A trava no banco" abaixo |
 
-### Pendente: a trava no banco
+### A trava no banco (0080)
 
 Pela regra do projeto (*se a checagem só existe no servidor do app, ela não existe*), o MFA só
-fica completo quando o banco também recusar a sessão `aal1` de quem tem fator. Hoje, quem tem
-a senha consegue um JWT `aal1` e, pelo console do navegador ou pelo PostgREST direto, lê os
-dados mesmo sem o código — o middleware só desvia a navegação.
+fica completo quando o banco também recusa a sessão `aal1` de quem tem fator. Antes da `0080`,
+quem tinha a senha conseguia um JWT `aal1` e, pelo console do navegador ou pelo PostgREST
+direto, lia os dados mesmo sem o código — o middleware só desviava a navegação.
 
-O caminho mais curto é uma migração nova (com número próprio, ainda não reservado) que
-redefine `conta_ativa()` — que já está em todas as policies e nas do Storage — para exigir
-`aal2` de quem tem fator verificado. Esboço, a testar no PGlite (que precisa de um
-`auth.mfa_factors` de mentira) antes de qualquer aplicação:
+A `0080_mfa_aal2.sql` redefine as duas funções que já estão em todas as policies:
 
-```sql
-create or replace function conta_ativa()
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select exists (
-    select 1 from perfis_acesso
-    where user_id = auth.uid()
-      and status = 'ativo'
-      and (expira_em is null or expira_em >= current_date)
-  )
-  and (
-    coalesce(auth.jwt() ->> 'aal', 'aal1') = 'aal2'
-    or not exists (
-      select 1 from auth.mfa_factors f
-      where f.user_id = auth.uid() and f.status = 'verified'
-    )
-  );
-$$;
+- **`conta_ativa()`** (todas as tabelas de dados, o Storage e o começo das RPCs do painel)
+  passa a exigir, além da conta ativa: `auth.jwt() ->> 'aal' = 'aal2'` **ou** a conta não ter
+  fator `verified` em `auth.mfa_factors`.
+- **`e_master()`** (RPCs `admin_*`, planos, assinaturas, histórico do admin, leitura dos
+  perfis dos outros) ganha a mesma condição: o master é o alvo mais valioso.
 
-notify pgrst, 'reload schema';
-```
+Efeito, conta a conta:
 
-Antes de aplicar, conferir: as RPCs `admin_*` usam `e_master()` e não passam por
-`conta_ativa()` (a conta master precisaria da mesma condição lá); e o cron/webhooks usam a
-service role, que ignora RLS e não é afetada.
+| Situação | Resultado |
+| --- | --- |
+| Sem fator, ou fator só cadastrado (`unverified`) | Nada muda |
+| Fator verificado, sessão `aal1` (só a senha / o Google) | Tabelas e RPCs com `conta_ativa()` não devolvem nada e recusam escrita; `e_master()` é falso |
+| Fator verificado, sessão `aal2` (passou pelo código) | Normal |
+| Fator removido pelo dono do projeto (celular perdido) | Volta ao normal na hora, mesmo em `aal1` |
+
+O que continua funcionando em `aal1`, de propósito, para a pessoa conseguir subir para `aal2`:
+
+- `/auth/mfa`: o `listFactors`, o `challenge`/`verify` e o `refreshSession` são chamadas à
+  GoTrue, nenhuma passa por tabela.
+- O middleware: desvia para `/auth/mfa` **antes** do controle de acesso por conta. Esse
+  bloco lê `perfis_acesso` (a policy de leitura é `auth.uid() = user_id or e_master()`, sem
+  `conta_ativa()`) e `perfil_negocio` (que tem `conta_ativa()`, mas só é lido depois do desvio).
+- `/aguardando` (lê só `perfis_acesso`) e o logout (GoTrue).
+
+Não afeta: a vitrine pública (`conta_ativa_de(dono)` olha a conta do dono, não a sessão de
+quem visita) nem o cron e os webhooks (service role, que ignora RLS).
+
+Desempenho: dentro do `or`, o `aal` é testado primeiro; para `aal1` é um `exists` em
+`auth.mfa_factors` por `user_id`, coberto pelo índice `factor_id_created_at_idx (user_id,
+created_at)` da GoTrue. Teste: `scripts/sql/mfa-aal2.mjs` (o `banco.mjs` cria um
+`auth.mfa_factors` de mentira e um `auth.jwt()` que lê `request.jwt.claims`).
+
+Antes de aplicar em produção, confirme que nenhuma sessão `aal1` com fator está no meio de
+algo importante: ao aplicar, quem entrou só com a senha numa conta com fator deixa de ver os
+dados até passar pelo código (o middleware já leva para `/auth/mfa` na próxima navegação).
 
 ### Conta que perdeu o celular
 

@@ -122,6 +122,10 @@ sessão do usuário. Toda trava que importa tem que estar no banco.
 | Tipo e tamanho de upload | `storage.buckets.file_size_limit`/`allowed_mime_types` (`0026`) |
 | Vitrine de conta suspensa | `conta_ativa_de(dono)` dentro de `obter_catalogo_publico` (`0026`) |
 | FK apontando para outra conta | trigger `validar_vinculo_do_dono` (`0026`) |
+| MFA: sessão `aal1` de conta com fator verificado | `conta_ativa()` e `e_master()` exigem `aal2` (`0080`) |
+
+O desvio para `/auth/mfa` no middleware é só roteamento; quem segura os dados de quem ainda não deu
+o código é `conta_ativa()`/`e_master()` (ver `docs/seguranca-login.md`).
 
 > ⚠️ **`perfis_acesso` não tem policy de escrita, e é isso que segura o controle de acesso
 > inteiro.** A policy dela é só de SELECT (`auth.uid() = user_id OR e_master()`); toda

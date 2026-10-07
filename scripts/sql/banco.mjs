@@ -19,7 +19,10 @@ const AUTH_MINIMO = `
   create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}'::jsonb, created_at timestamptz default now());
   create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   create or replace function auth.role() returns text language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), 'authenticated') $$;
-  create or replace function auth.jwt() returns jsonb language sql stable as $$ select '{}'::jsonb $$;
+  create or replace function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb) $$;
+  -- Fatores do MFA (0080): só as colunas que as funções leem, com o índice da GoTrue.
+  create table auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users on delete cascade, friendly_name text, factor_type text not null default 'totp', status text not null default 'unverified', created_at timestamptz default now(), updated_at timestamptz default now());
+  create index factor_id_created_at_idx on auth.mfa_factors (user_id, created_at);
   do $$ begin
     if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon; end if;
     if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated; end if;
