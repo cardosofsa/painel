@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { StatusMarketplace } from "./shopee-planilha";
+import type { OrigemTaxas, StatusMarketplace, TaxaDetalhe } from "./shopee-planilha";
 
 export interface ItemMarketplaceSalvo {
   produto_id: string | null;
@@ -34,6 +34,12 @@ export interface PedidoMarketplaceSalvo {
   comissao: number;
   taxa_servico: number;
   taxa_transacao: number;
+  /** 0085; ausentes antes da migração. */
+  taxa_outras?: number;
+  taxas_detalhe?: TaxaDetalhe[] | null;
+  taxas_origem?: OrigemTaxas | null;
+  escrow_liberado_em?: string | null;
+  devolucao_revisar?: boolean | null;
   repasse: number;
   custo: number;
   imposto: number;
@@ -101,6 +107,7 @@ export async function carregarPedidosMarketplace(supabase: SupabaseClient, dias 
       comissao: num(p.comissao),
       taxa_servico: num(p.taxa_servico),
       taxa_transacao: num(p.taxa_transacao),
+      taxa_outras: num(p.taxa_outras),
       repasse: num(p.repasse),
       custo: num(p.custo),
       imposto: num(p.imposto),

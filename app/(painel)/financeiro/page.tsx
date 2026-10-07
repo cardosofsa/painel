@@ -10,6 +10,8 @@ export const metadata: Metadata = { title: "Financeiro" };
 
 /** Formato cru do join com `vendas`, antes de virar `ContaPagarReceber`. */
 interface LinhaCpr {
+  /** 0085; ausente antes da migração. */
+  aguardando_liberacao?: boolean | null;
   id: string;
   tipo: "pagar" | "receber";
   descricao: string;
@@ -253,6 +255,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     fornecedor_nome: c.pedidos_compra?.fornecedores?.nome ?? (c.fornecedor_id ? (nomeFornecedor.get(c.fornecedor_id) ?? null) : null),
     cliente_id: c.cliente_id ?? null,
     cliente_nome: c.clientes?.nome ?? (c.cliente_id ? (nomeCliente.get(c.cliente_id) ?? null) : null),
+    aguardando_liberacao: !!c.aguardando_liberacao,
   }));
 
   // Histórico: pagamentos a fornecedores/contas (0064) + recebimentos de crediário.
@@ -337,6 +340,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
         repasse: Number(p.repasse ?? 0),
         repasse_recebido: p.repasse_recebido == null ? null : Number(p.repasse_recebido),
         repasse_recebido_em: (p.repasse_recebido_em as string | null) ?? null,
+        status: (p.status as string | null) ?? null,
+        escrow_liberado_em: (p.escrow_liberado_em as string | null) ?? null,
       }))}
       repassesOk={repassesOk}
       fornecedores={fornecedores}

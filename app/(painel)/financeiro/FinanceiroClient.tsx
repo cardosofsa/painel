@@ -95,6 +95,8 @@ export interface ContaPagarReceber {
   /** Conta a receber ligada direto ao cliente (crediário antigo, 0067). */
   cliente_id: string | null;
   cliente_nome: string | null;
+  /** 0085: repasse de pedido ainda não concluído — não vence nem entra em "Vencidos". */
+  aguardando_liberacao: boolean;
 }
 
 /** Uma linha do histórico: pagamento feito (fornecedor/conta) ou recebimento (crediário). */
@@ -278,18 +280,18 @@ export function FinanceiroClient({
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
-    if (filtroReceber === "Vencidos") return c.status === "pendente" && c.data_vencimento < hojeIso;
+    if (filtroReceber === "Vencidos") return c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento < hojeIso;
     if (filtroReceber === "Crediário") return c.venda_id !== null || c.cliente_id !== null;
-    if (filtroReceber === "Próximos 7 dias") return c.status === "pendente" && c.data_vencimento <= em7DiasIso;
+    if (filtroReceber === "Próximos 7 dias") return c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em7DiasIso;
     return true;
   });
 
   const vencimentosProximos = contasPagarReceber.filter(
-    (c) => c.status === "pendente" && c.data_vencimento <= em7DiasIso,
+    (c) => c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em7DiasIso,
   );
 
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
-  const pendentesEm30Dias = contasPagarReceber.filter((c) => c.status === "pendente" && c.data_vencimento <= em30DiasIso);
+  const pendentesEm30Dias = contasPagarReceber.filter((c) => c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em30DiasIso);
   const aReceberEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "receber").reduce((a, c) => a + restanteParcela(c), 0);
   const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + restanteParcela(c), 0);
 
@@ -645,9 +647,12 @@ export function FinanceiroClient({
                       {formatBRL(c.status === "pendente" ? restanteParcela(c) : c.valor)}
                       {c.status === "pendente" && c.valor_pago > 0 && <div className="text-xs text-text-tertiary">de {formatBRL(c.valor)}</div>}
                     </Td>
-                    <Td mono>{formatarDataIso(c.data_vencimento)}</Td>
+                    <Td mono>{c.status === "pendente" && c.aguardando_liberacao ? "—" : formatarDataIso(c.data_vencimento)}</Td>
                     <Td>
-                      <StatusChip label={c.status === "pendente" ? "Pendente" : "Recebido"} tone={c.status === "pendente" ? "neutral" : "positive"} />
+                      <StatusChip
+                        label={c.status === "pendente" ? (c.aguardando_liberacao ? "Aguardando conclusão" : "Pendente") : "Recebido"}
+                        tone={c.status === "pendente" ? "neutral" : "positive"}
+                      />
                     </Td>
                     <Td align="right">
                       {parcelado ? (

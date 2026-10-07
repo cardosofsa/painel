@@ -8,7 +8,7 @@ import { IconeMarca } from "@/components/ui/IconeMarca";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { formatBRL } from "@/lib/format";
 import { executarComToast } from "@/lib/acao-cliente";
-import { ROTULO_ETAPA, type PedidoCentral } from "@/lib/pedidos-central";
+import { detalheDasTaxas, ROTULO_ETAPA, type PedidoCentral } from "@/lib/pedidos-central";
 import type { PedidoMarketplaceSalvo } from "@/lib/marketplace/pedidos-servidor";
 import { removerPedidoMarketplace } from "@/app/(painel)/vendas/marketplace-actions";
 
@@ -39,10 +39,7 @@ export function DetalheMarketplaceModal({ p, bruto, onClose }: { p: PedidoCentra
             ] as [string, number][])
           : []),
         ["Venda dos produtos", bruto.subtotal],
-        ...(bruto.cupom_vendedor > 0 ? ([["Cupom do vendedor", -bruto.cupom_vendedor]] as [string, number][]) : []),
-        ["Comissão", -bruto.comissao],
-        ["Taxa de serviço", -bruto.taxa_servico],
-        ...(bruto.taxa_transacao > 0 ? ([["Taxa de transação", -bruto.taxa_transacao]] as [string, number][]) : []),
+        ...detalheDasTaxas(bruto).map((t) => [t.rotulo, -t.valor] as [string, number]),
       ]
     : [];
 
@@ -104,6 +101,9 @@ export function DetalheMarketplaceModal({ p, bruto, onClose }: { p: PedidoCentra
                 <span className="font-mono">{formatBRL(Number(bruto.frete_comprador))}</span>
               </div>
             )}
+            {bruto.taxas_origem === "estimado" && (
+              <p className="text-xs text-text-tertiary">A Shopee ainda não informou a renda deste pedido: taxas estimadas pela regra de faixas. A próxima sincronização troca pelas reais.</p>
+            )}
             <div className="flex justify-between font-medium text-text-primary border-t border-border pt-1">
               <span>Repasse {p.canal.toLowerCase().includes("mercado") ? "do Mercado Livre" : "da Shopee"}</span>
               <span className="font-mono">{formatBRL(bruto.repasse)}</span>
@@ -114,7 +114,7 @@ export function DetalheMarketplaceModal({ p, bruto, onClose }: { p: PedidoCentra
             </div>
             {bruto.imposto > 0 && (
               <div className="flex justify-between text-text-secondary">
-                <span>Imposto</span>
+                <span>Imposto sobre a venda</span>
                 <span className="font-mono">{formatBRL(-bruto.imposto)}</span>
               </div>
             )}
@@ -123,6 +123,11 @@ export function DetalheMarketplaceModal({ p, bruto, onClose }: { p: PedidoCentra
               <span className="font-mono">{formatBRL(bruto.lucro)}</span>
             </div>
           </div>
+        )}
+        {bruto?.devolucao_revisar && (
+          <p className="text-xs text-negative mb-3">
+            Pedido devolvido: a Shopee não informa se o produto voltou. Confira o estoque (ajuste à mão se voltou) e o repasse no Financeiro.
+          </p>
         )}
         <p className="text-xs text-text-tertiary mb-3">Status, envio e etiqueta são controlados na Shopee. Aqui o pedido atualiza a cada sincronização.</p>
         <Button variant="ghost" className="w-full" loading={pending} onClick={remover}>
