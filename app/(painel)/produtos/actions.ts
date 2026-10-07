@@ -11,10 +11,15 @@ import {
   grupoProdutoSchema,
   imagemProdutoSchema,
   acaoEmMassaProdutosSchema,
+  exportarListaSchema,
+  type ExportarListaInput,
 } from "@/lib/validacao";
 import { gerarComIA, gerarProdutoPelaFotoIA } from "@/lib/ia/gerar";
 import { comResultado } from "@/lib/acao";
 import type { ComponenteKit } from "@/lib/pricing";
+import { buscarEmLotes } from "@/lib/lotes";
+import { lerFiltroProdutos, palavrasDaBusca } from "@/lib/listas";
+import { gruposPorPalavra, todosOsProdutos } from "./consulta";
 
 const PATH = "/produtos";
 
@@ -256,5 +261,147 @@ export async function gerarProdutoPelaFoto(dados: z.input<typeof fotoSchema>) {
     );
     if (!g.ok) throw new Error(g.erro);
     return g.dado;
+  });
+}
+
+// ---------- Lista paginada: o que a tela não carrega mais de uma vez ----------
+
+export interface ProdutoExportado {
+  id: string;
+  sku: string;
+  nome: string;
+  grupo_nome: string | null;
+  variante_nome: string | null;
+  categoria_nome: string | null;
+  fornecedor_nome: string | null;
+  armazem_nome: string | null;
+  custo: number;
+  preco_venda: number;
+  estoque: number;
+  estoque_minimo: number;
+  ativo: boolean;
+}
+
+interface LinhaExportada {
+  id: string;
+  sku: string;
+  nome: string;
+  custo: number;
+  preco_venda: number;
+  estoque: number;
+  estoque_minimo: number;
+  ativo: boolean;
+  categoria_id: string | null;
+  fornecedor_id: string | null;
+  armazem_id: string | null;
+  grupo_id: string | null;
+  variante_nome: string | null;
+}
+
+/**
+ * Exportar: a tela mostra uma página, então a lista (toda, a filtrada ou a dos
+ * selecionados de qualquer página) é lida aqui, na hora do clique, com os mesmos filtros.
+ */
+export async function listarProdutosParaExportar(dados: ExportarListaInput) {
+  return comResultado(async (): Promise<ProdutoExportado[]> => {
+    const v = validar(exportarListaSchema, dados);
+    const supabase = await createClient();
+    const [categoriasRes, fornecedoresRes, armazensRes, gruposRes] = await Promise.all([
+      supabase.from("categorias").select("id, nome"),
+      supabase.from("fornecedores").select("id, nome"),
+      supabase.from("armazens").select("id, nome"),
+      supabase.from("produto_grupos").select("id, nome"),
+    ]);
+    for (const r of [categoriasRes, fornecedoresRes, armazensRes, gruposRes]) if (r.error) lancarErroSupabase(r.error);
+    const filtro = lerFiltroProdutos(v.filtro);
+    const grupos = gruposRes.data ?? [];
+    const alvo =
+      v.escopo === "selecionados"
+        ? { ids: v.ids }
+        : v.escopo === "filtrados"
+          ? { filtro, grupos: gruposPorPalavra(grupos, filtro.q, palavrasDaBusca(filtro.q)) }
+          : null;
+    if (v.escopo === "selecionados" && v.ids.length === 0) return [];
+    const r = await todosOsProdutos<LinhaExportada>(
+      supabase,
+      "id, sku, nome, custo, preco_venda, estoque, estoque_minimo, ativo, categoria_id, fornecedor_id, armazem_id, grupo_id, variante_nome",
+      alvo,
+    );
+    if (r.error) lancarErroSupabase(r.error);
+    const nome = (lista: { id: string; nome: string }[] | null) => new Map((lista ?? []).map((x) => [x.id, x.nome]));
+    const [categorias, fornecedores, armazens, nomesGrupo] = [nome(categoriasRes.data), nome(fornecedoresRes.data), nome(armazensRes.data), nome(grupos)];
+    return r.data.map((p) => ({
+      id: p.id,
+      sku: p.sku,
+      nome: p.nome,
+      grupo_nome: p.grupo_id ? (nomesGrupo.get(p.grupo_id) ?? null) : null,
+      variante_nome: p.variante_nome,
+      categoria_nome: p.categoria_id ? (categorias.get(p.categoria_id) ?? null) : null,
+      fornecedor_nome: p.fornecedor_id ? (fornecedores.get(p.fornecedor_id) ?? null) : null,
+      armazem_nome: p.armazem_id ? (armazens.get(p.armazem_id) ?? null) : null,
+      custo: Number(p.custo ?? 0),
+      preco_venda: Number(p.preco_venda ?? 0),
+      estoque: Number(p.estoque ?? 0),
+      estoque_minimo: Number(p.estoque_minimo ?? 0),
+      ativo: !!p.ativo,
+    }));
+  });
+}
+
+export interface ProdutoParaInsumo {
+  id: string;
+  nome: string;
+  custo: number;
+  sku: string;
+  categoria_id: string | null;
+}
+
+export interface DimensoesPadrao {
+  peso_g: number | null;
+  altura_cm: number | null;
+  largura_cm: number | null;
+  comprimento_cm: number | null;
+}
+
+/**
+ * O que o formulário de produto precisa da lista INTEIRA (e a página não traz mais):
+ * os produtos que podem virar insumo de um kit e as medidas padrão de cada grupo de
+ * variantes. Lido quando o formulário abre.
+ */
+export async function opcoesFormularioProduto() {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const [insumosRes, envioRes] = await Promise.all([
+      buscarEmLotes<ProdutoParaInsumo>(async (de, ate) => {
+        const r = await supabase.from("produtos").select("id, nome, custo, sku, categoria_id", { count: "exact" }).order("nome").order("id").range(de, ate);
+        return { data: r.data as ProdutoParaInsumo[] | null, error: r.error, count: r.count };
+      }),
+      // Envio (0041): sem a migração as colunas não existem e o padrão fica vazio.
+      buscarEmLotes<DimensoesPadrao & { grupo_id: string }>(async (de, ate) => {
+        const r = await supabase
+          .from("produtos")
+          .select("grupo_id, peso_g, altura_cm, largura_cm, comprimento_cm", { count: "exact" })
+          .not("grupo_id", "is", null)
+          .order("nome")
+          .order("variante_nome", { nullsFirst: true })
+          .order("id")
+          .range(de, ate);
+        return { data: r.data as (DimensoesPadrao & { grupo_id: string })[] | null, error: r.error, count: r.count };
+      }),
+    ]);
+    if (insumosRes.error) lancarErroSupabase(insumosRes.error);
+    if (envioRes.error) console.error("[produtos] medidas padrão por grupo:", envioRes.error.message);
+    // Medidas padrão de cada grupo: as da primeira variante que tem alguma.
+    const padroesEnvio: Record<string, DimensoesPadrao> = {};
+    for (const p of envioRes.error ? [] : envioRes.data) {
+      if (padroesEnvio[p.grupo_id]) continue;
+      if (p.peso_g != null || p.altura_cm != null || p.largura_cm != null || p.comprimento_cm != null) {
+        padroesEnvio[p.grupo_id] = { peso_g: p.peso_g ?? null, altura_cm: p.altura_cm ?? null, largura_cm: p.largura_cm ?? null, comprimento_cm: p.comprimento_cm ?? null };
+      }
+    }
+    return {
+      insumos: insumosRes.data.map((p) => ({ ...p, custo: Number(p.custo ?? 0) })),
+      padroesEnvio,
+    };
   });
 }

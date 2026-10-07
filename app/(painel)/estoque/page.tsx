@@ -1,46 +1,57 @@
 import { createClient } from "@/lib/supabase/server";
-import { comRotulo, mapaGrupos } from "@/lib/produtos";
-import { EstoqueClient, type SaldoArmazem } from "./EstoqueClient";
+import { lerFiltroEstoque, resumoDeEstoque, type ParamsUrl } from "@/lib/listas";
+import { paginaDoEstoque } from "@/lib/estoque-lista";
+import { idsDaBusca, produtosDoEstoque, saldosDoEstoque } from "./consulta";
+import { EstoqueClient } from "./EstoqueClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Estoque" };
 
-export default async function EstoquePage() {
+export default async function EstoquePage({ searchParams }: { searchParams: Promise<ParamsUrl> }) {
+  const filtro = lerFiltroEstoque(await searchParams);
   const supabase = await createClient();
 
-  const [produtosRes, armazensRes, movimentacoesRes, gruposRes, saldosRes, reservasRes] = await Promise.all([
-    supabase
-      .from("produtos")
-      .select("id, sku, nome, custo, estoque, estoque_minimo, armazem_id, grupo_id, variante_nome, ativo")
-      .order("nome"),
+  // Os grupos dão o rótulo das variantes e entram na busca; o resto roda junto.
+  const gruposP = supabase.from("produto_grupos").select("id, nome");
+  const produtosP = gruposP.then((g) => produtosDoEstoque(supabase, g.data ?? []));
+  const buscaP = gruposP.then((g) => idsDaBusca(supabase, filtro.q, g.data ?? []));
+
+  const [gruposRes, produtosRes, buscaRes, armazensRes, movimentacoesRes, reservasRes] = await Promise.all([
+    gruposP,
+    produtosP,
+    buscaP,
     // `*`: `loja_ids` só existe a partir da 0041, e pedir por nome derrubaria a página antes.
     supabase.from("armazens").select("*").order("criado_em"),
-    supabase.from("estoque_movimentacoes").select("*").order("data_movimentacao", { ascending: false }).limit(50),
-    supabase.from("produto_grupos").select("id, nome"),
-    supabase.from("estoque_armazem").select("produto_id, armazem_id, quantidade"),
+    // `*`: origem/destino da transferência só existem a partir da 0041. A tela mostra 10.
+    supabase.from("estoque_movimentacoes").select("*").order("data_movimentacao", { ascending: false }).limit(10),
     // Reservado por pedidos na esteira (0052); sem a migração, nada reservado.
     supabase.from("estoque_disponivel").select("produto_id, reservado").gt("reservado", 0),
   ]);
-  const reservado: Record<string, number> = reservasRes.error ? {} : Object.fromEntries((reservasRes.data ?? []).map((r) => [r.produto_id as string, Number(r.reservado)]));
 
   if (produtosRes.error) throw new Error(produtosRes.error.message);
   if (armazensRes.error) throw new Error(armazensRes.error.message);
   if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
   if (gruposRes.error) throw new Error(gruposRes.error.message);
+  if (buscaRes.error) throw new Error(buscaRes.error.message);
 
-  const grupos = mapaGrupos(gruposRes.data ?? []);
-  const produtos = (produtosRes.data ?? []).map((p) => comRotulo(p, grupos));
+  const produtos = produtosRes.data;
+  const { saldos, porArmazem } = await saldosDoEstoque(supabase, produtos);
+  const pagina = paginaDoEstoque(produtos, saldos, filtro, buscaRes.ids);
 
-  // Sem a 0041 a tabela de saldos não existe: cada produto conta inteiro no armazém dele,
-  // como era antes, e a tela avisa que transferência ainda não está disponível.
-  const porArmazem = !saldosRes.error;
-  const saldos: SaldoArmazem[] = porArmazem
-    ? (saldosRes.data ?? [])
-    : produtos.filter((p) => p.armazem_id && p.estoque > 0).map((p) => ({ produto_id: p.id, armazem_id: p.armazem_id!, quantidade: p.estoque }));
+  // Cards: da conta inteira (não da página nem dos filtros), como sempre foram.
+  const resumo = resumoDeEstoque(produtos);
+  const reservadoTodos: Record<string, number> = reservasRes.error ? {} : Object.fromEntries((reservasRes.data ?? []).map((r) => [r.produto_id as string, Number(r.reservado)]));
+  const totalReservado = Object.values(reservadoTodos).reduce((a, n) => a + n, 0);
+  const reservado = Object.fromEntries(pagina.produtos.filter((p) => reservadoTodos[p.id]).map((p) => [p.id, reservadoTodos[p.id]]));
 
   return (
     <EstoqueClient
-      produtos={produtos}
+      filtro={{ ...filtro, pagina: pagina.pagina }}
+      total={pagina.total}
+      produtos={pagina.produtos.map((p) => ({ id: p.id, sku: p.sku, nome: p.nome, custo: p.custo, estoque: p.estoque, estoque_minimo: p.estoque_minimo, armazem_id: p.armazem_id, ativo: p.ativo }))}
+      saldos={pagina.saldos}
+      totaisArmazem={pagina.porArmazem}
+      resumo={{ unidades: resumo.unidades, valorTotal: resumo.valorEmEstoque, criticos: resumo.reposicao, reservado: totalReservado }}
       armazens={(armazensRes.data ?? []).map((a) => ({
         id: a.id,
         nome: a.nome,
@@ -48,7 +59,6 @@ export default async function EstoquePage() {
         lojas_abastecidas: a.lojas_abastecidas ?? [],
       }))}
       movimentacoes={movimentacoesRes.data ?? []}
-      saldos={saldos}
       porArmazem={porArmazem}
       reservado={reservado}
     />

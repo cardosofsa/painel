@@ -878,3 +878,16 @@ export const respostaAvaliacaoSchema = z.object({
   texto: z.string().trim().min(2, "Escreva a resposta").max(500, "A Shopee aceita até 500 caracteres"),
 });
 export type RespostaAvaliacaoInput = z.infer<typeof respostaAvaliacaoSchema>;
+
+// ---------- Listas paginadas: exportação sob demanda ----------
+/**
+ * A lista na tela é uma página; exportar busca a lista inteira na hora. `filtro` são os
+ * parâmetros da URL da tela — cada uma relê com os próprios leitores de `lib/listas.ts`,
+ * que descartam qualquer valor fora do esperado.
+ */
+export const exportarListaSchema = z.object({
+  escopo: z.enum(["todos", "filtrados", "selecionados"]),
+  filtro: z.record(z.string(), z.string().max(200)),
+  ids: z.array(uuid).max(5000, "Selecione no máximo 5.000 itens para exportar"),
+});
+export type ExportarListaInput = z.infer<typeof exportarListaSchema>;

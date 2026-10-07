@@ -97,7 +97,11 @@ export function ExportarModal<L>({
   titulo: string;
   /** Pelo menos um; os de quantidade 0 aparecem desabilitados. */
   escopos: EscopoExport[];
-  montar: (escopo: string) => TabelaExport<L>;
+  /**
+   * Monta a tabela do escopo. Pode ser assíncrono — lista paginada no servidor busca a
+   * lista inteira só na hora de exportar. `null` = desistiu (o erro já foi mostrado).
+   */
+  montar: (escopo: string) => TabelaExport<L> | null | Promise<TabelaExport<L> | null>;
   empresa?: { nome: string | null; logoUrl?: string | null } | null;
 }) {
   const [escopo, setEscopo] = useState(escopos.find((e) => e.quantidade > 0)?.id ?? escopos[0]?.id ?? "todos");
@@ -109,7 +113,17 @@ export function ExportarModal<L>({
   const { capturar, gerando, elementos } = useCapturaImagem();
 
   async function exportar() {
-    const tabela = montar(escopo);
+    setGerandoArquivo(true);
+    let tabela: TabelaExport<L> | null;
+    try {
+      tabela = await montar(escopo);
+    } catch (e) {
+      console.error("[exportar] montar", e);
+      toast.error("Não foi possível carregar a lista para exportar.");
+      tabela = null;
+    }
+    setGerandoArquivo(false);
+    if (!tabela) return;
     if (tabela.linhas.length === 0) {
       toast.error("Nada para exportar nesse escopo.");
       return;

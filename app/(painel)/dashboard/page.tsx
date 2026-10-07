@@ -5,8 +5,9 @@ import { hojeIsoBrasil, formatarDataIso, inicioDiaBrasil, somarDiasIso } from "@
 import { carregarFontesPeriodo } from "@/lib/calendario-servidor";
 import { CAMADAS_PADRAO, diasAte, type Camada } from "@/lib/calendario-dashboard";
 import { lancarErroSupabase } from "@/lib/erros";
+import { buscarEmLotes } from "@/lib/lotes";
 import type { PassoInicial } from "@/components/dashboard/PrimeirosPassos";
-import { DashboardClient, type Vencimento } from "./DashboardClient";
+import { DashboardClient, type ProdutoBaixoEstoque, type Vencimento } from "./DashboardClient";
 import { MasterDashboardClient } from "./MasterDashboardClient";
 import type { ContaAdmin } from "../admin/AdminClient";
 import type { LinhaHistorico } from "../admin/HistoricoAdmin";
@@ -88,12 +89,23 @@ export default async function DashboardPage() {
     lojasCountRes,
     vendasCountRes,
     mktCountRes,
+    algumProdutoRes,
   ] = await Promise.all([
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
-      supabase
-        .from("produtos")
-        .select("id, sku, nome, estoque, estoque_minimo, ativo")
-        .order("estoque_minimo", { ascending: false }),
+      // Só os candidatos a "Estoque baixo" (ativo e com mínimo definido — a comparação
+      // `estoque <= estoque_minimo` é entre colunas, fica para depois), em lotes: antes era a
+      // tabela inteira, cortada calada em 1000 linhas pelo PostgREST.
+      buscarEmLotes<ProdutoBaixoEstoque>(async (de, ate) => {
+        const r = await supabase
+          .from("produtos")
+          .select("id, sku, nome, estoque, estoque_minimo", { count: "exact" })
+          .eq("ativo", true)
+          .gt("estoque_minimo", 0)
+          .order("estoque_minimo", { ascending: false })
+          .order("id")
+          .range(de, ate);
+        return { data: r.data, error: r.error, count: r.count };
+      }),
       supabase
         .from("pedidos_compra")
         .select("id, numero, valor_total, status, fornecedor_id")
@@ -123,6 +135,8 @@ export default async function DashboardPage() {
       supabase.from("lojas_canal").select("id", { count: "exact", head: true }),
       supabase.from("vendas").select("id", { count: "exact", head: true }),
       supabase.from("pedidos_marketplace").select("id", { count: "exact", head: true }),
+      // Primeiros passos: basta saber se existe algum produto (inativo ou sem mínimo também conta).
+      supabase.from("produtos").select("id").limit(1),
     ]);
 
   const perfil = perfilRes.data as Record<string, unknown> | null;
@@ -131,7 +145,7 @@ export default async function DashboardPage() {
     : [
         { id: "loja", rotulo: "Dados da loja", ajuda: "Nome, regime e alíquota do imposto.", href: "/configuracoes?aba=conta", feito: !!String(perfil?.nome_negocio ?? "").trim() },
         { id: "conta", rotulo: "Conta de recebimento", ajuda: "Caixa, banco ou Pix onde o dinheiro entra.", href: "/configuracoes?aba=transacoes", feito: (contasRes.data ?? []).length > 0 },
-        { id: "produto", rotulo: "Primeiro produto", ajuda: "Com custo, para o lucro sair certo.", href: "/produtos", feito: (produtosRes.data ?? []).length > 0 },
+        { id: "produto", rotulo: "Primeiro produto", ajuda: "Com custo, para o lucro sair certo.", href: "/produtos", feito: (algumProdutoRes.data ?? []).length > 0 },
         { id: "canal", rotulo: "Canal de venda", ajuda: "Shopee, Mercado Livre, catálogo ou loja física.", href: "/configuracoes?aba=canais-de-venda", feito: (lojasCountRes.count ?? 0) > 0 },
         { id: "venda", rotulo: "Primeira venda", ajuda: "Pelo PDV ou importando os pedidos.", href: "/pdv", feito: (vendasCountRes.count ?? 0) + (mktCountRes.count ?? 0) > 0 },
       ];
@@ -167,7 +181,8 @@ export default async function DashboardPage() {
 
   // Mesma regra do alerta de estoque mínimo (gatilho da 0034): produto ativo, com mínimo
   // definido e no mínimo ou abaixo. Antes entrava produto inativo e mínimo 0 com estoque 0.
-  const produtosBaixoEstoque = (produtosRes.data ?? []).filter((p) => p.ativo !== false && p.estoque_minimo > 0 && p.estoque <= p.estoque_minimo);
+  // (ativo e mínimo > 0 já vieram filtrados no banco.)
+  const produtosBaixoEstoque = produtosRes.data.filter((p) => p.estoque <= p.estoque_minimo);
 
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
   const pedidosPendentes = (pedidosRes.data ?? []).map((p) => ({

@@ -19,18 +19,19 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - DIAS_JANELA);
 
-  const [vendasRes, clientesRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes, disponivelRes] = await Promise.all([
+  const [vendasRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes, disponivelRes] = await Promise.all([
     supabase
       .from("vendas")
       // `*`: etapa e logística só existem a partir da 0047.
       .select("*, clientes(cidade, uf), venda_itens(produto_nome, produto_sku, quantidade, preco_unitario, custo_unitario, garantia_dias)")
       .gte("data_venda", inicio.toISOString())
       .order("data_venda", { ascending: false }),
-    supabase.from("clientes").select("id, nome, whatsapp").eq("status", "ativo").order("nome"),
     supabase.from("formas_pagamento").select("nome").order("nome"),
     // Pedidos do catálogo moram em Vendas desde a 8.6.
     carregarPedidosVitrine(supabase),
-    // As três abaixo alimentam o CheckoutModal do PDV, reaproveitado para fechar o pedido.
+    // Clientes ativos: uma consulta só serve a lista (id, nome, WhatsApp) e as três abaixo
+    // que alimentam o CheckoutModal do PDV, reaproveitado para fechar o pedido. Antes a
+    // mesma tabela era lida duas vezes.
     supabase.from("clientes").select("id, nome, whatsapp, permite_fiado, limite_fiado").eq("status", "ativo").order("nome"),
     supabase.from("contas").select("id, nome").order("nome"),
     supabase.from("formas_pagamento").select("nome, tipo").order("nome"),
@@ -68,7 +69,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   const freteRes = await supabase.from("frete_conexoes").select("token_cifrado").maybeSingle();
 
   if (vendasRes.error) throw new Error(vendasRes.error.message);
-  if (clientesRes.error) throw new Error(clientesRes.error.message);
+  if (clientesPdvRes.error) throw new Error(clientesPdvRes.error.message);
   if (formasRes.error) throw new Error(formasRes.error.message);
 
   return (
@@ -76,7 +77,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       key={busca ?? "inicio"}
       vendas={(vendasRes.data ?? []) as Venda[]}
       diasJanela={DIAS_JANELA}
-      clientes={clientesRes.data ?? []}
+      clientes={clientesPdvRes.data ?? []}
       formasPagamento={(formasRes.data ?? []).map((f) => f.nome)}
       pedidos={pedidos}
       clientesPdv={clientesPdvRes.data ?? []}
