@@ -299,6 +299,10 @@ export interface AnuncioShopee {
   /** SKU do item pai (para casar quando a variação não tem SKU próprio). */
   skuPrincipal: string | null;
   nome: string;
+  /** Nome do anúncio sem a variação e o rótulo da variação ("Kit 2"), para casar com a
+   * variação filha pela chave "SKU principal · variação" quando o model não tem SKU. */
+  nomeItem?: string;
+  variacao?: string | null;
   estoque: number;
   /** Preço atual do anúncio na plataforma (Raio-X da precificação). Ausente se a API não mandou. */
   preco?: number | null;
@@ -344,7 +348,7 @@ export async function buscarAnuncios(c: CredenciaisShopee, token: string, shopId
       const variacoes = (m.tier_variation as { option_list?: { option?: string }[] }[] | undefined) ?? [];
       for (const model of (m.model as (EstoqueApi & { model_id: number; model_sku?: string; tier_index?: number[]; price_info?: { current_price?: number }[] })[] | undefined) ?? []) {
         const rotulo = (model.tier_index ?? []).map((t, n) => variacoes[n]?.option_list?.[t]?.option).filter(Boolean).join(" · ");
-        anuncios.push({ itemId: item.item_id, modelId: model.model_id, sku: model.model_sku?.trim() || null, skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, estoque: estoqueDe(model), preco: precoDe(model) });
+        anuncios.push({ itemId: item.item_id, modelId: model.model_id, sku: model.model_sku?.trim() || null, skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, nomeItem: nome, variacao: rotulo || null, estoque: estoqueDe(model), preco: precoDe(model) });
       }
     }
   }
