@@ -11,6 +11,7 @@
  */
 
 import { captchaAtivo, ORIGEM_TURNSTILE } from "./captcha";
+import { ORIGEM_VIDEO_EMBED, ORIGEM_VIDEO_MINIATURA, videoDemoAtivo } from "./landing";
 
 /**
  * Este `new URL(...)` roda no `import` do módulo, e o módulo é importado pelo `proxy.ts` —
@@ -63,9 +64,9 @@ export function gerarNonce(): string {
 
 export function montarCsp(
   nonce: string,
-  opcoes: { dev?: boolean; origemSupabase?: string; captcha?: boolean } = {},
+  opcoes: { dev?: boolean; origemSupabase?: string; captcha?: boolean; video?: boolean } = {},
 ): string {
-  const { dev = process.env.NODE_ENV !== "production", origemSupabase = ORIGEM_SUPABASE, captcha = captchaAtivo() } = opcoes;
+  const { dev = process.env.NODE_ENV !== "production", origemSupabase = ORIGEM_SUPABASE, captcha = captchaAtivo(), video = videoDemoAtivo() } = opcoes;
 
   const diretivas: Record<string, (string | false)[]> = {
     "default-src": ["'self'"],
@@ -86,7 +87,8 @@ export function montarCsp(
     "style-src": ["'self'", "'unsafe-inline'"],
 
     // blob:/data: cobrem o preview local de imagem e o download de CSV/backup.
-    "img-src": ["'self'", "blob:", "data:", origemSupabase],
+    // Vídeo da landing (só com `NEXT_PUBLIC_VIDEO_DEMO_URL`): a miniatura da fachada.
+    "img-src": ["'self'", "blob:", "data:", origemSupabase, video && ORIGEM_VIDEO_MINIATURA],
 
     // next/font baixa a fonte no build e serve de /_next/static — nada de Google Fonts em
     // tempo de execução.
@@ -97,9 +99,10 @@ export function montarCsp(
 
     "worker-src": ["'self'", "blob:"],
 
-    // O desafio do Turnstile roda num iframe da Cloudflare. Sem captcha, a diretiva nem sai e
-    // vale o `default-src 'self'` de sempre.
-    ...(captcha ? { "frame-src": ["'self'", ORIGEM_TURNSTILE] } : {}),
+    // O desafio do Turnstile roda num iframe da Cloudflare; o vídeo da landing, num iframe do
+    // youtube-nocookie (só depois do clique no play). Sem nenhum dos dois, a diretiva nem sai
+    // e vale o `default-src 'self'` de sempre.
+    ...(captcha || video ? { "frame-src": ["'self'", captcha && ORIGEM_TURNSTILE, video && ORIGEM_VIDEO_EMBED] } : {}),
 
     // Espelha o X-Frame-Options: DENY do next.config.ts, para navegador que já ignora o
     // cabeçalho antigo.

@@ -34,6 +34,10 @@ import { rotuloLimite } from "@/lib/planos";
 import { Contador, Revelar } from "@/components/landing/Revelar";
 import { ImagemTema } from "@/components/landing/ImagemTema";
 import { BotaoTema } from "@/components/layout/BotaoTema";
+import { BotaoWhatsApp } from "@/components/landing/BotaoWhatsApp";
+import { VideoDemo } from "@/components/landing/VideoDemo";
+import { DEPOIMENTOS } from "@/lib/depoimentos";
+import { idVideoYoutube } from "@/lib/landing";
 
 export const metadata: Metadata = {
   title: { absolute: "Sertão" },
@@ -72,6 +76,8 @@ export default async function Home() {
     ...p,
     preco_mensal: Number(p.preco_mensal),
   }));
+  // Peças opcionais: sem a variável (ou sem depoimento real), a seção nem aparece.
+  const idVideo = idVideoYoutube(process.env.NEXT_PUBLIC_VIDEO_DEMO_URL);
 
   return (
     <div className="min-h-screen bg-background text-text-primary">
@@ -82,6 +88,9 @@ export default async function Home() {
             <a href="#recursos" className="hidden md:inline text-sm text-text-secondary hover:text-text-primary px-2">
               Recursos
             </a>
+            <Link href="/calculadora" className="hidden md:inline text-sm text-text-secondary hover:text-text-primary px-2">
+              Calculadora
+            </Link>
             {planos.length > 0 && (
               <a href="#planos" className="hidden md:inline text-sm text-text-secondary hover:text-text-primary px-2">
                 Planos
@@ -129,6 +138,11 @@ export default async function Home() {
                 </Link>
               </div>
               <p className="mt-3 text-sm text-text-tertiary">14 dias do plano Pro liberados ao criar a conta. Sem cartão.</p>
+              <p className="mt-2 text-sm">
+                <Link href="/calculadora" className="inline-flex items-center gap-1 text-accent hover:underline">
+                  <Calculator size={15} aria-hidden /> Só quer saber o preço? Use a calculadora da Shopee e do Mercado Livre
+                </Link>
+              </p>
               <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-text-secondary">
                 {[
                   [Lock, "Dados isolados por conta"],
@@ -177,6 +191,16 @@ export default async function Home() {
             ))}
           </dl>
         </section>
+
+        {idVideo && (
+          <section aria-labelledby="titulo-video" className="max-w-4xl mx-auto px-4 pt-14 sm:pt-20">
+            <h2 id="titulo-video" className="text-2xl sm:text-3xl font-semibold tracking-tight text-center">
+              Veja o Sertão funcionando
+            </h2>
+            <p className="mt-2 mb-8 text-center text-text-secondary">Do custo do produto ao lucro de cada venda, em poucos minutos.</p>
+            <VideoDemo id={idVideo} titulo="Demonstração do Sertão" />
+          </section>
+        )}
 
         <div id="recursos" className="max-w-6xl mx-auto px-4 py-14 sm:py-20 space-y-20 sm:space-y-28 scroll-mt-14">
           <Recurso
@@ -397,6 +421,28 @@ export default async function Home() {
           </div>
         </section>
 
+        {DEPOIMENTOS.length > 0 && (
+          <section aria-labelledby="titulo-depoimentos" className="max-w-6xl mx-auto px-4 pb-14 sm:pb-20">
+            <h2 id="titulo-depoimentos" className="text-2xl sm:text-3xl font-semibold tracking-tight text-center">
+              Quem usa conta
+            </h2>
+            <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {DEPOIMENTOS.map((d) => (
+                <figure key={`${d.nome}-${d.negocio}`} className="h-full rounded-xl border border-border bg-surface-1 p-5 flex flex-col">
+                  <blockquote className="flex-1 text-text-primary leading-relaxed">“{d.texto}”</blockquote>
+                  <figcaption className="mt-4 text-sm">
+                    <span className="font-semibold">{d.nome}</span>
+                    <span className="block text-text-secondary">
+                      {d.negocio}
+                      {d.cidade ? ` · ${d.cidade}` : ""}
+                    </span>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Segurança e celular */}
         <section className="max-w-6xl mx-auto px-4 py-14 sm:py-20 grid grid-cols-1 md:grid-cols-2 gap-6">
           <Destaque
@@ -543,6 +589,7 @@ export default async function Home() {
           <LinksLegais />
         </div>
       </footer>
+      <BotaoWhatsApp />
     </div>
   );
 }

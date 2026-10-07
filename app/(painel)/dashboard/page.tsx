@@ -6,6 +6,8 @@ import { carregarFontesPeriodo } from "@/lib/calendario-servidor";
 import { CAMADAS_PADRAO, diasAte, type Camada } from "@/lib/calendario-dashboard";
 import { lancarErroSupabase } from "@/lib/erros";
 import { buscarEmLotes } from "@/lib/lotes";
+import { avisoAtivacaoTeste } from "@/lib/ativacao-teste";
+import type { ResumoAssinatura } from "@/lib/planos";
 import type { PassoInicial } from "@/components/dashboard/PrimeirosPassos";
 import { DashboardClient, type ProdutoBaixoEstoque, type Vencimento } from "./DashboardClient";
 import { MasterDashboardClient } from "./MasterDashboardClient";
@@ -90,6 +92,7 @@ export default async function DashboardPage() {
     vendasCountRes,
     mktCountRes,
     algumProdutoRes,
+    assinaturaRes,
   ] = await Promise.all([
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       // Só os candidatos a "Estoque baixo" (ativo e com mínimo definido — a comparação
@@ -137,6 +140,8 @@ export default async function DashboardPage() {
       supabase.from("pedidos_marketplace").select("id", { count: "exact", head: true }),
       // Primeiros passos: basta saber se existe algum produto (inativo ou sem mínimo também conta).
       supabase.from("produtos").select("id").limit(1),
+      // Aviso do teste grátis. Sem a 0057 (ou com erro), só não aparece.
+      supabase.rpc("minha_assinatura"),
     ]);
 
   const perfil = perfilRes.data as Record<string, unknown> | null;
@@ -149,6 +154,11 @@ export default async function DashboardPage() {
         { id: "canal", rotulo: "Canal de venda", ajuda: "Shopee, Mercado Livre, catálogo ou loja física.", href: "/configuracoes?aba=canais-de-venda", feito: (lojasCountRes.count ?? 0) > 0 },
         { id: "venda", rotulo: "Primeira venda", ajuda: "Pelo PDV ou importando os pedidos.", href: "/pdv", feito: (vendasCountRes.count ?? 0) + (mktCountRes.count ?? 0) > 0 },
       ];
+
+  const avisoTeste = avisoAtivacaoTeste(assinaturaRes.error ? null : (assinaturaRes.data as ResumoAssinatura | null), {
+    temProduto: (produtosRes.data ?? []).length > 0,
+    temVenda: (vendasCountRes.count ?? 0) + (mktCountRes.count ?? 0) > 0,
+  });
 
   if (contasRes.error) throw new Error(contasRes.error.message);
   if (produtosRes.error) throw new Error(produtosRes.error.message);
@@ -223,6 +233,7 @@ export default async function DashboardPage() {
       calendario={calendario}
       vendasRelatorio={vendasRelatorio}
       primeirosPassos={primeirosPassos}
+      avisoTeste={avisoTeste}
     />
   );
 }
