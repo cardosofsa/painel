@@ -36,6 +36,7 @@ Variáveis de ambiente (em `.env.local`):
 | `CRON_SECRET` | Protege `/api/cron/shopee` (sincronização automática) |
 | `SHOPEE_PARTNER_ID`, `SHOPEE_PARTNER_KEY`, `SHOPEE_AMBIENTE`, `SHOPEE_HOST` | API da Shopee (ver `docs/shopee-api.md`) |
 | `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | API do Mercado Livre (ver `docs/mercadolivre-api.md`) |
+| `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `ASAAS_AMBIENTE` | Opcionais. Cobrança automática das assinaturas pelo Asaas (`ASAAS_AMBIENTE=sandbox` para testes) — ver `docs/cobranca-asaas.md`. Sem as duas primeiras, o plano segue por pedido + ativação manual |
 
 A service role key ignora o RLS: só `lib/supabase/servico.ts` a lê, e só rotas sem usuário
 logado a usam, sempre filtrando `user_id` explícito. Tela e Server Action nunca.

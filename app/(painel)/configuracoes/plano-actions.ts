@@ -9,12 +9,14 @@ import { comResultado } from "@/lib/acao";
 import { provedorCobranca } from "@/lib/cobranca";
 
 /**
- * Configurações → Plano (10.9). Com provedor de cobrança ligado, "Assinar" leva ao
- * checkout dele; sem provedor (hoje), registra o PEDIDO e o master ativa.
+ * Configurações → Plano (10.9). Com provedor de cobrança ligado (Asaas), "Assinar" leva ao
+ * checkout dele; sem provedor, registra o PEDIDO e o master ativa. Plano grátis com
+ * provedor: encerra a assinatura paga no provedor (o webhook rebaixa a conta).
  */
-export async function assinarPlano(planoId: string, voltaUrl: string) {
-  return comResultado(async (): Promise<{ checkout: string | null }> => {
+export async function assinarPlano(planoId: string, voltaUrl: string, documento?: string | null) {
+  return comResultado(async (): Promise<{ checkout: string | null; cancelada?: boolean }> => {
     const id = validar(z.string().regex(/^[a-z0-9_-]{2,30}$/), planoId);
+    const doc = validar(z.string().max(30).nullish(), documento);
     const supabase = await createClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
@@ -23,9 +25,19 @@ export async function assinarPlano(planoId: string, voltaUrl: string) {
     if (provedor) {
       const { data: plano } = await supabase.from("planos").select("id, nome, preco_mensal").eq("id", id).eq("ativo", true).maybeSingle();
       if (!plano) throw new Error("Plano indisponível.");
-      const volta = validar(z.string().url().max(500), voltaUrl);
-      const c = await provedor.criarCheckout({ userId: auth.user.id, email: auth.user.email ?? "", plano: { id: plano.id, nome: plano.nome, preco: Number(plano.preco_mensal) }, voltaUrl: volta });
-      return { checkout: c.url };
+      const preco = Number(plano.preco_mensal);
+      if (preco > 0) {
+        const volta = validar(z.string().url().max(500), voltaUrl);
+        const c = await provedor.criarCheckout({ userId: auth.user.id, email: auth.user.email ?? "", documento: doc, plano: { id: plano.id, nome: plano.nome, preco }, voltaUrl: volta });
+        return { checkout: c.url };
+      }
+      // Grátis: quem paga pelo provedor encerra lá (a policy deixa a conta ler a própria linha).
+      const { data: atual } = await supabase.from("assinaturas").select("provedor, provedor_ref, status").eq("user_id", auth.user.id).maybeSingle();
+      if (atual?.provedor === provedor.id && atual.provedor_ref && atual.status !== "cancelada" && provedor.cancelarAssinatura) {
+        await provedor.cancelarAssinatura(atual.provedor_ref);
+        revalidatePath("/configuracoes");
+        return { checkout: null, cancelada: true };
+      }
     }
 
     const { error } = await supabase.rpc("solicitar_plano", { p_plano: id });

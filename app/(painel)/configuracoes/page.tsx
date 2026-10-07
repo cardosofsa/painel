@@ -8,6 +8,7 @@ import { estadoDoTeste, type EstadoTesteBruto } from "@/lib/ia/teste";
 import type { IaCadastrada } from "@/components/configuracoes/AbaIA";
 import type { FreteConfig } from "@/components/configuracoes/AbaFrete";
 import type { DadosPlano } from "@/components/configuracoes/AbaPlano";
+import { provedorCobranca } from "@/lib/cobranca";
 import { FISCAL_PADRAO, type FiscalConfigTela } from "@/components/configuracoes/AbaFiscal";
 import type { DadosEquipe, OperadorTela } from "@/components/configuracoes/AbaEquipe";
 import type { Plano, ResumoAssinatura } from "@/lib/planos";
@@ -176,6 +177,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           resumo: assinaturaRes.data as ResumoAssinatura,
           indicacoes,
           siteUrl,
+          cobrancaAutomatica: provedorCobranca() !== null,
         };
 
   // Pix e encargos do crediário (0065). Consulta à parte: sem a migração as colunas não

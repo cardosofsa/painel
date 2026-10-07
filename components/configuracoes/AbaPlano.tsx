@@ -1,11 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmModal";
+import { FormField, Modal, inputClass } from "@/components/ui/Modal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL } from "@/lib/format";
 import { estourosNoPlano, percentualUso, rotuloLimite, situacaoAssinatura, type Plano, type ResumoAssinatura } from "@/lib/planos";
@@ -18,12 +19,15 @@ export interface DadosPlano {
   /** Indicação (0078) e a base do link pessoal (NEXT_PUBLIC_SITE_URL ou a origem atual). */
   indicacoes?: EstadoIndicacoes;
   siteUrl?: string;
+  /** Provedor de cobrança ligado (Asaas): "Assinar" vai para a fatura em vez de virar pedido. */
+  cobrancaAutomatica?: boolean;
 }
 
 /** Configurações → Plano (10.9): situação, uso e troca de plano. */
 export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
+  const [pagando, setPagando] = useState<Plano | null>(null);
 
   if (!dados) {
     return (
@@ -47,11 +51,29 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
       });
       if (!ok) return;
     }
+    if (dados?.cobrancaAutomatica && p.preco_mensal <= 0 && resumo.status === "ativa" && resumo.plano_efetivo !== p.id) {
+      const ok = await confirm({
+        title: `Mudar para o ${p.nome}?`,
+        message: "Se você paga pelo Asaas, a assinatura é cancelada lá e as cobranças param. A conta passa para o plano grátis quando o Asaas confirmar o cancelamento.",
+        confirmLabel: "Cancelar assinatura",
+      });
+      if (!ok) return;
+    }
+    // Provedor ligado e plano pago: pede o CPF/CNPJ (o Asaas exige) antes de ir para a fatura.
+    if (dados?.cobrancaAutomatica && p.preco_mensal > 0) {
+      setPagando(p);
+      return;
+    }
+    enviar(p, null);
+  }
+
+  function enviar(p: Plano, documento: string | null) {
     startTransition(async () => {
-      const r = await executarComToast(assinarPlano(p.id, `${window.location.origin}/configuracoes`), { erro: "Erro ao solicitar o plano" });
+      const r = await executarComToast(assinarPlano(p.id, `${window.location.origin}/configuracoes`, documento), { erro: "Erro ao assinar o plano" });
       if (!r.ok) return;
       // Provedor de cobrança ligado: segue para o pagamento (URL externa do provedor).
-      if (r.dado.checkout) window.location.href = r.dado.checkout;
+      if (r.dado.checkout) window.location.assign(r.dado.checkout);
+      else if (r.dado.cancelada) toast.success("Assinatura cancelada. A conta passa para o plano grátis assim que o Asaas confirmar.");
       else toast.success(`Pedido do plano ${p.nome} enviado. A ativação é confirmada pelo administrador.`);
     });
   }
@@ -124,7 +146,51 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
           })}
       </div>
       {dados.siteUrl && <IndiqueCard estado={dados.indicacoes ?? null} siteUrl={dados.siteUrl} />}
+      {dados.cobrancaAutomatica && <p className="text-xs text-text-tertiary">Pagamento pelo Asaas, por Pix, boleto ou cartão. A cobrança se renova todo mês e o plano ativa sozinho quando o pagamento é confirmado.</p>}
+      <ModalDocumento
+        key={`doc-${pagando?.id ?? "fechado"}`}
+        plano={pagando}
+        pending={pending}
+        onClose={() => setPagando(null)}
+        onConfirmar={(doc) => {
+          const p = pagando;
+          setPagando(null);
+          if (p) enviar(p, doc);
+        }}
+      />
       {ConfirmDialog}
     </div>
+  );
+}
+
+/** CPF/CNPJ do pagador: o Asaas exige para emitir a cobrança. Não fica gravado no painel. */
+function ModalDocumento({ plano, pending, onClose, onConfirmar }: { plano: Plano | null; pending: boolean; onClose: () => void; onConfirmar: (documento: string) => void }) {
+  const [documento, setDocumento] = useState("");
+  const digitos = documento.replace(/\D/g, "");
+  const completo = digitos.length === 11 || digitos.length === 14;
+  return (
+    <Modal open={!!plano} onClose={onClose} title={plano ? `Assinar o ${plano.nome}` : "Assinar"}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (completo) onConfirmar(digitos);
+        }}
+      >
+        <FormField label="CPF ou CNPJ de quem paga" dica="O Asaas pede para emitir a cobrança. Se você já assinou antes, ele reaproveita o cadastro.">
+          <input className={inputClass} inputMode="numeric" autoComplete="off" maxLength={18} value={documento} onChange={(e) => setDocumento(e.target.value)} placeholder="000.000.000-00" />
+        </FormField>
+        <p className="text-sm text-text-secondary mb-4">
+          {plano ? `${formatBRL(plano.preco_mensal)} por mês. ` : ""}Você vai para a página de pagamento do Asaas e escolhe Pix, boleto ou cartão.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" variant="primary" disabled={!completo || pending} loading={pending}>
+            Ir para o pagamento
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
