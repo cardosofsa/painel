@@ -2,7 +2,7 @@
  * 0081: hash do PIN fora do PostgREST, troca de PIN pedindo o atual, contagem de tentativas
  * nas RPCs de operador e `conta_ativa()` nas RPCs que escreviam sem conferir. `npm run test:sql`.
  */
-import { criarBancoDeTeste } from "./banco.mjs";
+import { criarBancoDeTeste, lerMigracao } from "./banco.mjs";
 
 const db = await criarBancoDeTeste();
 const q = async (sql, p = []) => (await db.query(sql, p)).rows;
@@ -115,12 +115,33 @@ confere("conta suspensa: sem formas", (await como("anon", null, `select formas_p
 confere("conta suspensa: pagamento não grava", (await como("anon", null, `select definir_pagamento_pedido_vitrine('susp-81', gen_random_uuid(), 'Pix') r`))[0].r === false);
 
 // ---------- 7) Idempotente ----------
-const { lerMigracao } = await import("./banco.mjs");
 await db.exec(await lerMigracao("0081_pin_segredo_conta_ativa.sql"));
 await db.exec(await lerMigracao("0081_pin_segredo_conta_ativa.sql"));
 const dupla = await um(`select count(*)::int n from regexp_matches((select prosrc from pg_proc where proname = 'entrar_operador'), 'conta_ativa\\(', 'g')`);
 confere("rodar de novo não duplica a checagem", dupla.n === 1, String(dupla.n));
 confere("o PIN sobrevive à reexecução", (await como("authenticated", u, `select pin_admin_confere('4321') ok`))[0].ok === true);
+
+// ---------- 8) Texto de função como o de produção (colado no SQL Editor) ----------
+// Lá o remendo falhou: o corpo guardado tinha \r\n e não achava "\nbegin\n".
+{
+  const b = await criarBancoDeTeste({ antesDe: "0081" });
+  await b.exec(
+    "create or replace function marcar_operador_venda(p_venda_id uuid, p_operador_id uuid) returns void language plpgsql security definer set search_path = public as $$\r\nBEGIN\r\n  update vendas set operador_id = p_operador_id where id = p_venda_id and user_id = auth.uid();\r\nEND;\r\n$$;",
+  );
+  await b.exec(
+    "create or replace function remover_pedido_marketplace(p_pedido_id uuid) returns void language plpgsql security definer set search_path = public as $$ declare v_x int; begin delete from pedidos_marketplace where id = p_pedido_id and user_id = auth.uid(); end; $$;",
+  );
+  let erro = null;
+  try {
+    await b.exec(await lerMigracao("0081_pin_segredo_conta_ativa.sql"));
+    await b.exec(await lerMigracao("0081_pin_segredo_conta_ativa.sql"));
+  } catch (e) {
+    erro = e.message;
+  }
+  confere("0081 aplica com \\r\\n, BEGIN maiúsculo e begin na mesma linha", erro === null, erro ?? "");
+  const r = (await b.query(`select proname, (select count(*) from regexp_matches(prosrc, 'conta_ativa\\(', 'g'))::int n from pg_proc where proname in ('marcar_operador_venda', 'remover_pedido_marketplace')`)).rows;
+  confere("e as duas recebem a checagem uma vez só", r.length === 2 && r.every((x) => x.n === 1), JSON.stringify(r));
+}
 
 console.log(falhas ? `\n${falhas} falha(s).` : "\nTudo certo.");
 process.exit(falhas ? 1 : 0);
