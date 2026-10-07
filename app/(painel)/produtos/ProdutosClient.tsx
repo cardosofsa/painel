@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -41,6 +41,8 @@ import { rotuloProduto } from "@/lib/produtos";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { ProdutoResumo } from "@/components/produtos/ProdutoResumo";
 import { ProdutoFormModal } from "@/components/produtos/ProdutoFormModal";
+import { VariacoesProdutoModal } from "@/components/produtos/VariacoesProdutoModal";
+import { variacoesPorPai, type VariacaoSalva } from "@/lib/variacoes";
 
 export interface ImagemProduto {
   id: string;
@@ -148,6 +150,7 @@ export function ProdutosClient({
   movimentacoes,
   precificacoes,
   precosCanal,
+  variacoes = [],
   lojas,
   grupos,
   iaDisponivel,
@@ -166,6 +169,8 @@ export function ProdutosClient({
   movimentacoes: MovimentacaoEstoque[];
   precificacoes: PrecificacaoHist[];
   precosCanal: PrecoCanal[];
+  /** Variações por quantidade (0084) dos produtos desta página, mostradas embaixo do pai. */
+  variacoes?: VariacaoSalva[];
   lojas: Opcao[];
   grupos: Opcao[];
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
@@ -187,6 +192,8 @@ export function ProdutosClient({
   const [detalheId, setDetalheId] = useState<string | null>(null);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [novoGrupoAberto, setNovoGrupoAberto] = useState(false);
+  const [variacoesDe, setVariacoesDe] = useState<string | null>(null);
+  const filhasPorPai = useMemo(() => variacoesPorPai(variacoes), [variacoes]);
   const [novoGrupoNome, setNovoGrupoNome] = useState("");
   const { enviar: enviarImagemArquivo, enviando: enviandoImagem } = useSupabaseUpload("produtos");
 
@@ -572,7 +579,8 @@ export function ProdutosClient({
             </Thead>
             <tbody>
               {filtrados.map((p) => (
-                <Tr key={p.id}>
+                <Fragment key={p.id}>
+                <Tr>
                   <Td>
                     <input
                       type="checkbox"
@@ -632,12 +640,53 @@ export function ProdutosClient({
                       actions={[
                         { label: "Ver resumo", onClick: () => setDetalheId(p.id) },
                         { label: "Editar", onClick: () => abrirEdicao(p) },
+                        ...(p.e_kit ? [] : [{ label: (filhasPorPai.get(p.id)?.length ?? 0) > 0 ? "Variações (kits)" : "Criar variações (kits)", onClick: () => setVariacoesDe(p.id) }]),
                         { label: p.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivo(p) },
                         { label: "Remover", onClick: () => remover(p), destructive: true },
                       ]}
                     />
                   </Td>
                 </Tr>
+                {(filhasPorPai.get(p.id) ?? []).map((v) => (
+                  <Tr key={v.id}>
+                    <Td>
+                      <span className="sr-only">Variação de {p.nome}</span>
+                    </Td>
+                    <Td className="w-14 pr-0">
+                      <span aria-hidden="true" className="block ml-5 h-4 w-3 border-l border-b border-border-forte rounded-bl" />
+                    </Td>
+                    <Td className="cursor-pointer" onClick={() => setVariacoesDe(p.id)}>
+                      <span className="font-mono text-xs text-text-secondary whitespace-nowrap truncate block max-w-[10rem]" title={v.sku}>
+                        {v.sku}
+                      </span>
+                    </Td>
+                    <Td className="cursor-pointer" onClick={() => setVariacoesDe(p.id)}>
+                      <div className={v.ativo ? "text-text-primary" : "text-text-tertiary line-through"}>
+                        <span className="text-xs font-normal px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary">{v.variante_nome}</span>
+                        <span className="ml-1.5 text-xs text-text-tertiary">
+                          {v.quantidade} un. do principal{v.custo_manual != null ? " · custo próprio" : ""}
+                        </span>
+                      </div>
+                    </Td>
+                    <Td className="text-text-tertiary">—</Td>
+                    <Td align="right" mono>
+                      {formatBRL(v.custo)}
+                    </Td>
+                    <Td align="right">
+                      <span className="font-mono text-accent">{formatBRL(v.preco_venda)}</span>
+                    </Td>
+                    <Td align="right" mono>
+                      <span title={`Estoque do principal ÷ ${v.quantidade}`}>{v.estoque}</span>
+                    </Td>
+                    <Td>
+                      <StatusChip label="Variação" tone="neutral" />
+                    </Td>
+                    <Td align="right">
+                      <RowMenu actions={[{ label: "Editar variações", onClick: () => setVariacoesDe(p.id) }]} />
+                    </Td>
+                  </Tr>
+                ))}
+                </Fragment>
               ))}
             </tbody>
           </Table>
@@ -670,6 +719,19 @@ export function ProdutosClient({
         salvar={salvar}
         salvando={pending}
       />
+
+      {variacoesDe && (() => {
+        const pai = produtos.find((x) => x.id === variacoesDe);
+        if (!pai) return null;
+        return (
+          <VariacoesProdutoModal
+            key={`variacoes-${pai.id}`}
+            pai={{ id: pai.id, nome: rotuloProduto(pai), sku: pai.sku, custo: pai.custo, preco_venda: pai.preco_venda, estoque: pai.estoque }}
+            variacoes={filhasPorPai.get(pai.id) ?? []}
+            onClose={() => setVariacoesDe(null)}
+          />
+        );
+      })()}
 
       <Modal open={!!produtoDetalhe} onClose={() => setDetalheId(null)} title={produtoDetalhe?.nome ?? ""} width="max-w-2xl">
         {produtoDetalhe && (

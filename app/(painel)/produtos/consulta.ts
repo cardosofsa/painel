@@ -41,8 +41,10 @@ export function gruposPorPalavra(grupos: readonly { id: string; nome: string }[]
  * "Estoque baixo" e "Em estoque" comparam duas colunas (`estoque <= estoque_minimo`), o
  * que o PostgREST não faz — esses dois saem de uma leitura enxuta (ver `paginaDeProdutos`).
  */
-function consulta(supabase: Supabase, colunas: string, filtro: FiltroProdutos, grupos: Map<string, string[]>, contar: boolean) {
+function consulta(supabase: Supabase, colunas: string, filtro: FiltroProdutos, grupos: Map<string, string[]>, contar: boolean, semFilhas = false) {
   let q = supabase.from("produtos").select(colunas as "*", contar ? { count: "exact" } : undefined);
+  // Variações por quantidade (0084) aparecem embaixo do pai, não como linhas soltas.
+  if (semFilhas) q = q.is("produto_pai_id", null);
   if (filtro.categoria) q = q.eq("categoria_id", filtro.categoria);
   if (filtro.armazem) q = q.eq("armazem_id", filtro.armazem);
   if (filtro.ativo) q = q.eq("ativo", filtro.ativo === "ativos");
@@ -62,9 +64,9 @@ function filtraNoServidor(filtro: FiltroProdutos) {
 }
 
 /** Ids, na ordem da lista, de todos os produtos que passam no filtro. */
-async function idsFiltrados(supabase: Supabase, filtro: FiltroProdutos, grupos: Map<string, string[]>) {
+async function idsFiltrados(supabase: Supabase, filtro: FiltroProdutos, grupos: Map<string, string[]>, semFilhas = false) {
   const r = await buscarEmLotes<{ id: string; estoque: number; estoque_minimo: number }>((de, ate) =>
-    consulta(supabase, "id, estoque, estoque_minimo", filtro, grupos, true).range(de, ate),
+    consulta(supabase, "id, estoque, estoque_minimo", filtro, grupos, true, semFilhas).range(de, ate),
   );
   if (r.error) return { ids: [] as string[], error: r.error };
   const alvo = filtro.estoque ? SITUACAO_POR_SLUG[filtro.estoque] : null;
@@ -98,9 +100,11 @@ export async function paginaDeProdutos<T extends { id: string }>(
   filtro: FiltroProdutos,
   grupos: Map<string, string[]>,
   tamanho?: number,
+  /** Sem as variações filhas (0084): a tela as mostra embaixo do pai. */
+  semFilhas = false,
 ): Promise<PaginaProdutos<T>> {
   if (filtraNoServidor(filtro)) {
-    const { ids, error } = await idsFiltrados(supabase, filtro, grupos);
+    const { ids, error } = await idsFiltrados(supabase, filtro, grupos, semFilhas);
     if (error) return { linhas: [], total: 0, pagina: 1, error };
     const pagina = Math.min(filtro.pagina, totalDePaginas(ids.length, tamanho));
     const { de, ate } = faixaDaPagina(pagina, tamanho);
@@ -110,13 +114,13 @@ export async function paginaDeProdutos<T extends { id: string }>(
 
   const buscar = (pagina: number) => {
     const { de, ate } = faixaDaPagina(pagina, tamanho);
-    return consulta(supabase, COLUNAS_LINHA, filtro, grupos, true).range(de, ate);
+    return consulta(supabase, COLUNAS_LINHA, filtro, grupos, true, semFilhas).range(de, ate);
   };
   let pagina = filtro.pagina;
   let r = await buscar(pagina);
   // PGRST103: `?pagina=` além do fim (a lista encolheu, ou a URL foi editada). Vai para a última.
   if (r.error?.code === "PGRST103") {
-    const contagem = await consulta(supabase, "id", filtro, grupos, true).range(0, 0);
+    const contagem = await consulta(supabase, "id", filtro, grupos, true, semFilhas).range(0, 0);
     pagina = totalDePaginas(contagem.count ?? 0, tamanho);
     r = await buscar(pagina);
   }

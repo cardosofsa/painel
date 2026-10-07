@@ -12,6 +12,7 @@ import {
   imagemProdutoSchema,
   acaoEmMassaProdutosSchema,
   exportarListaSchema,
+  variacoesProdutoSchema,
   type ExportarListaInput,
 } from "@/lib/validacao";
 import { gerarComIA, gerarProdutoPelaFotoIA } from "@/lib/ia/gerar";
@@ -20,6 +21,7 @@ import type { ComponenteKit } from "@/lib/pricing";
 import { buscarEmLotes } from "@/lib/lotes";
 import { lerFiltroProdutos, palavrasDaBusca } from "@/lib/listas";
 import { gruposPorPalavra, todosOsProdutos } from "./consulta";
+import type { VariacaoForm } from "@/lib/variacoes";
 
 const PATH = "/produtos";
 
@@ -156,6 +158,27 @@ export async function atualizarProduto(id: string, dados: ProdutoInput) {
     if (error) lancarErroSupabase(error);
     await sincronizarLojasProduto(supabase, id, loja_ids);
     revalidateTudo();
+  });
+}
+
+/**
+ * Grava a lista de variações por quantidade de um produto pai (0084) de uma vez: cria as
+ * novas, atualiza as que vieram com `id` e remove as que saíram da lista. Estoque e custo
+ * da variação são derivados no banco (pai × N).
+ */
+export async function salvarVariacoesProduto(paiId: string, variacoes: VariacaoForm[]) {
+  return comResultado(async () => {
+    const v = validar(variacoesProdutoSchema, { pai_id: paiId, variacoes });
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("salvar_variacoes_produto", { p_pai: v.pai_id, p_variacoes: v.variacoes });
+    if (error) {
+      if (error.code === "PGRST202" || error.code === "42883") throw new Error("Variações por quantidade precisam da migração 0084. Aplique no Supabase e tente de novo.");
+      lancarErroSupabase(error);
+    }
+    revalidateTudo();
+    revalidatePath("/vendas");
+    const r = (data ?? {}) as { novas?: number; atualizadas?: number; removidas?: number };
+    return { novas: r.novas ?? 0, atualizadas: r.atualizadas ?? 0, removidas: r.removidas ?? 0 };
   });
 }
 
