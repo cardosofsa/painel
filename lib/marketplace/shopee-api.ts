@@ -167,6 +167,8 @@ export interface EscrowApi {
   service_fee?: number;
   seller_transaction_fee?: number;
   voucher_from_seller?: number;
+  /** Frete que o comprador pagou (informativo: a Shopee repassa à transportadora). */
+  buyer_paid_shipping_fee?: number;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -204,6 +206,9 @@ export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null): PedidoMarketplac
   const taxaTransacao = r2(Math.abs(e?.seller_transaction_fee ?? 0));
   const cupomVendedor = r2(Math.abs(e?.voucher_from_seller ?? 0));
   const calculado = r2(subtotal - cupomVendedor - comissao - taxaServico - taxaTransacao);
+  // Promoção do vendedor: quanto o preço cheio do anúncio caiu até o preço pago. Só informativo
+  // (o subtotal já é o preço com desconto), mas é o que explica a diferença para o "Vendas" da Shopee.
+  const descontoVendedor = r2(itens.reduce((s, i) => s + Math.max(0, (i.precoOriginal ?? i.precoUnitario) - i.precoUnitario) * i.quantidade, 0));
   return {
     numero: p.order_sn,
     status,
@@ -218,12 +223,12 @@ export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null): PedidoMarketplac
     prazoEnvio: iso(p.ship_by_date),
     itens,
     subtotal,
-    descontoVendedor: 0,
+    descontoVendedor,
     cupomVendedor,
     comissao,
     taxaServico,
     taxaTransacao,
-    fretePagoComprador: 0,
+    fretePagoComprador: r2(Math.abs(e?.buyer_paid_shipping_fee ?? 0)),
     // O escrow é o valor que a Shopee de fato repassa; sem ele, a mesma conta da planilha.
     repasse: status === "cancelado" ? 0 : e?.escrow_amount != null ? r2(e.escrow_amount) : calculado,
   };

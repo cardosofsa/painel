@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil, hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { carregarCrediario } from "@/lib/crediario-servidor";
 import type { GastoAnuncio } from "@/components/financeiro/AbaResultado";
@@ -77,7 +77,10 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const { aba } = await searchParams;
   const supabase = await createClient();
 
-  const hoje = new Date();
+  // Hoje pelo calendário de Brasília, como data local (meio-dia, sem risco de virar o dia):
+  // o servidor roda em UTC e, depois das 21h, o new Date() dele já é amanhã.
+  const [anoBr, mesBr, diaBr] = hojeIsoBrasil().split("-").map(Number);
+  const hoje = new Date(anoBr, mesBr - 1, diaBr, 12);
   const inicio30Dias = new Date(hoje);
   inicio30Dias.setDate(inicio30Dias.getDate() - 29);
   const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);

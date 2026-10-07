@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { formatarDataIso, hojeIsoLocal, numeroOuNulo, formatarMargemPct, classeValor, dataLocal, formatarDataHora, formatarDataCurta, hojeIsoBrasil } from "./format";
+import { formatarDataIso, hojeIsoLocal, numeroOuNulo, formatarMargemPct, classeValor, dataLocal, formatarDataHora, formatarDataCurta, hojeIsoBrasil, somarDiasIso, inicioDiaBrasil, formatarData } from "./format";
 
 /**
  * O fuso é o ponto crítico aqui. O Brasil é UTC-3, então `new Date("2026-01-01")` — lido
@@ -157,5 +157,20 @@ describe("dataLocal", () => {
     const d = dataLocal("2025-03-31");
     expect(d.getMonth()).toBe(2);
     expect(d.getFullYear()).toBe(2025);
+  });
+});
+
+describe("datas no horário de Brasília (servidor em UTC)", () => {
+  it("somarDiasIso atravessa mês e ano", () => {
+    expect(somarDiasIso("2026-10-01", -1)).toBe("2026-09-30");
+    expect(somarDiasIso("2026-12-31", 1)).toBe("2027-01-01");
+  });
+  it("inicioDiaBrasil é a meia-noite de Brasília (03:00 UTC)", () => {
+    expect(inicioDiaBrasil("2026-10-06").toISOString()).toBe("2026-10-06T03:00:00.000Z");
+  });
+  it("formatarData usa o dia de Brasília, não o do processo", () => {
+    // 01:30 UTC do dia 7 = 22:30 do dia 6 em Brasília.
+    expect(formatarData("2026-10-07T01:30:00Z")).toBe("06/10/2026");
+    expect(formatarData(null)).toBe("—");
   });
 });

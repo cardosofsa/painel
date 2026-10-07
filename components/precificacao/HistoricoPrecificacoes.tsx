@@ -9,7 +9,7 @@ import { Modal, campoBase } from "@/components/ui/Modal";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { Chip } from "@/components/ui/Chip";
-import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
+import { formatBRL, formatarMargemPct, classeValor, formatarData } from "@/lib/format";
 import { DetalhamentoPrecificacao } from "@/components/precificacao/resultado-compartilhado";
 import type { EstadoPrecificacao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
 import type { RowMenuAction } from "@/components/ui/RowMenu";
@@ -166,7 +166,7 @@ export function HistoricoPrecificacoes({
                         onChange={() => alternar(h.id)}
                       />
                     </Td>
-                    <Td mono>{new Date(h.criado_em).toLocaleDateString("pt-BR")}</Td>
+                    <Td mono>{formatarData(h.criado_em)}</Td>
                     <Td>{h.produto_nome}</Td>
                     <Td className="text-text-secondary">{h.canal ?? "—"}</Td>
                     <Td align="right" mono>
@@ -234,7 +234,7 @@ export function HistoricoPrecificacoes({
                 <div className="text-sm space-y-1.5 border-t border-border pt-3">
                   <div className="flex justify-between text-text-secondary">
                     <span>Data</span>
-                    <span className="font-mono text-text-primary">{new Date(historicoDetalhe.criado_em).toLocaleDateString("pt-BR")}</span>
+                    <span className="font-mono text-text-primary">{formatarData(historicoDetalhe.criado_em)}</span>
                   </div>
                   {historicoDetalhe.canal && (
                     <div className="flex justify-between text-text-secondary">
@@ -346,7 +346,7 @@ export function HistoricoPrecificacoes({
                   >
                     {a.nome_anuncio}{" "}
                     <span className="text-text-tertiary font-normal">
-                      ({a.variacoes.length} variações · {new Date(a.criado_em).toLocaleDateString("pt-BR")})
+                      ({a.variacoes.length} variações · {formatarData(a.criado_em)})
                     </span>
                   </button>
                   <RowMenu

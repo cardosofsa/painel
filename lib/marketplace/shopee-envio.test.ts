@@ -40,7 +40,12 @@ describe("montarShipOrder", () => {
 });
 
 describe("tipoEtiqueta", () => {
-  it("usa a sugerida e cai para a térmica", () => {
+  it("térmica (10×15) sempre que a logística aceita, mesmo com a NORMAL sugerida", () => {
+    expect(tipoEtiqueta("NORMAL_AIR_WAYBILL", ["NORMAL_AIR_WAYBILL", "THERMAL_AIR_WAYBILL"])).toBe("THERMAL_AIR_WAYBILL");
+    expect(tipoEtiqueta("NORMAL_AIR_WAYBILL", ["NORMAL_AIR_WAYBILL"])).toBe("NORMAL_AIR_WAYBILL");
+    expect(tipoEtiqueta(undefined, ["NORMAL_AIR_WAYBILL"])).toBe("NORMAL_AIR_WAYBILL");
+  });
+  it("sem a lista de opções: usa a sugerida e cai para a térmica", () => {
     expect(tipoEtiqueta("NORMAL_AIR_WAYBILL")).toBe("NORMAL_AIR_WAYBILL");
     expect(tipoEtiqueta(undefined)).toBe("THERMAL_AIR_WAYBILL");
     expect(tipoEtiqueta("ALGO")).toBe("THERMAL_AIR_WAYBILL");

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import {
@@ -90,7 +90,7 @@ export async function retirarDespesaDaConta(despesaId: string) {
       p_categoria: "Despesas fixas",
       p_conta_id: despesa.conta_id,
       p_afeta_lucro: true,
-      p_data: hojeIsoLocal(),
+      p_data: hojeIsoBrasil(),
       p_referencia_despesa_fixa_id: despesa.id,
     });
     if (erroRpc) lancarErroSupabase(erroRpc);

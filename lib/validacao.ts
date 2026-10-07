@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cidadePix } from "./pix-chave";
 
 /**
  * Schemas de validação da borda das server actions. O RLS do Postgres garante que ninguém
@@ -686,7 +687,8 @@ export const repassesSchema = z.object({
 export const crediarioConfigSchema = z.object({
   pix_chave: z.string().trim().max(77, "Chave Pix longa demais").nullable(),
   pix_nome: z.string().trim().max(25, "O nome no Pix vai até 25 letras").nullable(),
-  pix_cidade: z.string().trim().max(15, "A cidade no Pix vai até 15 letras").nullable(),
+  // O Pix aceita só 15 caracteres: a cidade inteira é encurtada aqui ("Feira de Santana" → "Feira Santana").
+  pix_cidade: z.string().trim().max(60, "Cidade longa demais").transform(cidadePix).nullable(),
   multa_atraso_pct: z.number().finite().min(0).max(2, "A multa por atraso vai até 2% (Código de Defesa do Consumidor)"),
   juros_mes_pct: z.number().finite().min(0).max(10, "Juros de até 10% ao mês"),
 });

@@ -78,9 +78,16 @@ export function montarShipOrder(orderSn: string, p: ParametroEnvio, preferencia:
   return { ok: true, modo, corpo: { order_sn: orderSn, dropoff }, resumo: "Postagem na agência" };
 }
 
-/** Tipo de etiqueta: a sugerida pela Shopee para o pedido; térmica (10×15) por padrão. */
-export function tipoEtiqueta(sugerido: string | undefined): string {
-  return sugerido && /AIR_WAYBILL$/.test(sugerido) ? sugerido : "THERMAL_AIR_WAYBILL";
+/**
+ * Tipo de etiqueta: térmica (10×15) sempre que a logística aceitar — é o papel da impressora
+ * de etiqueta. A sugestão da Shopee costuma ser a NORMAL (A4) e só vale quando a térmica não
+ * está entre as opções do pedido.
+ */
+export function tipoEtiqueta(sugerido: string | undefined, selecionaveis: string[] = []): string {
+  if (selecionaveis.includes("THERMAL_AIR_WAYBILL")) return "THERMAL_AIR_WAYBILL";
+  if (selecionaveis.length && sugerido && selecionaveis.includes(sugerido)) return sugerido;
+  if (!selecionaveis.length && sugerido && /AIR_WAYBILL$/.test(sugerido)) return sugerido;
+  return selecionaveis.find((t) => /AIR_WAYBILL$/.test(t)) ?? "THERMAL_AIR_WAYBILL";
 }
 
 // ---------- API ----------
@@ -116,7 +123,10 @@ export async function baixarEtiquetas(
 
   const param = await postLoja(c, "/api/v2/logistics/get_shipping_document_parameter", token, shopId, { order_list: lista.map((p) => ({ order_sn: p.orderSn })) }).catch(() => null);
   const sugestao = new Map(
-    ((param?.result_list ?? []) as { order_sn: string; suggest_shipping_document_type?: string }[]).map((r) => [r.order_sn, tipoEtiqueta(r.suggest_shipping_document_type)]),
+    ((param?.result_list ?? []) as { order_sn: string; suggest_shipping_document_type?: string; selectable_shipping_document_type?: string[] }[]).map((r) => [
+      r.order_sn,
+      tipoEtiqueta(r.suggest_shipping_document_type, r.selectable_shipping_document_type ?? []),
+    ]),
   );
   const tipo = (sn: string) => sugestao.get(sn) ?? "THERMAL_AIR_WAYBILL";
 

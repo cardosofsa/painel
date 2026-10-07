@@ -40,6 +40,16 @@ export function formatarDataHora(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: FUSO_HORARIO });
 }
 
+/**
+ * Formata um `timestamptz` só com a data (dd/mm/aaaa) no horário de Brasília. Sem o fuso,
+ * o servidor (UTC) e o navegador montavam dias diferentes depois das 21h e o React acusava
+ * erro de hidratação.
+ */
+export function formatarData(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("pt-BR", { timeZone: FUSO_HORARIO });
+}
+
 /** Formata um `timestamptz` só com dia e mês, para colunas estreitas. */
 export function formatarDataCurta(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -99,6 +109,21 @@ export function hojeIsoLocal(data = new Date()): string {
  */
 export function hojeIsoBrasil(agora = new Date()): string {
   return agora.toLocaleDateString("sv-SE", { timeZone: FUSO_HORARIO });
+}
+
+/** Soma dias a uma data AAAA-MM-DD (aritmética de calendário, sem fuso). */
+export function somarDiasIso(iso: string, dias: number): string {
+  const [a, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d + dias)).toISOString().slice(0, 10);
+}
+
+/**
+ * O instante da meia-noite de Brasília numa data AAAA-MM-DD, para comparar com `timestamptz`
+ * no SERVIDOR (lá `setHours(0)` é a meia-noite UTC, 21h da véspera no Brasil). O Brasil não
+ * tem horário de verão desde 2019: o fuso é sempre −03:00.
+ */
+export function inicioDiaBrasil(iso: string = hojeIsoBrasil()): Date {
+  return new Date(`${iso}T00:00:00-03:00`);
 }
 
 /** Hora (0–23) de um instante no horário de Brasília, não no do processo. */

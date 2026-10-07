@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { carregarVendasRelatorio } from "@/lib/relatorios-servidor";
-import { hojeIsoLocal, hojeIsoBrasil, formatarDataIso } from "@/lib/format";
+import { hojeIsoBrasil, formatarDataIso, inicioDiaBrasil, somarDiasIso } from "@/lib/format";
 import { carregarFontesPeriodo } from "@/lib/calendario-servidor";
 import { CAMADAS_PADRAO, diasAte, type Camada } from "@/lib/calendario-dashboard";
 import { lancarErroSupabase } from "@/lib/erros";
@@ -56,14 +56,12 @@ export default async function DashboardPage() {
     );
   }
 
-  // O antigo toISOString() convertia para UTC: no dia 1º às 22h em Brasília ele já
-  // devolvia o dia 2, e as compras/precificações do dia 1º sumiam do resumo do mês.
-  const inicioMes = new Date();
-  inicioMes.setDate(1);
-  const inicioMesIso = hojeIsoLocal(inicioMes);
+  // Datas pelo calendário de Brasília: o servidor roda em UTC, e depois das 21h o "hoje"
+  // dele já é amanhã (as vendas da noite caíam fora de "hoje" e o dia 1º sumia do mês).
+  const hojeBr = hojeIsoBrasil();
+  const inicioMesIso = `${hojeBr.slice(0, 7)}-01`;
 
   // Calendário: o mês de hoje (no Brasil) e o seguinte, para "Próximos 30 dias".
-  const hojeBr = hojeIsoBrasil();
   const [anoCal, mesCal] = hojeBr.split("-").map(Number);
   const inicioCalendario = `${hojeBr.slice(0, 7)}-01`;
   const fimSeguinte = new Date(anoCal, mesCal + 1, 0);
@@ -71,11 +69,8 @@ export default async function DashboardPage() {
 
   // A janela de vendas começa no menor dos dois marcos (início do mês ou 7 dias
   // atrás) para que hoje/semana/mês saiam todos de uma consulta só.
-  const inicioSemana = new Date();
-  inicioSemana.setDate(inicioSemana.getDate() - 6);
-  inicioSemana.setHours(0, 0, 0, 0);
-  const inicioMesData = new Date(inicioMes);
-  inicioMesData.setHours(0, 0, 0, 0);
+  const inicioSemana = inicioDiaBrasil(somarDiasIso(hojeBr, -6));
+  const inicioMesData = inicioDiaBrasil(inicioMesIso);
   const inicioVendas = inicioSemana < inicioMesData ? inicioSemana : inicioMesData;
 
   const [
@@ -113,7 +108,7 @@ export default async function DashboardPage() {
         .order("data_vencimento")
         .limit(8),
       supabase.from("pedidos_compra").select("valor_total").gte("data_pedido", inicioMesIso),
-      supabase.from("precificacoes").select("id", { count: "exact", head: true }).gte("criado_em", inicioMesIso),
+      supabase.from("precificacoes").select("id", { count: "exact", head: true }).gte("criado_em", inicioMesData.toISOString()),
       // O resto do calendário (os outros meses) vem sob demanda, ao navegar.
       carregarFontesPeriodo(supabase, inicioCalendario, fimCalendario),
       supabase
@@ -150,8 +145,7 @@ export default async function DashboardPage() {
   if (precificacoesMesRes.error) throw new Error(precificacoesMesRes.error.message);
   if (vendasRes.error) throw new Error(vendasRes.error.message);
 
-  const inicioHoje = new Date();
-  inicioHoje.setHours(0, 0, 0, 0);
+  const inicioHoje = inicioDiaBrasil(hojeBr);
 
   const vendasNaJanela = (vendasRes.data ?? []).map((v) => ({ ...v, data: new Date(v.data_venda) }));
   const somar = (desde: Date) =>

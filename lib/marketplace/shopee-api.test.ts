@@ -78,6 +78,15 @@ describe("conversão", () => {
     expect(p.itens[0]).toMatchObject({ sku: "FITA-P", skuPrincipal: "FITA", quantidade: 2 });
     expect(p.criadoEm).toBe(new Date(1715350000 * 1000).toISOString());
   });
+  it("guarda a promoção do vendedor e o frete do comprador (informativos)", () => {
+    const p = pedidoDaApi(
+      { order_sn: "B", order_status: "READY_TO_SHIP", item_list: [{ model_quantity_purchased: 2, model_original_price: 30, model_discounted_price: 27.49 }] },
+      { escrow_amount: 40, buyer_paid_shipping_fee: 5.9 },
+    );
+    expect(p.subtotal).toBe(54.98);
+    expect(p.descontoVendedor).toBe(5.02);
+    expect(p.fretePagoComprador).toBe(5.9);
+  });
   it("sem escrow calcula o repasse; cancelado zera", () => {
     const base = { order_sn: "A", item_list: [{ model_quantity_purchased: 1, model_discounted_price: 100 }] };
     expect(pedidoDaApi({ ...base, order_status: "READY_TO_SHIP" }, null).repasse).toBe(100);

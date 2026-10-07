@@ -27,6 +27,9 @@ export interface PedidoMarketplaceSalvo {
   logistica?: string | null;
   prazo_envio?: string | null;
   subtotal: number;
+  /** Promoção do vendedor (preço cheio − preço pago) e frete pago pelo comprador: só informativos. */
+  desconto_vendedor?: number;
+  frete_comprador?: number;
   cupom_vendedor: number;
   comissao: number;
   taxa_servico: number;

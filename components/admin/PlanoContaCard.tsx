@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { formatarData } from "@/lib/format";
 import { Card, CardEyebrow } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
@@ -47,7 +48,7 @@ export function PlanoContaCard({ userId, planos, assinatura }: { userId: string;
       {solicitado && (
         <p className="text-sm rounded-md bg-accent-soft text-accent px-3 py-2">
           Pediu o plano {solicitado.nome}
-          {assinatura?.solicitado_em ? ` em ${new Date(assinatura.solicitado_em).toLocaleDateString("pt-BR")}` : ""}. Confira o pagamento e salve como Ativa.
+          {assinatura?.solicitado_em ? ` em ${formatarData(assinatura.solicitado_em)}` : ""}. Confira o pagamento e salve como Ativa.
         </p>
       )}
       <div className="grid grid-cols-2 gap-3">

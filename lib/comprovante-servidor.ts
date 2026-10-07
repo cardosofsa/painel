@@ -1,6 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil } from "@/lib/format";
 import {
   enderecoEmLinha,
   type ClienteComprovante,
@@ -117,7 +117,7 @@ export async function carregarComprovante(supabase: Supabase, vendaId: string): 
 }
 
 async function carregarParcelas(supabase: Supabase, vendaId: string, venda: VendaBruta): Promise<ParcelaResumoFiado[]> {
-  const hoje = hojeIsoLocal();
+  const hoje = hojeIsoBrasil();
   const situacao = (paga: boolean, vencimento: string): ParcelaResumoFiado["status"] =>
     paga ? "paga" : vencimento < hoje ? "atrasada" : "pendente";
 

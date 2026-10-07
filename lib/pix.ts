@@ -11,13 +11,15 @@ export interface DadosPix {
   chave: string;
   /** Nome do recebedor (até 25 caracteres, sem acento). */
   nome: string;
-  /** Cidade do recebedor (até 15 caracteres, sem acento). */
+  /** Cidade do recebedor (qualquer tamanho: `cidadePix` encurta para os 15 do Pix). */
   cidade: string;
   /** Valor em reais. Ausente = o cliente digita o valor. */
   valor?: number | null;
   /** Identificador que aparece no extrato (até 25 letras/números). */
   txid?: string | null;
 }
+
+import { cidadePix } from "./pix-chave";
 
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 
@@ -58,7 +60,7 @@ export function gerarPixCopiaECola(d: DadosPix): string {
   if (!chave) throw new Error("Cadastre a chave Pix da loja.");
   const nome = semAcento(d.nome).replace(/[^\w .-]/g, "").trim().slice(0, 25).toUpperCase();
   if (!nome) throw new Error("Cadastre o nome do recebedor do Pix.");
-  const cidade = (semAcento(d.cidade).replace(/[^\w .-]/g, "").trim().slice(0, 15) || "BRASIL").toUpperCase();
+  const cidade = (cidadePix(d.cidade) || "BRASIL").toUpperCase();
   const txid = (d.txid ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 25) || "***";
 
   let payload =
