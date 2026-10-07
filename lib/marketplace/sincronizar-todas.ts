@@ -1,3 +1,4 @@
+import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sincronizarConexao, type ConexaoShopee } from "./sincronizar";
 import { credenciaisShopee } from "./shopee-api";

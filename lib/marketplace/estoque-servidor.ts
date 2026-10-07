@@ -1,3 +1,4 @@
+import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agruparPorItem, casarAnuncios, diferencasEstoque, type AnuncioSalvo, type DiferencaEstoque } from "./estoque-shopee";
 import type { ConexaoShopee } from "./tokens";

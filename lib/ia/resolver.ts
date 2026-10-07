@@ -8,6 +8,7 @@
  * sistema, senão bastaria mentir para escapar do teste grátis (7.3).
  */
 
+import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decifrar, ErroCofre } from "./cofre";
 import { ErroIA } from "./erro";

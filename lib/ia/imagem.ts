@@ -7,6 +7,7 @@
  * (`GEMINI_IMAGE_MODEL`) para trocar sem deploy quando o Google renomear.
  */
 
+import "server-only";
 import { ErroIA } from "./erro";
 import { requisitarJson } from "./http";
 

@@ -1,3 +1,4 @@
+import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { montarPedidosParaGravar } from "./margem";
 import { apiDaConexao } from "./conexao-api";
@@ -30,7 +31,8 @@ export async function sincronizarConexao(
     if (pedidos.length) {
       const [produtosRes, vinculosRes, perfilRes] = await Promise.all([
         supabase.from("produtos").select("id, sku, custo").eq("user_id", conexao.user_id),
-        supabase.from("marketplace_vinculos").select("sku_externo, produto_id").eq("loja_id", conexao.loja_id),
+        // user_id explícito: no cron o cliente é de serviço (sem RLS) e a trava é este filtro.
+        supabase.from("marketplace_vinculos").select("sku_externo, produto_id").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id),
         supabase.from("perfil_negocio").select("aliquota_das").eq("user_id", conexao.user_id).maybeSingle(),
       ]);
       const produtos = (produtosRes.data ?? []).map((p) => ({ id: p.id as string, sku: p.sku as string | null, custo: Number(p.custo ?? 0) }));

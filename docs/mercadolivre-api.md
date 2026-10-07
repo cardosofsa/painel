@@ -67,3 +67,4 @@ Diferenças em relação à Shopee:
 - **Mercado Envios Full:** o estoque fica no galpão do ML, mas o Sertão também baixa do estoque da loja. Use um armazém próprio para o Full, ou não vincule esses anúncios, até haver um tratamento específico.
 - **Envio próprio** (sem Mercado Envios): o pedido entra normalmente, mas não há etiqueta do ML.
 - As notificações leem o pedido de novo na API com o token da loja. Um aviso falso, no máximo, faz o Sertão reler um pedido de verdade.
+- A notificação só é aceita se vier do nosso app (`application_id` = `ML_CLIENT_ID`) e de um vendedor com conexão no Sertão. A loja que sincronizou há menos de 60 s não sincroniza de novo pelo aviso: o ML manda vários seguidos.

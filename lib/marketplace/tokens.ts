@@ -1,3 +1,4 @@
+import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cifrar, decifrar } from "@/lib/ia/cofre";
 import { credenciaisShopee, renovarToken, type CredenciaisShopee } from "./shopee-api";
