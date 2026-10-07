@@ -64,6 +64,25 @@ export interface PedidoMarketplace {
   fretePagoComprador: number;
   /** Quanto deve cair na conta: subtotal − cupom do vendedor − taxas. */
   repasse: number;
+  /**
+   * 0085. De onde vieram as taxas: "real" (escrow da API: o que a plataforma de fato cobra),
+   * "planilha" (exportação da Shopee) ou "estimado" (API ainda sem a renda: regra de faixas).
+   * Ausente = planilha/ML, como antes.
+   */
+  taxasOrigem?: OrigemTaxas;
+  /** Encargos além de comissão/serviço/transação (recarga automática, frete líquido, ajustes). */
+  taxaOutras?: number;
+  /** Cada taxa e encargo como a plataforma lista (valores positivos = descontados da venda). */
+  taxasDetalhe?: TaxaDetalhe[];
+  /** Quando a plataforma liberou o repasse (escrow), se já liberou. ISO. */
+  escrowLiberadoEm?: string | null;
+}
+
+export type OrigemTaxas = "real" | "planilha" | "estimado";
+
+export interface TaxaDetalhe {
+  rotulo: string;
+  valor: number;
 }
 
 const APELIDOS = {

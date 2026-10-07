@@ -24,6 +24,9 @@ export interface PedidoRepasse {
   repasse: number;
   repasse_recebido: number | null;
   repasse_recebido_em: string | null;
+  /** Status do pedido e liberação do escrow (0085): só concluído/liberado pode atrasar. */
+  status?: string | null;
+  escrow_liberado_em?: string | null;
 }
 
 const SITUACAO: Record<SituacaoRepasse, { rotulo: string; tom: "positive" | "negative" | "neutral" }> = {

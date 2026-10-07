@@ -216,11 +216,17 @@ async function contas(supabase: SupabaseClient, hoje: string): Promise<AlertaVix
       .eq("status", "pendente")
       .lte("data_vencimento", diasDepois(hoje, DIAS_AVISO_PAGAR))
       .order("data_vencimento")
-      .limit(150),
+      // Folga para o filtro de repasse aguardando conclusão (feito aqui: sem a 0085 a coluna não existe).
+      .limit(500),
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
   ]);
   const parcelas = ok<ParcelaBruta[]>(parcelasRes as never);
-  const cpr = ok<{ id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null }[]>(cprRes);
+  // Repasse de pedido de marketplace ainda não concluído (0085) não está vencido.
+  const cpr = ok<
+    { id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null; aguardando_liberacao?: boolean | null }[]
+  >(cprRes)
+    .filter((c) => !c.aguardando_liberacao)
+    .slice(0, 150);
 
   // Venda parcelada no fiado tem as parcelas em `venda_parcelas`; a conta a receber ligada a
   // ela (se houver) seria o mesmo dinheiro contado duas vezes — mesma regra da 0030.

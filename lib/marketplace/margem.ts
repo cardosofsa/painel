@@ -4,7 +4,8 @@
  * por `margem.test.ts`.
  */
 
-import type { ItemMarketplace, PedidoMarketplace } from "./shopee-planilha";
+import { encontrarFaixa, type FaixaComissao } from "@/lib/pricing";
+import type { ItemMarketplace, OrigemTaxas, PedidoMarketplace, TaxaDetalhe } from "./shopee-planilha";
 
 export interface ProdutoVinculavel {
   id: string;
@@ -113,6 +114,11 @@ export interface PedidoParaGravar {
   imposto: number;
   lucro: number;
   custo_incompleto: boolean;
+  /** 0085 (ausentes na planilha antiga: a RPC trata como "planilha"). */
+  taxas_origem?: OrigemTaxas;
+  taxa_outras?: number;
+  taxas_detalhe?: TaxaDetalhe[];
+  escrow_liberado_em?: string | null;
   itens: {
     produto_id: string | null;
     sku: string | null;
@@ -125,14 +131,47 @@ export interface PedidoParaGravar {
   }[];
 }
 
+/**
+ * Taxas ESTIMADAS pela regra de faixas do canal (comissão % + tarifa fixa por unidade, faixa
+ * escolhida pelo preço unitário) — só para pedido cuja renda a plataforma ainda não informou.
+ * Sem faixas cadastradas, fica como veio (sem taxa). PURO.
+ */
+export function estimarTaxasPorFaixas(p: PedidoMarketplace, faixas: FaixaComissao[]): PedidoMarketplace {
+  if (p.taxasOrigem !== "estimado" || !faixas.length || p.status === "cancelado") return p;
+  let comissao = 0;
+  let tarifa = 0;
+  for (const i of p.itens) {
+    const f = encontrarFaixa(faixas, i.precoUnitario);
+    comissao += i.precoUnitario * i.quantidade * (f.comissaoPct / 100);
+    tarifa += (f.tarifaFixa ?? 0) * i.quantidade;
+  }
+  comissao = r2(comissao);
+  tarifa = r2(tarifa);
+  return {
+    ...p,
+    comissao,
+    taxaServico: tarifa,
+    taxaTransacao: 0,
+    taxaOutras: 0,
+    taxasDetalhe: [
+      { rotulo: "Comissão (estimada)", valor: comissao },
+      ...(tarifa > 0 ? [{ rotulo: "Tarifa por item (estimada)", valor: tarifa }] : []),
+    ],
+    repasse: r2(p.subtotal - p.cupomVendedor - comissao - tarifa),
+  };
+}
+
 /** Vincula os itens, calcula a margem e monta o que vai para o banco. */
 export function montarPedidosParaGravar(
-  pedidos: PedidoMarketplace[],
+  pedidosEntrada: PedidoMarketplace[],
   produtos: ProdutoVinculavel[],
   vinculos: VinculoSku[],
   impostoPct: number,
+  /** Faixas do canal da loja, para estimar as taxas de pedido ainda sem renda informada. */
+  faixas: FaixaComissao[] = [],
 ): PedidoParaGravar[] {
   const custo = new Map(produtos.map((p) => [p.id, p.custo]));
+  const pedidos = pedidosEntrada.map((p) => estimarTaxasPorFaixas(p, faixas));
   return pedidos.map((p) => {
     const itens = p.itens.map((i) => ({ ...i, produtoId: produtoDoItem(i, produtos, vinculos) }));
     const m = margemPedido({ ...p, itens }, custo, impostoPct);
@@ -160,6 +199,9 @@ export function montarPedidosParaGravar(
       imposto: m.imposto,
       lucro: m.lucro,
       custo_incompleto: m.custoIncompleto,
+      ...(p.taxasOrigem
+        ? { taxas_origem: p.taxasOrigem, taxa_outras: p.taxaOutras ?? 0, taxas_detalhe: p.taxasDetalhe ?? [], escrow_liberado_em: p.escrowLiberadoEm ?? null }
+        : {}),
       itens: itens.map((i) => ({
         produto_id: i.produtoId,
         sku: i.sku,
@@ -174,8 +216,13 @@ export function montarPedidosParaGravar(
   });
 }
 
+/**
+ * Lucro = venda − taxas e encargos − imposto − custo. As taxas entram pelo repasse (venda −
+ * tudo o que a plataforma descontou); o IMPOSTO incide sobre a VENDA (subtotal, antes de
+ * qualquer taxa), como no regime da conta.
+ */
 export function margemPedido(
-  pedido: Pick<PedidoMarketplace, "status" | "subtotal" | "cupomVendedor" | "comissao" | "taxaServico" | "taxaTransacao" | "repasse"> & {
+  pedido: Pick<PedidoMarketplace, "status" | "subtotal" | "cupomVendedor" | "comissao" | "taxaServico" | "taxaTransacao" | "repasse" | "taxaOutras"> & {
     itens: (Pick<ItemMarketplace, "quantidade"> & { produtoId: string | null })[];
   },
   custoPorProduto: Map<string, number>,
@@ -193,7 +240,7 @@ export function margemPedido(
     else custo += c * i.quantidade;
   }
   const receita = pedido.subtotal;
-  const taxas = pedido.cupomVendedor + pedido.comissao + pedido.taxaServico + pedido.taxaTransacao;
+  const taxas = pedido.cupomVendedor + pedido.comissao + pedido.taxaServico + pedido.taxaTransacao + (pedido.taxaOutras ?? 0);
   const imposto = receita * Math.max(0, impostoPct);
   const lucro = pedido.repasse - custo - imposto;
   return {

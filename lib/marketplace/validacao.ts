@@ -31,6 +31,11 @@ export const pedidosMarketplaceSchema = z
       imposto: valor,
       lucro: z.number().finite().min(-10_000_000).max(10_000_000),
       custo_incompleto: z.boolean(),
+      // 0085: taxas reais da API (a planilha não manda).
+      taxas_origem: z.enum(["real", "planilha", "estimado"]).optional(),
+      taxa_outras: z.number().finite().min(-10_000_000).max(10_000_000).optional(),
+      taxas_detalhe: z.array(z.object({ rotulo: z.string().trim().min(1).max(80), valor: z.number().finite() })).max(30).optional(),
+      escrow_liberado_em: isoData.optional(),
       itens: z
         .array(
           z.object({
