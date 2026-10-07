@@ -6,6 +6,8 @@ import { MailCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { CartaoAuth, ErroAuth } from "@/components/auth/CartaoAuth";
+import { useCaptcha } from "@/components/auth/Captcha";
+import { MENSAGEM_FALTA_CAPTCHA } from "@/lib/captcha";
 import { solicitarRecuperacaoSenha } from "@/app/auth/actions";
 
 export function RecuperarClient() {
@@ -13,19 +15,26 @@ export function RecuperarClient() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [enviado, setEnviado] = useState<string | null>(null);
+  const captcha = useCaptcha();
 
   async function pedirLink(e: React.FormEvent) {
     e.preventDefault();
     setErro(null);
+    if (captcha.falta) {
+      setErro(MENSAGEM_FALTA_CAPTCHA);
+      return;
+    }
     setCarregando(true);
     try {
-      const r = await solicitarRecuperacaoSenha(email);
+      const r = await solicitarRecuperacaoSenha(email, captcha.token ?? undefined);
       if (r.ok) setEnviado(r.mensagem);
       else setErro(r.mensagem);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível enviar o link.");
     } finally {
       setCarregando(false);
+      // O token do captcha é de uso único.
+      captcha.renovar();
     }
   }
 
@@ -69,6 +78,8 @@ export function RecuperarClient() {
             className={inputClass}
           />
         </FormField>
+
+        {captcha.widget}
 
         {erro && <ErroAuth>{erro}</ErroAuth>}
 

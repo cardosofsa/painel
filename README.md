@@ -31,6 +31,7 @@ Variáveis de ambiente (em `.env.local`):
 | `GEMINI_MODEL` | Opcional. Padrão `gemini-3.5-flash-lite` |
 | `IA_CHAVE_COFRE` | Chave-mestra (32 bytes em base64) do cofre que guarda chaves de IA, frete e NF-e de cada conta |
 | `ACESSO_SEGREDO` | Opcional. Assina o cookie de acesso do middleware (sem ela, usa `IA_CHAVE_COFRE`) |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Opcional. Liga o captcha (Cloudflare Turnstile) no login, cadastro e recuperação — ver `docs/seguranca-login.md` antes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Só servidor. Cron, webhooks e vitrine pública (frete e pedido). Sem ela, esses recursos ficam desligados |
 | `CRON_SECRET` | Protege `/api/cron/shopee` (sincronização automática) |
 | `SHOPEE_PARTNER_ID`, `SHOPEE_PARTNER_KEY`, `SHOPEE_AMBIENTE`, `SHOPEE_HOST` | API da Shopee (ver `docs/shopee-api.md`) |
@@ -48,6 +49,7 @@ logado a usam, sempre filtrando `user_id` explícito. Tela e Server Action nunca
 | `/recuperar` | Pedir o link de redefinição de senha |
 | `/auth/reset` | Definir a nova senha (tela terminal, chega-se nela pelo link do e-mail) |
 | `/auth/callback` | Recebe todo link de e-mail: confirmação, recuperação, convite |
+| `/auth/mfa` | Código do app autenticador, para quem ativou a verificação em duas etapas (ver `docs/seguranca-login.md`) |
 
 Três coisas que não são óbvias e é melhor não desfazer sem pensar:
 

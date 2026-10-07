@@ -8,6 +8,9 @@ import { FormField, inputClass } from "@/components/ui/Modal";
 import { createClient } from "@/lib/supabase/client";
 import { traduzirErroAuth } from "@/lib/erros";
 import { senhaSchema, SENHA_MIN } from "@/lib/validacao";
+import { useCaptcha } from "@/components/auth/Captcha";
+import { MENSAGEM_FALTA_CAPTCHA, opcoesCaptcha } from "@/lib/captcha";
+import { DIGITOS_CODIGO, codigoCompleto, limparCodigo, verificarSegundoFator } from "@/lib/mfa";
 
 /**
  * E-mail + trocar senha. Extraído de `ConfiguracoesClient.tsx` (onde era função privada)
@@ -20,6 +23,10 @@ export function ContaCard({ email }: { email: string }) {
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [salvando, setSalvando] = useState(false);
+  // Conta com verificação em duas etapas: o código do app entra na troca (ver abaixo).
+  const [pedirCodigo, setPedirCodigo] = useState(false);
+  const [codigoMfa, setCodigoMfa] = useState("");
+  const captcha = useCaptcha();
 
   async function alterarSenha() {
     if (!senhaAtual) {
@@ -35,18 +42,46 @@ export function ContaCard({ email }: { email: string }) {
       toast.error("As senhas não coincidem.");
       return;
     }
+    if (captcha.falta) {
+      toast.error(MENSAGEM_FALTA_CAPTCHA);
+      return;
+    }
     setSalvando(true);
     const supabase = createClient();
+
+    // Com verificação em duas etapas, a reentrada logo abaixo devolve uma sessão aal1 — e a
+    // GoTrue recusa trocar a senha de quem tem fator sem aal2 (`insufficient_aal`). O código
+    // é pedido ANTES de reentrar: sem ele em mãos, a sessão cairia para aal1 à toa.
+    const { data: nivel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const temMfa = nivel?.nextLevel === "aal2";
+    if (temMfa && !codigoCompleto(codigoMfa)) {
+      setSalvando(false);
+      setPedirCodigo(true);
+      toast.error("Digite o código do app autenticador para confirmar a troca de senha.");
+      return;
+    }
 
     // Re-login imediatamente antes: é o que satisfaz a exigência de "sessão recente" quando
     // "Secure password change" está ligado no painel do Supabase — e esse ajuste do painel,
     // não este código, é o que de fato impede alguém de trocar a senha pelo console do
     // navegador com uma sessão aberta.
-    const { error: erroReautenticacao } = await supabase.auth.signInWithPassword({ email, password: senhaAtual });
+    const { error: erroReautenticacao } = await supabase.auth.signInWithPassword({ email, password: senhaAtual, options: opcoesCaptcha(captcha.token) });
+    // O token do captcha é de uso único.
+    captcha.renovar();
     if (erroReautenticacao) {
       setSalvando(false);
-      toast.error("Senha atual incorreta.");
+      toast.error(erroReautenticacao.code === "captcha_failed" ? traduzirErroAuth(erroReautenticacao) : "Senha atual incorreta.");
       return;
+    }
+
+    if (temMfa) {
+      const { erro: erroCodigo } = await verificarSegundoFator(supabase, codigoMfa);
+      setCodigoMfa("");
+      if (erroCodigo) {
+        setSalvando(false);
+        toast.error(traduzirErroAuth(erroCodigo));
+        return;
+      }
     }
 
     const { error } = await supabase.auth.updateUser({ password: novaSenha });
@@ -65,6 +100,7 @@ export function ContaCard({ email }: { email: string }) {
     setSenhaAtual("");
     setNovaSenha("");
     setConfirmarSenha("");
+    setPedirCodigo(false);
     toast.success("Senha alterada. As sessões em outros aparelhos foram encerradas.");
   }
 
@@ -106,6 +142,21 @@ export function ContaCard({ email }: { email: string }) {
           onChange={(e) => setConfirmarSenha(e.target.value)}
         />
       </FormField>
+      {pedirCodigo && (
+        <FormField label="Código do app autenticador" dica="A conta tem verificação em duas etapas: a troca de senha pede o código.">
+          <input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            maxLength={DIGITOS_CODIGO + 2}
+            placeholder="000000"
+            className={`${inputClass} font-mono tracking-[0.3em]`}
+            value={codigoMfa}
+            onChange={(e) => setCodigoMfa(limparCodigo(e.target.value))}
+          />
+        </FormField>
+      )}
+      {captcha.widget}
       <div className="mt-auto pt-2">
         <Button variant="primary" onClick={alterarSenha} loading={salvando}>
           Alterar senha

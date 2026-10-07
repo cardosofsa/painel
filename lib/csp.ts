@@ -10,6 +10,8 @@
  * carregamento. É a única defesa que sobra depois que o dado já entrou no HTML.
  */
 
+import { captchaAtivo, ORIGEM_TURNSTILE } from "./captcha";
+
 /**
  * Este `new URL(...)` roda no `import` do módulo, e o módulo é importado pelo `proxy.ts` —
  * ou seja, roda em TODA requisição, antes mesmo do middleware começar a executar. Uma env
@@ -61,9 +63,9 @@ export function gerarNonce(): string {
 
 export function montarCsp(
   nonce: string,
-  opcoes: { dev?: boolean; origemSupabase?: string } = {},
+  opcoes: { dev?: boolean; origemSupabase?: string; captcha?: boolean } = {},
 ): string {
-  const { dev = process.env.NODE_ENV !== "production", origemSupabase = ORIGEM_SUPABASE } = opcoes;
+  const { dev = process.env.NODE_ENV !== "production", origemSupabase = ORIGEM_SUPABASE, captcha = captchaAtivo() } = opcoes;
 
   const diretivas: Record<string, (string | false)[]> = {
     "default-src": ["'self'"],
@@ -72,7 +74,11 @@ export function montarCsp(
     // carregado por um script já autorizado pelo nonce — que é exatamente como o Next
     // carrega os próprios chunks. Em dev o Fast Refresh compila no navegador, daí o
     // 'unsafe-eval'; em produção ele não entra.
-    "script-src": ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", dev && "'unsafe-eval'"],
+    //
+    // Captcha (Turnstile, só com `NEXT_PUBLIC_TURNSTILE_SITE_KEY`): o script dele é inserido
+    // por um componente nosso, então o `strict-dynamic` já o autoriza. A origem aqui é a
+    // reserva do navegador antigo, que não entende `strict-dynamic` e decide pela lista.
+    "script-src": ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", dev && "'unsafe-eval'", captcha && ORIGEM_TURNSTILE],
 
     // `unsafe-inline` aqui é inevitável e de baixo risco: o next/font injeta <style> no
     // head e Recharts/Tailwind escrevem `style=""` direto no elemento. CSS injetado não
@@ -90,6 +96,10 @@ export function montarCsp(
     "connect-src": ["'self'", origemSupabase, dev && "ws:"],
 
     "worker-src": ["'self'", "blob:"],
+
+    // O desafio do Turnstile roda num iframe da Cloudflare. Sem captcha, a diretiva nem sai e
+    // vale o `default-src 'self'` de sempre.
+    ...(captcha ? { "frame-src": ["'self'", ORIGEM_TURNSTILE] } : {}),
 
     // Espelha o X-Frame-Options: DENY do next.config.ts, para navegador que já ignora o
     // cabeçalho antigo.

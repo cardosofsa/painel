@@ -67,6 +67,37 @@ describe("montarCsp", () => {
   });
 });
 
+describe("captcha (Turnstile)", () => {
+  const TURNSTILE = "https://challenges.cloudflare.com";
+
+  it("desligado, nada muda: nem a origem nem frame-src", () => {
+    const csp = montarCsp("n", { dev: false, origemSupabase: SUPABASE, captcha: false });
+    expect(csp).not.toContain(TURNSTILE);
+    expect(diretiva(csp, "frame-src")).toBeUndefined();
+  });
+
+  it("ligado, libera script e iframe só da Cloudflare, mantendo nonce e strict-dynamic", () => {
+    const csp = montarCsp("abc", { dev: false, origemSupabase: SUPABASE, captcha: true });
+    const script = diretiva(csp, "script-src")!;
+    expect(script).toContain(TURNSTILE);
+    expect(script).toContain("'nonce-abc'");
+    expect(script).toContain("'strict-dynamic'");
+    expect(script).not.toContain("'unsafe-inline'");
+    expect(diretiva(csp, "frame-src")).toBe(`frame-src 'self' ${TURNSTILE}`);
+    // Não abre a página para ser emoldurada por ninguém.
+    expect(diretiva(csp, "frame-ancestors")).toBe("frame-ancestors 'none'");
+    expect(diretiva(csp, "connect-src")).not.toContain(TURNSTILE);
+  });
+
+  it("sem a opção explícita, segue a variável de ambiente", () => {
+    vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "");
+    expect(montarCsp("n", { dev: false })).not.toContain(TURNSTILE);
+    vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "0x4AAA");
+    expect(diretiva(montarCsp("n", { dev: false }), "frame-src")).toContain(TURNSTILE);
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("relatório de violações", () => {
   it("em produção aponta report-uri e report-to para a mesma rota", () => {
     const csp = montarCsp("n", { dev: false, origemSupabase: SUPABASE });
