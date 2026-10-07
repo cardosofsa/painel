@@ -1,0 +1,31 @@
+{
+  "error": "",
+  "message": "",
+  "request_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "response": {
+    "order_list": [
+      {
+        "order_sn": "2610082QFT1WTB",
+        "order_status": "COMPLETED",
+        "create_time": 1791331200,
+        "pay_time": 1791331500,
+        "buyer_username": "comprador_teste",
+        "recipient_address": { "city": "Fortaleza", "state": "Ceará" },
+        "shipping_carrier": "Shopee Xpress",
+        "item_list": [
+          {
+            "item_id": 22000000001,
+            "item_name": "Fita para guidão de bike",
+            "item_sku": "FITA-BIKE-UN",
+            "model_id": 0,
+            "model_name": "",
+            "model_sku": "",
+            "model_quantity_purchased": 1,
+            "model_original_price": 27.49,
+            "model_discounted_price": 27.49
+          }
+        ]
+      }
+    ]
+  }
+}
