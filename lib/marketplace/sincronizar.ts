@@ -83,7 +83,7 @@ async function pedidosParaReprocessar(supabase: SupabaseClient, conexao: Conexao
     .not("status", "in", "(cancelado,nao_pago)")
     .gte("criado_em_plataforma", desde)
     .or("taxas_origem.is.null,taxas_origem.neq.real,escrow_liberado_em.is.null")
-    .order("criado_em_plataforma", { ascending: true })
+    .order("criado_em_plataforma", { ascending: false })
     .limit(LIMITE_REPROCESSAR);
   if (error) return [];
   return (data ?? []).map((p) => String(p.numero));
