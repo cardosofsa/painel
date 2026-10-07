@@ -23,7 +23,7 @@ const outro = (await um(`insert into auth.users (email) values ('x@x.com') retur
 for (const id of [u, outro]) await q(`insert into perfis_acesso (user_id, email, papel, status, abas) values ($1, 'x', 'usuario', 'ativo', '{}') on conflict (user_id) do update set status = 'ativo'`, [id]);
 await db.exec(`select set_config('request.jwt.claim.sub', '${u}', false)`);
 
-const ana = (await um(`select salvar_operador(null, 'Ana', '1234', array['pdv','vendas'], 5, 'venda', true) as id`)).id;
+const ana = (await um(`select salvar_operador(null, 'Ana', '1234', array['pdv','vendas'], 5, 'venda', true)->>'id' as id`)).id;
 confere("cria operador com PIN guardado em hash", !!ana && (await um(`select pin_hash <> '1234' as ok from operadores where id = $1`, [ana])).ok);
 confere("PIN fora do padrão é recusado", /4 a 6 números/.test((await erro(`select salvar_operador(null, 'Bia', '12', null, 0, 'venda', true)`)) ?? ""));
 
@@ -42,8 +42,9 @@ confere("a API não lê o hash do PIN", /permission denied/.test(semHash ?? ""),
 confere("mas lê nome e telas", Array.isArray(nomes) && nomes.length === 1, JSON.stringify(nomes));
 
 // PIN de administrador protege a equipe.
-await q(`insert into perfil_negocio (user_id, pin_admin_hash) values ($1, crypt('4321', gen_salt('bf'))) on conflict (user_id) do update set pin_admin_hash = excluded.pin_admin_hash`, [u]);
-confere("com PIN de administrador, mexer na equipe sem ele é recusado", /administrador incorreto/.test((await erro(`select salvar_operador($1, 'Ana', null, array['pdv'], 5, 'venda', true, '0000')`, [ana])) ?? ""));
+// Desde a 0081 o hash mora em pin_admin_segredo, e PIN errado volta no corpo (sem exceção).
+await q(`insert into pin_admin_segredo (user_id, hash) values ($1, crypt('4321', gen_salt('bf'))) on conflict (user_id) do update set hash = excluded.hash`, [u]);
+confere("com PIN de administrador, mexer na equipe sem ele é recusado", /administrador incorreto/.test((await um(`select salvar_operador($1, 'Ana', null, array['pdv'], 5, 'venda', true, '0000') r`, [ana])).r?.message ?? ""));
 await q(`select salvar_operador($1, 'Ana', null, array['pdv'], 7, 'lucro', true, '4321')`, [ana]);
 confere("com o PIN certo, altera", (await um(`select comissao_pct, comissao_base from operadores where id = $1`, [ana])).comissao_base === "lucro");
 await q(`select definir_exigir_operador(true, '4321')`);
@@ -59,7 +60,8 @@ await db.exec(`select set_config('request.jwt.claim.sub', '${outro}', false)`);
 confere("outra conta não entra com operador alheio", /PIN incorreto/.test((await erro(`select * from entrar_operador($1, '1234')`, [ana])) ?? ""));
 await db.exec(`select set_config('request.jwt.claim.sub', '${u}', false)`);
 
-await db.exec(await lerMigracao("0063_operadores.sql"));
+// Num banco parado antes da 0081, que muda o retorno de `salvar_operador`.
+await (await criarBancoDeTeste({ antesDe: "0081" })).exec(await lerMigracao("0063_operadores.sql"));
 confere("0063 roda 2x sem erro", true);
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : "\nTudo certo");

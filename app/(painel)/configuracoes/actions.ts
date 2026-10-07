@@ -365,12 +365,13 @@ export async function salvarPerfilNegocio(dados: PerfilNegocioInput) {
  * hash bcrypt. Por isso ele sai do `perfil_negocio` normal e tem uma action própria — a
  * tela só sabe se existe um PIN cadastrado, nunca qual é.
  */
-export async function definirPinAdmin(pin: string | null) {
+export async function definirPinAdmin(pin: string | null, pinAtual: string | null = null) {
   return comResultado(async () => {
     const supabase = await createClient();
-    const validado = validar(pinAdminSchema, { pin });
+    const validado = validar(pinAdminSchema, { pin, pinAtual });
 
-    const { error } = await supabase.rpc("definir_pin_admin", { p_pin: validado.pin });
+    // Com a 0081, trocar ou remover um PIN existente pede o atual (ou login há menos de 10 min).
+    const { error } = await supabase.rpc("definir_pin_admin", { p_pin: validado.pin, ...(validado.pinAtual ? { p_pin_atual: validado.pinAtual } : {}) });
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
     revalidatePath("/vendas");

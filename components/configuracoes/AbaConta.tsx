@@ -49,6 +49,7 @@ export function AbaConta({
   const [whatsapp, setWhatsapp] = useState(perfil.whatsapp);
   // Campo write-only: começa sempre vazio, mesmo quando já existe um PIN cadastrado.
   const [pinAdmin, setPinAdmin] = useState("");
+  const [pinAtual, setPinAtual] = useState("");
   const regimes = regimeTributario && !REGIMES.includes(regimeTributario) ? [regimeTributario, ...REGIMES] : REGIMES;
 
   function salvarPerfil() {
@@ -71,9 +72,10 @@ export function AbaConta({
       return;
     }
     startPin(async () => {
-      const r = await executarComToast(definirPinAdmin(pin || null), { erro: "Erro ao salvar PIN" });
+      const r = await executarComToast(definirPinAdmin(pin || null, pinAtual.trim() || null), { erro: "Erro ao salvar PIN" });
       if (r.ok) {
         setPinAdmin("");
+        setPinAtual("");
         toast.success(pin ? "PIN atualizado" : "PIN removido — a edição de vendas fica bloqueada");
       }
     });
@@ -123,6 +125,18 @@ export function AbaConta({
           <StatusChip label={perfil.pin_configurado ? "Cadastrado" : "Não cadastrado"} tone={perfil.pin_configurado ? "positive" : "neutral"} />
         </div>
         <CardSubtitle className="mb-4">Pedido antes de editar uma venda já finalizada e para liberar operadores.</CardSubtitle>
+        {perfil.pin_configurado && (
+          <FormField label="PIN atual" dica="Esqueceu? Saia e entre de novo com a senha: nos 10 minutos seguintes a troca não pede o PIN atual.">
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              className={inputClass}
+              value={pinAtual}
+              onChange={(e) => setPinAtual(e.target.value.replace(/\D/g, "").slice(0, 8))}
+            />
+          </FormField>
+        )}
         <FormField label={perfil.pin_configurado ? "Novo PIN (4 a 8 números)" : "PIN (4 a 8 números)"}>
           <input
             type="password"

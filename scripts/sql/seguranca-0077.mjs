@@ -275,8 +275,11 @@ await espera("bloqueado: editar_venda recusa com a mensagem", () => editar("1234
 await q(`update pin_admin_tentativas set bloqueado_ate = null, falhas = 0 where user_id = $1`, [u]);
 
 // ---------- Idempotência ----------
-await db.exec(await lerMigracao("0077_seguranca_rotas.sql"));
-await db.exec(await lerMigracao("0077_seguranca_rotas.sql"));
+// Num banco parado antes da 0081: ela troca a assinatura de `definir_pin_admin`, que a 0077
+// ajusta pelo nome, e reaplicar a 0077 por cima dela não faz sentido (as migrações vão em ordem).
+const dbAntes = await criarBancoDeTeste({ antesDe: "0081" });
+await dbAntes.exec(await lerMigracao("0077_seguranca_rotas.sql"));
+await dbAntes.exec(await lerMigracao("0077_seguranca_rotas.sql"));
 confere("0077 roda 2x sem erro", true);
 confere(
   "depois de reaplicar, continua tudo fechado",
