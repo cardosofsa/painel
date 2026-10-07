@@ -251,16 +251,25 @@ async function contas(supabase: SupabaseClient, hoje: string): Promise<AlertaVix
 }
 
 async function precos(supabase: SupabaseClient): Promise<AlertaVixe[]> {
-  const [produtosRes, vinculosRes, lojasRes, canaisRes, faixasRes] = await Promise.all([
+  const [produtosRes, vinculosRes, lojasRes, canaisRes, faixasRes, perfilRes] = await Promise.all([
     supabase.from("produtos").select("id, nome, preco_venda").eq("ativo", true),
     supabase.from("produto_lojas").select("produto_id, loja_id"),
-    supabase.from("lojas_canal").select("id, canal_id"),
-    supabase.from("canais").select("id, nome").eq("tipo_taxa", "faixas"),
+    supabase.from("lojas_canal").select("id, canal_id, taxa_extra_valor, taxa_extra_tipo"),
+    supabase.from("canais").select("id, nome, taxa_extra_valor_padrao, taxa_extra_tipo_padrao").eq("tipo_taxa", "faixas"),
     supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
+    supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
   ]);
+  if (perfilRes.error) throw new Error(perfilRes.error.message);
+  // Mesmo padrão da Precificação e da Vixe Preço: sem perfil, 6% (Simples Nacional).
+  const impostoPct = Number(perfilRes.data?.aliquota_das ?? 6) / 100;
+  type TipoExtra = "percentual" | "fixo" | null;
   const produtos = new Map(ok<{ id: string; nome: string; preco_venda: number }[]>(produtosRes).map((p) => [p.id, p]));
-  const lojaParaCanal = new Map(ok<{ id: string; canal_id: string }[]>(lojasRes).map((l) => [l.id, l.canal_id]));
-  const canais = new Map(ok<{ id: string; nome: string }[]>(canaisRes).map((c) => [c.id, c.nome]));
+  const lojas = new Map(
+    ok<{ id: string; canal_id: string; taxa_extra_valor: number | null; taxa_extra_tipo: TipoExtra }[]>(lojasRes).map((l) => [l.id, l]),
+  );
+  const canais = new Map(
+    ok<{ id: string; nome: string; taxa_extra_valor_padrao: number | null; taxa_extra_tipo_padrao: TipoExtra }[]>(canaisRes).map((c) => [c.id, c]),
+  );
   const faixas = new Map<string, FaixaComissao[]>();
   for (const f of ok<{ canal_id: string; preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[]>(faixasRes)) {
     const lista = faixas.get(f.canal_id) ?? [];
@@ -272,14 +281,24 @@ async function precos(supabase: SupabaseClient): Promise<AlertaVixe[]> {
   const vistos = new Set<string>();
   for (const v of ok<{ produto_id: string; loja_id: string }[]>(vinculosRes)) {
     const produto = produtos.get(v.produto_id);
-    const canalId = lojaParaCanal.get(v.loja_id);
-    if (!produto || !canalId || !canais.has(canalId)) continue;
-    // Duas lojas do mesmo canal têm a mesma tabela: um alerta por produto e canal.
-    const chave = `${produto.id}:${canalId}`;
+    const loja = lojas.get(v.loja_id);
+    const canal = loja ? canais.get(loja.canal_id) : undefined;
+    if (!produto || !loja || !canal) continue;
+    // Duas lojas do mesmo canal têm a mesma tabela: um alerta por produto e canal. A taxa
+    // extra pode variar por loja, então a chave só é marcada quando uma delas acusa a zona.
+    const chave = `${produto.id}:${canal.id}`;
     if (vistos.has(chave)) continue;
+    // Imposto e taxa extra incidem sobre o preço e alargam a zona morta: sem eles o alerta
+    // deixava passar preços que rendem menos que o último centavo da faixa anterior.
+    const zona = zonaMortaDeFaixa(faixas.get(canal.id) ?? [], produto.preco_venda, {
+      impostoPct,
+      taxaAdicionalPct: 0,
+      taxaExtraValor: loja.taxa_extra_valor ?? canal.taxa_extra_valor_padrao ?? undefined,
+      taxaExtraTipo: loja.taxa_extra_tipo ?? canal.taxa_extra_tipo_padrao ?? null,
+    });
+    if (!zona) continue;
     vistos.add(chave);
-    const zona = zonaMortaDeFaixa(faixas.get(canalId) ?? [], produto.preco_venda);
-    if (zona) itens.push({ produtoId: produto.id, produtoNome: produto.nome, preco: produto.preco_venda, canalNome: canais.get(canalId)!, zona });
+    itens.push({ produtoId: produto.id, produtoNome: produto.nome, preco: produto.preco_venda, canalNome: canal.nome, zona });
   }
   return alertasZonaMorta(itens);
 }
