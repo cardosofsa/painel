@@ -13,7 +13,7 @@ import type { AbaId } from "@/lib/acesso";
 import { hojeIsoBrasil } from "@/lib/format";
 import { calcularErosaoMargem, calcularPrecoDefasado, calcularPrevisaoRuptura, quantidadeSugeridaCompra, ultimaPrecificacaoPorProduto } from "@/lib/alertas";
 import { situacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
-import { zonaMortaDeFaixa, type FaixaComissao } from "@/lib/pricing";
+import { zonaMortaDeFaixa, type ComponenteKit, type FaixaComissao } from "@/lib/pricing";
 import {
   alertasContasVencidas,
   DIAS_AVISO_PAGAR,
@@ -143,17 +143,24 @@ async function margem(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     supabase.rpc("custos_recentes_por_produto"),
     supabase.from("produtos").select("id, nome, custo").eq("ativo", true),
     // Só o necessário para achar a última de cada produto (a mais recente vem primeiro).
-    supabase.from("precificacoes").select("produto_id, custo, criado_em").not("produto_id", "is", null).order("criado_em", { ascending: false }).limit(3000),
+    supabase.from("precificacoes").select("produto_id, custo, criado_em, componentes").not("produto_id", "is", null).order("criado_em", { ascending: false }).limit(3000),
   ]);
   const linhas = ok<{ produto_id: string; produto_nome: string; custo_compra: number; custo_precificacao: number }[]>(custosRes);
   const compras = new Map(linhas.map((c) => [c.produto_id, { custo_unitario: c.custo_compra, produto_nome: c.produto_nome }]));
-  const precificacoes = new Map(linhas.map((c) => [c.produto_id, { custo: c.custo_precificacao }]));
+  const ultimas = ok<{ produto_id: string | null; custo: number; criado_em: string; componentes: ComponenteKit[] | null }[]>(precRes);
+  // Componentes da última precificação de cada produto (a lista vem da mais recente para a
+  // mais antiga): a erosão compara a compra com o valor do produto SEM insumos.
+  const componentesPorProduto = new Map<string, ComponenteKit[] | null>();
+  for (const l of ultimas) if (l.produto_id && !componentesPorProduto.has(l.produto_id)) componentesPorProduto.set(l.produto_id, l.componentes);
+  const precificacoes = new Map(
+    linhas.map((c) => [c.produto_id, { custo: c.custo_precificacao, componentes: componentesPorProduto.get(c.produto_id) ?? null }]),
+  );
   const erosao = calcularErosaoMargem(precificacoes, compras);
   // Preço defasado (Fase 5): custo de HOJE contra o da última precificação. Quem já tem o
   // aviso de erosão (última compra) não recebe outro cartão sobre o mesmo produto.
   const defasado = calcularPrecoDefasado(
     ok<{ id: string; nome: string; custo: number }[]>(produtosRes).map((p) => ({ ...p, custo: Number(p.custo) })),
-    ultimaPrecificacaoPorProduto(ok<{ produto_id: string | null; custo: number; criado_em: string }[]>(precRes)),
+    ultimaPrecificacaoPorProduto(ultimas),
     new Date(),
     new Set(erosao.map((e) => e.produtoId)),
   );

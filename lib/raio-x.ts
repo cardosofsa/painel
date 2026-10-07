@@ -118,7 +118,7 @@ export function analisarRaioX(e: EntradaRaioX): ResultadoRaioX {
   }
 
   const praticado = resultadoNoPreco(e, e.precoPraticado);
-  const zona = e.faixas.length ? zonaMortaDeFaixa(e.faixas, e.precoPraticado) : null;
+  const zona = e.faixas.length ? zonaMortaDeFaixa(e.faixas, e.precoPraticado, taxasBase(e.taxas)) : null;
   const diferenca = ideal.viavel ? r2(praticado.lucroLiquido - ideal.lucroLiquido) : null;
   const diferencaMes = diferenca !== null && e.vendasMes > 0 ? r2(diferenca * e.vendasMes) : null;
   const nota = ideal.viavel ? notaRaioX(praticado.margemEfetivaPct, e.margemAlvo, e.precoPraticado, ideal.precoVenda, !!zona) : null;

@@ -10,7 +10,7 @@
  * sugere o preço que volta à margem com o CUSTO DE HOJE e as taxas atuais do canal.
  */
 
-import { resolverComFaixas, resultadoParaPrecoComFaixas } from "../pricing";
+import { precoEmCentavos, resolverComFaixas, resultadoParaPrecoComFaixas } from "../pricing";
 import { taxasDoKit } from "../kit";
 import type { LojaOpcao } from "../precificacao-tipos";
 
@@ -86,8 +86,8 @@ export function montarRadar(
       const { base, faixas } = taxasDoKit({ loja, impostoPct: opcoes.impostoPct });
       lucroHojeUnit = r2(resultadoParaPrecoComFaixas(precoMedio, p.custo, base, faixas).lucroLiquido);
       const s = resolverComFaixas(p.custo, "margem", opcoes.margemAlvo, base, faixas).resultado;
-      // Para cima no centavo: nunca abaixo do que dá a margem alvo.
-      precoSugerido = s.viavel ? Math.ceil(s.precoVenda * 100 - 1e-6) / 100 : null;
+      // Para cima no centavo (nunca abaixo da margem alvo), sem pular para a faixa de cima.
+      precoSugerido = s.viavel ? precoEmCentavos(s.precoVenda, true, faixas) : null;
     }
     saida.push({
       produtoId: g.produtoId,

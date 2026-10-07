@@ -91,7 +91,7 @@ export function pctPorModo(r: ResultadoPrecificacao, modo: ModoCalculo): number 
   return modo === "markup" ? r.markupSobreCustoPct : r.margemEfetivaPct;
 }
 
-function extraFracao(taxas: TaxasPlataforma): number {
+function extraFracao(taxas: Pick<TaxasPlataforma, "taxaExtraValor" | "taxaExtraTipo">): number {
   return taxas.taxaExtraTipo === "percentual" ? (taxas.taxaExtraValor ?? 0) / 100 : 0;
 }
 
@@ -127,7 +127,9 @@ export function resultadoParaPreco(
   // `NaN <= 0` é `false`, então o guard antigo (`custoTotal <= 0`) deixava NaN passar e a
   // função devolvia `viavel: true` com preço NaN — que ia parar no INSERT.
   if (!Number.isFinite(custoTotal) || custoTotal <= 0) return resultadoInviavel(custoTotal);
-  if (!Number.isFinite(precoVenda)) return resultadoInviavel(custoTotal);
+  // Preço zero ou negativo não é venda: sem isso saía `viavel: true` com preço 0 e a tela
+  // deixava salvar.
+  if (!Number.isFinite(precoVenda) || precoVenda <= 0) return resultadoInviavel(custoTotal);
 
   const taxaVariavelValor = precoVenda * taxas.taxaVariavelPct;
   const taxaAdicionalValor = precoVenda * taxas.taxaAdicionalPct;
@@ -225,15 +227,50 @@ export function formatarFaixaLabel(faixa: FaixaComissao): string {
   return `${min} a ${max}`;
 }
 
-function encontrarFaixa(faixas: FaixaComissao[], preco: number): FaixaComissao {
-  const exata = faixas.find((f) => preco >= f.min && (f.max === null || preco <= f.max));
-  if (exata) return exata;
+/**
+ * Faixa de comissão de um preço: a de MAIOR `min` que não passa do preço.
+ *
+ * As faixas são cadastradas fechadas no centavo (até 79,99 / a partir de 80), mas o preço
+ * calculado não chega arredondado: 79,9925 não está "entre 8 e 79,99" nem "entre 80 e
+ * 99,99". Procurar por `min <= preço <= max` deixava esse preço sem faixa, e ele caía na
+ * última (a mais cara). Olhar só o piso fecha o buraco: o `max` é só rótulo.
+ *
+ * Preço abaixo de toda a tabela (faixas que não começam em zero) cai na faixa mais barata —
+ * nunca na mais cara, que cobraria uma comissão que a plataforma não cobraria.
+ *
+ * Exportada para que todo lugar que precisa da faixa (Vixe Preço, Radar) use esta regra.
+ */
+export function encontrarFaixa(faixas: FaixaComissao[], preco: number): FaixaComissao {
+  let escolhida: FaixaComissao | null = null;
+  let maisBarata = faixas[0];
+  // Folga só para ruído de ponto flutuante: 48 / 0,6 dá 79,99999999999999, que é R$ 80.
+  const comFolga = preco + 1e-9;
+  for (const f of faixas) {
+    if (f.min < maisBarata.min) maisBarata = f;
+    if (f.min <= comFolga && (escolhida === null || f.min > escolhida.min)) escolhida = f;
+  }
+  return escolhida ?? maisBarata;
+}
 
-  // Preço fora da tabela (acontece quando as faixas cadastradas não começam em zero ou têm
-  // buracos): abaixo de tudo cai na faixa mais barata — nunca na mais cara, que cobraria
-  // uma comissão que a plataforma não cobraria.
-  const maisBarata = faixas.reduce((menor, f) => (f.min < menor.min ? f : menor), faixas[0]);
-  return preco < maisBarata.min ? maisBarata : faixas[faixas.length - 1];
+/**
+ * Leva um preço calculado ao centavo, para exibir e gravar.
+ *
+ * `paraCima` (modos margem, lucro e markup): arredonda PARA CIMA, para o preço gravado não
+ * ficar abaixo da meta — mas sem atravessar o piso de uma faixa de comissão. 79,9925 subiria
+ * para 80,00 e cairia na faixa seguinte (Shopee: de 20% + R$ 4 para 14% + R$ 16), com lucro
+ * bem menor; nesse caso fica em 79,99, que erra a meta por menos de um centavo de receita.
+ * Sem `paraCima` (preço fixo), arredonda normal.
+ */
+export function precoEmCentavos(preco: number, paraCima: boolean, faixas: FaixaComissao[] = []): number {
+  if (!Number.isFinite(preco)) return preco;
+  if (!paraCima) return Math.round(preco * 100) / 100;
+  // Arredondar a 6 casas antes do `ceil` absorve o ruído do ponto flutuante (19,98 vira
+  // 1998,0000000002 centavos e o `ceil` pularia um centavo).
+  const acima = Math.ceil(Math.round(preco * 1e8) / 1e6) / 100;
+  if (faixas.length > 0 && encontrarFaixa(faixas, acima) !== encontrarFaixa(faixas, preco)) {
+    return Math.floor(preco * 100) / 100;
+  }
+  return acima;
 }
 
 export interface ResultadoComFaixa {
@@ -255,8 +292,9 @@ function resolverPorModo(
 
 /**
  * Resolve o preço considerando uma tabela de faixas de comissão por preço (ex.: Shopee): a
- * comissão/tarifa dependem do preço final, que por sua vez depende da comissão — resolve por
- * iteração até a faixa estabilizar. `faixas` vem cadastrado pelo usuário (editável), não é fixo.
+ * comissão/tarifa dependem do preço final, que por sua vez depende da comissão. Devolve o
+ * MENOR preço que atinge a meta, testando todas as faixas (ver o laço abaixo). `faixas` vem
+ * cadastrado pelo usuário (editável), não é fixo.
  */
 export function resolverComFaixas(
   custoTotal: number,
@@ -271,20 +309,54 @@ export function resolverComFaixas(
     return { resultado, faixa: { min: 0, max: null, comissaoPct: 0, tarifaFixa: 0 } };
   }
 
-  let faixa = modo === "preco" ? encontrarFaixa(faixas, parametro) : faixas[Math.min(1, faixas.length - 1)];
-  let resultado: ResultadoPrecificacao = resultadoInviavel(custoTotal);
-
-  for (let i = 0; i < 5; i++) {
-    const taxas: TaxasPlataforma = { ...taxasBase, taxaVariavelPct: faixa.comissaoPct / 100, taxaFixa: faixa.tarifaFixa };
-    resultado = resolverPorModo(modo, custoTotal, parametro, taxas);
-
-    if (!resultado.viavel) break;
-    const novaFaixa = encontrarFaixa(faixas, resultado.precoVenda);
-    if (novaFaixa === faixa) break;
-    faixa = novaFaixa;
+  if (modo === "preco") {
+    return {
+      resultado: resultadoParaPrecoComFaixas(parametro, custoTotal, taxasBase, faixas),
+      faixa: encontrarFaixa(faixas, parametro),
+    };
   }
 
-  return { resultado, faixa };
+  const taxasDaFaixa = (f: FaixaComissao): TaxasPlataforma => ({
+    ...taxasBase,
+    taxaVariavelPct: f.comissaoPct / 100,
+    taxaFixa: f.tarifaFixa,
+  });
+  // Tolerância de ponto flutuante: o preço resolvido atinge a meta "exatamente", e a conta
+  // de volta pode sair 1e-15 abaixo.
+  const EPS = 1e-9;
+  const atingeMeta = (r: ResultadoPrecificacao): boolean =>
+    r.viavel &&
+    (modo === "margem"
+      ? r.margemEfetivaPct >= parametro - EPS
+      : modo === "markup"
+        ? r.markupSobreCustoPct >= parametro - EPS
+        : r.lucroLiquido >= parametro - EPS);
+
+  // Cada faixa dá um candidato: o preço que atinge a meta com a comissão DELA. Ele vale se
+  // cair dentro da própria faixa; se ficar abaixo do piso, o próprio piso atinge a meta com
+  // folga (lucro e margem crescem com o preço dentro de uma faixa) e é o menor preço dela;
+  // se passar para uma faixa acima, nenhum preço desta faixa atinge a meta. Faixa inviável
+  // (taxas + margem ≥ 100%) não impede as outras. Fica o MENOR preço válido.
+  let melhor: number | null = null;
+  for (const f of faixas) {
+    const candidato = resolverPorModo(modo, custoTotal, parametro, taxasDaFaixa(f));
+    if (!candidato.viavel) continue;
+    const p = candidato.precoVenda;
+    let preco: number | null = null;
+    if (encontrarFaixa(faixas, p) === f) preco = p;
+    else if (p < f.min && encontrarFaixa(faixas, f.min) === f) {
+      if (atingeMeta(resultadoParaPrecoComFaixas(f.min, custoTotal, taxasBase, faixas))) preco = f.min;
+    }
+    if (preco !== null && (melhor === null || preco < melhor)) melhor = preco;
+  }
+
+  if (melhor === null) return { resultado: resultadoInviavel(custoTotal), faixa: faixas[0] };
+
+  // Recalcula no preço final com a faixa DESSE preço: rótulo e números sempre batem.
+  return {
+    resultado: resultadoParaPrecoComFaixas(melhor, custoTotal, taxasBase, faixas),
+    faixa: encontrarFaixa(faixas, melhor),
+  };
 }
 
 /**
@@ -335,7 +407,10 @@ export interface AnaliseCompetitiva {
 export function analisarConcorrencia(
   resultado: ResultadoPrecificacao,
   concorrentes: Concorrente[],
-  taxas: TaxasPlataforma,
+  /** Taxas fixas do canal, ou — para loja com faixas de comissão — a função que calcula o
+   * resultado num preço qualquer (`resultadoParaPrecoComFaixas`): o preço médio dos
+   * concorrentes pode cair noutra faixa que a do preço calculado. */
+  taxas: TaxasPlataforma | ((preco: number) => ResultadoPrecificacao),
   limiarPct = 0.05,
 ): AnaliseCompetitiva | null {
   if (concorrentes.length === 0 || !resultado.viavel) return null;
@@ -351,7 +426,10 @@ export function analisarConcorrencia(
   const classificacao: ClassificacaoCompetitiva =
     diferencaPct > limiarPct ? "caro" : diferencaPct < -limiarPct ? "barato" : "competitivo";
 
-  const resultadoNoPrecoMedio = resultadoParaPreco(precoMedioConcorrentes, resultado.custoTotal, taxas);
+  const resultadoNoPrecoMedio =
+    typeof taxas === "function"
+      ? taxas(precoMedioConcorrentes)
+      : resultadoParaPreco(precoMedioConcorrentes, resultado.custoTotal, taxas);
 
   let sugestao: string;
   if (classificacao === "caro") {
@@ -397,10 +475,26 @@ function arredondar(valor: number): number {
   return Math.round(valor * 100) / 100;
 }
 
-/** Quanto sobra do preço depois da comissão da plataforma, na faixa correspondente. */
-function liquidoNaFaixa(faixas: FaixaComissao[], preco: number): number {
+/** Taxas que não dependem da faixa (imposto, taxa adicional, taxa extra da loja). */
+export type TaxasForaDaFaixa = Omit<TaxasPlataforma, "taxaVariavelPct" | "taxaFixa">;
+
+const SEM_TAXAS_FORA_DA_FAIXA: TaxasForaDaFaixa = { impostoPct: 0, taxaAdicionalPct: 0 };
+
+/** Fração do preço que sobra depois de comissão, imposto, taxa adicional e extra percentual. */
+function fracaoLiquida(faixa: FaixaComissao, taxas: TaxasForaDaFaixa): number {
+  return 1 - faixa.comissaoPct / 100 - taxas.impostoPct - taxas.taxaAdicionalPct - extraFracao(taxas);
+}
+
+/**
+ * Quanto sobra do preço depois de tudo que é cobrado sobre ele, na faixa correspondente.
+ * É o lucro sem o custo e sem a taxa extra fixa — que são iguais nos dois preços
+ * comparados, então comparar isto é comparar lucro. Ignorar imposto e taxa adicional aqui
+ * (versão antiga) subestimava a zona: com 6% de imposto, R$ 88,50 ainda rende menos que
+ * R$ 79,99 e não era avisado.
+ */
+function liquidoNaFaixa(faixas: FaixaComissao[], preco: number, taxas: TaxasForaDaFaixa): number {
   const faixa = encontrarFaixa(faixas, preco);
-  return preco - (preco * (faixa.comissaoPct / 100) + faixa.tarifaFixa);
+  return preco * fracaoLiquida(faixa, taxas) - faixa.tarifaFixa;
 }
 
 /**
@@ -416,10 +510,15 @@ function liquidoNaFaixa(faixas: FaixaComissao[], preco: number): number {
  * é estritamente pior que R$ 79,99 — e nada na tela avisava isso.
  *
  * Calculado a partir das faixas do BANCO do usuário, não de constante: quem editar a
- * tabela de comissão continua coberto. Devolve `null` quando o preço não está em zona
+ * tabela de comissão continua coberto. `taxas` (imposto, taxa adicional, extra) entra na
+ * comparação: elas incidem sobre o preço e alargam a zona. Devolve `null` quando o preço não está em zona
  * morta (o caso normal).
  */
-export function zonaMortaDeFaixa(faixas: FaixaComissao[], precoVenda: number): ZonaMorta | null {
+export function zonaMortaDeFaixa(
+  faixas: FaixaComissao[],
+  precoVenda: number,
+  taxas: TaxasForaDaFaixa = SEM_TAXAS_FORA_DA_FAIXA,
+): ZonaMorta | null {
   if (faixas.length < 2 || !Number.isFinite(precoVenda) || precoVenda <= 0) return null;
 
   const faixaAtual = encontrarFaixa(faixas, precoVenda);
@@ -431,13 +530,13 @@ export function zonaMortaDeFaixa(faixas: FaixaComissao[], precoVenda: number): Z
   const precoMelhor = arredondar(faixaAtual.min - 0.01);
   if (precoMelhor <= 0 || encontrarFaixa(faixas, precoMelhor) === faixaAtual) return null;
 
-  const liquidoMelhor = liquidoNaFaixa(faixas, precoMelhor);
-  const liquidoAtual = liquidoNaFaixa(faixas, precoVenda);
+  const liquidoMelhor = liquidoNaFaixa(faixas, precoMelhor, taxas);
+  const liquidoAtual = liquidoNaFaixa(faixas, precoVenda, taxas);
   if (liquidoAtual >= liquidoMelhor) return null;
 
   // Onde o líquido da faixa nova volta a empatar:
-  //   preco * (1 - comissao) - tarifa = liquidoMelhor
-  const proporcao = 1 - faixaAtual.comissaoPct / 100;
+  //   preco * (1 - comissao - imposto - adicional - extra%) - tarifa = liquidoMelhor
+  const proporcao = fracaoLiquida(faixaAtual, taxas);
   if (proporcao <= 0) return null;
   const precoEmpate = (liquidoMelhor + faixaAtual.tarifaFixa) / proporcao;
   // Último centavo ESTRITAMENTE abaixo do empate. `arredondar(empate - 0,01)` errava para

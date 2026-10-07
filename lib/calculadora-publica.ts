@@ -115,7 +115,7 @@ export function calcularShopee(e: EntradaCalculadora): ResultadoCanal {
   const { resultado, faixa } = resolverComFaixas(e.custo ?? 0, e.modo, parametro, { impostoPct, taxaAdicionalPct: 0 }, FAIXAS_SHOPEE);
   const base = montar("shopee", nome, resultado, faixa.comissaoPct, faixa.tarifaFixa);
   if (!base.viavel) return base;
-  return { ...base, faixa: formatarFaixaLabel(faixa), zonaMorta: zonaMortaDeFaixa(FAIXAS_SHOPEE, resultado.precoVenda) };
+  return { ...base, faixa: formatarFaixaLabel(faixa), zonaMorta: zonaMortaDeFaixa(FAIXAS_SHOPEE, resultado.precoVenda, { impostoPct, taxaAdicionalPct: 0 }) };
 }
 
 export function calcularMercadoLivre(e: EntradaCalculadora): ResultadoCanal {

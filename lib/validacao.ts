@@ -114,7 +114,8 @@ export const precificacaoSchema = z.object({
   taxa_adicional_pct: fracao,
   imposto_pct: fracao,
   margem_pct: z.number().finite().min(-1).max(1).nullable(),
-  preco_calculado: dinheiro,
+  // Preço zero não é venda: o card mostrava "inviável" mas o Salvar gravava R$ 0,00.
+  preco_calculado: dinheiro.positive("O preço precisa ser maior que zero"),
   lucro: z.number().finite().min(-10_000_000).max(10_000_000),
   origem: z.enum(["individual", "em_massa"]),
   // 0045; opcionais: a calculadora em massa não manda.

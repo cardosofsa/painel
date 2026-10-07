@@ -30,6 +30,17 @@ describe("analisarPreco", () => {
     expect(a.resultado.lucroLiquido).toBeCloseTo(14.52, 2);
   });
 
+  it("preço entre duas faixas (79,995) usa a faixa de baixo, não a última", () => {
+    const a = analisarPreco({ custo: 40, preco: 79.995, impostoPct: 0, loja: shopee, concorrentes: [] });
+    expect(a.comissaoAplicadaPct).toBe(20);
+    expect(a.tarifaAplicada).toBe(4);
+  });
+
+  it("zona morta considera o imposto: R$ 88,50 com 6% ainda perde para R$ 79,99", () => {
+    const a = analisarPreco({ custo: 40, preco: 88.5, impostoPct: 0.06, loja: shopee, concorrentes: [] });
+    expect(a.zonaMorta?.precoMelhor).toBe(79.99);
+  });
+
   it("preço mínimo viável é onde o lucro zera", () => {
     const a = analisarPreco({ custo: 40, preco: 70, impostoPct: 0, loja: shopee, concorrentes: [] });
     expect(a.precoMinimoViavel).not.toBeNull();
