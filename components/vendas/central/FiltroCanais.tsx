@@ -54,7 +54,7 @@ function Painel({ inicial, porCanal, catalogos, onAplicar }: { inicial: string[]
 
   return (
     <div>
-      <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+      <div className="max-h-[min(60vh,28rem)] overflow-y-auto overscroll-contain space-y-2 pr-1">
         <Item rotulo="PDV (balcão)" marcado={sel.has("pdv")} onChange={(v) => alternar("pdv", v)} />
         <Item rotulo="Catálogo (todos)" marcado={sel.has("catalogo")} onChange={(v) => alternar("catalogo", v)} />
         {catalogos.length > 1 && (

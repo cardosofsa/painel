@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Layers } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
+import { formatBRL, formatarMargemPct, classeValor, formatarData } from "@/lib/format";
 import type { AnuncioSalvo } from "@/lib/precificacao-estado";
 
 /** Últimos anúncios com variações salvos, expansíveis, com exportação e atalho pro histórico. */
@@ -44,7 +44,7 @@ export function VariacoesSalvas({
               >
                 {a.nome_anuncio}{" "}
                 <span className="text-text-tertiary font-normal">
-                  ({a.variacoes.length} variações · {new Date(a.criado_em).toLocaleDateString("pt-BR")})
+                  ({a.variacoes.length} variações · {formatarData(a.criado_em)})
                 </span>
               </button>
               <button onClick={() => onExcluir(a)} className="text-xs text-negative hover:underline shrink-0">

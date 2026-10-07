@@ -210,7 +210,9 @@ export function DashboardClient({
 
             <Card>
               <h2 className="text-base font-semibold text-text-primary mb-1">Compras Pendentes</h2>
-              <p className="text-xs text-text-tertiary mb-4">{pedidosPendentes.length} pedidos em trânsito</p>
+              <p className="text-xs text-text-tertiary mb-4">
+                {pedidosPendentes.length} {pedidosPendentes.length === 1 ? "pedido em aberto" : "pedidos em aberto"} (a comprar, em trânsito ou parcial)
+              </p>
               <div className="font-mono text-2xl font-semibold text-text-primary mb-4">{formatBRL(capitalComprometido)}</div>
               <div className="space-y-3">
                 {pedidosPendentes.slice(0, 3).map((p) => (

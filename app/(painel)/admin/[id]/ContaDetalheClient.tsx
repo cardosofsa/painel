@@ -9,7 +9,7 @@ import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { SalesChart } from "@/components/charts/SalesChart";
-import { formatBRL, formatarDataCurta, formatarDataHora, formatarDataIso } from "@/lib/format";
+import { formatBRL, formatarDataCurta, formatarDataHora, formatarDataIso, formatarData } from "@/lib/format";
 import { formatarDiffHistorico } from "@/lib/admin";
 import { ABAS, ABAS_OBRIGATORIAS, ABAS_PADRAO, TODAS_AS_ABAS, type StatusConta } from "@/lib/acesso";
 import { atualizarAcessoConta, definirTesteIaConta } from "../actions";
@@ -299,7 +299,7 @@ export function ContaDetalheClient({
               </div>
               <p className="text-xs text-text-tertiary mt-1.5">
                 {usoIa.teste_expira_em
-                  ? `Janela em andamento: vale até ${new Date(usoIa.teste_expira_em).toLocaleDateString("pt-BR")}.`
+                  ? `Janela em andamento: vale até ${formatarData(usoIa.teste_expira_em)}.`
                   : "A janela de dias só começa na primeira geração da conta."}{" "}
                 Zero em qualquer campo desliga a IA do sistema para esta conta. Quem cadastra a própria IA não é afetado.
               </p>

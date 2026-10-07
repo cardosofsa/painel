@@ -3,7 +3,7 @@ import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil } from "@/lib/format";
 import { diasEntre } from "@/lib/vixe/alertas";
 import { VixeTextos, type ClienteCobranca, type ProdutoTexto } from "@/components/vixe/VixeTextos";
 import type { Metadata } from "next";
@@ -59,7 +59,7 @@ export default async function VixeTextosPage() {
   });
 
   // Agrupa as parcelas em aberto por cliente (só vendas com cliente cadastrado).
-  const hoje = hojeIsoLocal();
+  const hoje = hojeIsoBrasil();
   const porCliente = new Map<string, ClienteCobranca>();
   type Parcela = { valor: number; data_vencimento: string; vendas: { cliente_id: string | null; cliente_nome: string | null; clientes: { whatsapp: string | null } | null } | null };
   type Unica = { valor: number; valor_pago?: number | null; data_vencimento: string; vendas: (Parcela["vendas"] & { total_parcelas_fiado: number | null }) | null };

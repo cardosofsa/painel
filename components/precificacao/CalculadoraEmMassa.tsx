@@ -8,7 +8,7 @@ import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { Chip } from "@/components/ui/Chip";
-import { formatBRL, classeValor } from "@/lib/format";
+import { formatBRL, classeValor, formatarData } from "@/lib/format";
 import { ExportarModal } from "@/components/ui/ExportarModal";
 import { tabelaEmMassa } from "@/lib/precificacao-exportar";
 import {
@@ -322,7 +322,7 @@ export function CalculadoraEmMassa({
               <div key={h.id} className="flex items-center justify-between border border-border rounded-md px-3 py-2 text-sm">
                 <div>
                   <div className="text-text-primary">{h.produto_nome}</div>
-                  <div className="text-xs text-text-tertiary">{new Date(h.criado_em).toLocaleDateString("pt-BR")}</div>
+                  <div className="text-xs text-text-tertiary">{formatarData(h.criado_em)}</div>
                 </div>
                 <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
               </div>

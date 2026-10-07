@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
-import { hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil, hojeIsoLocal } from "@/lib/format";
 import { quantidadeSugeridaCompra } from "@/lib/alertas";
 import { ComprasClient, type ItemPedido, type Pedido } from "./ComprasClient";
 import { resumoPagamento } from "@/lib/pagamentos";
@@ -85,7 +85,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       .map((t) => [t.referencia_pedido_compra_id as string, t.conta_id as string]),
   );
   // Parcelas de cada pedido → resumo do pagamento (quitadas, em aberto, atraso).
-  const hoje = hojeIsoLocal();
+  const hoje = hojeIsoBrasil();
   const parcelasPorPedido = new Map<string, { status: "pendente" | "pago" | "recebido"; valor: number; valor_pago: number; data_vencimento: string }[]>();
   for (const t of titulosRes.data ?? []) {
     const lista = parcelasPorPedido.get(t.referencia_pedido_compra_id) ?? [];

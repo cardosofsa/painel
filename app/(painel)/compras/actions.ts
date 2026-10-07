@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { hojeIsoLocal, dataLocal } from "@/lib/format";
+import { hojeIsoBrasil, hojeIsoLocal, dataLocal } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, pedidoCompraSchema } from "@/lib/validacao";
@@ -163,7 +163,7 @@ export async function importarPedidosCompra(
     if (pedidos.length === 0) throw new Error("Nenhum pedido para importar.");
     if (pedidos.length > 200) throw new Error("Importe no máximo 200 pedidos por vez.");
     const supabase = await createClient();
-    const hoje = hojeIsoLocal();
+    const hoje = hojeIsoBrasil();
     const criados: string[] = [];
     for (const p of pedidos) {
       const v = validar(pedidoCompraSchema, {
@@ -401,7 +401,7 @@ export async function criarPedidosReposicao(itens: z.input<typeof reposicaoSchem
       porFornecedor.set(f, l);
     }
 
-    const hoje = hojeIsoLocal();
+    const hoje = hojeIsoBrasil();
     const criados: string[] = [];
     for (const [fornecedorId, itensPedido] of porFornecedor) {
       const venc = dataLocal(hoje);

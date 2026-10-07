@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatarData } from "@/lib/format";
 import { Card, CardEyebrow } from "@/components/ui/Card";
 
 export interface PedidoPlano {
@@ -20,7 +21,7 @@ export function PedidosPlano({ pedidos }: { pedidos: PedidoPlano[] }) {
             <span className="text-text-primary truncate">{p.email}</span>
             <span className="text-text-secondary shrink-0">
               {p.plano}
-              {p.solicitado_em ? ` · ${new Date(p.solicitado_em).toLocaleDateString("pt-BR")}` : ""}
+              {p.solicitado_em ? ` · ${formatarData(p.solicitado_em)}` : ""}
             </span>
             <Link href={`/admin/${p.user_id}`} className="text-xs text-accent hover:underline shrink-0">
               Abrir
