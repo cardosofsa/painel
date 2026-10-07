@@ -10,10 +10,14 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL } from "@/lib/format";
 import { estourosNoPlano, percentualUso, rotuloLimite, situacaoAssinatura, type Plano, type ResumoAssinatura } from "@/lib/planos";
 import { assinarPlano } from "@/app/(painel)/configuracoes/plano-actions";
+import { IndiqueCard, type EstadoIndicacoes } from "@/components/configuracoes/IndiqueCard";
 
 export interface DadosPlano {
   planos: Plano[];
   resumo: ResumoAssinatura;
+  /** Indicação (0078) e a base do link pessoal (NEXT_PUBLIC_SITE_URL ou a origem atual). */
+  indicacoes?: EstadoIndicacoes;
+  siteUrl?: string;
 }
 
 /** Configurações → Plano (10.9): situação, uso e troca de plano. */
@@ -119,6 +123,7 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
             );
           })}
       </div>
+      {dados.siteUrl && <IndiqueCard estado={dados.indicacoes ?? null} siteUrl={dados.siteUrl} />}
       {ConfirmDialog}
     </div>
   );

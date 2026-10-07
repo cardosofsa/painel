@@ -11,6 +11,10 @@ import type { DadosPlano } from "@/components/configuracoes/AbaPlano";
 import { FISCAL_PADRAO, type FiscalConfigTela } from "@/components/configuracoes/AbaFiscal";
 import type { DadosEquipe, OperadorTela } from "@/components/configuracoes/AbaEquipe";
 import type { Plano, ResumoAssinatura } from "@/lib/planos";
+import { headers } from "next/headers";
+import { urlDoSite } from "@/lib/site";
+import { lerResumoIndicacoes } from "@/lib/indicacao";
+import type { EstadoIndicacoes } from "@/components/configuracoes/IndiqueCard";
 import type { CrediarioConfig } from "./actions";
 import {
   ConfiguracoesClient,
@@ -146,13 +150,32 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   const teste = testeBruto ? estadoDoTeste(testeBruto, new Date()) : null;
 
   // Plano (0057): catálogo + resumo da conta. Sem a migração, a aba explica.
-  const [planosRes, assinaturaRes] = await Promise.all([supabase.from("planos").select("*").eq("ativo", true).order("ordem"), supabase.rpc("minha_assinatura")]);
+  // Indicação (0078): sem a migração a RPC não existe e o cartão pede para aplicar; outro
+  // erro (conta pendente/suspensa) só esconde o cartão.
+  const [planosRes, assinaturaRes, indicacoesRes, cabecalhos] = await Promise.all([
+    supabase.from("planos").select("*").eq("ativo", true).order("ordem"),
+    supabase.rpc("minha_assinatura"),
+    supabase.rpc("minhas_indicacoes"),
+    headers(),
+  ]);
+  if (indicacoesRes.error && indicacoesRes.error.code !== "PGRST202" && indicacoesRes.error.code !== "42883") {
+    console.error("[configuracoes] falha ao carregar indicações:", indicacoesRes.error.message);
+  }
+  const indicacoes: EstadoIndicacoes = indicacoesRes.error
+    ? indicacoesRes.error.code === "PGRST202" || indicacoesRes.error.code === "42883"
+      ? "sem-migracao"
+      : null
+    : lerResumoIndicacoes(indicacoesRes.data);
+  const hostAtual = cabecalhos.get("x-forwarded-host") ?? cabecalhos.get("host");
+  const siteUrl = urlDoSite() ?? (hostAtual ? `${cabecalhos.get("x-forwarded-proto") ?? (hostAtual.startsWith("localhost") ? "http" : "https")}://${hostAtual}` : "");
   const plano: DadosPlano | null =
     planosRes.error || assinaturaRes.error || !assinaturaRes.data
       ? null
       : {
           planos: ((planosRes.data ?? []) as Plano[]).map((p) => ({ ...p, preco_mensal: Number(p.preco_mensal) })),
           resumo: assinaturaRes.data as ResumoAssinatura,
+          indicacoes,
+          siteUrl,
         };
 
   // Pix e encargos do crediário (0065). Consulta à parte: sem a migração as colunas não
