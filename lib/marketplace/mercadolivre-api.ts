@@ -14,10 +14,13 @@
  * As partes puras (status, conversão de pedido e anúncio) são cobertas pelo teste.
  */
 
+import { mapComLimite } from "@/lib/concorrencia";
 import type { PedidoMarketplace, StatusMarketplace } from "./shopee-planilha";
 import type { AnuncioShopee } from "./shopee-api";
 
 const API = "https://api.mercadolibre.com";
+/** Pedidos lidos ao mesmo tempo (cada um com o envio e o custo do frete). */
+export const EM_PARALELO_ML = 5;
 const AUTH = "https://auth.mercadolivre.com.br/authorization";
 
 export interface CredenciaisML {
@@ -206,7 +209,12 @@ export function pedidoDoML(p: PedidoML, e: EnvioML | null, freteVendedor: number
 export async function buscarPedidosML(tokenAcesso: string, sellerId: string, desde: Date, apenas?: string[]): Promise<PedidoMarketplace[]> {
   const brutos: PedidoML[] = [];
   if (apenas?.length) {
-    for (const id of apenas.slice(0, 20)) brutos.push((await chamar(tokenAcesso, `/orders/${encodeURIComponent(id)}`)) as PedidoML);
+    // De 5 em 5. Como antes, um pedido que falha derruba a leitura (a primeira falha, na ordem).
+    const lidos = await mapComLimite(apenas.slice(0, 20), EM_PARALELO_ML, (id) => chamar(tokenAcesso, `/orders/${encodeURIComponent(id)}`));
+    for (const r of lidos) {
+      if (r.status === "rejected") throw r.reason;
+      brutos.push(r.value as PedidoML);
+    }
   } else {
     for (let offset = 0; offset < 2000; offset += 50) {
       const q = new URLSearchParams({ seller: sellerId, "order.date_last_updated.from": desde.toISOString(), sort: "date_desc", limit: "50", offset: String(offset) });
@@ -215,14 +223,20 @@ export async function buscarPedidosML(tokenAcesso: string, sellerId: string, des
       if (!r.results?.length || offset + 50 >= (r.paging?.total ?? 0)) break;
     }
   }
-  const pedidos: PedidoMarketplace[] = [];
-  for (const p of brutos) {
+  // Envio e custo de cada pedido, de 5 pedidos em 5. Falha num deles segue como antes: sem
+  // envio/custo (null), sem derrubar os outros.
+  const extras = await mapComLimite(brutos, EM_PARALELO_ML, async (p) => {
     const envioId = p.shipping?.id;
-    const envio = envioId ? ((await chamar(tokenAcesso, `/shipments/${envioId}`).catch(() => null)) as EnvioML | null) : null;
-    const custos = envioId ? ((await chamar(tokenAcesso, `/shipments/${envioId}/costs`).catch(() => null)) as { senders?: { cost?: number }[] } | null) : null;
-    pedidos.push(pedidoDoML(p, envio, custos?.senders?.[0]?.cost ?? 0));
-  }
-  return pedidos;
+    if (!envioId) return { envio: null, custos: null };
+    const envio = (await chamar(tokenAcesso, `/shipments/${envioId}`).catch(() => null)) as EnvioML | null;
+    const custos = (await chamar(tokenAcesso, `/shipments/${envioId}/costs`).catch(() => null)) as { senders?: { cost?: number }[] } | null;
+    return { envio, custos };
+  });
+  return brutos.map((p, i) => {
+    const r = extras[i];
+    const { envio, custos } = r.status === "fulfilled" ? r.value : { envio: null, custos: null };
+    return pedidoDoML(p, envio, custos?.senders?.[0]?.cost ?? 0);
+  });
 }
 
 /** Envio (shipment) de cada pedido, para a etiqueta. */

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar, movimentacaoEstoqueSchema, entradaEstoqueComCustoSchema, movimentacaoArmazemSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
+import { produtosDoEstoque, saldosDoEstoque } from "./consulta";
 
 /** Kit (0058) não tem estoque próprio: a movimentação manual é nos componentes. */
 async function recusarKit(supabase: Awaited<ReturnType<typeof createClient>>, produtoId: string) {
@@ -109,5 +110,26 @@ export async function movimentarEstoqueArmazem(dados: {
     revalidatePath("/produtos");
     revalidatePath("/dashboard");
     if (v.tipo === "entrada") revalidatePath("/precificacao");
+  });
+}
+
+/**
+ * O modal de movimentação escolhe entre TODOS os produtos e confere o saldo de cada
+ * armazém; a tela agora só traz uma página. Lido quando o modal abre — e assim o saldo
+ * conferido é o de agora, não o de quando a página carregou.
+ */
+export async function dadosMovimentacao() {
+  return comResultado(async () => {
+    const supabase = await createClient();
+    const grupos = await supabase.from("produto_grupos").select("id, nome");
+    if (grupos.error) lancarErroSupabase(grupos.error);
+    const produtos = await produtosDoEstoque(supabase, grupos.data ?? []);
+    if (produtos.error) lancarErroSupabase(produtos.error);
+    const { saldos, porArmazem } = await saldosDoEstoque(supabase, produtos.data);
+    return {
+      produtos: produtos.data.map((p) => ({ id: p.id, sku: p.sku, nome: p.nome, custo: p.custo, estoque: p.estoque, estoque_minimo: p.estoque_minimo, armazem_id: p.armazem_id, ativo: p.ativo })),
+      saldos,
+      porArmazem,
+    };
   });
 }

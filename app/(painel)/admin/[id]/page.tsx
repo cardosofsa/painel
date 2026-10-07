@@ -6,6 +6,8 @@ import type { LinhaHistorico } from "../HistoricoAdmin";
 import { ContaDetalheClient, type UsoIa } from "./ContaDetalheClient";
 import { PlanoContaCard, type AssinaturaConta } from "@/components/admin/PlanoContaCard";
 import type { Plano } from "@/lib/planos";
+import { OrigemContaCard } from "@/components/admin/OrigemContaCard";
+import { lerOrigemConta } from "@/lib/indicacao";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Conta do cliente" };
@@ -24,7 +26,7 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
 
   // `admin_listar_contas()` já é o conjunto pequeno de contas do sistema — não vale a pena
   // uma RPC dedicada só para buscar uma linha dele.
-  const [contasRes, atividadeRes, historicoRes, cotaRes, planosRes, assinaturaRes] = await Promise.all([
+  const [contasRes, atividadeRes, historicoRes, cotaRes, planosRes, assinaturaRes, origemRes] = await Promise.all([
     supabase.rpc("admin_listar_contas"),
     supabase.rpc("admin_atividade_conta", { p_user_id: id, p_dias: 90 }),
     supabase
@@ -39,7 +41,11 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
     // Plano (0057). Sem a migração, o card não aparece.
     supabase.from("planos").select("*").order("ordem"),
     supabase.from("assinaturas").select("*").eq("user_id", id).maybeSingle(),
+    // Origem do cadastro (0078). Sem a migração a RPC não existe e o card não aparece.
+    supabase.rpc("admin_origem_conta", { p_user: id }),
   ]);
+
+  const origem = origemRes.error ? null : lerOrigemConta(origemRes.data);
 
   if (contasRes.error) lancarErroSupabase(contasRes.error);
 
@@ -63,6 +69,7 @@ export default async function ContaDetalhePage({ params }: { params: Promise<{ i
       {conta.papel !== "master" && !planosRes.error && (
         <PlanoContaCard userId={id} planos={(planosRes.data ?? []) as Plano[]} assinatura={(assinaturaRes.data as AssinaturaConta | null) ?? null} />
       )}
+      {conta.papel !== "master" && origem && <OrigemContaCard origem={origem} />}
     </>
   );
 }

@@ -17,6 +17,7 @@
  * existe mais `thinkingBudget: 0`.
  */
 
+import "server-only";
 import { ErroIA } from "./erro";
 import { requisitarJson } from "./http";
 

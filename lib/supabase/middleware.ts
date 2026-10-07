@@ -3,16 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { contaLiberada, podeAcessarRota, rotaEhLivre, type StatusConta } from "@/lib/acesso";
 import { assinarAcesso, CABECALHO_ACESSO, COOKIE_ACESSO, lerAcesso, segredoAcesso, VALIDADE_ACESSO_MS } from "@/lib/acesso-cookie";
 import { COOKIE_OPERADOR, lerOperador, operadorPodeRota, telaInicialOperador } from "@/lib/operador-cookie";
-
-/**
- * Casa o caminho exato ou um filho dele (`/vitrine` e `/vitrine/abc`, nunca
- * `/vitrine-admin`). Era `startsWith` cru, que liberaria sem sessão qualquer rota nova
- * cujo nome apenas começasse igual — hoje não existe nenhuma, e o objetivo é que continue
- * não existindo por construção, não por sorte.
- */
-function ehOuComeca(pathname: string, bases: string[]): boolean {
-  return bases.some((base) => pathname === base || pathname.startsWith(`${base}/`));
-}
+import { ROTA_MFA, destinoSeguro, ehOuComeca, precisaSegundoFator, rotaDeEntrada, rotaDeMfa, rotaExigeSegundoFator, rotaPublica } from "@/lib/rotas-auth";
 
 export async function updateSession(request: NextRequest, csp: { nonce: string; politica: string }) {
   /**
@@ -72,10 +63,15 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
    * rotação ligada, já foi invalidado. O sintoma é logout aleatório ou loop
    * /dashboard → /login, intermitente e difícil de reproduzir.
    */
-  function redirecionarPara(destino: string) {
+  function redirecionarPara(destino: string, busca: Record<string, string> = {}) {
     const url = request.nextUrl.clone();
-    url.pathname = destino;
-    url.search = "";
+    // `destino` pode trazer a própria busca (o `next` de /auth/mfa, já saneado).
+    const interrogacao = destino.indexOf("?");
+    url.pathname = interrogacao === -1 ? destino : destino.slice(0, interrogacao);
+    const parametros = new URLSearchParams(interrogacao === -1 ? "" : destino.slice(interrogacao + 1));
+    for (const [chave, valor] of Object.entries(busca)) parametros.set(chave, valor);
+    const texto = parametros.toString();
+    url.search = texto ? `?${texto}` : "";
     const resposta = NextResponse.redirect(url);
     for (const cookie of supabaseResponse.cookies.getAll()) {
       resposta.cookies.set(cookie);
@@ -83,57 +79,46 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
     return resposta;
   }
 
+  /**
+   * A conta tem fator verificado e esta sessão ainda não passou por ele?
+   *
+   * O `aal` vem do JWT que o `getClaims()` acabou de validar: `aal2` encerra a conversa sem
+   * custo nenhum. Fora isso, `getAuthenticatorAssuranceLevel()` SEM argumento lê a sessão do
+   * cookie e não vai à rede (com um jwt ele chamaria `getUser`, uma ida ao Auth por
+   * navegação) — confirmado em `@supabase/auth-js`, `_getAuthenticatorAssuranceLevel`.
+   *
+   * Para saber se há fator ele lê `session.user.factors`, e no servidor o auth-js avisa no
+   * console a cada leitura do `user` que veio do cookie: seria um aviso por navegação, em
+   * toda conta. Aqui o aviso não se aplica — a lista só decide para onde mandar, não libera
+   * dado nenhum —, daí o `suppressGetSessionWarning`. O campo é interno: se sumir numa versão
+   * nova, volta só o aviso no log, a decisão continua a mesma.
+   */
+  async function segundoFatorPendente(): Promise<boolean> {
+    if (claims?.aal === "aal2") return false;
+    (supabase.auth as unknown as { suppressGetSessionWarning?: boolean }).suppressGetSessionWarning = true;
+    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (error || !data) return false;
+    return precisaSegundoFator({ atual: claims?.aal ?? data.currentLevel, proximo: data.nextLevel });
+  }
+
   const { pathname } = request.nextUrl;
 
   /**
-   * `/recuperar` e `/auth/reset` precisam ser públicas por um motivo que só aparece com
-   * conta de outra pessoa: sem isso, o bloco `user && !isPublicRoute` lá embaixo consulta
-   * `perfis_acesso` e manda quem está `pendente`, `suspenso` ou vencido para `/aguardando`
-   * — ou seja, a conta suspensa NUNCA conseguiria trocar a senha, que é justamente o caso
-   * em que trocar mais importa. Testar só com a conta master esconde isso, porque para
-   * conta ativa a página abre normalmente.
+   * A lista mora em `lib/rotas-auth.ts` (testada em `rotas-auth.test.ts`). `/recuperar` e
+   * `/auth/reset` precisam ser públicas por um motivo que só aparece com conta de outra
+   * pessoa: sem isso, o bloco `user && !isPublicRoute` lá embaixo consulta `perfis_acesso` e
+   * manda quem está `pendente`, `suspenso` ou vencido para `/aguardando` — ou seja, a conta
+   * suspensa NUNCA conseguiria trocar a senha, que é justamente o caso em que trocar mais
+   * importa. Testar só com a conta master esconde isso, porque para conta ativa a página
+   * abre normalmente.
+   *
+   * E elas NÃO são `isAuthEntryRoute` (só login e cadastro): em `/auth/reset` o usuário já
+   * tem sessão — criada pelo próprio link de recuperação —, e a regra
+   * `user && isAuthEntryRoute → /dashboard` expulsaria exatamente quem precisa da tela.
    */
-  // A página inicial é pública: o Google exige que ela explique a finalidade do app. Quem já
-  // tem sessão é mandado para /dashboard pela própria página.
-  const isPublicRoute = pathname === "/" || ehOuComeca(pathname, [
-    "/login",
-    "/signup",
-    "/recuperar",
-    "/auth/callback",
-    "/auth/reset",
-    "/vitrine",
-    // Exigidas pelo Google (e pela LGPD) para publicar o login: precisam abrir sem sessão.
-    "/privacidade",
-    "/termos",
-    // Quem faz o pedido é o cliente final, que nunca teve login. Sem esta linha o POST
-    // viraria um redirect para /login e o carrinho nunca enviaria.
-    "/api/vitrine",
-    // O navegador reporta violação de CSP sem sessão. Sem esta linha o relatório viraria
-    // um redirect para /login e a violação nunca chegaria ao log.
-    "/api/csp-report",
-    // Instalar o app no celular: o navegador busca o manifesto sem sessão.
-    "/manifest.webmanifest",
-    // Service worker do PDV sem internet (11.4): o navegador busca sem sessão.
-    "/sw.js",
-    // Cron da Vercel (sem sessão): a rota exige o CRON_SECRET no cabeçalho.
-    "/api/cron",
-    // Notificações do Mercado Livre (sem sessão): a rota relê o pedido na API, não confia no corpo.
-    "/api/mercadolivre/notificacoes",
-    // Webhook do provedor de cobrança (10.9): valida a assinatura do evento; sem provedor, 404.
-    "/api/cobranca/webhook",
-    // Buscadores e prévias de link (WhatsApp, redes) leem estes sem sessão.
-    "/robots.txt",
-    "/sitemap.xml",
-    "/opengraph-image",
-  ]);
-
-  /**
-   * Só login e cadastro. `/auth/reset` NÃO pode entrar aqui: nesse ponto o usuário já tem
-   * sessão — criada pelo próprio link de recuperação —, então a regra
-   * `user && isAuthEntryRoute → /dashboard` expulsaria exatamente quem precisa da tela,
-   * tornando a redefinição de senha inalcançável por construção.
-   */
-  const isAuthEntryRoute = ehOuComeca(pathname, ["/login", "/signup"]);
+  const isPublicRoute = rotaPublica(pathname);
+  const isAuthEntryRoute = rotaDeEntrada(pathname);
+  const naTelaMfa = rotaDeMfa(pathname);
 
   if (!user && !isPublicRoute) {
     return redirecionarPara("/login");
@@ -141,6 +126,30 @@ export async function updateSession(request: NextRequest, csp: { nonce: string; 
 
   if (user && isAuthEntryRoute) {
     return redirecionarPara("/dashboard");
+  }
+
+  /**
+   * Verificação em duas etapas (MFA TOTP). Quem cadastrou o app autenticador e entrou só com
+   * a senha (ou com o Google) tem sessão `aal1`: vai para `/auth/mfa` antes de qualquer tela
+   * do painel — e antes do controle de acesso por conta, para a conta pendente com MFA não
+   * ficar em laço entre `/aguardando` e o código.
+   *
+   * Isto é roteamento, não a trava: a lista de fatores vem do cookie da sessão, que o próprio
+   * dono do navegador consegue editar. O que segura de verdade é a GoTrue (troca de senha e
+   * de fator exigem aal2) e, para os dados, uma policy no banco que confira o `aal` do JWT
+   * (ver `docs/seguranca-login.md`).
+   */
+  if (user && (rotaExigeSegundoFator(pathname) || naTelaMfa)) {
+    const pendente = await segundoFatorPendente();
+    if (pendente && !naTelaMfa) {
+      return redirecionarPara(ROTA_MFA, { next: `${pathname}${request.nextUrl.search}` });
+    }
+    // Já verificou (ou não tem fator): a tela do código não tem o que fazer, segue viagem.
+    if (!pendente && naTelaMfa) {
+      return redirecionarPara(destinoSeguro(request.nextUrl.searchParams.get("next")));
+    }
+    // A tela do código não passa pelo controle de acesso abaixo (ver `ROTA_MFA`).
+    if (naTelaMfa) return supabaseResponse;
   }
 
   /**

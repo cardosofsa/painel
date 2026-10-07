@@ -1,7 +1,7 @@
 "use client";
 
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { COR_SERIE, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, TICK_EIXO, formatarMoedaTooltip } from "./tema";
+import { ALTURA_GRAFICO, COR_SERIE, ESTILO_TOOLTIP, ESTILO_ROTULO_TOOLTIP, TICK_EIXO, formatarMoedaTooltip } from "./tema";
 
 export function PriceHistoryChart({ data }: { data: { data: string; preco: number }[] }) {
   const pontos = [...data]
@@ -11,7 +11,7 @@ export function PriceHistoryChart({ data }: { data: { data: string; preco: numbe
   if (pontos.length < 2) return null;
 
   return (
-    <ResponsiveContainer width="100%" height={140}>
+    <ResponsiveContainer width="100%" height={ALTURA_GRAFICO.historicoPreco}>
       <LineChart data={pontos} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--grafico-grade)" vertical={false} />
         <XAxis dataKey="dataLabel" tick={TICK_EIXO} axisLine={false} tickLine={false} />

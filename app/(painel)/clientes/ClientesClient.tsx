@@ -12,7 +12,10 @@ import { Modal, FormField, inputClass, campoBase } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Paginacao } from "@/components/ui/Paginacao";
 import { formatBRL } from "@/lib/format";
+import { useListaNaUrl } from "@/lib/hooks/useListaNaUrl";
+import type { FiltroClientes } from "@/lib/listas";
 import {
   criarCliente,
   atualizarCliente,
@@ -55,7 +58,30 @@ const FORM_VAZIO: ClienteInput = {
   status: "ativo",
 };
 
-export function ClientesClient({ clientes, buscaInicial = "" }: { clientes: Cliente[]; buscaInicial?: string }) {
+/** O cadastro de quem uma linha parece ser duplicada — pode estar em outra página. */
+export interface ClienteOriginal {
+  id: string;
+  nome: string;
+  whatsapp: string | null;
+}
+
+export function ClientesClient({
+  clientes,
+  filtro,
+  total,
+  resumo,
+  originais,
+}: {
+  /** Só a página atual. */
+  clientes: Cliente[];
+  /** Busca, filtro e página que o servidor usou (vêm da URL). */
+  filtro: FiltroClientes;
+  /** Quantos clientes passam na busca (todas as páginas). */
+  total: number;
+  /** Totais da conta inteira, para os cards. */
+  resumo: { total: number; comFiado: number; duplicados: number; totalComprado: number };
+  originais: Record<string, ClienteOriginal>;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -64,23 +90,16 @@ export function ClientesClient({ clientes, buscaInicial = "" }: { clientes: Clie
   const [form, setForm] = useState<ClienteInput>(FORM_VAZIO);
   const [formOriginal, setFormOriginal] = useState<ClienteInput>(FORM_VAZIO);
   const [opcionaisAbertos, setOpcionaisAbertos] = useState(false);
-  const [busca, setBusca] = useState(buscaInicial);
+  const lista = useListaNaUrl(filtro);
+  const busca = filtro.q;
   const sujo = useFormularioSujo(form, formOriginal);
 
-  const filtrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-    if (!termo) return clientes;
-    return clientes.filter(
-      (c) =>
-        c.nome.toLowerCase().includes(termo) ||
-        (c.whatsapp ?? "").toLowerCase().includes(termo) ||
-        (c.documento ?? "").toLowerCase().includes(termo),
-    );
-  }, [clientes, busca]);
+  // Busca já veio aplicada pelo servidor (nome, WhatsApp, e-mail ou documento).
+  const filtrados = clientes;
 
-  const comFiado = clientes.filter((c) => c.permite_fiado).length;
-  const porId = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
-  const duplicados = clientes.filter((c) => c.possivel_duplicado_de && porId.has(c.possivel_duplicado_de)).length;
+  const comFiado = resumo.comFiado;
+  const porId = useMemo(() => new Map(Object.entries(originais)), [originais]);
+  const duplicados = resumo.duplicados;
 
   async function juntar(c: Cliente) {
     const original = c.possivel_duplicado_de ? porId.get(c.possivel_duplicado_de) : null;
@@ -101,7 +120,7 @@ export function ClientesClient({ clientes, buscaInicial = "" }: { clientes: Clie
       await executarComToast(ignorarDuplicado(c.id), { sucesso: "Ok, são pessoas diferentes", erro: "Erro ao atualizar" });
     });
   }
-  const totalComprado = clientes.reduce((acc, c) => acc + c.total_comprado, 0);
+  const totalComprado = resumo.totalComprado;
 
   function abrirNovo() {
     setEditando(null);
@@ -184,7 +203,7 @@ export function ClientesClient({ clientes, buscaInicial = "" }: { clientes: Clie
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
         <Card>
           <CardEyebrow>Clientes Cadastrados</CardEyebrow>
-          <HeroMetric value={String(clientes.length)} caption={`${comFiado} com crediário liberado`} />
+          <HeroMetric value={String(resumo.total)} caption={`${comFiado} com crediário liberado`} />
         </Card>
         <Card>
           <CardEyebrow>Total Comprado</CardEyebrow>
@@ -192,37 +211,41 @@ export function ClientesClient({ clientes, buscaInicial = "" }: { clientes: Clie
         </Card>
         <Card>
           <CardEyebrow>Ticket Médio por Cliente</CardEyebrow>
-          <HeroMetric value={formatBRL(clientes.length > 0 ? totalComprado / clientes.length : 0)} />
+          <HeroMetric value={formatBRL(resumo.total > 0 ? totalComprado / resumo.total : 0)} />
         </Card>
       </div>
 
-      {duplicados > 0 && (
+      {(duplicados > 0 || filtro.dup) && (
         <p className="text-sm text-text-secondary border border-negative/30 bg-negative-soft rounded-md px-3 py-2 mb-4">
-          {duplicados} cadastro(s) parecem repetidos (mesmo nome, contato diferente). Confira na lista e escolha Juntar ou Não é.
+          {duplicados} cadastro(s) parecem repetidos (mesmo nome, contato diferente). Confira na lista e escolha Juntar ou Não é.{" "}
+          <button type="button" className="text-accent hover:underline" onClick={() => lista.navegar({ dup: filtro.dup ? null : "1" })}>
+            {filtro.dup ? "Mostrar todos" : "Mostrar só esses"}
+          </button>
         </p>
       )}
 
       <div className="mb-4">
         <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome, WhatsApp ou documento…"
+          value={lista.texto}
+          onChange={(e) => lista.setTexto(e.target.value)}
+          placeholder="Buscar por nome, WhatsApp, e-mail ou documento…"
+          aria-label="Buscar clientes"
           className={`${campoBase} w-full sm:w-80`}
         />
       </div>
 
-      <Card padding="nenhum" className="overflow-hidden">
+      <Card padding="nenhum" className={`overflow-hidden transition-opacity ${lista.pendente ? "opacity-60" : ""}`}>
         {filtrados.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={busca ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}
+            title={busca || filtro.dup ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}
             description={
-              busca
+              busca || filtro.dup
                 ? "Tente outro termo de busca."
                 : "Cadastre seus clientes para registrar vendas no nome deles, liberar crediário e acompanhar o histórico de compras."
             }
             action={
-              busca ? undefined : (
+              busca || filtro.dup ? undefined : (
                 <Button variant="primary" onClick={abrirNovo}>
                   + Cadastrar Cliente
                 </Button>
@@ -298,6 +321,7 @@ export function ClientesClient({ clientes, buscaInicial = "" }: { clientes: Clie
             </tbody>
           </Table>
         )}
+        <Paginacao pagina={filtro.pagina} total={total} onPagina={lista.irPara} carregando={lista.pendente} unidade="clientes" />
       </Card>
 
       <Modal

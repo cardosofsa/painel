@@ -9,7 +9,11 @@
  *   → download_shipping_document (um PDF com todas as etiquetas pedidas, até 50).
  */
 
+import { mapComLimite } from "@/lib/concorrencia";
 import { getLoja, postLoja, postLojaArquivo, type CredenciaisShopee } from "./shopee-api";
+
+/** Consultas de rastreio ao mesmo tempo, antes de pedir as etiquetas. */
+const RASTREIOS_EM_PARALELO = 5;
 
 export type ModoEnvio = "pickup" | "dropoff";
 
@@ -130,7 +134,13 @@ export async function baixarEtiquetas(
   );
   const tipo = (sn: string) => sugestao.get(sn) ?? "THERMAL_AIR_WAYBILL";
 
-  const comRastreio = await Promise.all(lista.map(async (p) => ({ ...p, rastreio: p.rastreio ?? (await rastreio(c, token, shopId, p.orderSn)) })));
+  // Rastreio que falta: um GET por pedido, de 5 em 5 (antes iam os 50 de uma vez, no limite
+  // de requisições da Shopee). Sem rastreio o pedido segue, como antes.
+  const rastreios = await mapComLimite(lista, RASTREIOS_EM_PARALELO, (p) => (p.rastreio ? Promise.resolve(p.rastreio) : rastreio(c, token, shopId, p.orderSn)));
+  const comRastreio = lista.map((p, i) => {
+    const r = rastreios[i];
+    return { ...p, rastreio: r.status === "fulfilled" ? r.value : p.rastreio };
+  });
   const criado = await postLoja(c, "/api/v2/logistics/create_shipping_document", token, shopId, {
     order_list: comRastreio.map((p) => ({ order_sn: p.orderSn, ...(p.rastreio ? { tracking_number: p.rastreio } : {}), shipping_document_type: tipo(p.orderSn) })),
   });

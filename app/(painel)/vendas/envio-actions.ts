@@ -10,6 +10,7 @@ import { plataformaDa } from "@/lib/marketplace/conexao-api";
 import { envioDoPedidoML, etiquetasML } from "@/lib/marketplace/mercadolivre-api";
 import { baixarEtiquetas, montarShipOrder, parametroEnvio, programarEnvio, rastreio, type ModoEnvio } from "@/lib/marketplace/shopee-envio";
 import { hojeIsoBrasil } from "@/lib/format";
+import { mapComLimite } from "@/lib/concorrencia";
 
 /**
  * Envio da Shopee pelo Sertão (Fase 10.5): programar envio e imprimir etiquetas, um ou em
@@ -19,6 +20,8 @@ import { hojeIsoBrasil } from "@/lib/format";
  */
 
 const idsSchema = z.array(z.string().uuid()).min(1).max(50);
+/** Pedidos tratados ao mesmo tempo nas chamadas à API (limite de requisições das plataformas). */
+const PEDIDOS_EM_PARALELO = 5;
 
 interface PedidoEnvio {
   id: string;
@@ -87,21 +90,27 @@ export async function programarEnvioShopee(ids: string[], modo: ModoEnvio) {
       }
       const { c, token, shopId } = await tokenDaConexao(supabase, g.conexao);
       const envios: Record<string, unknown>[] = [];
-      for (const p of g.pedidos) {
-        try {
-          const corpo = montarShipOrder(p.numero, await parametroEnvio(c, token, shopId, p.numero), preferencia, remetente);
-          if (!corpo.ok) throw new Error(corpo.erro);
-          await programarEnvio(c, token, shopId, corpo.corpo);
-          const codigo = await rastreio(c, token, shopId, p.numero);
-          envios.push({ id: p.id, programado: true, erro: null, ...(codigo ? { rastreio: codigo } : {}) });
-          resumos.push(corpo.resumo);
+      // As 3 chamadas de cada pedido seguem em série; os pedidos vão de 5 em 5. A falha de
+      // um pedido continua sendo só dele (vira falha na lista), na ordem da seleção.
+      const resultados = await mapComLimite(g.pedidos, PEDIDOS_EM_PARALELO, async (p) => {
+        const corpo = montarShipOrder(p.numero, await parametroEnvio(c, token, shopId, p.numero), preferencia, remetente);
+        if (!corpo.ok) throw new Error(corpo.erro);
+        await programarEnvio(c, token, shopId, corpo.corpo);
+        const codigo = await rastreio(c, token, shopId, p.numero);
+        return { codigo, resumo: corpo.resumo };
+      });
+      g.pedidos.forEach((p, i) => {
+        const r = resultados[i];
+        if (r.status === "fulfilled") {
+          envios.push({ id: p.id, programado: true, erro: null, ...(r.value.codigo ? { rastreio: r.value.codigo } : {}) });
+          resumos.push(r.value.resumo);
           programados++;
-        } catch (e) {
-          const erro = (e instanceof Error ? e.message : "Erro ao programar").replace(/^Shopee: /, "");
+        } else {
+          const erro = (r.reason instanceof Error ? r.reason.message : "Erro ao programar").replace(/^Shopee: /, "");
           envios.push({ id: p.id, erro });
           falhas.push({ numero: p.numero, erro });
         }
-      }
+      });
       await registrar(supabase, envios);
       // Traz o PROCESSED da Shopee na hora (baixa do estoque e etapa Para Imprimir).
       if (programados) await sincronizarConexao(supabase, g.conexao, "dono").catch(() => null);
@@ -128,11 +137,13 @@ export async function etiquetasShopee(ids: string[]) {
         // Mercado Livre: etiqueta por envio (shipment), todas num PDF.
         const { token } = await tokenML(supabase, g.conexao);
         const envios: { pedido: PedidoEnvio; envio: number }[] = [];
-        for (const p of g.pedidos) {
-          const envio = await envioDoPedidoML(token, p.numero).catch(() => null);
+        const lidos = await mapComLimite(g.pedidos, PEDIDOS_EM_PARALELO, (p) => envioDoPedidoML(token, p.numero));
+        g.pedidos.forEach((p, i) => {
+          const r = lidos[i];
+          const envio = r.status === "fulfilled" ? r.value : null;
           if (envio) envios.push({ pedido: p, envio });
           else falhas.push({ numero: p.numero, erro: "Pedido sem envio pelo Mercado Envios (envio próprio)." });
-        }
+        });
         if (!envios.length) continue;
         try {
           const pdf = await etiquetasML(token, [...new Set(envios.map((e) => e.envio))]);

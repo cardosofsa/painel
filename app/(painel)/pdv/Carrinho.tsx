@@ -41,7 +41,12 @@ export function Carrinho({
   onLimpar,
   onFinalizar,
   freteConectado = false,
+  descontoAberto,
+  onDescontoAberto,
 }: {
+  /** Desconto aberto controlado de fora (atalho F8). Sem isso, o estado é local. */
+  descontoAberto?: boolean;
+  onDescontoAberto?: (aberto: boolean) => void;
   /** Melhor Envio conectado (0055): mostra "Cotar" na entrega. */
   freteConectado?: boolean;
   estado: EstadoCarrinho;
@@ -53,7 +58,13 @@ export function Carrinho({
   onLimpar: () => void;
   onFinalizar: () => void;
 }) {
-  const [mostrarDesconto, setMostrarDesconto] = useState(false);
+  const [descontoLocal, setDescontoLocal] = useState(false);
+  const mostrarDesconto = descontoAberto ?? descontoLocal;
+  const setMostrarDesconto = (f: (v: boolean) => boolean) => {
+    const novo = f(mostrarDesconto);
+    if (onDescontoAberto) onDescontoAberto(novo);
+    else setDescontoLocal(novo);
+  };
   const [mostrarEntrega, setMostrarEntrega] = useState(false);
   const [mostrarObservacao, setMostrarObservacao] = useState(false);
 
@@ -189,7 +200,7 @@ export function Carrinho({
 
       <div className="border-t border-border pt-3 mt-1 space-y-3">
         <div className="flex flex-wrap gap-1.5">
-          <Chip onClick={() => setMostrarDesconto((v) => !v)} ativo={desconto > 0}>
+          <Chip onClick={() => setMostrarDesconto((v) => !v)} ativo={desconto > 0} titulo="Desconto (F8)">
             {desconto > 0 ? `Desconto: ${formatBRL(desconto)}` : "Dar desconto"}
           </Chip>
           <Chip onClick={() => setMostrarEntrega((v) => !v)} ativo={estado.valorEntrega > 0}>
@@ -229,6 +240,8 @@ export function Carrinho({
               value={estado.descontoEntrada || ""}
               onChange={(e) => onEstado({ descontoEntrada: Number(e.target.value) || 0 })}
               placeholder="0,00"
+              data-pdv-desconto=""
+              aria-label="Valor do desconto"
               className="flex-1 h-8 px-2 bg-surface-1 border border-border rounded-md text-sm text-right font-mono text-text-primary outline-none focus:border-accent"
             />
           </div>
@@ -279,7 +292,7 @@ export function Carrinho({
           </div>
         </div>
 
-        <Button variant="primary" className="w-full h-11 text-base" onClick={onFinalizar}>
+        <Button variant="primary" className="w-full h-11 text-base" onClick={onFinalizar} title="Cobrar (F4)" aria-keyshortcuts="F4">
           Finalizar Venda
         </Button>
       </div>

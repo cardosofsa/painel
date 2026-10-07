@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ContaCard } from "./ContaCard";
+import { DuasEtapasCard } from "@/components/configuracoes/DuasEtapasCard";
 import { PlanosEditor } from "@/components/admin/PlanosEditor";
 import type { Plano } from "@/lib/planos";
 
@@ -14,7 +15,11 @@ export function MasterConfiguracoesClient({ email, planos }: { email: string; pl
     <>
       <PageHeader eyebrow="Conta master" title="Minha Conta" />
       <div className="grid gap-4 lg:grid-cols-[28rem_minmax(0,1fr)] items-start">
-        <ContaCard email={email} />
+        {/* Conta master é a que mais precisa do segundo fator: ela libera e suspende as outras. */}
+        <div className="grid gap-4">
+          <ContaCard email={email} />
+          <DuasEtapasCard />
+        </div>
         <PlanosEditor planos={planos} />
       </div>
     </>

@@ -29,6 +29,8 @@ interface LinhaCpr {
   /** 0018 / 0067: dono da conta avulsa ou da dívida antiga. */
   cliente_id?: string | null;
   fornecedor_id?: string | null;
+  /** Nome do cliente (FK da 0018), embutido na mesma consulta. */
+  clientes?: { nome: string } | null;
 }
 
 interface PagamentoBruto {
@@ -113,7 +115,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     supabase
       .from("contas_a_pagar_receber")
       // `*`: valor_pago, data_pagamento e parcela só existem a partir da 0064.
-      .select("*, vendas(numero, total_parcelas_fiado), pedidos_compra(numero, fornecedores(nome))")
+      .select("*, vendas(numero, total_parcelas_fiado), pedidos_compra(numero, fornecedores(nome)), clientes(nome)")
       .order("data_vencimento"),
     supabase
       .from("movimentacoes_financeiras")
@@ -155,7 +157,10 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .limit(1000),
     // Para "Lançar dívida antiga" (0067) e para dar nome a conta ligada direto a eles.
     supabase.from("fornecedores").select("id, nome").order("nome"),
-    supabase.from("clientes").select("id, nome").order("nome"),
+    // Só o seletor da dívida antiga usa esta lista — e só cliente ativo, como no PDV. O
+    // nome do cliente de cada conta vem embutido na própria consulta de contas acima, então
+    // não é mais preciso trazer a tabela de clientes inteira.
+    supabase.from("clientes").select("id, nome").eq("status", "ativo").order("nome"),
   ]);
   const fornecedores = (fornecedoresRes.data ?? []) as { id: string; nome: string }[];
   const clientes = (clientesRes.data ?? []) as { id: string; nome: string }[];
@@ -247,7 +252,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     pedido_numero: c.pedidos_compra?.numero ?? null,
     fornecedor_nome: c.pedidos_compra?.fornecedores?.nome ?? (c.fornecedor_id ? (nomeFornecedor.get(c.fornecedor_id) ?? null) : null),
     cliente_id: c.cliente_id ?? null,
-    cliente_nome: c.cliente_id ? (nomeCliente.get(c.cliente_id) ?? null) : null,
+    cliente_nome: c.clientes?.nome ?? (c.cliente_id ? (nomeCliente.get(c.cliente_id) ?? null) : null),
   }));
 
   // Histórico: pagamentos a fornecedores/contas (0064) + recebimentos de crediário.

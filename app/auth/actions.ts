@@ -3,7 +3,8 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { traduzirErroAuth } from "@/lib/erros";
-import { validar, recuperacaoSchema, novaSenhaSchema } from "@/lib/validacao";
+import { validar, recuperacaoSchema, novaSenhaSchema, captchaTokenSchema } from "@/lib/validacao";
+import { opcoesCaptcha } from "@/lib/captcha";
 
 /**
  * Monta a URL absoluta de destino dos links de e-mail. Em produção vem de
@@ -33,16 +34,22 @@ export interface ResultadoAuth {
  *
  * A única exceção é o limite de envio: ele não revela nada sobre a existência da conta, e
  * sem essa mensagem o usuário clica três vezes e não entende por que nenhum e-mail chega.
+ * O captcha recusado também volta (não diz nada sobre a conta e, calado, viraria um "enviado"
+ * que nunca chega).
+ *
+ * `captchaToken`: do widget do Turnstile, só quando `NEXT_PUBLIC_TURNSTILE_SITE_KEY` existe.
  */
-export async function solicitarRecuperacaoSenha(email: string): Promise<ResultadoAuth> {
+export async function solicitarRecuperacaoSenha(email: string, captchaToken?: string): Promise<ResultadoAuth> {
   const dados = validar(recuperacaoSchema, { email });
+  const token = validar(captchaTokenSchema, captchaToken);
   const supabase = await createClient();
 
   const { error } = await supabase.auth.resetPasswordForEmail(dados.email, {
     redirectTo: `${await origemDoApp()}/auth/callback?type=recovery`,
+    ...opcoesCaptcha(token),
   });
 
-  if (error?.code === "over_email_send_rate_limit" || error?.status === 429) {
+  if (error?.code === "over_email_send_rate_limit" || error?.status === 429 || error?.code === "captcha_failed") {
     return { ok: false, mensagem: traduzirErroAuth(error) };
   }
   if (error) {
@@ -57,17 +64,18 @@ export async function solicitarRecuperacaoSenha(email: string): Promise<Resultad
 }
 
 /** Reenvia a confirmação de cadastro para quem perdeu o primeiro e-mail. */
-export async function reenviarConfirmacao(email: string): Promise<ResultadoAuth> {
+export async function reenviarConfirmacao(email: string, captchaToken?: string): Promise<ResultadoAuth> {
   const dados = validar(recuperacaoSchema, { email });
+  const token = validar(captchaTokenSchema, captchaToken);
   const supabase = await createClient();
 
   const { error } = await supabase.auth.resend({
     type: "signup",
     email: dados.email,
-    options: { emailRedirectTo: `${await origemDoApp()}/auth/callback?type=signup` },
+    options: { emailRedirectTo: `${await origemDoApp()}/auth/callback?type=signup`, ...opcoesCaptcha(token) },
   });
 
-  if (error?.code === "over_email_send_rate_limit" || error?.status === 429) {
+  if (error?.code === "over_email_send_rate_limit" || error?.status === 429 || error?.code === "captcha_failed") {
     return { ok: false, mensagem: traduzirErroAuth(error) };
   }
   if (error) console.error("[auth] resend", error.code, error.message);

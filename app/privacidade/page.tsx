@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { PaginaLegal } from "@/components/legal/PaginaLegal";
 import { RESPONSAVEL } from "@/lib/legal";
+import { captchaAtivo } from "@/lib/captcha";
+import { videoDemoAtivo } from "@/lib/landing";
 
 export const metadata: Metadata = { title: "Política de Privacidade" };
 
@@ -51,18 +53,51 @@ export default function PrivacidadePage() {
       </ul>
       <p>Não vendemos dados, não os compartilhamos para publicidade e não fazemos perfil comercial de ninguém.</p>
 
-      <h2>4. Com quem os dados passam</h2>
-      <p>Usamos prestadores para o sistema funcionar:</p>
+      <h2>4. Com quem os dados passam (subprocessadores)</h2>
+      <p>Usamos prestadores para o sistema funcionar. Cada um recebe só o necessário para a sua parte:</p>
       <ul>
-        <li>Supabase: banco de dados e autenticação.</li>
-        <li>Vercel: hospedagem do sistema.</li>
-        <li>Google: login com Google, quando você escolhe essa opção.</li>
         <li>
-          Provedor de IA (Google Gemini, OpenAI, Anthropic ou OpenRouter): só quando você pede uma geração. Enviamos os
-          dados do produto (nome, categoria, características, preço e custos), o texto que você digitar no pedido e, na
-          mensagem de cobrança, apenas valores e datas das parcelas. Nunca enviamos nome, telefone, e-mail ou endereço de
-          clientes e compradores.
+          <strong>Supabase:</strong> banco de dados, autenticação e armazenamento de arquivos (fotos de produtos e cópias
+          de segurança). É onde todos os dados da conta ficam guardados.
         </li>
+        <li>
+          <strong>Vercel:</strong> hospedagem do sistema e métricas de acesso e desempenho das páginas (Vercel Analytics e
+          Speed Insights), agregadas e sem cookies.
+        </li>
+        <li>
+          <strong>Google:</strong> login com Google, quando você escolhe essa opção.
+        </li>
+        <li>
+          <strong>Google Gemini</strong> (IA do sistema) ou, se você cadastrar a sua chave, OpenAI, Anthropic ou
+          OpenRouter: só quando você pede uma geração. Enviamos os dados do produto (nome, categoria, características,
+          preço e custos), o texto que você digitar no pedido e, na mensagem de cobrança, apenas valores e datas das
+          parcelas. Nunca enviamos nome, telefone, e-mail ou endereço de clientes e compradores.
+        </li>
+        <li>
+          <strong>Shopee</strong> e <strong>Mercado Livre:</strong> só se você conectar a sua loja. Trocamos com eles os
+          pedidos, anúncios, preços e estoque da sua própria conta no marketplace.
+        </li>
+        <li>
+          <strong>Melhor Envio:</strong> cotação de frete, quando você ou o comprador da vitrine pede (vão os CEPs de
+          origem e destino e as medidas e o valor do pacote), e geração de etiqueta, se você usar (vão também nome,
+          contato, documento e endereço do remetente e do destinatário, e os itens do pacote).
+        </li>
+        <li>
+          <strong>Focus NFe:</strong> emissão de nota fiscal, só se você ligar a integração. Vão os dados que a nota exige
+          (os do seu negócio, os do comprador e os itens vendidos).
+        </li>
+        {captchaAtivo() && (
+          <li>
+            <strong>Cloudflare Turnstile:</strong> verificação anti-robô no login e no cadastro, sem pedir que você
+            resolva desafios na maioria das vezes.
+          </li>
+        )}
+        {videoDemoAtivo() && (
+          <li>
+            <strong>YouTube</strong> (modo sem cookies): o vídeo de demonstração da página inicial, carregado só quando
+            você clica em assistir.
+          </li>
+        )}
         <li>ViaCEP: consulta de endereço a partir do CEP digitado, sem identificar a pessoa.</li>
       </ul>
       <p>
@@ -71,10 +106,21 @@ export default function PrivacidadePage() {
       </p>
 
       <h2>5. Por quanto tempo guardamos</h2>
-      <p>
-        Enquanto a conta existir. Ao excluir a conta, os dados dela são apagados, salvo o que a lei obrigue a manter. Cópias
-        de segurança do provedor de banco de dados podem levar algum tempo para desaparecer.
-      </p>
+      <ul>
+        <li>
+          <strong>Dados da conta e do negócio:</strong> enquanto a conta existir. Ao excluir a conta, os dados dela são
+          apagados, salvo o que a lei obrigue a manter.
+        </li>
+        <li>
+          <strong>Cópias de segurança:</strong> uma por semana, e guardamos só as 4 mais recentes (cerca de 4 semanas);
+          as mais antigas são apagadas sozinhas. As cópias internas do provedor de banco de dados seguem o prazo dele.
+        </li>
+        <li>
+          <strong>Registros de erro:</strong> guardamos só os mais recentes (até 4.000 do servidor e 1.000 do navegador);
+          os mais antigos são apagados automaticamente. Eles têm a mensagem do erro, a página, a conta logada e o IP
+          embaralhado (hash), nunca o IP em si.
+        </li>
+      </ul>
 
       <h2>6. Seus direitos</h2>
       <p>

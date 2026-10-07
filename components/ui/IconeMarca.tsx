@@ -1,39 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  siAliexpress,
-  siEbay,
-  siFacebook,
-  siInstagram,
-  siMercadopago,
-  siPinterest,
-  siPix,
-  siShopee,
-  siShopify,
-  siTelegram,
-  siTiktok,
-  siWhatsapp,
-  siX,
-  siYoutube,
-} from "simple-icons";
 import { MARCAS, marcaDoNome, type IdMarca } from "@/lib/marcas";
-
-/** Desenhos oficiais (simple-icons). Marca fora daqui vira selo com cor e sigla. */
-const DESENHOS: Partial<Record<IdMarca, { path: string }>> = {
-  shopee: siShopee,
-  tiktok: siTiktok,
-  aliexpress: siAliexpress,
-  shopify: siShopify,
-  ebay: siEbay,
-  instagram: siInstagram,
-  whatsapp: siWhatsapp,
-  facebook: siFacebook,
-  youtube: siYoutube,
-  pinterest: siPinterest,
-  telegram: siTelegram,
-  x: siX,
-  pix: siPix,
-  mercadopago: siMercadopago,
-};
+import { DESENHOS_MARCA } from "@/lib/marcas-desenhos";
 
 /**
  * Ícone de marca (marketplace, rede social, pagamento).
@@ -63,13 +30,13 @@ export function IconeMarca({
   const id = marca ?? marcaDoNome(nome);
   if (!id) return <>{fallback}</>;
   const m = MARCAS[id];
-  const desenho = DESENHOS[id];
+  const desenho = DESENHOS_MARCA[id];
 
   if (variante === "cor" && desenho) {
     return (
       <svg role="img" aria-label={m.nome} viewBox="0 0 24 24" width={tamanho} height={tamanho} className={`shrink-0 ${className}`} fill={cor ?? `#${m.cor}`}>
         <title>{m.nome}</title>
-        <path d={desenho.path} />
+        <path d={desenho} />
       </svg>
     );
   }
@@ -84,7 +51,7 @@ export function IconeMarca({
     >
       {desenho ? (
         <svg viewBox="0 0 24 24" width={Math.round(tamanho * 0.62)} height={Math.round(tamanho * 0.62)} fill={`#${m.corTexto}`} aria-hidden>
-          <path d={desenho.path} />
+          <path d={desenho} />
         </svg>
       ) : (
         m.sigla

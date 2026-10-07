@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ImageIcon, PackageSearch, Search } from "lucide-react";
+import { useMemo, useState, type RefObject } from "react";
+import { toast } from "sonner";
+import { Camera, ImageIcon, PackageSearch, Search } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBRL } from "@/lib/format";
 import { montarCards, rotuloProduto, type CardPdv, type ProdutoPdv } from "./tipos";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { Chip } from "@/components/ui/Chip";
+import { LeitorCamera, useLeitorCameraDisponivel } from "./LeitorCamera";
 
 /**
  * Grade de produtos do caixa. O markup do card segue o da vitrine
@@ -18,12 +20,24 @@ export function GradeProdutos({
   produtos,
   quantidadeNoCarrinho,
   onAdicionar,
+  busca,
+  onBusca,
+  buscaRef,
+  dica = null,
 }: {
+  /** Busca controlada pelo PdvClient (Esc limpa de fora, F2 foca). */
+  busca: string;
+  onBusca: (valor: string) => void;
+  buscaRef?: RefObject<HTMLInputElement | null>;
+  /** Legenda dos atalhos, só em tela larga. */
+  dica?: string | null;
   produtos: ProdutoPdv[];
   quantidadeNoCarrinho: (produtoId: string) => number;
   onAdicionar: (produto: ProdutoPdv) => void;
 }) {
-  const [busca, setBusca] = useState("");
+  const setBusca = onBusca;
+  const [cameraAberta, setCameraAberta] = useState(false);
+  const temCamera = useLeitorCameraDisponivel();
   const [categoria, setCategoria] = useState("Todas");
   const [grupoAberto, setGrupoAberto] = useState<CardPdv | null>(null);
 
@@ -64,6 +78,19 @@ export function GradeProdutos({
     setBusca("");
   }
 
+  /** Câmera: o mesmo que o leitor USB, mas só por código exato. */
+  function aoLerCamera(codigo: string) {
+    setCameraAberta(false);
+    const alvo = produtos.find((p) => p.codigo_barras && p.codigo_barras === codigo);
+    if (!alvo) {
+      setBusca(codigo);
+      toast.error(`Nenhum produto com o código ${codigo}.`);
+      return;
+    }
+    onAdicionar(alvo);
+    setBusca("");
+  }
+
   function aoClicarCard(card: CardPdv) {
     if (card.variantes.length === 1) {
       onAdicionar(card.variantes[0]);
@@ -78,14 +105,35 @@ export function GradeProdutos({
         <div className="relative flex-1 min-w-48">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
           <input
+            ref={buscaRef}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && busca) {
+                e.preventDefault();
+                setBusca("");
+              }
+            }}
             placeholder="Buscar por nome, SKU ou código de barras…"
+            aria-keyshortcuts="F2"
             autoFocus
             className="w-full h-9 pl-8 pr-3 bg-surface-1 border border-border rounded-md text-sm text-text-primary outline-none focus:border-accent"
           />
         </div>
+        {temCamera && (
+          <button
+            type="button"
+            onClick={() => setCameraAberta(true)}
+            className="h-9 w-9 shrink-0 rounded-md border border-border bg-surface-1 text-text-secondary hover:text-text-primary hover:border-accent flex items-center justify-center transition-colors"
+            aria-label="Ler código de barras pela câmera"
+            title="Ler código de barras pela câmera"
+          >
+            <Camera size={16} />
+          </button>
+        )}
       </form>
+      {dica && <p className="hidden lg:block -mt-1 mb-3 text-xs text-text-tertiary">{dica}</p>}
+      {cameraAberta && <LeitorCamera onLido={aoLerCamera} onFechar={() => setCameraAberta(false)} />}
 
       {categorias.length > 2 && (
         <div className="flex flex-wrap gap-2 mb-4">

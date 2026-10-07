@@ -376,6 +376,23 @@ export const novaSenhaSchema = z
     path: ["confirmacao"],
   });
 
+/**
+ * Código de 6 dígitos do app autenticador (MFA TOTP). O app mostra "123 456" e o celular cola
+ * com espaço: só os dígitos contam.
+ */
+const codigoMfa = z
+  .string()
+  .max(20)
+  .transform((s) => s.replace(/\D/g, ""))
+  .pipe(z.string().regex(/^\d{6}$/, "Digite os 6 números que aparecem no app autenticador."));
+
+export const codigoMfaSchema = z.object({ codigo: codigoMfa });
+
+export const confirmarMfaSchema = z.object({ fatorId: uuid, codigo: codigoMfa });
+
+/** Token do Turnstile (captcha). Opcional: sem a chave pública configurada, nem existe. */
+export const captchaTokenSchema = z.string().trim().max(4096).optional();
+
 export const fornecedorSchema = z.object({
   nome: textoCurto,
   cnpj: z.string().trim().max(32),
@@ -861,3 +878,16 @@ export const respostaAvaliacaoSchema = z.object({
   texto: z.string().trim().min(2, "Escreva a resposta").max(500, "A Shopee aceita até 500 caracteres"),
 });
 export type RespostaAvaliacaoInput = z.infer<typeof respostaAvaliacaoSchema>;
+
+// ---------- Listas paginadas: exportação sob demanda ----------
+/**
+ * A lista na tela é uma página; exportar busca a lista inteira na hora. `filtro` são os
+ * parâmetros da URL da tela — cada uma relê com os próprios leitores de `lib/listas.ts`,
+ * que descartam qualquer valor fora do esperado.
+ */
+export const exportarListaSchema = z.object({
+  escopo: z.enum(["todos", "filtrados", "selecionados"]),
+  filtro: z.record(z.string(), z.string().max(200)),
+  ids: z.array(uuid).max(5000, "Selecione no máximo 5.000 itens para exportar"),
+});
+export type ExportarListaInput = z.infer<typeof exportarListaSchema>;

@@ -2,6 +2,7 @@
 
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import {
+  ALTURA_GRAFICO,
   COR_SERIE,
   ESTILO_TOOLTIP,
   ESTILO_ROTULO_TOOLTIP,
@@ -19,7 +20,7 @@ import {
  */
 export function CategoryBarChart({ data }: { data: { categoria: string; valor: number }[] }) {
   return (
-    <ResponsiveContainer width="100%" height={180}>
+    <ResponsiveContainer width="100%" height={ALTURA_GRAFICO.categorias}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <XAxis
           dataKey="categoria"

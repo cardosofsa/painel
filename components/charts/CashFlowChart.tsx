@@ -2,6 +2,7 @@
 
 import { AreaChart, Area, XAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import {
+  ALTURA_GRAFICO,
   COR_POSITIVA,
   COR_NEGATIVA,
   ESTILO_TOOLTIP,
@@ -24,7 +25,7 @@ import {
  */
 export function CashFlowChart({ data }: { data: { dia: string; entradas: number; saidas: number }[] }) {
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={ALTURA_GRAFICO.fluxoCaixa}>
       <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <defs>
           <linearGradient id="entradasGrad" x1="0" y1="0" x2="0" y2="1">

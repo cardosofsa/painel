@@ -47,7 +47,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ erro: "Pedido grande demais." }, { status: 413 });
   }
 
-  const analise = pedidoVitrineSchema.safeParse(JSON.parse(texto || "{}"));
+  // JSON quebrado é erro de quem chamou (400), não exceção da rota (500).
+  let corpo: unknown;
+  try {
+    corpo = JSON.parse(texto || "{}");
+  } catch {
+    return NextResponse.json({ erro: "Formato inválido." }, { status: 400 });
+  }
+  const analise = pedidoVitrineSchema.safeParse(corpo);
   if (!analise.success) {
     return NextResponse.json({ erro: analise.error.issues[0]?.message ?? "Dados inválidos." }, { status: 400 });
   }

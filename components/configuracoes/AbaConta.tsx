@@ -10,6 +10,7 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { ContaCard } from "@/app/(painel)/configuracoes/ContaCard";
 import { DadosEmpresaCard } from "@/components/configuracoes/DadosEmpresaCard";
 import { CrediarioCard } from "@/components/configuracoes/CrediarioCard";
+import { DuasEtapasCard } from "@/components/configuracoes/DuasEtapasCard";
 import {
   salvarPerfilNegocio,
   definirPinAdmin,
@@ -22,8 +23,8 @@ import type { PerfilNegocio } from "@/app/(painel)/configuracoes/ConfiguracoesCl
 const REGIMES = ["MEI", "Simples Nacional", "Lucro Presumido", "Lucro Real"];
 
 /**
- * Aba "Conta e negócio": acesso (e-mail e senha), PIN, dados do negócio, dados da empresa e
- * Pix/crediário.
+ * Aba "Conta e negócio": acesso (e-mail e senha), PIN, verificação em duas etapas, dados do
+ * negócio, dados da empresa e Pix/crediário.
  *
  * Antes eram dois cartões ("Perfil" e "Regime") com dois botões que salvavam os MESMOS
  * cinco campos, e um `pending` só fazia os botões de Perfil, PIN e Regime girarem juntos.
@@ -143,6 +144,8 @@ export function AbaConta({
           </Button>
         </div>
       </Card>
+
+      <DuasEtapasCard />
 
       <div className="lg:col-span-2">
         <CrediarioCard inicial={crediario} nomePadrao={perfil.nome_negocio} cidadePadrao={perfil.empresa.cidade ?? ""} />

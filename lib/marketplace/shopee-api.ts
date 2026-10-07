@@ -12,7 +12,11 @@
  */
 
 import { createHmac } from "node:crypto";
+import { mapComLimite } from "@/lib/concorrencia";
 import type { PedidoMarketplace, StatusMarketplace } from "./shopee-planilha";
+
+/** Chamadas de escrow ao mesmo tempo na sincronização (limite de requisições da Shopee). */
+export const ESCROW_EM_PARALELO = 5;
 
 const HOST_PRODUCAO = "https://partner.shopeemobile.com";
 /** Sandbox v2 (contas de teste criadas em "Test Account-Sandbox v2" no Console). */
@@ -260,14 +264,18 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
       order_sn_list: lote.join(","),
       response_optional_fields: "buyer_username,item_list,recipient_address,pay_time,shipping_carrier",
     });
-    for (const p of (d.order_list as PedidoApi[] | undefined) ?? []) {
-      let escrow: EscrowApi | null = null;
-      if (p.order_status !== "UNPAID" && p.order_status !== "CANCELLED") {
-        const e = await getLoja(c, "/api/v2/payment/get_escrow_detail", token, shopId, { order_sn: p.order_sn }).catch(() => null);
-        escrow = ((e?.order_income as EscrowApi | undefined) ?? null) as EscrowApi | null;
-      }
-      pedidos.push(pedidoDaApi(p, escrow));
-    }
+    const lista = (d.order_list as PedidoApi[] | undefined) ?? [];
+    // Escrow é um GET por pedido: de 5 em 5 em vez de um por vez. Escrow que falha segue
+    // como antes (null: o repasse sai da conta da planilha), sem derrubar os outros.
+    const escrows = await mapComLimite(lista, ESCROW_EM_PARALELO, async (p) => {
+      if (p.order_status === "UNPAID" || p.order_status === "CANCELLED") return null;
+      const e = await getLoja(c, "/api/v2/payment/get_escrow_detail", token, shopId, { order_sn: p.order_sn }).catch(() => null);
+      return ((e?.order_income as EscrowApi | undefined) ?? null) as EscrowApi | null;
+    });
+    lista.forEach((p, i) => {
+      const r = escrows[i];
+      pedidos.push(pedidoDaApi(p, r.status === "fulfilled" ? r.value : null));
+    });
   }
   return pedidos;
 }

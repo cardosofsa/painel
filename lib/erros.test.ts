@@ -68,6 +68,19 @@ describe("traduzirErroAuth", () => {
     expect(traduzirErroAuth({ message: "Too many requests", status: 429 })).toContain("Muitas tentativas");
   });
 
+  it("traduz os erros da verificação em duas etapas e do captcha", () => {
+    expect(traduzirErroAuth({ code: "mfa_verification_failed", message: "Invalid TOTP code entered" })).toContain("Código incorreto");
+    expect(traduzirErroAuth({ code: "insufficient_aal", message: "AAL2 required" })).toContain("app autenticador");
+    expect(traduzirErroAuth({ code: "captcha_failed", message: "captcha protection: request disallowed" })).toContain("robô");
+  });
+
+  it("sem `code`, desafio de MFA vencido não vira 'link expirou'", () => {
+    expect(traduzirErroAuth({ message: "Invalid TOTP code entered" })).toContain("Código incorreto");
+    expect(traduzirErroAuth({ message: "MFA challenge 123 has expired, verify against another challenge or create a new challenge." })).toContain("venceu");
+    expect(traduzirErroAuth({ message: "captcha protection: request disallowed (invalid-input-response)" })).toContain("robô");
+    expect(traduzirErroAuth({ message: "AAL2 required to unenroll verified factor" })).toContain("app autenticador");
+  });
+
   it("NÃO repassa mensagem crua de código desconhecido", () => {
     const cru = "AuthApiError: unexpected_failure at gotrue/internal";
     const msg = traduzirErroAuth({ code: "unexpected_failure", message: cru });

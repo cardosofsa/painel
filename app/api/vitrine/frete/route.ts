@@ -5,6 +5,8 @@ import { conexaoFrete, pacoteDosProdutos, provedorDa, regrasDa } from "@/lib/fre
 import { aplicarRegras, cepValido, soDigitosCep } from "@/lib/frete/tipos";
 import { assinarCotacao } from "@/lib/frete/assinatura";
 import { MAX_ITENS, MAX_QTD } from "@/lib/vitrine-pedido";
+import { conferirCotaFrete, MENSAGEM_LIMITE_FRETE } from "@/lib/frete/cota";
+import { hashIpDaRequisicao } from "@/lib/ip";
 
 /**
  * Cotação de frete do checkout da vitrine (Fase 10.6). Pública: o cliente final não tem
@@ -14,6 +16,9 @@ import { MAX_ITENS, MAX_QTD } from "@/lib/vitrine-pedido";
  *
  * Desligada (responde `ativo: false`) sem service key, sem cofre, sem conexão ou com
  * "Cotar frete na vitrine" desmarcado. Erro do provedor vira mensagem genérica.
+ *
+ * Cota (0077): antes de cotar, `vitrine_frete_permitido` conta por (catálogo, hash do IP) e
+ * por catálogo no dia — passou do limite, 429. Ver `lib/frete/cota.ts`.
  */
 
 export const maxDuration = 20;
@@ -53,6 +58,10 @@ export async function POST(request: NextRequest) {
   if (!cat?.ativo) return NextResponse.json(DESLIGADO);
   const conexao = await conexaoFrete(servico, cat.user_id as string);
   if (!conexao?.na_vitrine || !conexao.token_cifrado || !conexao.cep_origem) return NextResponse.json(DESLIGADO);
+  // Só gasta a cota quando ia mesmo cotar. Conta suspensa: desligado, como catálogo inativo.
+  const cota = await conferirCotaFrete(servico, d.slug, await hashIpDaRequisicao(request.headers, segredo), conexao.user_id);
+  if (cota === "inativa") return NextResponse.json(DESLIGADO);
+  if (cota === "limitada") return NextResponse.json({ ativo: true, opcoes: [], erro: MENSAGEM_LIMITE_FRETE }, { status: 429 });
 
   try {
     const { pacote, valorDeclarado } = await pacoteDosProdutos(servico, conexao.user_id, d.itens);

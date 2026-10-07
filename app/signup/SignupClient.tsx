@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MailCheck } from "lucide-react";
@@ -13,6 +13,29 @@ import { LinksLegais } from "@/components/legal/LinksLegais";
 import { BotaoGoogle, DivisorOu } from "@/components/auth/BotaoGoogle";
 import { traduzirErroAuth } from "@/lib/erros";
 import { senhaSchema } from "@/lib/validacao";
+import { useCaptcha } from "@/components/auth/Captcha";
+import { MENSAGEM_FALTA_CAPTCHA, opcoesCaptcha } from "@/lib/captcha";
+import { CHAVE_ORIGEM, mesclarOrigem, origemDaUrl, origemSalva, type OrigemCadastro } from "@/lib/indicacao";
+
+/**
+ * Origem do cadastro (0078): `?ref=` do link de indicação e `utm_*`. Fica no sessionStorage
+ * para sobreviver a uma ida ao login e volta; armazenamento bloqueado = só a URL vale.
+ */
+function lerOrigem(): OrigemCadastro {
+  let salva: OrigemCadastro = {};
+  try {
+    salva = origemSalva(window.sessionStorage.getItem(CHAVE_ORIGEM));
+  } catch {
+    // sessionStorage indisponível (aba anônima, bloqueado): segue só com a URL
+  }
+  const origem = mesclarOrigem(salva, origemDaUrl(window.location.search));
+  try {
+    if (Object.keys(origem).length) window.sessionStorage.setItem(CHAVE_ORIGEM, JSON.stringify(origem));
+  } catch {
+    // idem
+  }
+  return origem;
+}
 
 export function SignupClient() {
   const router = useRouter();
@@ -22,6 +45,12 @@ export function SignupClient() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
+  const captcha = useCaptcha();
+
+  // Guarda a origem assim que a página abre (antes de qualquer navegação).
+  useEffect(() => {
+    lerOrigem();
+  }, []);
 
   async function cadastrar(e: React.FormEvent) {
     e.preventDefault();
@@ -36,15 +65,22 @@ export function SignupClient() {
       setErro("As senhas não coincidem.");
       return;
     }
+    if (captcha.falta) {
+      setErro(MENSAGEM_FALTA_CAPTCHA);
+      return;
+    }
 
     setCarregando(true);
     const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({
       email,
       password: senha,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?type=signup` },
+      // `data` vai para raw_user_meta_data: o gatilho da 0078 lê o `ref` e grava a indicação.
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?type=signup`, data: lerOrigem(), ...opcoesCaptcha(captcha.token) },
     });
     setCarregando(false);
+    // O token do captcha é de uso único: a próxima tentativa precisa de outro.
+    captcha.renovar();
 
     if (error) {
       setErro(traduzirErroAuth(error));
@@ -131,6 +167,8 @@ export function SignupClient() {
         <FormField label="Confirmar senha">
           <CampoSenha valor={confirmarSenha} onChange={setConfirmarSenha} autoComplete="new-password" igualA={senha} />
         </FormField>
+
+        {captcha.widget}
 
         {erro && <ErroAuth>{erro}</ErroAuth>}
 

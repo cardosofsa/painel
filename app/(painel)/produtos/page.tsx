@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
+import { buscarEmLotes } from "@/lib/lotes";
+import { lerFiltroProdutos, palavrasDaBusca, resumoDeEstoque, type ParamsUrl } from "@/lib/listas";
+import { gruposPorPalavra, paginaDeProdutos } from "./consulta";
 import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient";
 import type { Metadata } from "next";
 
@@ -7,63 +10,75 @@ export const metadata: Metadata = { title: "Produtos" };
 // O Estúdio de IA (gerar imagem) roda numa Server Action desta página e leva 15–40 s.
 export const maxDuration = 60;
 
-export default async function ProdutosPage({ searchParams }: { searchParams: Promise<{ busca?: string }> }) {
-  const { busca } = await searchParams;
+/** Linha crua de `produtos` (`*`) com as fotos e lojas embutidas. */
+type LinhaProduto = Record<string, unknown> & {
+  id: string;
+  produto_lojas?: { loja_id: string }[] | null;
+  produto_imagens?: { id: string; url: string; ordem: number | null }[] | null;
+};
+
+export default async function ProdutosPage({ searchParams }: { searchParams: Promise<ParamsUrl> }) {
+  const filtro = lerFiltroProdutos(await searchParams);
   const supabase = await createClient();
 
-  const [
-    produtosRes,
-    categoriasRes,
-    fornecedoresRes,
-    armazensRes,
-    movimentacoesRes,
-    precificacoesRes,
-    lojasRes,
-    produtoLojasRes,
-    produtoImagensRes,
-    gruposRes,
-    precosCanalRes,
-  ] = await Promise.all([
-    supabase
-      .from("produtos")
-      .select(
-        // `*`: as colunas de envio (0041) ainda podem não existir; pedir por nome derrubaria a tela.
-        "*",
-      )
-      .order("nome"),
+  // A busca também procura no nome do grupo de variantes (é ele que aparece na lista):
+  // a página espera só os grupos, e o resto da primeira leva roda junto.
+  const gruposP = supabase.from("produto_grupos").select("id, nome").order("nome");
+  const paginaP = gruposP.then((g) =>
+    paginaDeProdutos<LinhaProduto>(supabase, filtro, gruposPorPalavra(g.data ?? [], filtro.q, palavrasDaBusca(filtro.q))),
+  );
+
+  const [pagina, gruposRes, categoriasRes, fornecedoresRes, armazensRes, lojasRes, resumoRes, iaDisponivel] = await Promise.all([
+    paginaP,
+    gruposP,
     // `*`: `tipo` (insumo/embalagem) só existe a partir da 0042.
     supabase.from("categorias").select("*").order("nome"),
     supabase.from("fornecedores").select("id, nome").order("nome"),
     supabase.from("armazens").select("id, nome").order("nome"),
-    supabase
-      .from("estoque_movimentacoes")
-      .select("produto_id, motivo, tipo, quantidade, data_movimentacao")
-      .order("data_movimentacao", { ascending: false })
-      .limit(200),
-    supabase
-      .from("precificacoes")
-      .select("produto_id, canal, preco_calculado, criado_em")
-      .order("criado_em", { ascending: false })
-      .limit(200),
     supabase.from("lojas_canal").select("id, nome").order("nome"),
-    supabase.from("produto_lojas").select("produto_id, loja_id"),
-    supabase.from("produto_imagens").select("id, produto_id, url").order("ordem"),
-    supabase.from("produto_grupos").select("id, nome").order("nome"),
-    // Migração 0029: se ainda não foi aplicada, a RPC não existe — falha vira uma lista
-    // vazia (tratado abaixo, não interrompe a página) em vez de derrubar /produtos.
-    supabase.rpc("precos_canal_por_produto"),
+    // Cards e chips são da conta inteira, não da página: leitura enxuta só das três colunas.
+    buscarEmLotes<{ custo: number; estoque: number; estoque_minimo: number }>(async (de, ate) => {
+      const r = await supabase.from("produtos").select("custo, estoque, estoque_minimo", { count: "exact" }).order("id").range(de, ate);
+      return { data: r.data, error: r.error, count: r.count };
+    }),
+    iaDisponivelParaConta(supabase),
   ]);
 
-  if (produtosRes.error) throw new Error(produtosRes.error.message);
+  if (pagina.error) throw new Error(pagina.error.message);
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
   if (fornecedoresRes.error) throw new Error(fornecedoresRes.error.message);
   if (armazensRes.error) throw new Error(armazensRes.error.message);
   if (lojasRes.error) throw new Error(lojasRes.error.message);
-  if (produtoLojasRes.error) throw new Error(produtoLojasRes.error.message);
+  if (gruposRes.error) throw new Error(gruposRes.error.message);
+  if (resumoRes.error) throw new Error(resumoRes.error.message);
+
+  // Histórico do resumo e preço por canal: só dos produtos desta página.
+  const ids = pagina.linhas.map((p) => p.id);
+  const vazio = { data: [], error: null };
+  const [movimentacoesRes, precificacoesRes, precosCanalRes] = await Promise.all([
+    ids.length
+      ? supabase
+          .from("estoque_movimentacoes")
+          .select("produto_id, motivo, tipo, quantidade, data_movimentacao")
+          .in("produto_id", ids)
+          .order("data_movimentacao", { ascending: false })
+          .limit(500)
+      : vazio,
+    ids.length
+      ? supabase
+          .from("precificacoes")
+          .select("produto_id, canal, preco_calculado, criado_em")
+          .in("produto_id", ids)
+          .order("criado_em", { ascending: false })
+          .limit(500)
+      : vazio,
+    // Migração 0029: se ainda não foi aplicada, a RPC não existe — falha vira uma lista
+    // vazia (tratado abaixo, não interrompe a página) em vez de derrubar /produtos.
+    ids.length ? supabase.rpc("precos_canal_por_produto").in("produto_id", ids) : vazio,
+  ]);
+
   if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
   if (precificacoesRes.error) throw new Error(precificacoesRes.error.message);
-  if (produtoImagensRes.error) throw new Error(produtoImagensRes.error.message);
-  if (gruposRes.error) throw new Error(gruposRes.error.message);
   // Não derruba a página: quem ainda não aplicou a migração 0029 continua usando
   // Produtos normalmente, só sem margem/markup por canal na lista e no resumo.
   if (precosCanalRes.error) console.error("[produtos] precos_canal_por_produto:", precosCanalRes.error.message);
@@ -73,21 +88,8 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   const armazensPorId = new Map((armazensRes.data ?? []).map((a) => [a.id, a.nome]));
   const gruposPorId = new Map((gruposRes.data ?? []).map((g) => [g.id, g.nome]));
 
-  const lojaIdsPorProduto = new Map<string, string[]>();
-  for (const pl of produtoLojasRes.data ?? []) {
-    const lista = lojaIdsPorProduto.get(pl.produto_id) ?? [];
-    lista.push(pl.loja_id);
-    lojaIdsPorProduto.set(pl.produto_id, lista);
-  }
-
-  const imagensPorProduto = new Map<string, { id: string; url: string }[]>();
-  for (const img of produtoImagensRes.data ?? []) {
-    const lista = imagensPorProduto.get(img.produto_id) ?? [];
-    lista.push({ id: img.id, url: img.url });
-    imagensPorProduto.set(img.produto_id, lista);
-  }
-
-  const produtos: Produto[] = (produtosRes.data ?? []).map((p) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `*`: o formato depende das migrações aplicadas
+  const produtos: Produto[] = pagina.linhas.map((p: any) => ({
     e_kit: !!p.e_kit,
     ncm: (p.ncm as string | null) ?? null,
     origem_fiscal: Number(p.origem_fiscal ?? 0),
@@ -118,8 +120,11 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     grupo_id: p.grupo_id,
     variante_nome: p.variante_nome,
     grupo_nome: (p.grupo_id && gruposPorId.get(p.grupo_id)) ?? null,
-    loja_ids: lojaIdsPorProduto.get(p.id) ?? [],
-    imagens: imagensPorProduto.get(p.id) ?? [],
+    loja_ids: ((p.produto_lojas ?? []) as { loja_id: string }[]).map((l) => l.loja_id),
+    imagens: ((p.produto_imagens ?? []) as { id: string; url: string; ordem: number | null }[])
+      .slice()
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+      .map((img) => ({ id: img.id, url: img.url })),
     categoria_nome: (p.categoria_id && categoriasPorId.get(p.categoria_id)) ?? null,
     fornecedor_nome: (p.fornecedor_id && fornecedoresPorId.get(p.fornecedor_id)) ?? null,
     armazem_nome: (p.armazem_id && armazensPorId.get(p.armazem_id)) ?? null,
@@ -134,13 +139,11 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     markup_pct: r.markup_pct,
   }));
 
-  const iaDisponivel = await iaDisponivelParaConta(supabase);
-
   return (
     <ProdutosClient
-      // `?busca=` (busca global) já abre filtrado; remonta ao trocar de busca.
-      key={busca ?? "inicio"}
-      buscaInicial={busca?.slice(0, 80) ?? ""}
+      filtro={{ ...filtro, pagina: pagina.pagina }}
+      total={pagina.total}
+      resumo={resumoDeEstoque(resumoRes.data)}
       produtos={produtos}
       categorias={categoriasRes.data ?? []}
       fornecedores={fornecedoresRes.data ?? []}

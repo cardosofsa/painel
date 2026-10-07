@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { PrimeirosPassos, type PassoInicial } from "@/components/dashboard/PrimeirosPassos";
+import { AvisoTeste } from "@/components/dashboard/AvisoTeste";
+import type { AvisoAtivacao } from "@/lib/ativacao-teste";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
@@ -52,7 +54,10 @@ export function DashboardClient({
   vendasRelatorio,
   calendario,
   primeirosPassos = null,
+  avisoTeste = null,
 }: {
+  /** Próximo passo do dia no teste grátis, ou o prazo do fim (`lib/ativacao-teste.ts`). */
+  avisoTeste?: AvisoAtivacao | null;
   /** null = oculto pela pessoa (0065). */
   primeirosPassos?: PassoInicial[] | null;
   /** Vendas de todas as origens (PDV, catálogo, Shopee) dos últimos ~2 meses. */
@@ -87,6 +92,7 @@ export function DashboardClient({
         }
       />
 
+      {avisoTeste && <AvisoTeste aviso={avisoTeste} />}
       {primeirosPassos && <PrimeirosPassos passos={primeirosPassos} />}
 
           <Card className="mb-5">

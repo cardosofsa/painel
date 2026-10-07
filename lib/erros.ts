@@ -110,6 +110,19 @@ const POR_CODIGO_AUTH: Record<string, string> = {
   user_not_found: "Conta não encontrada.",
   signup_disabled: "O cadastro de novas contas está desativado no momento.",
   validation_failed: "Confira os dados preenchidos.",
+  // Verificação em duas etapas (MFA TOTP).
+  mfa_verification_failed: "Código incorreto. Confira no app autenticador e digite o código que está aparecendo agora.",
+  mfa_verification_rejected: "Código recusado. Espere o app mostrar um código novo e tente de novo.",
+  mfa_challenge_expired: "O código venceu antes de ser confirmado. Digite o código que está aparecendo agora no app.",
+  mfa_factor_not_found: "A verificação em duas etapas não está mais cadastrada nesta conta. Recarregue a página.",
+  mfa_factor_name_conflict: "Já existe um app autenticador sendo cadastrado. Recarregue a página e tente de novo.",
+  too_many_enrolled_mfa_factors: "Esta conta já tem o máximo de autenticadores cadastrados. Desative um antes de cadastrar outro.",
+  mfa_totp_enroll_not_enabled: "A verificação em duas etapas está desligada neste sistema.",
+  mfa_totp_verify_not_enabled: "A verificação em duas etapas está desligada neste sistema.",
+  mfa_ip_address_mismatch: "A verificação precisa terminar na mesma rede em que começou. Tente de novo.",
+  insufficient_aal: "Confirme o código do app autenticador antes de continuar.",
+  // Proteção contra robôs (Turnstile), ligada no painel do Supabase.
+  captcha_failed: "Não foi possível confirmar que você não é um robô. Refaça a verificação e tente de novo.",
 };
 
 /** Slugs usados na querystring (`/login?erro=...`), para o callback avisar o motivo. */
@@ -129,6 +142,11 @@ export function traduzirErroAuth(erro: ErroAuth): string {
   if (msg.includes("user already registered")) return POR_CODIGO_AUTH.user_already_exists;
   if (msg.includes("should be different")) return POR_CODIGO_AUTH.same_password;
   if (msg.includes("password") && msg.includes("at least")) return POR_CODIGO_AUTH.weak_password;
+  // Antes do "expired" genérico: desafio de MFA vencido não é link de e-mail vencido.
+  if (msg.includes("invalid totp code")) return POR_CODIGO_AUTH.mfa_verification_failed;
+  if (msg.includes("challenge") && msg.includes("expired")) return POR_CODIGO_AUTH.mfa_challenge_expired;
+  if (msg.includes("aal2")) return POR_CODIGO_AUTH.insufficient_aal;
+  if (msg.includes("captcha")) return POR_CODIGO_AUTH.captcha_failed;
   if (msg.includes("expired") || msg.includes("invalid or has expired")) return POR_CODIGO_AUTH.otp_expired;
   if (erro.status === 429) return POR_CODIGO_AUTH.over_request_rate_limit;
   if (msg.includes("failed to fetch") || msg.includes("fetch failed")) {

@@ -6,6 +6,7 @@
  * lógica que os dois compartilham.
  */
 
+import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validar, iaContextoSchema, iaPrecoSchema, iaFerramentaSchemas, iaVitrineSchema } from "@/lib/validacao";
 import { lancarErroSupabase } from "@/lib/erros";

@@ -10,6 +10,9 @@
  * carregamento. É a única defesa que sobra depois que o dado já entrou no HTML.
  */
 
+import { captchaAtivo, ORIGEM_TURNSTILE } from "./captcha";
+import { ORIGEM_VIDEO_EMBED, ORIGEM_VIDEO_MINIATURA, videoDemoAtivo } from "./landing";
+
 /**
  * Este `new URL(...)` roda no `import` do módulo, e o módulo é importado pelo `proxy.ts` —
  * ou seja, roda em TODA requisição, antes mesmo do middleware começar a executar. Uma env
@@ -61,9 +64,9 @@ export function gerarNonce(): string {
 
 export function montarCsp(
   nonce: string,
-  opcoes: { dev?: boolean; origemSupabase?: string } = {},
+  opcoes: { dev?: boolean; origemSupabase?: string; captcha?: boolean; video?: boolean } = {},
 ): string {
-  const { dev = process.env.NODE_ENV !== "production", origemSupabase = ORIGEM_SUPABASE } = opcoes;
+  const { dev = process.env.NODE_ENV !== "production", origemSupabase = ORIGEM_SUPABASE, captcha = captchaAtivo(), video = videoDemoAtivo() } = opcoes;
 
   const diretivas: Record<string, (string | false)[]> = {
     "default-src": ["'self'"],
@@ -72,7 +75,11 @@ export function montarCsp(
     // carregado por um script já autorizado pelo nonce — que é exatamente como o Next
     // carrega os próprios chunks. Em dev o Fast Refresh compila no navegador, daí o
     // 'unsafe-eval'; em produção ele não entra.
-    "script-src": ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", dev && "'unsafe-eval'"],
+    //
+    // Captcha (Turnstile, só com `NEXT_PUBLIC_TURNSTILE_SITE_KEY`): o script dele é inserido
+    // por um componente nosso, então o `strict-dynamic` já o autoriza. A origem aqui é a
+    // reserva do navegador antigo, que não entende `strict-dynamic` e decide pela lista.
+    "script-src": ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", dev && "'unsafe-eval'", captcha && ORIGEM_TURNSTILE],
 
     // `unsafe-inline` aqui é inevitável e de baixo risco: o next/font injeta <style> no
     // head e Recharts/Tailwind escrevem `style=""` direto no elemento. CSS injetado não
@@ -80,7 +87,8 @@ export function montarCsp(
     "style-src": ["'self'", "'unsafe-inline'"],
 
     // blob:/data: cobrem o preview local de imagem e o download de CSV/backup.
-    "img-src": ["'self'", "blob:", "data:", origemSupabase],
+    // Vídeo da landing (só com `NEXT_PUBLIC_VIDEO_DEMO_URL`): a miniatura da fachada.
+    "img-src": ["'self'", "blob:", "data:", origemSupabase, video && ORIGEM_VIDEO_MINIATURA],
 
     // next/font baixa a fonte no build e serve de /_next/static — nada de Google Fonts em
     // tempo de execução.
@@ -90,6 +98,11 @@ export function montarCsp(
     "connect-src": ["'self'", origemSupabase, dev && "ws:"],
 
     "worker-src": ["'self'", "blob:"],
+
+    // O desafio do Turnstile roda num iframe da Cloudflare; o vídeo da landing, num iframe do
+    // youtube-nocookie (só depois do clique no play). Sem nenhum dos dois, a diretiva nem sai
+    // e vale o `default-src 'self'` de sempre.
+    ...(captcha || video ? { "frame-src": ["'self'", captcha && ORIGEM_TURNSTILE, video && ORIGEM_VIDEO_EMBED] } : {}),
 
     // Espelha o X-Frame-Options: DENY do next.config.ts, para navegador que já ignora o
     // cabeçalho antigo.

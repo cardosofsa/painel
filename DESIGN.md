@@ -80,6 +80,11 @@ preenchimento (croma 0,07, lê como cinza), daí o passo mais claro no `--grafic
 Tudo em `components/charts/tema.ts` é `var(--token)`: o Recharts renderiza SVG inline, a
 variável resolve contra o tema em vigor e o gráfico acompanha a troca sozinho.
 
+**A tela importa o gráfico de `components/charts/dinamicos.tsx`**, nunca do arquivo dele: lá
+cada um é `next/dynamic` (o Recharts sai do JavaScript inicial) com um esqueleto da altura
+de `ALTURA_GRAFICO` (`tema.ts`). Gráfico novo entra nos dois lugares;
+`lib/importacoes-pesadas.test.ts` reprova import direto.
+
 ## Tipografia
 
 - **Interface**: Geist (`--font-sans`), via `next/font/google`.

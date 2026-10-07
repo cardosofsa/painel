@@ -3,6 +3,7 @@ import { PdvClient } from "./PdvClient";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 import type { Metadata } from "next";
+import { carregarCrediario } from "@/lib/crediario-servidor";
 
 export const metadata: Metadata = { title: "PDV" };
 
@@ -60,7 +61,8 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
   });
 
   // 0055: só para saber se mostra "Cotar frete" (o token nunca sai do servidor).
-  const freteRes = await supabase.from("frete_conexoes").select("token_cifrado").maybeSingle();
+  // Pix da loja (0065) para o QR no pagamento; sem a migração/sem chave, volta null.
+  const [freteRes, crediario] = await Promise.all([supabase.from("frete_conexoes").select("token_cifrado").maybeSingle(), carregarCrediario(supabase)]);
 
   return (
     <PdvClient
@@ -69,6 +71,7 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
       formasPagamento={(formasRes.data ?? []) as FormaPagamentoPdv[]}
       contas={(contasRes.data ?? []) as ContaPdv[]}
       freteConectado={!!freteRes.data?.token_cifrado}
+      pix={crediario.pix}
       creditoTroca={creditoTroca}
       userId={(await acessoAtual())?.userId ?? null}
       operadorId={(await acessoAtual())?.operador?.id ?? null}

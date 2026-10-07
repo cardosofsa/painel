@@ -8,8 +8,14 @@ import { Button, classesBotao } from "@/components/ui/Button";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { BarraFiltros, FiltroChips, FiltroSelect } from "@/components/ui/BarraFiltros";
+import { Paginacao } from "@/components/ui/Paginacao";
 import { MovimentacaoModal } from "@/components/estoque/MovimentacaoModal";
 import { formatBRL, formatarDataHora } from "@/lib/format";
+import { executarComToast } from "@/lib/acao-cliente";
+import { useListaNaUrl } from "@/lib/hooks/useListaNaUrl";
+import type { FiltroEstoque } from "@/lib/listas";
+import type { TotaisArmazem } from "@/lib/estoque-lista";
+import { dadosMovimentacao } from "./actions";
 
 export interface ProdutoEstoque {
   id: string;
@@ -46,59 +52,84 @@ export interface Movimentacao {
   armazem_destino_id?: string | null;
 }
 
-const SITUACOES = ["Todos", "Repor", "OK"] as const;
-type Situacao = (typeof SITUACOES)[number];
+/** Chips de situação: "" = todos; os outros são o valor da URL (`?situacao=`). */
+const SITUACOES: { valor: FiltroEstoque["situacao"]; rotulo: string }[] = [
+  { valor: "", rotulo: "Todos" },
+  { valor: "repor", rotulo: "Repor" },
+  { valor: "ok", rotulo: "OK" },
+];
+
+type DadosModal = { produtos: ProdutoEstoque[]; saldos: SaldoArmazem[]; porArmazem: boolean };
 
 export function EstoqueClient({
+  filtro,
+  total,
   produtos,
+  saldos,
+  totaisArmazem,
+  resumo,
   armazens,
   movimentacoes,
-  saldos,
   porArmazem,
   reservado = {},
 }: {
-  /** produto → reservado em pedidos da esteira (0052). */
-  reservado?: Record<string, number>;
+  /** Busca, filtros e página que o servidor usou (vêm da URL). */
+  filtro: FiltroEstoque;
+  /** Quantos produtos passam nos filtros (todas as páginas). */
+  total: number;
+  /** Só os produtos da página atual. */
   produtos: ProdutoEstoque[];
+  /** Saldos dos produtos da página (só os > 0, já no armazém do filtro). */
+  saldos: SaldoArmazem[];
+  /** Por armazém, com os filtros, somando todas as páginas. */
+  totaisArmazem: Record<string, TotaisArmazem>;
+  /** Cards: da conta inteira. */
+  resumo: { unidades: number; valorTotal: number; criticos: number; reservado: number };
+  /** produto da página → reservado em pedidos da esteira (0052). */
+  reservado?: Record<string, number>;
   armazens: Armazem[];
   movimentacoes: Movimentacao[];
-  saldos: SaldoArmazem[];
   /** `false` antes da migração 0041: saldos derivados do armazém padrão, sem transferência. */
   porArmazem: boolean;
 }) {
-  const [modal, setModal] = useState<{ armazemId: string | null } | null>(null);
-  const [busca, setBusca] = useState("");
-  const [armazemFiltro, setArmazemFiltro] = useState("");
-  const [situacao, setSituacao] = useState<Situacao>("Todos");
+  const [modal, setModal] = useState<{ armazemId: string | null; dados: DadosModal } | null>(null);
+  // `null` = nada abrindo; "" = o botão geral; id = o "Movimentar" daquele armazém.
+  const [abrindo, setAbrindo] = useState<string | null>(null);
+  const lista = useListaNaUrl(filtro);
+  const { armazem: armazemFiltro, situacao } = lista.atuais;
+  const busca = filtro.q;
 
   const produtoPorId = useMemo(() => new Map(produtos.map((p) => [p.id, p])), [produtos]);
   const nomeArmazem = useMemo(() => new Map(armazens.map((a) => [a.id, a.nome])), [armazens]);
 
-  const totalUnidades = produtos.reduce((acc, p) => acc + p.estoque, 0);
-  const totalReservado = Object.values(reservado).reduce((a, n) => a + n, 0);
-  const criticos = produtos.filter((p) => p.estoque <= p.estoque_minimo).length;
-  const valorTotal = produtos.reduce((acc, p) => acc + p.estoque * p.custo, 0);
+  const totalUnidades = resumo.unidades;
+  const totalReservado = resumo.reservado;
+  const criticos = resumo.criticos;
+  const valorTotal = resumo.valorTotal;
 
-  /** Linhas por armazém já filtradas pela busca e pela situação (situação olha o total). */
+  /** Linhas da página por armazém (busca e situação já vieram aplicadas pelo servidor). */
   const porArmazemFiltrado = useMemo(() => {
-    const t = busca.trim().toLowerCase();
     const mapa = new Map<string, { produto: ProdutoEstoque; quantidade: number }[]>();
     for (const s of saldos) {
-      if (s.quantidade <= 0) continue;
       const p = produtoPorId.get(s.produto_id);
       if (!p) continue;
-      if (t && !p.nome.toLowerCase().includes(t) && !p.sku.toLowerCase().includes(t)) continue;
-      const ok = p.estoque > p.estoque_minimo;
-      if (situacao === "Repor" && ok) continue;
-      if (situacao === "OK" && !ok) continue;
       mapa.set(s.armazem_id, [...(mapa.get(s.armazem_id) ?? []), { produto: p, quantidade: s.quantidade }]);
     }
     for (const lista of mapa.values()) lista.sort((a, b) => a.produto.nome.localeCompare(b.produto.nome, "pt-BR"));
     return mapa;
-  }, [saldos, produtoPorId, busca, situacao]);
+  }, [saldos, produtoPorId]);
 
   const armazensVisiveis = armazens.filter((a) => !armazemFiltro || a.id === armazemFiltro);
-  const filtrosAtivos = (armazemFiltro ? 1 : 0) + (situacao === "Todos" ? 0 : 1);
+  const filtrosAtivos = (armazemFiltro ? 1 : 0) + (situacao ? 1 : 0);
+
+  /** O modal escolhe entre todos os produtos: a lista inteira e os saldos vêm na hora. */
+  function abrirMovimentacao(armazemId: string | null) {
+    setAbrindo(armazemId ?? "");
+    void executarComToast(dadosMovimentacao(), { erro: "Não foi possível abrir a movimentação" }).then((r) => {
+      setAbrindo(null);
+      if (r.ok) setModal({ armazemId, dados: r.dado });
+    });
+  }
 
   return (
     <>
@@ -109,7 +140,7 @@ export function EstoqueClient({
             <Link href="/estoque/inventario" className={classesBotao({ variant: "secondary" })}>
               <ClipboardCheck size={15} aria-hidden /> Inventário
             </Link>
-            <Button variant="primary" onClick={() => setModal({ armazemId: armazemFiltro || null })} disabled={armazens.length === 0}>
+            <Button variant="primary" onClick={() => abrirMovimentacao(armazemFiltro || null)} disabled={armazens.length === 0} loading={abrindo === ""}>
               Registrar Movimentação
             </Button>
           </div>
@@ -151,26 +182,22 @@ export function EstoqueClient({
       </div>
 
       <BarraFiltros
-        busca={busca}
-        onBusca={setBusca}
-        placeholder="Buscar produto ou SKU…"
+        busca={lista.texto}
+        onBusca={lista.setTexto}
+        placeholder="Buscar produto, SKU ou código de barras…"
         ativos={filtrosAtivos}
-        onLimpar={() => {
-          setBusca("");
-          setArmazemFiltro("");
-          setSituacao("Todos");
-        }}
-        situacao={<FiltroChips rotulo="Situação" valor={situacao} onChange={setSituacao} opcoes={SITUACOES.map((s) => ({ valor: s, rotulo: s }))} />}
+        onLimpar={() => lista.limpar({ armazem: null, situacao: null })}
+        situacao={<FiltroChips rotulo="Situação" valor={situacao} onChange={(v) => lista.navegar({ situacao: v })} opcoes={SITUACOES} />}
       >
-        <FiltroSelect rotulo="Armazém" valor={armazemFiltro} onChange={setArmazemFiltro} opcoes={armazens.map((a) => ({ valor: a.id, rotulo: a.nome }))} />
+        <FiltroSelect rotulo="Armazém" valor={armazemFiltro} onChange={(v) => lista.navegar({ armazem: v })} opcoes={armazens.map((a) => ({ valor: a.id, rotulo: a.nome }))} />
       </BarraFiltros>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
+        <div className={`lg:col-span-2 space-y-5 transition-opacity ${lista.pendente ? "opacity-60" : ""}`}>
           {armazensVisiveis.map((a) => {
             const linhas = porArmazemFiltrado.get(a.id) ?? [];
-            const unidades = linhas.reduce((acc, l) => acc + l.quantidade, 0);
-            const valor = linhas.reduce((acc, l) => acc + l.quantidade * l.produto.custo, 0);
+            // Total do armazém com os filtros, de todas as páginas (a lista abaixo é só a página).
+            const { unidades, produtos: qtdProdutos, valor } = totaisArmazem[a.id] ?? { unidades: 0, produtos: 0, valor: 0 };
             return (
               <Card key={a.id} padding="nenhum" className="overflow-hidden">
                 <div className="px-5 pt-5 pb-4 flex items-start justify-between gap-3">
@@ -190,10 +217,10 @@ export function EstoqueClient({
                   <div className="text-right shrink-0">
                     <div className="font-mono text-lg text-text-primary">{unidades} un.</div>
                     <div className="text-xs text-text-tertiary">
-                      {linhas.length} produtos · {formatBRL(valor)}
+                      {qtdProdutos} produtos · {formatBRL(valor)}
                     </div>
-                    <button onClick={() => setModal({ armazemId: a.id })} className="text-xs text-accent hover:underline mt-1">
-                      Movimentar
+                    <button onClick={() => abrirMovimentacao(a.id)} disabled={abrindo !== null} className="text-xs text-accent hover:underline mt-1 disabled:opacity-50">
+                      {abrindo === a.id ? "Abrindo…" : "Movimentar"}
                     </button>
                   </div>
                 </div>
@@ -222,7 +249,13 @@ export function EstoqueClient({
                     );
                   })}
                   {linhas.length === 0 && (
-                    <div className="px-5 py-4 text-sm text-text-tertiary">{busca || situacao !== "Todos" ? "Nada com esses filtros aqui." : "Nenhum produto neste armazém ainda."}</div>
+                    <div className="px-5 py-4 text-sm text-text-tertiary">
+                      {qtdProdutos > 0
+                        ? "Os produtos deste armazém estão nas outras páginas."
+                        : busca || filtro.situacao
+                          ? "Nada com esses filtros aqui."
+                          : "Nenhum produto neste armazém ainda."}
+                    </div>
                   )}
                 </div>
               </Card>
@@ -231,6 +264,11 @@ export function EstoqueClient({
           {armazens.length === 0 && (
             <Card>
               <p className="text-sm text-text-tertiary">Nenhum armazém cadastrado ainda. Adicione um em Configurações → Armazéns.</p>
+            </Card>
+          )}
+          {armazens.length > 0 && total > 0 && (
+            <Card padding="nenhum" className="overflow-hidden">
+              <Paginacao pagina={filtro.pagina} total={total} onPagina={lista.irPara} carregando={lista.pendente} unidade="produtos com saldo" />
             </Card>
           )}
         </div>
@@ -270,10 +308,10 @@ export function EstoqueClient({
         <MovimentacaoModal
           aberto
           onClose={() => setModal(null)}
-          produtos={produtos}
+          produtos={modal.dados.produtos}
           armazens={armazens}
-          saldos={saldos}
-          porArmazem={porArmazem}
+          saldos={modal.dados.saldos}
+          porArmazem={modal.dados.porArmazem}
           armazemInicial={modal.armazemId}
         />
       )}

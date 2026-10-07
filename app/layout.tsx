@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/layout/ThemeContext";
 import "./globals.css";
 import { urlDoSite } from "@/lib/site";
@@ -70,6 +72,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-full">
         <ThemeProvider>{children}</ThemeProvider>
         <Toaster position="bottom-right" richColors closeButton />
+        {/*
+          Vercel Analytics e Speed Insights: cada um é um Client Component que cria o
+          <script src="/_vercel/..."> com `document.createElement` depois de hidratar. Script
+          inserido por script já autorizado passa pelo `strict-dynamic` da CSP sem nonce, e a
+          origem é a própria (/_vercel/*), então `script-src`/`connect-src 'self'` bastam.
+          Fora da Vercel o script não existe e nada é coletado.
+        */}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

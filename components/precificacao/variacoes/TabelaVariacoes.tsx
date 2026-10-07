@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { campoBase } from "@/components/ui/Modal";
-import { PriceBreakdownChart } from "@/components/charts/PriceBreakdownChart";
+import { PriceBreakdownChart } from "@/components/charts/dinamicos";
 import { DetalhamentoPrecificacao, SimuladorPreco, type ResumoExport } from "@/components/precificacao/resultado-compartilhado";
 import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
 import type { ModoCalculo } from "@/lib/pricing";

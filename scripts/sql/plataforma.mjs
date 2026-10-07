@@ -1,7 +1,9 @@
 /** Plataforma (0076): erros do app, uso de IA por conta e bucket de backups. Rode com `npm run test:sql`. */
 import { criarBancoDeTeste, lerMigracao } from "./banco.mjs";
 
-const db = await criarBancoDeTeste();
+// Para antes da 0077: ela fecha `registrar_erro_app` para anon/authenticated (só a service role
+// chama) — o comportamento novo é coberto por scripts/sql/seguranca-0077.mjs.
+const db = await criarBancoDeTeste({ antesDe: "0077" });
 const q = async (sql, p = []) => (await db.query(sql, p)).rows;
 const um = async (sql, p = []) => (await q(sql, p))[0];
 let falhas = 0;
