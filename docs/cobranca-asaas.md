@@ -6,8 +6,10 @@ registra um pedido e o master ativa em **Admin → conta → Plano**. Com as var
 é confirmado.
 
 Código: `lib/cobranca/asaas.ts` (provedor), `lib/cobranca/mesclar.ts` (regra do webhook),
-`app/api/cobranca/webhook/route.ts` (rota). Não precisa de migração: usa as colunas
-`provedor` e `provedor_ref` de `assinaturas` (0057).
+`app/api/cobranca/webhook/route.ts` (rota). Usa as colunas `provedor` e `provedor_ref` de
+`assinaturas` (0057) e precisa da **0082** (`0082_cobranca_pendencias.sql`) aplicada antes de
+ligar o provedor: período do provedor separado do bônus, refs encerradas, estornos e
+cancelamento agendado.
 
 ## 1. Conta e chave da API
 
@@ -42,6 +44,7 @@ No Asaas: **Integrações → Webhooks → Adicionar** (um para cobranças e ass
   `asaas-access-token`, e a rota compara em tempo constante; diferente → 401.
 - **Versão da API:** v3. **Tipo de envio:** sequencial. **Fila:** ativada.
 - **Eventos:** `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`, `PAYMENT_OVERDUE`,
+  `PAYMENT_REFUNDED`, `PAYMENT_CHARGEBACK_REQUESTED`, `PAYMENT_DELETED`,
   `SUBSCRIPTION_DELETED`, `SUBSCRIPTION_INACTIVATED` e `SUBSCRIPTION_UPDATED`. Os outros
   são ignorados (respondem 200).
 
@@ -49,9 +52,10 @@ O que cada evento faz com a assinatura da conta:
 
 | Evento | Efeito |
 | --- | --- |
-| `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` | `ativa` no plano do `externalReference`, com período até vencimento + 1 mês (fim do dia, Brasília). Nunca encurta o período já gravado |
+| `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` | `ativa` no plano do `externalReference`, com período do provedor (`periodo_fim_provedor`) até vencimento + 1 mês (fim do dia, Brasília). Nunca encurta o período já gravado. O período efetivo (`periodo_fim`) é esse + `dias_bonus` (bônus de indicação) |
 | `PAYMENT_OVERDUE` | `atrasada` (o período continua; o plano vale mais 7 dias depois do fim, regra da 0057) |
-| `SUBSCRIPTION_DELETED` / `SUBSCRIPTION_INACTIVATED` / `SUBSCRIPTION_UPDATED` com status `INACTIVE` | `cancelada`: a conta passa a valer o plano grátis |
+| `PAYMENT_REFUNDED` / `PAYMENT_CHARGEBACK_REQUESTED` / `PAYMENT_DELETED` (este só se a cobrança estava paga) | Tira do período a duração daquela cobrança (nunca antes do vencimento dela), uma vez só (`provedor_pagamentos_estornados`). Se foi o pagamento que gerou a recompensa de indicação, os 30 dias saem das duas contas (`desfazer_bonus_indicacao`) |
+| `SUBSCRIPTION_DELETED` / `SUBSCRIPTION_INACTIVATED` / `SUBSCRIPTION_UPDATED` com status `INACTIVE` | `cancelada`: a conta passa a valer o plano grátis. Se a conta pediu o Grátis (`cancelamento_agendado`), não rebaixa: o plano pago vale até `periodo_fim` |
 
 Garantias da rota:
 
@@ -61,7 +65,9 @@ Garantias da rota:
 - **Só a assinatura gravada rebaixa.** "Vencida"/"cancelada" de outra assinatura (a antiga de
   uma troca de plano, ou a primeira fatura nunca paga de quem está no teste) é ignorada.
 - **Troca de plano.** A assinatura nova, quando paga, assume; a antiga é cancelada no Asaas
-  pela própria rota (o "cancelada" que volta dela é ignorado).
+  pela própria rota e entra em `provedor_refs_encerradas`: qualquer evento dela depois (o
+  "cancelada", ou uma fatura pendente paga atrasada) é ignorado.
+- **Pagamento estornado não volta a valer**: um "pago" reenviado da mesma cobrança é ignorado.
 - **Grava com a service key filtrando `user_id`** que veio no `externalReference`
   (`user_id:plano_id`) do evento autenticado.
 - Falha passageira (rede, banco) → 500 e o Asaas reenvia. Erro que reenvio não resolve
@@ -79,8 +85,10 @@ Garantias da rota:
    Assinar de novo o mesmo plano reaproveita a fatura em aberto, sem duplicar.
 3. O navegador vai para a fatura do Asaas. Pago, o webhook ativa o plano (Pix e cartão em
    segundos; boleto em até 3 dias úteis).
-4. **Mudar para o Grátis** cancela a assinatura no Asaas; a conta vira grátis quando o
-   webhook do cancelamento chega.
+4. **Mudar para o Grátis** marca `cancelamento_agendado` (RPC `agendar_cancelamento_assinatura`)
+   e cancela a assinatura no Asaas (as cobranças param). O plano pago continua valendo até
+   `periodo_fim` e só então a conta cai para o grátis. Se o cancelamento no Asaas falhar, a
+   marca é desfeita.
 
 As renovações mensais são automáticas: cada pagamento estende o período em um mês.
 
@@ -101,21 +109,17 @@ As renovações mensais são automáticas: cada pagamento estende o período em 
 Sem o webhook (variáveis ausentes ou 404), o master ainda pode ativar à mão em Admin, como
 antes.
 
-## Antes de ligar em produção: pendências conhecidas
+## Antes de ligar em produção
 
-A revisão do código encontrou casos que **precisam ser resolvidos antes de definir
-`ASAAS_API_KEY`** (enquanto a variável não existe, nada disso acontece):
+1. Aplique a `0082_cobranca_pendencias.sql` (depois da 0078), seguindo o fluxo do CLAUDE.md.
+2. Inclua os eventos de estorno no webhook do Asaas (lista da seção 3).
 
-1. **Fatura da assinatura antiga paga depois da troca de plano.** Se a conta troca de plano
-   e o cliente paga uma fatura pendente da assinatura antiga, o webhook pode reativar o
-   plano antigo (`lib/cobranca/mesclar.ts`, ramo `ativa` com outra `provedor_ref`). Corrigir
-   guardando as refs encerradas (coluna nova, migração) e ignorando pagamento delas.
-2. **Estorno e chargeback** (`PAYMENT_REFUNDED`, `PAYMENT_CHARGEBACK_REQUESTED`,
-   `PAYMENT_DELETED`) são ignorados: a conta segue ativa até o fim do período e o bônus de
-   indicação não é desfeito.
-3. **Trocar para o Grátis** cancela na hora, sem respeitar o período já pago.
-4. **Bônus de indicação** (+30 dias, 0078) é engolido pelo próximo webhook de quem paga pela
-   cobrança automática, porque o Asaas manda o período dele. Precisa de coluna própria de
-   bônus somada ao período ou de desconto na assinatura pelo provedor.
+Limitações conhecidas (sem efeito enquanto `ASAAS_API_KEY` não existe):
 
-Até lá, mantenha a ativação manual (Admin → conta → Plano), que é o fluxo atual.
+- Bônus de indicação recebido no **teste** ou no **Grátis** (que vira 30 dias de Pro) não
+  passa para a assinatura paga contratada depois: só o bônus aplicado durante um período
+  pago fica em `dias_bonus`.
+- Estorno de uma indicação já recompensada não paga a recompensa de novo se a conta voltar a
+  pagar (a indicação conta uma vez só).
+- A tela Plano ainda não mostra "cancelamento agendado"; mostra o plano pago com o
+  "pago até".

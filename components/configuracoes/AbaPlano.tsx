@@ -54,7 +54,7 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
     if (dados?.cobrancaAutomatica && p.preco_mensal <= 0 && resumo.status === "ativa" && resumo.plano_efetivo !== p.id) {
       const ok = await confirm({
         title: `Mudar para o ${p.nome}?`,
-        message: "Se você paga pelo Asaas, a assinatura é cancelada lá e as cobranças param. A conta passa para o plano grátis quando o Asaas confirmar o cancelamento.",
+        message: "Se você paga pelo Asaas, a assinatura é cancelada lá e as cobranças param. O plano atual continua valendo até o fim do período já pago; depois a conta passa para o grátis.",
         confirmLabel: "Cancelar assinatura",
       });
       if (!ok) return;
@@ -73,7 +73,7 @@ export function AbaPlano({ dados }: { dados: DadosPlano | null }) {
       if (!r.ok) return;
       // Provedor de cobrança ligado: segue para o pagamento (URL externa do provedor).
       if (r.dado.checkout) window.location.assign(r.dado.checkout);
-      else if (r.dado.cancelada) toast.success("Assinatura cancelada. A conta passa para o plano grátis assim que o Asaas confirmar.");
+      else if (r.dado.cancelada) toast.success("Assinatura cancelada. O plano atual vale até o fim do período pago; depois a conta passa para o grátis.");
       else toast.success(`Pedido do plano ${p.nome} enviado. A ativação é confirmada pelo administrador.`);
     });
   }

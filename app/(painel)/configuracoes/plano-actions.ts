@@ -11,7 +11,7 @@ import { provedorCobranca } from "@/lib/cobranca";
 /**
  * Configurações → Plano (10.9). Com provedor de cobrança ligado (Asaas), "Assinar" leva ao
  * checkout dele; sem provedor, registra o PEDIDO e o master ativa. Plano grátis com
- * provedor: encerra a assinatura paga no provedor (o webhook rebaixa a conta).
+ * provedor: encerra a assinatura paga no provedor, e o plano pago vale até o fim do período.
  */
 export async function assinarPlano(planoId: string, voltaUrl: string, documento?: string | null) {
   return comResultado(async (): Promise<{ checkout: string | null; cancelada?: boolean }> => {
@@ -31,10 +31,22 @@ export async function assinarPlano(planoId: string, voltaUrl: string, documento?
         const c = await provedor.criarCheckout({ userId: auth.user.id, email: auth.user.email ?? "", documento: doc, plano: { id: plano.id, nome: plano.nome, preco }, voltaUrl: volta });
         return { checkout: c.url };
       }
-      // Grátis: quem paga pelo provedor encerra lá (a policy deixa a conta ler a própria linha).
-      const { data: atual } = await supabase.from("assinaturas").select("provedor, provedor_ref, status").eq("user_id", auth.user.id).maybeSingle();
+      // Grátis: quem paga pelo provedor encerra lá, mas o plano pago vale até o fim do período
+      // já pago (a policy deixa a conta ler a própria linha). Marca ANTES de cancelar: o
+      // "cancelada" que o provedor manda de volta não rebaixa a conta marcada.
+      const { data: atual } = await supabase.from("assinaturas").select("provedor, provedor_ref, status, cancelamento_agendado").eq("user_id", auth.user.id).maybeSingle();
       if (atual?.provedor === provedor.id && atual.provedor_ref && atual.status !== "cancelada" && provedor.cancelarAssinatura) {
-        await provedor.cancelarAssinatura(atual.provedor_ref);
+        if (!atual.cancelamento_agendado) {
+          const { error: erroAgenda } = await supabase.rpc("agendar_cancelamento_assinatura", { p_agendar: true });
+          if (erroAgenda) lancarErroSupabase(erroAgenda);
+          try {
+            await provedor.cancelarAssinatura(atual.provedor_ref);
+          } catch (e) {
+            // Continua cobrando no provedor: desfaz a marca para não ignorar o próximo cancelamento.
+            await supabase.rpc("agendar_cancelamento_assinatura", { p_agendar: false });
+            throw e;
+          }
+        }
         revalidatePath("/configuracoes");
         return { checkout: null, cancelada: true };
       }
