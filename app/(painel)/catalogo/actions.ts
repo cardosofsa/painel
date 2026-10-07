@@ -7,6 +7,7 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar, catalogoSchema, precoOverrideSchema } from "@/lib/validacao";
 import { mapaGrupos, rotuloProduto } from "@/lib/produtos";
 import { comResultado } from "@/lib/acao";
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 const PATH = "/catalogo";
 
@@ -92,12 +93,11 @@ export async function listarPrecosCatalogo(catalogoId: string) {
     const supabase = await createClient();
 
     const [produtosRes, overridesRes, gruposRes, catalogoRes] = await Promise.all([
-      supabase
-        .from("produtos")
-        .select("id, nome, preco_venda, preco_atacado, grupo_id, variante_nome")
-        .eq("ativo", true)
-        .gt("estoque", 0)
-        .order("nome"),
+      // Variação filha (0084) não vai para a vitrine.
+      semVariacoesFilhas((filtrar) => {
+        const q = supabase.from("produtos").select("id, nome, preco_venda, preco_atacado, grupo_id, variante_nome").eq("ativo", true).gt("estoque", 0);
+        return (filtrar ? q.is("produto_pai_id", null) : q).order("nome");
+      }),
       supabase.from("catalogo_precos").select("produto_id, preco").eq("catalogo_id", catalogoId),
       supabase.from("produto_grupos").select("id, nome"),
       supabase.from("catalogos").select("tipo_preco").eq("id", catalogoId).maybeSingle(),

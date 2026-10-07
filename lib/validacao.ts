@@ -248,6 +248,23 @@ export const gerarTemaSchema = z.object({
   instrucaoExtra: z.string().trim().max(300).nullable(),
 });
 
+/** Variações por quantidade de um produto pai (0084): o banco confere tudo de novo. */
+export const variacoesProdutoSchema = z.object({
+  pai_id: uuid,
+  variacoes: z
+    .array(
+      z.object({
+        id: uuid.optional(),
+        variante_nome: z.string().trim().min(1, "Dê um nome a cada variação").max(80, "Nome longo demais"),
+        quantidade: z.number().int("A quantidade precisa ser inteira").min(1, "A quantidade mínima é 1").max(100_000, "Quantidade alta demais"),
+        sku: z.string().trim().min(1, "Informe o SKU de cada variação").max(80, "SKU longo demais"),
+        custo_manual: dinheiroOpcional,
+        preco_venda: dinheiro,
+      }),
+    )
+    .max(50, "No máximo 50 variações por produto"),
+});
+
 export const grupoProdutoSchema = z.object({
   nome: textoCurto,
   descricao: z.string().trim().max(2000).nullable(),

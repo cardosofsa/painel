@@ -22,22 +22,56 @@ const chave = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 /**
  * Qual produto cadastrado é cada item: primeiro o vínculo feito à mão (pelo SKU da Shopee),
  * depois SKU igual ao do produto (SKU da variação, depois o principal). null = sem vínculo.
+ *
+ * Variação sem SKU próprio (0084): o vínculo manual fica na chave "SKU principal · variação"
+ * (ver `skuExterno`), que vem ANTES do principal — assim "Kit 2" e "Kit 3" do mesmo anúncio
+ * vão cada um para a sua variação filha, e um vínculo antigo feito pelo principal continua
+ * valendo para as variações que não ganharam vínculo próprio.
  */
-export function produtoDoItem(item: Pick<ItemMarketplace, "sku" | "skuPrincipal">, produtos: ProdutoVinculavel[], vinculos: VinculoSku[]): string | null {
+export function produtoDoItem(
+  item: Pick<ItemMarketplace, "sku" | "skuPrincipal"> & Partial<Pick<ItemMarketplace, "nome" | "variacao">>,
+  produtos: ProdutoVinculavel[],
+  vinculos: VinculoSku[],
+): string | null {
   const porVinculo = new Map(vinculos.map((v) => [chave(v.sku_externo), v.produto_id]));
   const porSku = new Map(produtos.filter((p) => p.sku).map((p) => [chave(p.sku), p.id]));
-  for (const s of [item.sku, item.skuPrincipal]) {
-    const k = chave(s);
-    if (!k) continue;
+  const k = chave(item.sku);
+  if (k) {
     const v = porVinculo.get(k) ?? porSku.get(k);
+    if (v) return v;
+  }
+  if (!k && item.variacao?.trim()) {
+    const v = porVinculo.get(chave(skuExterno({ sku: null, skuPrincipal: item.skuPrincipal, nome: item.nome ?? "", variacao: item.variacao })));
+    if (v) return v;
+  }
+  const kp = chave(item.skuPrincipal);
+  if (kp) {
+    const v = porVinculo.get(kp) ?? porSku.get(kp);
     if (v) return v;
   }
   return null;
 }
 
-/** Chave de SKU que o vínculo manual grava (a da variação, ou a principal). */
+/** "Azul,P" (pedido) e "Azul · P" (anúncio) viram a mesma coisa. */
+export function normalizarVariacao(variacao: string): string {
+  return variacao
+    .trim()
+    .split(/\s*[,·]\s*/)
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * Chave de SKU que o vínculo manual grava: o SKU da variação; sem ele, "SKU principal (ou
+ * nome) · variação"; sem variação, o SKU principal (ou o nome). Igual à função SQL
+ * `chave_item_marketplace` (0084), que o `revincular_itens_marketplace` usa.
+ */
 export function skuExterno(item: Pick<ItemMarketplace, "sku" | "skuPrincipal" | "nome" | "variacao">): string {
-  return (item.sku || item.skuPrincipal || `${item.nome}${item.variacao ? ` · ${item.variacao}` : ""}`).trim();
+  const sku = item.sku?.trim();
+  if (sku) return sku;
+  const base = item.skuPrincipal?.trim() || (item.nome ?? "").trim();
+  const variacao = item.variacao?.trim() ? normalizarVariacao(item.variacao) : "";
+  return variacao ? `${base} · ${variacao}` : base;
 }
 
 export interface MargemPedido {

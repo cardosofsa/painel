@@ -5,6 +5,8 @@ import { buscarEmLotes } from "@/lib/lotes";
 export interface ItemMarketplaceSalvo {
   produto_id: string | null;
   sku: string | null;
+  /** SKU do anúncio (item pai): com `variacao`, forma a chave do vínculo da variação sem SKU. */
+  sku_principal?: string | null;
   nome: string;
   variacao: string | null;
   quantidade: number;
@@ -86,7 +88,7 @@ export async function carregarPedidosMarketplace(supabase: SupabaseClient, dias 
     buscarEmLotes((de, ate) =>
       supabase
         .from("pedidos_marketplace")
-        .select("*, pedidos_marketplace_itens(produto_id, sku, nome, variacao, quantidade, preco_unitario, custo_unitario)", { count: "exact" })
+        .select("*, pedidos_marketplace_itens(produto_id, sku, sku_principal, nome, variacao, quantidade, preco_unitario, custo_unitario)", { count: "exact" })
         .or(`criado_em_plataforma.gte.${inicio.toISOString()},criado_em_plataforma.is.null`)
         .order("criado_em_plataforma", { ascending: false, nullsFirst: false })
         .order("id")

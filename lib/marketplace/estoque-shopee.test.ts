@@ -8,6 +8,21 @@ const produtos = [
 ];
 
 describe("casarAnuncios", () => {
+  it("variação sem SKU próprio casa com a variação filha pela chave 'SKU principal · variação' (0084)", () => {
+    const r = casarAnuncios(
+      [
+        { itemId: 9, modelId: 91, sku: null, skuPrincipal: "ALF", nome: "Alfazema · 12 un", nomeItem: "Alfazema", variacao: "12 un", estoque: 0 },
+        { itemId: 9, modelId: 92, sku: null, skuPrincipal: "ALF", nome: "Alfazema · 24 un", nomeItem: "Alfazema", variacao: "24 un", estoque: 0 },
+      ],
+      produtos,
+      [
+        { sku_externo: "ALF · 12 un", produto_id: "k12" },
+        { sku_externo: "ALF · 24 un", produto_id: "k24" },
+      ],
+    );
+    expect(r.map((l) => l.produto_id)).toEqual(["k12", "k24"]);
+  });
+
   it("casa variação pelo SKU dela, item sem variação pelo SKU do item, e respeita vínculo manual", () => {
     const r = casarAnuncios(
       [

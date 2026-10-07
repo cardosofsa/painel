@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { CatalogoClient, type Catalogo } from "./CatalogoClient";
 import type { Metadata } from "next";
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 export const metadata: Metadata = { title: "Catálogo" };
 
@@ -13,7 +14,11 @@ export default async function CatalogoPage() {
   const [catalogosRes, produtosRes, pendentesRes, visitasRes, pedidosRes] = await Promise.all([
     // `*`: formas_pagamento só existe a partir da 0051.
     supabase.from("catalogos").select("*").order("criado_em"),
-    supabase.from("produtos").select("id", { count: "exact", head: true }).eq("ativo", true).gt("estoque", 0),
+    // Variação filha (0084) não vai para a vitrine.
+    semVariacoesFilhas((filtrar) => {
+      const q = supabase.from("produtos").select("id", { count: "exact", head: true }).eq("ativo", true).gt("estoque", 0);
+      return filtrar ? q.is("produto_pai_id", null) : q;
+    }),
     // Os pedidos moram em Vendas desde a 8.6; aqui só o aviso de quantos esperam.
     supabase.from("pedidos_vitrine").select("id", { count: "exact", head: true }).in("status", ["pendente", "aceito"]),
     // Sem a 0044 a tabela de visitas não existe: os cartões mostram 0, sem erro.

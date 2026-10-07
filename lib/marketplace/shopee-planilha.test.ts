@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dataShopee, interpretarPlanilhaShopee, statusShopee } from "./shopee-planilha";
-import { margemPedido, montarPedidosParaGravar, produtoDoItem, skuExterno } from "./margem";
+import { margemPedido, montarPedidosParaGravar, normalizarVariacao, produtoDoItem, skuExterno } from "./margem";
 
 // Amostra no formato da exportação da Central do Vendedor (colunas reais, valores inventados).
 const CAB = [
@@ -125,6 +125,27 @@ describe("vínculo e margem", () => {
   it("skuExterno usa o SKU, ou nome + variação sem SKU", () => {
     expect(skuExterno({ sku: "A", skuPrincipal: "B", nome: "X", variacao: null })).toBe("A");
     expect(skuExterno({ sku: null, skuPrincipal: null, nome: "Kit", variacao: "Azul" })).toBe("Kit · Azul");
+  });
+
+  it("skuExterno: variação sem SKU próprio vira 'SKU principal · variação' (0084)", () => {
+    expect(skuExterno({ sku: null, skuPrincipal: "FITA", nome: "Fita", variacao: "Kit 2" })).toBe("FITA · Kit 2");
+    expect(skuExterno({ sku: "  ", skuPrincipal: "FITA", nome: "Fita", variacao: null })).toBe("FITA");
+    // "Azul,P" (pedido) e "Azul · P" (anúncio) dão a mesma chave.
+    expect(skuExterno({ sku: null, skuPrincipal: "X", nome: "n", variacao: "Azul,P" })).toBe(skuExterno({ sku: null, skuPrincipal: "X", nome: "n", variacao: "Azul · P" }));
+    expect(normalizarVariacao(" Azul , P ")).toBe("Azul · P");
+  });
+
+  it("cada variação do anúncio vai para a sua variação filha; o vínculo do principal fica de reserva", () => {
+    const vinculos = [
+      { sku_externo: "fita · kit 2", produto_id: "k2" },
+      { sku_externo: "FITA · Kit 3", produto_id: "k3" },
+      { sku_externo: "FITA", produto_id: "pai" },
+    ];
+    expect(produtoDoItem({ sku: null, skuPrincipal: "FITA", nome: "Fita", variacao: "Kit 2" }, produtos, vinculos)).toBe("k2");
+    expect(produtoDoItem({ sku: null, skuPrincipal: "FITA", nome: "Fita", variacao: "Kit 3" }, produtos, vinculos)).toBe("k3");
+    expect(produtoDoItem({ sku: null, skuPrincipal: "FITA", nome: "Fita", variacao: "Kit 4" }, produtos, vinculos)).toBe("pai");
+    // SKU da variação continua valendo primeiro.
+    expect(produtoDoItem({ sku: "LUVA-M", skuPrincipal: "FITA", nome: "Fita", variacao: "Kit 2" }, produtos, vinculos)).toBe("p2");
   });
 
   it("lucro = repasse − custo − imposto", () => {

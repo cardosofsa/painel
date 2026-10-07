@@ -8,6 +8,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { executarComToast } from "@/lib/acao-cliente";
 import type { PedidoMarketplaceSalvo } from "@/lib/marketplace/pedidos-servidor";
 import { vincularAnuncioPedidos } from "@/app/(painel)/vendas/central-actions";
+import { skuExterno } from "@/lib/marketplace/margem";
 
 interface Pendente {
   lojaId: string;
@@ -45,7 +46,9 @@ export function VincularAnunciosModal({
       if (p.status === "cancelado" || p.status === "devolvido") continue;
       for (const i of p.pedidos_marketplace_itens) {
         if (i.produto_id) continue;
-        const sku = (i.sku || "").trim();
+        // A chave do vínculo: SKU da variação; sem ele, "SKU principal · variação" (0084),
+        // para cada variação do anúncio ir para a sua variação filha no estoque.
+        const sku = skuExterno({ sku: i.sku, skuPrincipal: i.sku_principal ?? null, nome: i.nome, variacao: i.variacao });
         if (!sku) continue;
         const k = `${p.loja_id}|${sku.toLowerCase()}`;
         const atual = m.get(k) ?? { lojaId: p.loja_id, loja: nomeLoja.get(p.loja_id) ?? "Loja", sku, nome: i.variacao ? `${i.nome} · ${i.variacao}` : i.nome, quantidade: 0, pedidos: 0 };
@@ -75,7 +78,7 @@ export function VincularAnunciosModal({
   return (
     <Modal open onClose={onClose} title="Vincular anúncios a produtos" width="max-w-2xl">
       <p className="text-sm text-text-secondary mb-4">
-        Estes anúncios chegaram com um SKU que não bate com nenhum produto. Sem vínculo, o pedido fica sem custo (lucro maior que o real) e sem baixa no estoque. O vínculo vale para os próximos pedidos também.
+        Estes anúncios chegaram com um SKU que não bate com nenhum produto. Cada variação do anúncio (Kit 2, Kit 3…) aparece separada: ligue cada uma à variação do produto (pai × N) e a venda baixa o estoque certo do pai. Sem vínculo, o pedido fica sem custo (lucro maior que o real) e sem baixa no estoque. O vínculo vale para os próximos pedidos também.
       </p>
       {restantes.length === 0 ? (
         <p className="text-sm text-positive text-center py-6">Tudo vinculado.</p>

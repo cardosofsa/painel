@@ -5,6 +5,7 @@ import { buscarEmLotes } from "@/lib/lotes";
 import { credenciaisShopee, faltandoShopee } from "@/lib/marketplace/shopee-api";
 import { credenciaisML } from "@/lib/marketplace/mercadolivre-api";
 import { cofreDisponivel } from "@/lib/ia/cofre";
+import { rotuloProduto } from "@/lib/produtos";
 import { VendasClient, type Venda } from "./VendasClient";
 import type { Metadata } from "next";
 
@@ -45,7 +46,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     // Shopee (8.9): sem a 0046 volta `disponivel: false` e a aba explica.
     carregarPedidosMarketplace(supabase, DIAS_JANELA),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
-    supabase.from("produtos").select("id, sku, nome, custo, estoque").order("nome"),
+    supabase.from("produtos").select("id, sku, nome, custo, estoque, variante_nome").order("nome"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     // Disponível = físico − reservado (0052). Sem a migração, cai para o físico.
     supabase.from("estoque_disponivel").select("produto_id, disponivel"),
@@ -101,7 +102,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
         nome: l.nome,
         canalNome: l.canais?.nome ?? "",
       }))}
-      produtosMarketplace={(produtosRes.data ?? []).map((p) => ({ id: p.id, sku: p.sku, nome: p.nome, custo: Number(p.custo ?? 0) }))}
+      produtosMarketplace={(produtosRes.data ?? []).map((p) => ({ id: p.id, sku: p.sku, nome: rotuloProduto(p), custo: Number(p.custo ?? 0) }))}
       impostoPct={Number(perfilRes.data?.aliquota_das ?? 0) / 100}
       disponivel={disponivel}
       freteConectado={!!freteRes.data?.token_cifrado}
