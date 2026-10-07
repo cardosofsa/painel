@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { carregarPedidosVitrine } from "@/lib/pedidos-vitrine-servidor";
 import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
+import { buscarEmLotes } from "@/lib/lotes";
 import { credenciaisShopee, faltandoShopee } from "@/lib/marketplace/shopee-api";
 import { credenciaisML } from "@/lib/marketplace/mercadolivre-api";
 import { cofreDisponivel } from "@/lib/ia/cofre";
@@ -20,12 +21,18 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   inicio.setDate(inicio.getDate() - DIAS_JANELA);
 
   const [vendasRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes, disponivelRes] = await Promise.all([
-    supabase
-      .from("vendas")
-      // `*`: etapa e logística só existem a partir da 0047.
-      .select("*, clientes(cidade, uf), venda_itens(produto_nome, produto_sku, quantidade, preco_unitario, custo_unitario, garantia_dias)")
-      .gte("data_venda", inicio.toISOString())
-      .order("data_venda", { ascending: false }),
+    // O PostgREST corta em 1000 linhas sem avisar: lê a janela inteira em lotes.
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("vendas")
+        // `*`: etapa e logística só existem a partir da 0047.
+        .select("*, clientes(cidade, uf), venda_itens(produto_nome, produto_sku, quantidade, preco_unitario, custo_unitario, garantia_dias)", { count: "exact" })
+        .gte("data_venda", inicio.toISOString())
+        .order("data_venda", { ascending: false })
+        .order("id")
+        .range(de, ate),
+      { maximo: 20000 },
+    ),
     supabase.from("formas_pagamento").select("nome").order("nome"),
     // Pedidos do catálogo moram em Vendas desde a 8.6.
     carregarPedidosVitrine(supabase),

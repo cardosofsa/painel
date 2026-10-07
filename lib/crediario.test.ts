@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cobraEncargos, encargosAtraso } from "./crediario";
+import { cobraEncargos, encargosAtraso, faltaDaParcela, pagamentoParcela } from "./crediario";
 
 const regra = { multaPct: 2, jurosMesPct: 1 };
 
@@ -19,5 +19,26 @@ describe("encargos do crediário", () => {
     expect(encargosAtraso(100, "2026-09-01", "2026-10-01", null).total).toBe(100);
     expect(cobraEncargos({ multaPct: 0, jurosMesPct: 0 })).toBe(false);
     expect(cobraEncargos(regra)).toBe(true);
+  });
+});
+
+describe("pagamentoParcela", () => {
+  it("pagamento parcial deixa a parcela em aberto e acumula", () => {
+    expect(pagamentoParcela(50, 0, 10)).toEqual({ valorPago: 10, quitada: false, falta: 40 });
+    expect(pagamentoParcela(50, 10, 15)).toEqual({ valorPago: 25, quitada: false, falta: 25 });
+  });
+
+  it("completar o que falta quita", () => {
+    expect(pagamentoParcela(50, 25, 25)).toEqual({ valorPago: 50, quitada: true, falta: 0 });
+  });
+
+  it("pagar a mais (multa e juros) quita sem falta", () => {
+    expect(pagamentoParcela(50, null, 53)).toEqual({ valorPago: 53, quitada: true, falta: 0 });
+  });
+
+  it("faltaDaParcela", () => {
+    expect(faltaDaParcela(50, 12.5)).toBe(37.5);
+    expect(faltaDaParcela(50, null)).toBe(50);
+    expect(faltaDaParcela(50, 60)).toBe(0);
   });
 });

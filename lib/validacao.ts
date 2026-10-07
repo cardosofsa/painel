@@ -318,6 +318,12 @@ export const vendaSchema = z.object({
   // dela conferir o limite de fiado.
   parcelas_fiado: z.number().int("Número de parcelas inválido").min(1).max(24, "Máximo de 24 parcelas"),
   dias_entre_parcelas: z.number().int().min(1).max(90),
+  // 0083: crédito de troca é forma de pagamento (não desconto) e aponta para a devolução de
+  // origem; o saldo livre do crédito é conferido na RPC, com trava.
+  credito_troca: dinheiro.optional(),
+  troca_devolucao_id: uuidOpcional.optional(),
+  // 0083: quanto o cliente entregou em dinheiro (troco). Só informativo: o caixa recebe a venda.
+  valor_recebido: dinheiroOpcional.optional(),
 });
 
 export const perfilNegocioSchema = z.object({

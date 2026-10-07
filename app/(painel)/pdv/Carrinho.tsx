@@ -9,6 +9,7 @@ import { formatBRL } from "@/lib/format";
 import type { ItemCarrinho } from "./tipos";
 import { Chip } from "@/components/ui/Chip";
 import { CotarFretePdv } from "./CotarFretePdv";
+import { descontoDoCarrinho, subtotalDoCarrinho } from "@/lib/pdv";
 
 export type DescontoTipo = "valor" | "percentual";
 
@@ -20,15 +21,13 @@ export interface EstadoCarrinho {
   observacao: string;
 }
 
-/** Desconto em reais, já resolvido a partir do tipo e travado no subtotal. */
+/** Desconto em reais (centavos exatos) e subtotal: lógica pura em `lib/pdv.ts`, com teste. */
 export function calcularDesconto(estado: EstadoCarrinho, subtotal: number): number {
-  const bruto =
-    estado.descontoTipo === "percentual" ? (subtotal * estado.descontoEntrada) / 100 : estado.descontoEntrada;
-  return Math.min(Math.max(bruto, 0), subtotal);
+  return descontoDoCarrinho(estado.descontoTipo, estado.descontoEntrada, subtotal);
 }
 
 export function calcularSubtotal(itens: ItemCarrinho[]): number {
-  return itens.reduce((acc, i) => acc + i.preco_unitario * i.quantidade, 0);
+  return subtotalDoCarrinho(itens);
 }
 
 export function Carrinho({

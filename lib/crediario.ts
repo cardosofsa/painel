@@ -41,3 +41,22 @@ export function encargosAtraso(valor: number, vencimento: string, hoje: string, 
 export function cobraEncargos(regra: RegraEncargos | null | undefined): boolean {
   return !!regra && (regra.multaPct > 0 || regra.jurosMesPct > 0);
 }
+
+/**
+ * Pagamento de uma parcela do crediário, como a RPC `marcar_parcela_paga` (0083) faz: o
+ * que falta é valor − já pago; pagar menos deixa a parcela em aberto acumulando, e o que
+ * passar do que falta é multa e juros. `falta` é o que sobra depois deste pagamento.
+ */
+export function pagamentoParcela(valor: number, jaPago: number | null | undefined, recebido: number): { valorPago: number; quitada: boolean; falta: number } {
+  const c = (x: number) => Math.round(x * 100) / 100;
+  const ja = Math.max(0, jaPago ?? 0);
+  const pago = Math.max(0, Number.isFinite(recebido) ? recebido : 0);
+  const devido = Math.max(0, c(valor - ja));
+  const principal = Math.min(pago, devido);
+  return { valorPago: c(ja + pago), quitada: ja + principal >= valor - 0.005, falta: Math.max(0, c(devido - principal)) };
+}
+
+/** O que ainda falta numa parcela (valor − já pago), nunca negativo. */
+export function faltaDaParcela(valor: number, jaPago: number | null | undefined): number {
+  return Math.max(0, Math.round((valor - (jaPago ?? 0)) * 100) / 100);
+}

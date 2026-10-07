@@ -29,6 +29,10 @@ interface VendaBruta {
   taxa_maquineta_pct: number;
   taxa_maquineta_valor: number;
   total_parcelas_fiado: number | null;
+  /** 0083 — ausentes antes da migração (o select é "*"). */
+  credito_troca?: number | null;
+  valor_recebido?: number | null;
+  troco?: number | null;
   venda_itens: { produto_nome: string; quantidade: number; preco_unitario: number; garantia_dias: number | null }[];
 }
 
@@ -43,7 +47,8 @@ export async function carregarComprovante(supabase: Supabase, vendaId: string): 
   const { data: venda, error } = await supabase
     .from("vendas")
     .select(
-      "numero, data_venda, cliente_id, cliente_nome, status, subtotal, desconto, valor_entrega, total, forma_pagamento, entrada_valor, entrada_forma, forma_pagamento_2, parcelas_cartao, taxa_maquineta_pct, taxa_maquineta_valor, total_parcelas_fiado, venda_itens(produto_nome, quantidade, preco_unitario, garantia_dias)",
+      // "*": troco e crédito de troca (0083) vêm junto quando a migração existe, sem quebrar antes dela.
+      "*, venda_itens(produto_nome, quantidade, preco_unitario, garantia_dias)",
     )
     .eq("id", vendaId)
     .maybeSingle<VendaBruta>();
@@ -102,6 +107,9 @@ export async function carregarComprovante(supabase: Supabase, vendaId: string): 
     total: venda.total,
     formaPagamento: venda.forma_pagamento,
     clienteNome: venda.cliente_nome,
+    creditoTroca: Number(venda.credito_troca ?? 0),
+    valorRecebido: venda.valor_recebido == null ? null : Number(venda.valor_recebido),
+    troco: Number(venda.troco ?? 0),
     empresa,
     cliente,
     pagamento: {

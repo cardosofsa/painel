@@ -95,3 +95,17 @@ describe("linkComprovanteWhatsapp", () => {
     expect(linkComprovanteWhatsapp(base, null)).toMatch(/^https:\/\/wa\.me\/\?text=/);
   });
 });
+
+describe("textoComprovante — troco e crédito de troca (0083)", () => {
+  it("mostra valor recebido e troco", () => {
+    const t = textoComprovante({ ...base, formaPagamento: "Dinheiro", valorRecebido: 50, troco: 10.2 });
+    expect(t).toContain("Valor recebido: R$");
+    expect(t).toMatch(/Troco: R\$\s?10,20/);
+  });
+
+  it("mostra o crédito de troca e omite o troco quando não houve dinheiro", () => {
+    const t = textoComprovante({ ...base, creditoTroca: 20, valorRecebido: null, troco: 0 });
+    expect(t).toMatch(/Crédito de troca: R\$\s?20,00/);
+    expect(t).not.toContain("Troco");
+  });
+});

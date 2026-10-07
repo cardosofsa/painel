@@ -120,3 +120,52 @@ export function calcularTaxaMaquineta(valor: number, taxaPct: number): number {
   if (!taxaPct || taxaPct <= 0) return 0;
   return arredondar(valor * (taxaPct / 100));
 }
+
+/**
+ * Subtotal do carrinho: cada linha arredondada em centavos e somada, igual à RPC
+ * `registrar_venda` (sum(round(preço × qtd, 2))). Sem isso, 3 × 0,10 vira 0,30000000000000004.
+ */
+export function subtotalDoCarrinho(itens: { preco_unitario: number; quantidade: number }[]): number {
+  return arredondar(itens.reduce((acc, i) => acc + arredondar(i.preco_unitario * i.quantidade), 0));
+}
+
+/**
+ * Desconto em reais, já resolvido a partir do tipo (valor ou %), travado entre 0 e o subtotal
+ * e arredondado em centavos. Sem o arredondamento, 50% de 10,05 dava 5,025: a tela mostrava
+ * um total e o banco (que arredonda o desconto) gravava outro, e o Pix saía com o valor errado.
+ */
+export function descontoDoCarrinho(tipo: "valor" | "percentual", entrada: number, subtotal: number): number {
+  const valor = Number.isFinite(entrada) ? entrada : 0;
+  const bruto = tipo === "percentual" ? (subtotal * valor) / 100 : valor;
+  return arredondar(Math.min(Math.max(bruto, 0), subtotal));
+}
+
+export interface TrocoEntrada {
+  /** Total da venda (já com desconto e entrega). */
+  total: number;
+  /** Crédito de troca usado como pagamento: não passa pelo caixa. */
+  credito?: number;
+  entradaValor: number;
+  /** A entrada é em dinheiro? */
+  entradaDinheiro: boolean;
+  /** A forma do restante é do tipo dinheiro? */
+  formaPrincipalDinheiro: boolean;
+  /** Crediário: o restante não é pago agora, só a entrada. */
+  fiado: boolean;
+  /** Quanto o cliente entregou em dinheiro. */
+  recebido: number;
+}
+
+/**
+ * Troco do PDV: vale só para a parte paga AGORA em dinheiro — a entrada em dinheiro e/ou o
+ * restante, quando a venda é paga e a forma do restante é dinheiro. Mesma regra da RPC
+ * `registrar_venda` (0083). `falta` > 0 quando o recebido não cobre a parte em dinheiro.
+ */
+export function calcularTroco(t: TrocoEntrada): { emDinheiro: number; troco: number; falta: number } {
+  const entrada = Math.max(0, t.entradaValor || 0);
+  const restante = calcularRestante(Math.max(0, arredondar(t.total - (t.credito || 0))), entrada);
+  const emDinheiro = arredondar((t.entradaDinheiro ? entrada : 0) + (!t.fiado && t.formaPrincipalDinheiro ? restante : 0));
+  const recebido = Math.max(0, Number.isFinite(t.recebido) ? t.recebido : 0);
+  if (emDinheiro <= 0 || recebido <= 0) return { emDinheiro, troco: 0, falta: 0 };
+  return { emDinheiro, troco: Math.max(0, arredondar(recebido - emDinheiro)), falta: Math.max(0, arredondar(emDinheiro - recebido)) };
+}

@@ -54,6 +54,11 @@ export interface DadosComprovante {
   total: number;
   formaPagamento: string | null;
   clienteNome: string | null;
+  /** 0083: parte paga com crédito de troca (não é desconto: o total é cheio). */
+  creditoTroca?: number;
+  /** 0083: dinheiro entregue pelo cliente e o troco devolvido (só informativo). */
+  valorRecebido?: number | null;
+  troco?: number;
   /** Os campos abaixo são preenchidos pelo carregador do servidor; o PDV local não os tem. */
   data?: string;
   status?: "paga" | "fiado" | "cancelada";
@@ -111,6 +116,11 @@ export function textoComprovante(d: DadosComprovante): string {
   if (d.valorEntrega > 0) linhas.push(`Entrega: ${formatBRL(d.valorEntrega)}`);
   linhas.push(`Total: ${formatBRL(d.total)}`);
   if (d.formaPagamento) linhas.push(`Pagamento: ${d.formaPagamento}`);
+  if (d.creditoTroca && d.creditoTroca > 0) linhas.push(`Crédito de troca: ${formatBRL(d.creditoTroca)}`);
+  if (d.valorRecebido && d.valorRecebido > 0) {
+    linhas.push(`Valor recebido: ${formatBRL(d.valorRecebido)}`);
+    linhas.push(`Troco: ${formatBRL(d.troco ?? 0)}`);
+  }
   if (d.pagamento && d.pagamento.taxaMaquinetaValor > 0) {
     linhas.push(`Taxa de maquineta: ${formatBRL(d.pagamento.taxaMaquinetaValor)}`);
   }

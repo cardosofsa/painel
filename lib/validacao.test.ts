@@ -313,6 +313,39 @@ describe("vendaSchema — garantia por item", () => {
   });
 });
 
+describe("vendaSchema — crédito de troca e troco (0083)", () => {
+  const base = {
+    itens: [{ produto_id: "8f1b7a52-3d4e-4c1a-9b7e-1a2b3c4d5e6f", quantidade: 1, preco_unitario: 10 }],
+    status: "paga" as const,
+    cliente_id: null,
+    conta_id: null,
+    forma_pagamento: "Dinheiro",
+    desconto: 0,
+    valor_entrega: 0,
+    observacao: null,
+    data_vencimento: null,
+    entrada_valor: 0,
+    entrada_forma: null,
+    forma_pagamento_2: null,
+    parcelas_cartao: null,
+    taxa_maquineta_pct: 0,
+    parcelas_fiado: 1,
+    dias_entre_parcelas: 30,
+  };
+
+  it("campos novos são opcionais", () => {
+    expect(vendaSchema.safeParse(base).success).toBe(true);
+    expect(vendaSchema.safeParse({ ...base, credito_troca: 5, troca_devolucao_id: "8f1b7a52-3d4e-4c1a-9b7e-1a2b3c4d5e6f", valor_recebido: 20 }).success).toBe(true);
+    expect(vendaSchema.safeParse({ ...base, valor_recebido: null }).success).toBe(true);
+  });
+
+  it("recusa valores negativos e id inválido", () => {
+    expect(vendaSchema.safeParse({ ...base, credito_troca: -1 }).success).toBe(false);
+    expect(vendaSchema.safeParse({ ...base, valor_recebido: -1 }).success).toBe(false);
+    expect(vendaSchema.safeParse({ ...base, troca_devolucao_id: "D-0001" }).success).toBe(false);
+  });
+});
+
 describe("schemas de cadastro de IA", () => {
   it("aceita chave normal e apara espaços nas pontas", () => {
     const r = iaChaveSchema.safeParse({ provedor: "openai", chave: "  sk-proj-abc123XYZ  " });

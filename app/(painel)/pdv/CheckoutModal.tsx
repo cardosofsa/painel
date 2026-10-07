@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import { criarClienteRapido } from "../clientes/actions";
 import { obterFiadoEmUsoCliente } from "./actions";
-import { dividirEmParcelas, calcularRestante, calcularTaxaMaquineta } from "@/lib/pdv";
+import { dividirEmParcelas, calcularRestante, calcularTaxaMaquineta, calcularTroco } from "@/lib/pdv";
 import type { ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 import { executarComToast } from "@/lib/acao-cliente";
 import { valorEmPix } from "@/lib/pdv-atalhos";
@@ -39,6 +39,10 @@ export interface DadosCheckout {
   taxa_maquineta_pct: number;
   parcelas_fiado: number;
   dias_entre_parcelas: number;
+  /** 0083: dinheiro entregue pelo cliente (troco); null quando não há parte em dinheiro. */
+  valor_recebido: number | null;
+  /** 0083: troco calculado na tela, para o comprovante (o banco recalcula e grava). */
+  troco: number;
 }
 
 export function CheckoutModal({
@@ -54,7 +58,13 @@ export function CheckoutModal({
   formaInicial = null,
   pix,
   atalhoFinalizar = false,
+  credito = 0,
 }: {
+  /**
+   * Crédito de troca (0083): paga parte da venda como forma de pagamento — o total segue
+   * cheio, e só o que sobra passa pelo caixa, pela entrada e pelo crediário.
+   */
+  credito?: number;
   /**
    * Pix da loja para o QR na tela. `undefined` = a tela não carregou a config (não mostra
    * nada); `null` = carregou e não há Pix (mostra o link para Configurações).
@@ -109,7 +119,21 @@ export function CheckoutModal({
 
   const cliente = clientesLocais.find((c) => c.id === clienteId) ?? null;
   const podeFiado = !!cliente?.permite_fiado;
-  const restante = calcularRestante(total, entradaValor);
+  const creditoUsado = Math.min(Math.max(credito, 0), total);
+  // O que o cliente ainda paga depois do crédito de troca.
+  const aPagar = calcularRestante(total, creditoUsado);
+  const restante = calcularRestante(aPagar, entradaValor);
+  const [recebido, setRecebido] = useState(0);
+  const trocoDe = (fiado: boolean) =>
+    calcularTroco({
+      total: aPagar,
+      entradaValor,
+      entradaDinheiro: entradaValor > 0 && entradaForma === "dinheiro",
+      formaPrincipalDinheiro: formaSelecionada?.tipo === "dinheiro",
+      fiado,
+      recebido,
+    });
+  const troco = trocoDe(false);
   const taxaMaquinetaValor = calcularTaxaMaquineta(restante, taxaMaquinetaPct);
 
   // Só pra avisar antes de tentar — a trava de verdade é no banco (RPC registrar_venda).
@@ -148,39 +172,11 @@ export function CheckoutModal({
   }
 
   const pixValor = valorEmPix({
-    total,
+    total: aPagar,
     entradaValor,
     entradaPix: entradaForma === "pix",
     formaPrincipalPix: formaSelecionada?.tipo === "pix",
   });
-
-  // F4 = "Finalizar Venda". A ref evita re-registrar o listener a cada tecla do formulário.
-  // Travas do atalho: o mesmo F4 que abre o checkout não pode fechar a venda (ignora os primeiros
-  // 800 ms), uma venda não sai duas vezes (inclusive offline, que não liga `salvando`), e com
-  // Pix ou cadastro aberto o F4 não finaliza: o caixa tem que conferir o recebimento e clicar.
-  const finalizarRef = useRef<() => void>(() => undefined);
-  const abertoEmRef = useRef(0);
-  const enviadoRef = useRef(false);
-  useEffect(() => {
-    finalizarRef.current = () => {
-      if (salvando || enviadoRef.current || cadastroAberto || pixValor > 0) return;
-      if (performance.now() - abertoEmRef.current < 800) return;
-      enviadoRef.current = true;
-      onConfirmar(montarDados("paga"));
-    };
-  });
-  useEffect(() => {
-    if (!aberto || !atalhoFinalizar) return;
-    abertoEmRef.current = performance.now();
-    enviadoRef.current = false;
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== "F4" || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
-      e.preventDefault();
-      finalizarRef.current();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [aberto, atalhoFinalizar]);
 
   function montarDados(status: "paga" | "fiado"): DadosCheckout {
     // `forma_pagamento` é sempre a forma do "tender" principal — a RPC só usa
@@ -199,8 +195,38 @@ export function CheckoutModal({
       taxa_maquineta_pct: formaSelecionada?.tipo === "cartao_credito" ? taxaMaquinetaPct : 0,
       parcelas_fiado: status === "fiado" && parcelarFiado ? parcelasFiado : 1,
       dias_entre_parcelas: diasEntreParcelas,
+      valor_recebido: trocoDe(status === "fiado").emDinheiro > 0 && recebido > 0 ? recebido : null,
+      troco: trocoDe(status === "fiado").troco,
     };
   }
+
+  // F4 = "Finalizar Venda". A ref evita re-registrar o listener a cada tecla do formulário.
+  // Travas do atalho: o mesmo F4 que abre o checkout não pode fechar a venda (ignora os primeiros
+  // 800 ms), uma venda não sai duas vezes (inclusive offline, que não liga `salvando`), e com
+  // Pix ou cadastro aberto o F4 não finaliza: o caixa tem que conferir o recebimento e clicar.
+  const finalizarRef = useRef<() => void>(() => undefined);
+  const abertoEmRef = useRef(0);
+  const enviadoRef = useRef(false);
+  useEffect(() => {
+    finalizarRef.current = () => {
+      if (salvando || enviadoRef.current || cadastroAberto || pixValor > 0 || troco.falta > 0) return;
+      if (performance.now() - abertoEmRef.current < 800) return;
+      enviadoRef.current = true;
+      onConfirmar(montarDados("paga"));
+    };
+  });
+  useEffect(() => {
+    if (!aberto || !atalhoFinalizar) return;
+    abertoEmRef.current = performance.now();
+    enviadoRef.current = false;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "F4" || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+      e.preventDefault();
+      finalizarRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [aberto, atalhoFinalizar]);
 
   return (
     <Modal open={aberto} onClose={onFechar} title="Pagamento" width="max-w-2xl">
@@ -214,6 +240,12 @@ export function CheckoutModal({
 
       <div className="text-center mb-5">
         <div className="font-mono text-4xl font-semibold text-text-primary">{formatBRL(total)}</div>
+        {creditoUsado > 0 && (
+          <p className="text-sm text-text-secondary mt-1">
+            Crédito de troca: <span className="font-mono text-accent">−{formatBRL(creditoUsado)}</span> · A pagar:{" "}
+            <span className="font-mono font-semibold text-text-primary">{formatBRL(aPagar)}</span>
+          </p>
+        )}
       </div>
 
       <FormField label="Cliente (opcional, obrigatório no crediário)">
@@ -272,7 +304,7 @@ export function CheckoutModal({
             type="number"
             step="0.01"
             min="0"
-            max={total}
+            max={aPagar}
             value={entradaValor || ""}
             onChange={(e) => {
               const v = Math.max(0, Number(e.target.value) || 0);
@@ -337,8 +369,34 @@ export function CheckoutModal({
         <PixPagamento
           pix={pix}
           valor={pixValor}
-          rotulo={entradaValor > 0 && pixValor < total ? (entradaForma === "pix" ? "Entrada em Pix" : "Restante em Pix") : "Valor da venda em Pix"}
+          rotulo={entradaValor > 0 && pixValor < aPagar ? (entradaForma === "pix" ? "Entrada em Pix" : "Restante em Pix") : "Valor da venda em Pix"}
         />
+      )}
+
+      {troco.emDinheiro > 0 && (
+        <FormField
+          label={`Valor recebido em dinheiro (opcional)`}
+          dica={`Parte em dinheiro: ${formatBRL(troco.emDinheiro)}. O caixa recebe o valor da venda; o troco só vai para o comprovante.`}
+        >
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            value={recebido || ""}
+            onChange={(e) => setRecebido(Math.max(0, Number(e.target.value) || 0))}
+            placeholder={troco.emDinheiro.toFixed(2).replace(".", ",")}
+            className={inputClass}
+          />
+          {recebido > 0 && troco.falta > 0 && (
+            <p className="text-xs text-negative mt-1">Faltam {formatBRL(troco.falta)} para cobrir a parte em dinheiro.</p>
+          )}
+          {recebido > 0 && troco.falta === 0 && (
+            <p className="text-sm text-text-primary mt-1">
+              Troco: <span className="font-mono font-semibold text-positive">{formatBRL(troco.troco)}</span>
+            </p>
+          )}
+        </FormField>
       )}
 
       {formaSelecionada?.tipo === "cartao_credito" && (
@@ -460,6 +518,7 @@ export function CheckoutModal({
           variant="primary"
           className="flex-1 max-sm:h-12 max-sm:text-base"
           loading={salvando}
+          disabled={troco.falta > 0}
           onClick={() => onConfirmar(montarDados("paga"))}
           title={atalhoFinalizar ? "Finalizar (F4)" : undefined}
           aria-keyshortcuts={atalhoFinalizar ? "F4" : undefined}
