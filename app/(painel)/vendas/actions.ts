@@ -41,7 +41,7 @@ export async function atualizarVenda(vendaId: string, dados: VendaEdicaoInput) {
     const supabase = await createClient();
     const validado = validar(vendaEdicaoSchema, dados);
 
-    const { error } = await supabase.rpc("editar_venda", {
+    const { data, error } = await supabase.rpc("editar_venda", {
       p_venda_id: vendaId,
       p_cliente_id: validado.cliente_id,
       p_forma_pagamento: validado.forma_pagamento,
@@ -51,6 +51,11 @@ export async function atualizarVenda(vendaId: string, dados: VendaEdicaoInput) {
       p_pin: validado.pin,
     });
     if (error) lancarErroSupabase(error);
+    // 0077: PIN errado volta como CORPO (com status 400), não como exceção — senão a contagem
+    // de tentativas voltaria junto. Normalmente o supabase-js já entrega isso em `error`; se o
+    // status não vier, o corpo ainda chega aqui. Antes da 0077 a função é void (data nulo).
+    const recusa = data as { message?: unknown } | null;
+    if (recusa && typeof recusa.message === "string") throw new Error(recusa.message);
 
     revalidateTudo();
   });
