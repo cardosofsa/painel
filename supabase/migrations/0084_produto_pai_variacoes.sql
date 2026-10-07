@@ -506,6 +506,7 @@ as $$
   end;
 $$;
 
+revoke execute on function chave_item_marketplace(text, text, text, text) from public, anon;
 grant execute on function chave_item_marketplace(text, text, text, text) to authenticated;
 
 -- revincular_itens_marketplace (0052) + casa também pela chave da variação. Mesma assinatura.
@@ -527,6 +528,10 @@ declare
   v_qtd     integer;
   v_chave   text := lower(trim(coalesce(p_sku, '')));
 begin
+  -- Mesma trava que a 0081 enxertou na versão anterior.
+  if auth.uid() is null or not conta_ativa() then
+    raise exception 'Sua conta não está ativa. Fale com o administrador.';
+  end if;
   if v_user is null then
     raise exception 'Sessão expirada. Entre de novo.';
   end if;

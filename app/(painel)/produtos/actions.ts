@@ -22,6 +22,7 @@ import { buscarEmLotes } from "@/lib/lotes";
 import { lerFiltroProdutos, palavrasDaBusca } from "@/lib/listas";
 import { gruposPorPalavra, todosOsProdutos } from "./consulta";
 import type { VariacaoForm } from "@/lib/variacoes";
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 const PATH = "/produtos";
 
@@ -396,7 +397,11 @@ export async function opcoesFormularioProduto() {
     const supabase = await createClient();
     const [insumosRes, envioRes] = await Promise.all([
       buscarEmLotes<ProdutoParaInsumo>(async (de, ate) => {
-        const r = await supabase.from("produtos").select("id, nome, custo, sku, categoria_id", { count: "exact" }).order("nome").order("id").range(de, ate);
+        // Variação filha (0084) é kit do pai: não serve de componente de outro kit.
+        const r = await semVariacoesFilhas((filtrar) => {
+          const q = supabase.from("produtos").select("id, nome, custo, sku, categoria_id", { count: "exact" });
+          return (filtrar ? q.is("produto_pai_id", null) : q).order("nome").order("id").range(de, ate);
+        });
         return { data: r.data as ProdutoParaInsumo[] | null, error: r.error, count: r.count };
       }),
       // Envio (0041): sem a migração as colunas não existem e o padrão fica vazio.
