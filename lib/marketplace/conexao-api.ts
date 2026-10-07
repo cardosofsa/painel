@@ -10,8 +10,11 @@ import { tokenDaConexao, tokenML, type ConexaoShopee } from "./tokens";
  */
 export interface ApiMarketplace {
   plataforma: "shopee" | "mercadolivre";
-  /** `desde` null + `apenas`: só esses pedidos (notificação). */
-  buscarPedidos(desde: Date | null, apenas?: string[]): Promise<PedidoMarketplace[]>;
+  /**
+   * `desde` null + `apenas`: só esses pedidos (notificação). `reprocessar`: pedidos já gravados
+   * que a plataforma deve reconsultar (taxa real ainda não veio, repasse não liberado).
+   */
+  buscarPedidos(desde: Date | null, apenas?: string[], reprocessar?: string[]): Promise<PedidoMarketplace[]>;
   buscarAnuncios(): Promise<AnuncioShopee[]>;
   enviarEstoque(itemId: number, estoques: { modelId: number; quantidade: number }[]): Promise<void>;
 }
@@ -32,7 +35,7 @@ export async function apiDaConexao(supabase: SupabaseClient, conexao: ConexaoSho
   return {
     plataforma: "shopee",
     // A Shopee não tem "só este pedido" na listagem: relê a janela normal.
-    buscarPedidos: (desde) => buscarPedidos(c, token, shopId, desde ?? new Date(Date.now() - 86_400_000)),
+    buscarPedidos: (desde, _apenas, reprocessar) => buscarPedidos(c, token, shopId, desde ?? new Date(Date.now() - 86_400_000), reprocessar),
     buscarAnuncios: () => buscarAnuncios(c, token, shopId),
     enviarEstoque: (itemId, estoques) => enviarEstoque(c, token, shopId, itemId, estoques),
   };

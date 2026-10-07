@@ -225,7 +225,7 @@ export function formatarFaixaLabel(faixa: FaixaComissao): string {
   return `${min} a ${max}`;
 }
 
-function encontrarFaixa(faixas: FaixaComissao[], preco: number): FaixaComissao {
+export function encontrarFaixa(faixas: FaixaComissao[], preco: number): FaixaComissao {
   const exata = faixas.find((f) => preco >= f.min && (f.max === null || preco <= f.max));
   if (exata) return exata;
 
