@@ -8,13 +8,14 @@ import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
 import { executarComToast } from "@/lib/acao-cliente";
 import { obterParcelasVenda, marcarParcelaPaga, type ParcelaVenda } from "@/app/(painel)/financeiro/actions";
 import type { Conta } from "@/app/(painel)/financeiro/FinanceiroClient";
-import { cobraEncargos, encargosAtraso, type RegraEncargos } from "@/lib/crediario";
+import { cobraEncargos, encargosAtraso, faltaDaParcela, pagamentoParcela, type RegraEncargos } from "@/lib/crediario";
 
 /**
  * Tabela de parcelas de uma venda fiado parcelada (migração 0030): parcela, valor, status,
- * data de pagamento. Marcar uma parcela como paga pede valor recebido, data e conta —
- * quando a última fica paga, o registro "pai" em contas_a_pagar_receber muda de status
- * sozinho (ver `marcar_parcela_paga` no banco), sem precisar de ação nenhuma aqui.
+ * data de pagamento. Registrar pagamento pede valor recebido, data e conta — pagar menos
+ * que o que falta deixa a parcela em aberto acumulando (0083); quando a última fica paga, o
+ * registro "pai" em contas_a_pagar_receber muda de status sozinho (ver `marcar_parcela_paga`
+ * no banco), sem precisar de ação nenhuma aqui.
  */
 export function ParcelasVendaModal({
   vendaId,
@@ -49,7 +50,7 @@ export function ParcelasVendaModal({
 
   function abrirPagamento(p: ParcelaVenda) {
     setEditando(p);
-    setValorPago(encargosAtraso(p.valor, p.data_vencimento, hojeIsoLocal(), regra).total);
+    setValorPago(encargosAtraso(faltaDaParcela(p.valor, p.valor_pago), p.data_vencimento, hojeIsoLocal(), regra).total);
     setDataPagamento(hojeIsoLocal());
     setContaId(contas[0]?.id ?? null);
   }
@@ -57,15 +58,20 @@ export function ParcelasVendaModal({
   async function confirmarPagamento() {
     if (!editando || !contaId) return;
     setSalvando(true);
+    const efeito = pagamentoParcela(editando.valor, editando.valor_pago, valorPago);
     const r = await executarComToast(marcarParcelaPaga(editando.id, valorPago, dataPagamento, contaId), {
-      sucesso: `Parcela ${editando.numero}/${editando.total_parcelas} marcada como paga`,
-      erro: "Erro ao marcar parcela como paga",
+      sucesso: efeito.quitada
+        ? `Parcela ${editando.numero}/${editando.total_parcelas} paga`
+        : `Pagamento parcial registrado: faltam ${formatBRL(efeito.falta)} da parcela ${editando.numero}/${editando.total_parcelas}`,
+      erro: "Erro ao registrar o pagamento da parcela",
     });
     setSalvando(false);
     if (r.ok) {
       setParcelas((prev) =>
         prev.map((p) =>
-          p.id === editando.id ? { ...p, status: "paga", data_pagamento: dataPagamento, valor_pago: valorPago } : p,
+          p.id === editando.id
+            ? { ...p, status: efeito.quitada ? "paga" : "pendente", data_pagamento: dataPagamento, valor_pago: efeito.valorPago }
+            : p,
         ),
       );
       setEditando(null);
@@ -96,6 +102,11 @@ export function ParcelasVendaModal({
                         ? `Paga em ${formatarDataIso(p.data_pagamento)}`
                         : `Vence em ${formatarDataIso(p.data_vencimento)}`}
                     </div>
+                    {p.status === "pendente" && (p.valor_pago ?? 0) > 0 && (
+                      <div className="text-xs text-text-secondary">
+                        Pago {formatBRL(p.valor_pago ?? 0)} · falta {formatBRL(faltaDaParcela(p.valor, p.valor_pago))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-mono text-text-primary">{formatBRL(p.valor)}</span>
@@ -107,7 +118,7 @@ export function ParcelasVendaModal({
                 </div>
                 {p.status === "pendente" && editando?.id !== p.id && (
                   <button onClick={() => abrirPagamento(p)} className="text-xs text-accent hover:underline mt-1.5">
-                    Marcar como paga
+                    Registrar pagamento
                   </button>
                 )}
                 {editando?.id === p.id && (
@@ -133,11 +144,21 @@ export function ParcelasVendaModal({
                       </FormField>
                     </div>
                     {(() => {
-                      const e = encargosAtraso(p.valor, p.data_vencimento, hoje, regra);
+                      const falta = faltaDaParcela(p.valor, p.valor_pago);
+                      const e = encargosAtraso(falta, p.data_vencimento, hoje, regra);
                       if (!cobraEncargos(regra) || e.dias === 0) return null;
                       return (
                         <p className="text-xs text-text-secondary">
-                          {e.dias} dia(s) de atraso: {formatBRL(p.valor)} + multa {formatBRL(e.multa)} + juros {formatBRL(e.juros)} = <strong className="text-text-primary">{formatBRL(e.total)}</strong>. Mude o valor se for cobrar diferente; o que passar da parcela fica registrado como juros e multa.
+                          {e.dias} dia(s) de atraso: {formatBRL(falta)} + multa {formatBRL(e.multa)} + juros {formatBRL(e.juros)} = <strong className="text-text-primary">{formatBRL(e.total)}</strong>. Mude o valor se for cobrar diferente; o que passar da parcela fica registrado como juros e multa.
+                        </p>
+                      );
+                    })()}
+                    {(() => {
+                      const efeito = pagamentoParcela(p.valor, p.valor_pago, valorPago);
+                      if (valorPago <= 0 || efeito.quitada) return null;
+                      return (
+                        <p className="text-xs text-text-secondary">
+                          Pagamento parcial: a parcela continua em aberto e ficam faltando <strong className="text-text-primary">{formatBRL(efeito.falta)}</strong>.
                         </p>
                       );
                     })()}

@@ -209,7 +209,8 @@ export default async function DashboardPage() {
       vencimento: formatarDataIso(c.data_vencimento),
       tipo: c.tipo === "pagar" ? "A Pagar" : "A Receber",
       descricao: c.descricao,
-      valor: c.tipo === "pagar" ? -(c.valor - Number(c.valor_pago ?? 0)) : c.valor,
+      // O que ainda falta (pagamento parcial, 0064/0083), nos dois sentidos.
+      valor: (c.tipo === "pagar" ? -1 : 1) * Math.max(0, Number(c.valor) - Number(c.valor_pago ?? 0)),
     };
   });
 

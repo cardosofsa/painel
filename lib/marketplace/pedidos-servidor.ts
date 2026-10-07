@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StatusMarketplace } from "./shopee-planilha";
+import { buscarEmLotes } from "@/lib/lotes";
 
 export interface ItemMarketplaceSalvo {
   produto_id: string | null;
@@ -81,12 +82,17 @@ export async function carregarPedidosMarketplace(supabase: SupabaseClient, dias 
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - dias);
   const [pedidosRes, vinculosRes, conexoesRes] = await Promise.all([
-    supabase
-      .from("pedidos_marketplace")
-      .select("*, pedidos_marketplace_itens(produto_id, sku, nome, variacao, quantidade, preco_unitario, custo_unitario)")
-      .or(`criado_em_plataforma.gte.${inicio.toISOString()},criado_em_plataforma.is.null`)
-      .order("criado_em_plataforma", { ascending: false, nullsFirst: false })
-      .limit(3000),
+    // O PostgREST corta em 1000 linhas sem avisar: lê em lotes (ordem estável: data + id).
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("pedidos_marketplace")
+        .select("*, pedidos_marketplace_itens(produto_id, sku, nome, variacao, quantidade, preco_unitario, custo_unitario)", { count: "exact" })
+        .or(`criado_em_plataforma.gte.${inicio.toISOString()},criado_em_plataforma.is.null`)
+        .order("criado_em_plataforma", { ascending: false, nullsFirst: false })
+        .order("id")
+        .range(de, ate),
+      { maximo: 20000 },
+    ),
     supabase.from("marketplace_vinculos").select("loja_id, sku_externo, produto_id"),
     supabase.from("marketplace_conexoes").select("*"),
   ]);

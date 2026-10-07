@@ -53,8 +53,8 @@ export function PdvClient({
   /** Dono das vendas guardadas sem internet (11.4). */
   userId?: string | null;
   freteConectado?: boolean;
-  /** Crédito de uma troca (11.3): entra como desconto em R$. */
-  creditoTroca?: { numero: string; valor: number } | null;
+  /** Crédito de uma troca (11.3): paga a venda como forma de pagamento (0083), não desconto. */
+  creditoTroca?: { id: string; numero: string; valor: number } | null;
   produtos: ProdutoPdv[];
   clientes: ClientePdv[];
   formasPagamento: FormaPagamentoPdv[];
@@ -69,8 +69,10 @@ export function PdvClient({
     [produtos, offline.reservado],
   );
   const [estado, setEstado] = useState<EstadoCarrinho>(() =>
-    creditoTroca ? { ...CARRINHO_VAZIO, descontoEntrada: creditoTroca.valor, observacao: `Troca ${creditoTroca.numero} (crédito de R$ ${creditoTroca.valor.toFixed(2).replace(".", ",")})` } : CARRINHO_VAZIO,
+    creditoTroca ? { ...CARRINHO_VAZIO, observacao: `Troca ${creditoTroca.numero}` } : CARRINHO_VAZIO,
   );
+  // O crédito vale para UMA venda: depois dela, some (o banco também não deixa usar de novo).
+  const [credito, setCredito] = useState(creditoTroca);
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
   const [checkoutAberto, setCheckoutAberto] = useState(false);
   const [recibo, setRecibo] = useState<DadosComprovante | null>(null);
@@ -89,7 +91,8 @@ export function PdvClient({
 
   const subtotal = calcularSubtotal(estado.itens);
   const desconto = calcularDesconto(estado, subtotal);
-  const total = subtotal - desconto + estado.valorEntrega;
+  const total = Math.round((subtotal - desconto + estado.valorEntrega) * 100) / 100;
+  const creditoUsado = credito ? Math.min(credito.valor, total) : 0;
   const totalItens = estado.itens.reduce((acc, i) => acc + i.quantidade, 0);
 
   function quantidadeNoCarrinho(produtoId: string) {
@@ -209,9 +212,13 @@ export function PdvClient({
       taxa_maquineta_pct: dados.taxa_maquineta_pct,
       parcelas_fiado: dados.parcelas_fiado,
       dias_entre_parcelas: dados.dias_entre_parcelas,
+      credito_troca: creditoUsado,
+      troca_devolucao_id: creditoUsado > 0 ? (credito?.id ?? null) : null,
+      valor_recebido: dados.valor_recebido,
     };
     // Sem internet: guarda no aparelho e segue vendendo (sobe quando a conexão voltar).
     async function guardarOffline() {
+      if (creditoUsado > 0) return void toast.error("Sem internet: venda com crédito de troca precisa de conexão para conferir o crédito.");
       const ok = await offline.enfileirar(venda, {
         total: subtotal - desconto + estado.valorEntrega,
         itens: estado.itens.map((i) => ({ produto_id: i.produto_id, nome: i.nome, quantidade: i.quantidade })),
@@ -256,13 +263,17 @@ export function PdvClient({
           desconto,
           valorEntrega: estado.valorEntrega,
           total: venda.venda_total,
-          formaPagamento: formaExibida,
+          formaPagamento: creditoUsado > 0 ? `Crédito de troca ${credito?.numero ?? ""}${formaExibida && creditoUsado < venda.venda_total ? ` + ${formaExibida}` : ""}`.trim() : formaExibida,
           clienteNome: cliente?.nome ?? null,
+          creditoTroca: creditoUsado,
+          valorRecebido: dados.valor_recebido,
+          troco: dados.troco,
         });
         setWhatsappRecibo(cliente?.whatsapp ?? null);
         setVendaIdRecibo(venda.venda_id);
 
         toast.success(`${venda.venda_numero} registrada — lucro ${formatBRL(venda.venda_lucro)}`);
+        if (creditoUsado > 0) setCredito(null);
         setEstado(CARRINHO_VAZIO);
         setCheckoutAberto(false);
         setVendaSeq((n) => n + 1);
@@ -344,9 +355,9 @@ export function PdvClient({
     <>
       <PageHeader title="PDV" />
       {offline.barra}
-      {creditoTroca && (
+      {credito && (
         <p className="mb-4 rounded-md border border-accent/40 bg-accent-soft px-3 py-2 text-sm text-accent">
-          Troca {creditoTroca.numero}: crédito de {formatBRL(creditoTroca.valor)} já entra como desconto desta venda. Adicione os produtos novos.
+          Troca {credito.numero}: crédito de {formatBRL(credito.valor)} entra como pagamento desta venda (não sai do caixa). Adicione os produtos novos.
         </p>
       )}
 
@@ -400,6 +411,7 @@ export function PdvClient({
         aberto={checkoutAberto}
         onFechar={() => setCheckoutAberto(false)}
         total={total}
+        credito={creditoUsado}
         clientes={clientes}
         formasPagamento={formasPagamento}
         contas={contas}

@@ -40,7 +40,7 @@ export function ComprovanteVenda({ dados, largura = 380 }: { dados: DadosComprov
   const comGarantia = itensComGarantia(dados.itens);
   const nomeCliente = cliente?.nome ?? dados.clienteNome;
   const temEntrada = !!pagamento && pagamento.entradaValor > 0;
-  const restante = dados.total - (temEntrada ? pagamento.entradaValor : 0);
+  const restante = dados.total - (temEntrada ? pagamento.entradaValor : 0) - (dados.creditoTroca ?? 0);
 
   return (
     <div
@@ -132,7 +132,7 @@ export function ComprovanteVenda({ dados, largura = 380 }: { dados: DadosComprov
         </div>
       </div>
 
-      {(dados.formaPagamento || temEntrada) && (
+      {(dados.formaPagamento || temEntrada || !!dados.valorRecebido || !!dados.creditoTroca) && (
         <Secao titulo="Pagamento">
           {dados.formaPagamento && <div>{dados.formaPagamento}</div>}
           {temEntrada && (
@@ -143,6 +143,17 @@ export function ComprovanteVenda({ dados, largura = 380 }: { dados: DadosComprov
           )}
           {pagamento && pagamento.parcelasCartao && pagamento.parcelasCartao > 1 && (
             <div style={{ color: COR.suave, fontSize: 12 }}>Cartão em {pagamento.parcelasCartao}x</div>
+          )}
+          {!!dados.creditoTroca && dados.creditoTroca > 0 && (
+            <div style={{ color: COR.suave, fontSize: 12 }}>Crédito de troca: {formatBRL(dados.creditoTroca)}</div>
+          )}
+          {!!dados.valorRecebido && dados.valorRecebido > 0 && (
+            <div style={{ ...linhaFlex, fontSize: 12, marginTop: 2 }}>
+              <span>
+                Recebido {formatBRL(dados.valorRecebido)} · Troco
+              </span>
+              <span style={{ fontWeight: 700 }}>{formatBRL(dados.troco ?? 0)}</span>
+            </div>
           )}
           {pagamento && pagamento.taxaMaquinetaValor > 0 && (
             <div style={{ color: COR.suave, fontSize: 12 }}>
