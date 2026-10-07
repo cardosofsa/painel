@@ -18,7 +18,18 @@ describe("decidirEvento", () => {
     const d = decidirEvento(gravada({ status: "teste", periodo_fim: null, provedor: null, provedor_ref: null }), ev({}), "asaas");
     expect(d).toEqual({
       gravar: true,
-      linha: { plano_id: "pro", status: "ativa", periodo_fim: OUT, provedor: "asaas", provedor_ref: "sub_A", plano_solicitado: null, solicitado_em: null },
+      linha: {
+        plano_id: "pro",
+        status: "ativa",
+        periodo_fim: OUT,
+        periodo_fim_provedor: OUT,
+        provedor: "asaas",
+        provedor_ref: "sub_A",
+        ultimo_pagamento_ref: null,
+        cancelamento_agendado: false,
+        plano_solicitado: null,
+        solicitado_em: null,
+      },
       cancelarRef: null,
     });
   });
@@ -68,5 +79,50 @@ describe("decidirEvento", () => {
 
   it("assinatura de outro provedor não é cancelada no Asaas", () => {
     expect(decidirEvento(gravada({ provedor: "manual", provedor_ref: "x" }), ev({}), "asaas")).toMatchObject({ gravar: true, cancelarRef: null });
+  });
+
+  it("troca de plano: fatura da assinatura antiga paga depois não reativa o plano antigo", () => {
+    const d = decidirEvento(gravada({ plano_id: "essencial", provedor_ref: "sub_A" }), ev({ provedorRef: "sub_B" }), "asaas");
+    expect(d).toMatchObject({ gravar: true, linha: { provedor_refs_encerradas: ["sub_A"] } });
+    const depois = gravada({ plano_id: "pro", provedor_ref: "sub_B", provedor_refs_encerradas: ["sub_A"] });
+    expect(decidirEvento(depois, ev({ planoId: "essencial", provedorRef: "sub_A", periodoFim: NOV }), "asaas")).toMatchObject({ gravar: false });
+    expect(decidirEvento(depois, ev({ planoId: "essencial", provedorRef: "sub_A", status: "cancelada", periodoFim: null }), "asaas")).toMatchObject({ gravar: false });
+  });
+
+  it("bônus de indicação sobrevive à renovação", () => {
+    const BONUS = new Date(new Date(OUT).getTime() + 30 * 86_400_000).toISOString();
+    const comBonus = gravada({ periodo_fim: BONUS, periodo_fim_provedor: OUT, dias_bonus: 30 });
+    // Reenvio do mesmo pagamento: nada muda.
+    expect(decidirEvento(comBonus, ev({}), "asaas")).toMatchObject({ gravar: false });
+    // Mês seguinte: provedor + 30 dias.
+    const d = decidirEvento(comBonus, ev({ periodoFim: NOV }), "asaas");
+    expect(d).toMatchObject({ gravar: true, linha: { periodo_fim_provedor: NOV, periodo_fim: new Date(new Date(NOV).getTime() + 30 * 86_400_000).toISOString() } });
+  });
+
+  it("estorno tira o período da cobrança, uma vez só", () => {
+    const est = ev({ status: "estornada", periodoFim: null, coberturaDe: "2026-11-07T00:00:00-03:00", coberturaAte: NOV, pagamentoRef: "pay_2" });
+    // Último pagamento estornado: período volta para o vencimento dele.
+    const d = decidirEvento(gravada({ periodo_fim: NOV, periodo_fim_provedor: NOV }), est, "asaas");
+    expect(d).toMatchObject({ gravar: true, linha: { status: "ativa", periodo_fim_provedor: new Date("2026-11-07T00:00:00-03:00").toISOString(), provedor_pagamentos_estornados: ["pay_2"] } });
+    // Repetido: ignorado. E o "pago" reenviado do mesmo pagamento também não volta a valer.
+    const depois = gravada({ periodo_fim: OUT, periodo_fim_provedor: OUT, provedor_pagamentos_estornados: ["pay_2"] });
+    expect(decidirEvento(depois, est, "asaas")).toMatchObject({ gravar: false });
+    expect(decidirEvento(depois, ev({ periodoFim: NOV, pagamentoRef: "pay_2" }), "asaas")).toMatchObject({ gravar: false });
+    // Estorno de cobrança antiga com pagamentos posteriores: tira só a duração dela.
+    const antigo = ev({ status: "estornada", periodoFim: null, coberturaDe: "2026-10-07T00:00:00-03:00", coberturaAte: OUT, pagamentoRef: "pay_1" });
+    const d2 = decidirEvento(gravada({ periodo_fim: NOV, periodo_fim_provedor: NOV }), antigo, "asaas");
+    const fim = new Date(NOV).getTime() - (new Date(OUT).getTime() - new Date("2026-10-07T00:00:00-03:00").getTime());
+    expect(d2).toMatchObject({ gravar: true, linha: { periodo_fim_provedor: new Date(fim).toISOString() } });
+    // Estorno de outra assinatura não mexe.
+    expect(decidirEvento(gravada({ provedor_ref: "sub_B" }), est, "asaas")).toMatchObject({ gravar: false });
+  });
+
+  it("ida para o Grátis: o cancelamento do provedor não rebaixa antes do fim do período", () => {
+    const agendada = gravada({ cancelamento_agendado: true });
+    const d = decidirEvento(agendada, ev({ status: "cancelada", periodoFim: null, coberturaAte: null }), "asaas");
+    expect(d).toMatchObject({ gravar: true, linha: { status: "ativa", periodo_fim: OUT, provedor_refs_encerradas: ["sub_A"] } });
+    // Assinar de novo depois: a nova assume e não tenta cancelar a antiga outra vez.
+    const depois = gravada({ cancelamento_agendado: true, provedor_refs_encerradas: ["sub_A"] });
+    expect(decidirEvento(depois, ev({ provedorRef: "sub_C", periodoFim: NOV }), "asaas")).toMatchObject({ gravar: true, linha: { cancelamento_agendado: false }, cancelarRef: null });
   });
 });

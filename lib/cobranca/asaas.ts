@@ -167,6 +167,9 @@ export interface CorpoWebhookAsaas {
 
 const PAGO = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
 const ENCERRADA = new Set(["SUBSCRIPTION_DELETED", "SUBSCRIPTION_INACTIVATED"]);
+/** Pagamento que deixa de valer. `PAYMENT_DELETED` só conta se a cobrança já estava paga. */
+const ESTORNO = new Set(["PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED", "PAYMENT_DELETED"]);
+const STATUS_PAGO = new Set(["CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"]);
 
 /**
  * Corpo do webhook → evento do painel. null = ignorar (evento de outro tipo, cobrança
@@ -180,17 +183,23 @@ export async function interpretarEventoAsaas(
   const evento = corpo?.event;
   if (!evento) return null;
 
-  if (PAGO.has(evento) || evento === "PAYMENT_OVERDUE") {
+  if (PAGO.has(evento) || evento === "PAYMENT_OVERDUE" || ESTORNO.has(evento)) {
     const p = corpo.payment;
     if (!p?.subscription || !p.dueDate) return null; // cobrança avulsa: não é assinatura
+    if (evento === "PAYMENT_DELETED" && !STATUS_PAGO.has(p.status ?? "")) return null; // fatura em aberto excluída: nada foi pago
     let ref = lerReferenciaExterna(p.externalReference);
     if (!ref && buscarReferencia) ref = lerReferenciaExterna(await buscarReferencia(p.subscription));
     if (!ref) return null;
     const cobertura = periodoFimDoVencimento(p.dueDate);
     if (!cobertura) return null;
+    const pagamentoRef = p.id ?? null;
+    if (ESTORNO.has(evento)) {
+      if (!pagamentoRef) return null; // sem id não há como aplicar uma vez só
+      return { ...ref, status: "estornada", periodoFim: null, coberturaDe: `${p.dueDate}T00:00:00-03:00`, coberturaAte: cobertura, provedorRef: p.subscription, pagamentoRef };
+    }
     return PAGO.has(evento)
-      ? { ...ref, status: "ativa", periodoFim: cobertura, coberturaAte: cobertura, provedorRef: p.subscription }
-      : { ...ref, status: "atrasada", periodoFim: null, coberturaAte: cobertura, provedorRef: p.subscription };
+      ? { ...ref, status: "ativa", periodoFim: cobertura, coberturaAte: cobertura, provedorRef: p.subscription, pagamentoRef }
+      : { ...ref, status: "atrasada", periodoFim: null, coberturaAte: cobertura, provedorRef: p.subscription, pagamentoRef };
   }
 
   const inativada = evento === "SUBSCRIPTION_UPDATED" && corpo.subscription?.status === "INACTIVE";

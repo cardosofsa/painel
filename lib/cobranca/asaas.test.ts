@@ -141,8 +141,27 @@ describe("interpretarEventoAsaas", () => {
         periodoFim: "2026-11-07T23:59:59-03:00",
         coberturaAte: "2026-11-07T23:59:59-03:00",
         provedorRef: "sub_VXJBYgP2u0eO",
+        pagamentoRef: "pay_080225913252",
       });
     }
+  });
+  it("estorno, chargeback e exclusão de cobrança paga viram estornada com a janela da cobrança", async () => {
+    for (const ev of ["PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED", "PAYMENT_DELETED"]) {
+      expect(await interpretarEventoAsaas(eventoPagamento(ev))).toEqual({
+        userId: USER,
+        planoId: "pro",
+        status: "estornada",
+        periodoFim: null,
+        coberturaDe: "2026-10-07T00:00:00-03:00",
+        coberturaAte: "2026-11-07T23:59:59-03:00",
+        provedorRef: "sub_VXJBYgP2u0eO",
+        pagamentoRef: "pay_080225913252",
+      });
+    }
+    // Fatura em aberto excluída: nada foi pago, nada a desfazer.
+    expect(await interpretarEventoAsaas(eventoPagamento("PAYMENT_DELETED", { status: "PENDING" }))).toBeNull();
+    // Sem id da cobrança não dá para aplicar uma vez só.
+    expect(await interpretarEventoAsaas(eventoPagamento("PAYMENT_REFUNDED", { id: undefined }))).toBeNull();
   });
   it("vencida vira atrasada sem mexer no período", async () => {
     expect(await interpretarEventoAsaas(eventoPagamento("PAYMENT_OVERDUE"))).toMatchObject({ status: "atrasada", periodoFim: null, coberturaAte: "2026-11-07T23:59:59-03:00" });
