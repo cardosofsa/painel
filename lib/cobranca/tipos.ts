@@ -11,9 +11,14 @@ export interface CheckoutCobranca {
 export interface EventoCobranca {
   userId: string;
   planoId: string;
-  status: "ativa" | "atrasada" | "cancelada";
+  /** `estornada`: pagamento estornado, contestado (chargeback) ou excluído depois de pago. */
+  status: "ativa" | "atrasada" | "cancelada" | "estornada";
   /** Novo fim do período pago (só em `ativa`); null = mantém o que está gravado. */
   periodoFim: string | null;
+  /** Início do que ESTA cobrança cobre (o vencimento). Usado no estorno para tirar o período dela. */
+  coberturaDe?: string | null;
+  /** Id da cobrança no provedor (eventos de pagamento): idempotência do estorno e da indicação. */
+  pagamentoRef?: string | null;
   /**
    * Até quando ESTA cobrança cobriria se paga. Serve para descartar evento fora de ordem:
    * um "vencida" de uma cobrança que o período gravado já cobre (foi paga depois).

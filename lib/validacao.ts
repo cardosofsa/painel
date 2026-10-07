@@ -335,6 +335,7 @@ export const pinAdminSchema = z.object({
     .trim()
     .regex(/^\d{4,8}$/, "O PIN deve ter de 4 a 8 números")
     .nullable(),
+  pinAtual: z.string().trim().max(8).nullable().optional(),
 });
 
 export const vendaEdicaoSchema = z.object({

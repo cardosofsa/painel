@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ErroWebhookNaoAutorizado, provedorCobranca } from "@/lib/cobranca";
+import { ErroWebhookNaoAutorizado, provedorCobranca, type EventoCobranca } from "@/lib/cobranca";
 import { decidirEvento, type AssinaturaGravada } from "@/lib/cobranca/mesclar";
 import { clienteServico } from "@/lib/supabase/servico";
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   const { data: atual, error: erroLeitura } = await servico
     .from("assinaturas")
-    .select("plano_id, status, periodo_fim, provedor, provedor_ref")
+    .select("plano_id, status, periodo_fim, provedor, provedor_ref, periodo_fim_provedor, dias_bonus, provedor_refs_encerradas, provedor_pagamentos_estornados, cancelamento_agendado")
     .eq("user_id", evento.userId)
     .maybeSingle<AssinaturaGravada>();
   if (erroLeitura) {
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   }
 
   const decisao = decidirEvento(atual ?? null, evento, provedor.id);
-  if (!decisao.gravar) return new NextResponse(null, { status: 200 });
+  if (!decisao.gravar) return desfazerBonus(servico, evento);
 
   const linha = { ...decisao.linha, atualizado_em: new Date().toISOString() };
   const { error } = atual
@@ -55,6 +55,21 @@ export async function POST(req: NextRequest) {
   // provedor manda depois é ignorado (não é mais a assinatura gravada).
   if (decisao.cancelarRef && provedor.cancelarAssinatura) {
     await provedor.cancelarAssinatura(decisao.cancelarRef).catch((e) => console.error("[cobranca] webhook: cancelar anterior:", e instanceof Error ? e.message : e));
+  }
+  return desfazerBonus(servico, evento);
+}
+
+/**
+ * Estorno do pagamento que gerou a recompensa de indicação: tira os 30 dias das duas contas.
+ * Roda mesmo quando o período já tinha sido ajustado (reenvio depois de uma falha aqui): a
+ * função do banco só desfaz uma vez (0082).
+ */
+async function desfazerBonus(servico: NonNullable<ReturnType<typeof clienteServico>>, evento: EventoCobranca) {
+  if (evento.status !== "estornada" || !evento.pagamentoRef) return new NextResponse(null, { status: 200 });
+  const { error } = await servico.rpc("desfazer_bonus_indicacao", { p_indicado: evento.userId, p_pagamento: evento.pagamentoRef });
+  if (error) {
+    console.error("[cobranca] webhook: desfazer bônus:", error.code, error.message);
+    return new NextResponse(null, { status: 500 });
   }
   return new NextResponse(null, { status: 200 });
 }

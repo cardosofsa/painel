@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { temPinAdmin } from "@/lib/supabase/pin-admin";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { cofreDisponivel } from "@/lib/ia/cofre";
 import { ambienteShopee, faltandoShopee } from "@/lib/marketplace/shopee-api";
@@ -48,7 +49,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     return <MasterConfiguracoesClient email={user?.email ?? ""} planos={planosRes.error ? null : ((planosRes.data ?? []) as Plano[])} />;
   }
 
-  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes, conexoesRes] =
+  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes, conexoesRes, pinAdmin] =
     await Promise.all([
       // `*`: `tipo` só existe a partir da 0042.
       supabase.from("categorias").select("*").order("nome"),
@@ -70,15 +71,14 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       // Contagem por categoria agregada no banco: antes vinha uma linha por produto só
       // para somar em memória.
       supabase.rpc("contagem_produtos_por_categoria"),
-      // `pin_admin_hash` NÃO entra no select: tudo que a tela precisa saber é se existe um
-      // PIN cadastrado. Antes o PIN vinha em texto puro até o Client Component e ficava
-      // legível no DOM e no payload RSC, apesar do input `type="password"`.
       supabase
         .from("perfil_negocio")
-        .select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp, pin_admin_hash, logo_url, telefone, email, instagram, cep, endereco, numero, bairro, cidade, uf")
+        .select("nome_negocio, cnpj, regime_tributario, aliquota_das, whatsapp, logo_url, telefone, email, instagram, cep, endereco, numero, bairro, cidade, uf")
         .maybeSingle(),
       // API dos marketplaces por loja (0046). Só as colunas sem token; sem a tabela, vazio.
       supabase.from("marketplace_conexoes").select("*"),
+      // Só SE existe PIN: o hash não sai do banco (0081).
+      temPinAdmin(supabase),
     ]);
 
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
@@ -112,7 +112,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     regime_tributario: perfilRes.data?.regime_tributario ?? "",
     aliquota_das: perfilRes.data?.aliquota_das ?? 6,
     whatsapp: perfilRes.data?.whatsapp ?? "",
-    pin_configurado: !!perfilRes.data?.pin_admin_hash,
+    pin_configurado: pinAdmin,
     empresa: {
       logo_url: perfilRes.data?.logo_url ?? null,
       telefone: perfilRes.data?.telefone ?? null,
@@ -205,7 +205,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     : {
         operadores: ((opsRes.data ?? []) as OperadorTela[]).map((o) => ({ ...o, comissao_pct: Number(o.comissao_pct) })),
         exigir: !!neg?.exigir_operador,
-        temPinAdmin: !!neg?.pin_admin_hash,
+        temPinAdmin: pinAdmin,
       };
 
   // Fiscal (0062). Nunca manda o token: só se existe.

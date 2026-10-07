@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { temPinAdmin } from "@/lib/supabase/pin-admin";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { OperadorClient } from "./OperadorClient";
 import type { Metadata } from "next";
@@ -9,16 +10,16 @@ export const metadata: Metadata = { title: "Operador" };
 export default async function OperadorPage() {
   const supabase = await createClient();
   const acesso = await acessoAtual();
-  const [opsRes, perfilRes] = await Promise.all([
+  const [opsRes, pinAdmin] = await Promise.all([
     supabase.from("operadores").select("id, nome, ativo").eq("ativo", true).order("nome"),
     // Só para saber SE existe PIN de administrador (o hash não sai do servidor).
-    supabase.from("perfil_negocio").select("pin_admin_hash").maybeSingle(),
+    temPinAdmin(supabase),
   ]);
   return (
     <OperadorClient
       operadores={opsRes.error ? [] : ((opsRes.data ?? []) as { id: string; nome: string }[])}
       semMigracao={!!opsRes.error}
-      temPinAdmin={!!perfilRes.data?.pin_admin_hash}
+      temPinAdmin={pinAdmin}
       atual={acesso?.operador?.nome ?? null}
     />
   );

@@ -6,7 +6,8 @@
 # Secrets (Settings → Secrets and variables → Actions):
 #   TESTE_EMAIL, TESTE_SENHA          obrigatórios (conta de TESTE, nunca a real)
 #   SMOKE_VITRINE_SLUG                opcional (slug de um catálogo ativo da conta de teste)
-#   VERCEL_AUTOMATION_BYPASS_SECRET   opcional (preview com Deployment Protection)
+#   VERCEL_AUTOMATION_BYPASS_SECRET   opcional; sem ele o smoke só roda em produção (a prévia
+#                                     fica atrás da Deployment Protection)
 # Sem TESTE_EMAIL/TESTE_SENHA o job avisa e termina sem falhar.
 name: Smoke
 
@@ -35,12 +36,19 @@ jobs:
       TESTE_SENHA: ${{ secrets.TESTE_SENHA }}
       SMOKE_VITRINE_SLUG: ${{ secrets.SMOKE_VITRINE_SLUG }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      # "Production" ou "Preview" (o nome que a Vercel dá ao ambiente); vazio no disparo manual.
+      AMBIENTE: ${{ github.event.deployment.environment || 'Production' }}
     steps:
       - name: Confere os secrets
         id: config
         run: |
           if [ -z "$TESTE_EMAIL" ] || [ -z "$TESTE_SENHA" ]; then
             echo "::warning title=Smoke desligado::Cadastre os secrets TESTE_EMAIL e TESTE_SENHA (conta de teste) para rodar o smoke. Ver docs/qa.md."
+            echo "rodar=false" >> "$GITHUB_OUTPUT"
+          elif [ "$AMBIENTE" != "Production" ] && [ -z "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            # A prévia fica atrás da proteção de deploy da Vercel: sem o segredo de bypass, o
+            # navegador cai na tela de login da Vercel (só e-mail) e o teste morre no campo de senha.
+            echo "::warning title=Smoke da prévia desligado::Prévia protegida e sem o secret VERCEL_AUTOMATION_BYPASS_SECRET (Vercel → Settings → Deployment Protection → Protection Bypass for Automation). O smoke roda no deploy de produção."
             echo "rodar=false" >> "$GITHUB_OUTPUT"
           elif [ -z "$SMOKE_BASE_URL" ]; then
             echo "::warning title=Smoke sem URL::O evento não trouxe a URL do deploy."

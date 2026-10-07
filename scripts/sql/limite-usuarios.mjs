@@ -35,11 +35,11 @@ await q(
   `insert into assinaturas (user_id, plano_id, status) values ($1, 'essencial', 'ativa') on conflict (user_id) do update set plano_id = 'essencial', status = 'ativa'`,
   [u],
 );
-const ana = (await um(`select salvar_operador(null, 'Ana', '1234', array['pdv'], 0, 'venda', true) as id`)).id;
+const ana = (await um(`select salvar_operador(null, 'Ana', '1234', array['pdv'], 0, 'venda', true)->>'id' as id`)).id;
 confere("primeiro operador cabe no Essencial (dono + 1)", !!ana);
 const e2 = await erro(`select salvar_operador(null, 'Bia', '1234', array['pdv'], 0, 'venda', true)`);
 confere("segundo operador ativo é recusado", /permite 2 usuário/.test(e2 ?? ""), e2 ?? "passou!");
-const bia = (await um(`select salvar_operador(null, 'Bia', '1234', array['pdv'], 0, 'venda', false) as id`)).id;
+const bia = (await um(`select salvar_operador(null, 'Bia', '1234', array['pdv'], 0, 'venda', false)->>'id' as id`)).id;
 confere("operador inativo cadastra mesmo no limite", !!bia);
 confere(
   "reativar acima do limite é recusado",
