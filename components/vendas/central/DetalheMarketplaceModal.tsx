@@ -32,6 +32,12 @@ export function DetalheMarketplaceModal({ p, bruto, onClose }: { p: PedidoCentra
 
   const linhas: [string, number][] = bruto
     ? [
+        ...(Number(bruto.desconto_vendedor ?? 0) > 0
+          ? ([
+              ["Preço cheio dos anúncios", bruto.subtotal + Number(bruto.desconto_vendedor)],
+              ["Promoção do vendedor", -Number(bruto.desconto_vendedor)],
+            ] as [string, number][])
+          : []),
         ["Venda dos produtos", bruto.subtotal],
         ...(bruto.cupom_vendedor > 0 ? ([["Cupom do vendedor", -bruto.cupom_vendedor]] as [string, number][]) : []),
         ["Comissão", -bruto.comissao],
@@ -92,8 +98,14 @@ export function DetalheMarketplaceModal({ p, bruto, onClose }: { p: PedidoCentra
                 <span className="font-mono">{formatBRL(v)}</span>
               </div>
             ))}
+            {Number(bruto.frete_comprador ?? 0) > 0 && (
+              <div className="flex justify-between text-text-tertiary text-xs">
+                <span>Frete pago pelo comprador (vai para a transportadora)</span>
+                <span className="font-mono">{formatBRL(Number(bruto.frete_comprador))}</span>
+              </div>
+            )}
             <div className="flex justify-between font-medium text-text-primary border-t border-border pt-1">
-              <span>Repasse da Shopee</span>
+              <span>Repasse {p.canal.toLowerCase().includes("mercado") ? "do Mercado Livre" : "da Shopee"}</span>
               <span className="font-mono">{formatBRL(bruto.repasse)}</span>
             </div>
             <div className="flex justify-between text-text-secondary">

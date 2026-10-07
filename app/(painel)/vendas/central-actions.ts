@@ -6,10 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
-import { sincronizarConexao, type ConexaoShopee } from "@/lib/marketplace/sincronizar";
-import { credenciaisShopee } from "@/lib/marketplace/shopee-api";
-import { credenciaisML } from "@/lib/marketplace/mercadolivre-api";
-import { enviarEstoqueConexao } from "@/lib/marketplace/estoque-servidor";
 
 const ETAPAS_VENDA = ["reservar", "emitir", "enviar", "imprimir", "retirada", "enviado", "concluido"] as const;
 type EtapaVendaAcao = (typeof ETAPAS_VENDA)[number];
@@ -70,38 +66,6 @@ export async function definirLogisticaVenda(id: string, logistica: string | null
     if (error?.code === "PGRST204") throw new Error("A logística por venda precisa da migração 0047.");
     if (error) lancarErroSupabase(error);
     revalidar();
-  });
-}
-
-/** "Sincronizar pedidos": todas as lojas conectadas à API, uma por vez. */
-export async function sincronizarTodasShopee() {
-  return comResultado(async () => {
-    if (!credenciaisShopee() && !credenciaisML()) throw new Error("Nenhuma API de marketplace está ligada neste servidor. Use Importar planilha ou configure em Canais de venda.");
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("marketplace_conexoes")
-      .select("*");
-    if (error) throw new Error("Nenhuma loja conectada (falta a migração 0046?).");
-    const conexoes = (data ?? []) as ConexaoShopee[];
-    if (!conexoes.length) throw new Error("Nenhuma loja conectada à API. Conecte em Configurações → Canais de venda.");
-    let pedidos = 0;
-    let novos = 0;
-    const erros: string[] = [];
-    for (const c of conexoes) {
-      try {
-        const r = await sincronizarConexao(supabase, c, "dono");
-        pedidos += r.pedidos;
-        novos += r.resultado.novos ?? 0;
-        const e = await enviarEstoqueConexao(supabase, c).catch(() => ({ enviados: 0, erros: [] as string[] }));
-        erros.push(...e.erros);
-      } catch (e) {
-        erros.push(e instanceof Error ? e.message : "erro");
-      }
-    }
-    revalidar();
-    revalidatePath("/estoque");
-    revalidatePath("/financeiro");
-    return { lojas: conexoes.length, pedidos, novos, erros };
   });
 }
 
