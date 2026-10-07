@@ -1,0 +1,87 @@
+# Smoke logado (docs/qa.md): depois de cada deploy bem-sucedido da Vercel, roda
+# e2e/smoke.spec.ts contra a URL do deploy com a conta de teste. Vende no PDV em Dinheiro,
+# confere o comprovante, cancela a venda e abre Vendas e Configurações; com
+# SMOKE_VITRINE_SLUG, também faz e recusa um pedido na vitrine.
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   TESTE_EMAIL, TESTE_SENHA          obrigatórios (conta de TESTE, nunca a real)
+#   SMOKE_VITRINE_SLUG                opcional (slug de um catálogo ativo da conta de teste)
+#   VERCEL_AUTOMATION_BYPASS_SECRET   opcional (preview com Deployment Protection)
+# Sem TESTE_EMAIL/TESTE_SENHA o job avisa e termina sem falhar.
+name: Smoke
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "URL do deploy a testar (ex.: https://sertao.vercel.app)"
+        required: true
+
+concurrency:
+  # A conta de teste é uma só: dois smokes ao mesmo tempo esbarram no limite de 10 s da vitrine.
+  group: smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Smoke logado
+    if: github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SMOKE_BASE_URL: ${{ github.event.inputs.url || github.event.deployment_status.target_url || github.event.deployment_status.environment_url }}
+      TESTE_EMAIL: ${{ secrets.TESTE_EMAIL }}
+      TESTE_SENHA: ${{ secrets.TESTE_SENHA }}
+      SMOKE_VITRINE_SLUG: ${{ secrets.SMOKE_VITRINE_SLUG }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+    steps:
+      - name: Confere os secrets
+        id: config
+        run: |
+          if [ -z "$TESTE_EMAIL" ] || [ -z "$TESTE_SENHA" ]; then
+            echo "::warning title=Smoke desligado::Cadastre os secrets TESTE_EMAIL e TESTE_SENHA (conta de teste) para rodar o smoke. Ver docs/qa.md."
+            echo "rodar=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$SMOKE_BASE_URL" ]; then
+            echo "::warning title=Smoke sem URL::O evento não trouxe a URL do deploy."
+            echo "rodar=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Testando $SMOKE_BASE_URL"
+            [ -z "$SMOKE_VITRINE_SLUG" ] && echo "::notice::SMOKE_VITRINE_SLUG vazio: a parte da vitrine fica de fora."
+            echo "rodar=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.rodar == 'true'
+        with:
+          # O teste é o do commit que foi para o ar.
+          ref: ${{ github.event.deployment.sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        if: steps.config.outputs.rodar == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instala dependências
+        if: steps.config.outputs.rodar == 'true'
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Instala o Chromium
+        if: steps.config.outputs.rodar == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Roda o smoke
+        if: steps.config.outputs.rodar == 'true'
+        run: npx playwright test --project=smoke
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.config.outputs.rodar == 'true'
+        with:
+          name: smoke-relatorio
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
