@@ -6,22 +6,41 @@ export interface AlertaErosaoMargem {
   aumentoPct: number;
 }
 
+import { ID_CUSTO_PRODUTO, type ComponenteKit } from "./pricing";
+
 const TOLERANCIA_EROSAO_PCT = 3;
 
+/**
+ * O custo da precificação que é comparável ao `custo_unitario` de uma compra.
+ *
+ * `precificacoes.custo` é produto + insumos (embalagem, etiqueta...), mas a compra registra
+ * só o produto. Comparar os dois escondia aumento: produto 30 + insumos 5 = 35, compra a 34
+ * parecia "mais barato" quando o produto subiu 13,3%. A linha `custo-produto` do JSON
+ * `componentes` guarda o valor do produto sozinho; sem ela (precificação antiga), fica o
+ * custo total, como antes.
+ */
+export function custoProdutoDaPrecificacao(p: { custo: number; componentes?: ComponenteKit[] | null }): number {
+  const linha = Array.isArray(p.componentes) ? p.componentes.find((c) => c?.id === ID_CUSTO_PRODUTO) : undefined;
+  const valor = linha ? Number(linha.custoUnitario) * Number(linha.quantidade ?? 1) : NaN;
+  return Number.isFinite(valor) && valor > 0 ? valor : p.custo;
+}
+
 export function calcularErosaoMargem(
-  precificacoesRecentesPorProduto: Map<string, { custo: number }>,
+  precificacoesRecentesPorProduto: Map<string, { custo: number; componentes?: ComponenteKit[] | null }>,
   comprasRecentesPorProduto: Map<string, { custo_unitario: number; produto_nome: string }>,
 ): AlertaErosaoMargem[] {
   const alertas: AlertaErosaoMargem[] = [];
   for (const [produtoId, compra] of comprasRecentesPorProduto) {
     const precificacao = precificacoesRecentesPorProduto.get(produtoId);
-    if (!precificacao || precificacao.custo <= 0) continue;
-    const aumentoPct = ((compra.custo_unitario - precificacao.custo) / precificacao.custo) * 100;
+    if (!precificacao) continue;
+    const custoPrecificado = custoProdutoDaPrecificacao(precificacao);
+    if (!(custoPrecificado > 0)) continue;
+    const aumentoPct = ((compra.custo_unitario - custoPrecificado) / custoPrecificado) * 100;
     if (aumentoPct > TOLERANCIA_EROSAO_PCT) {
       alertas.push({
         produtoId,
         produtoNome: compra.produto_nome,
-        custoPrecificado: precificacao.custo,
+        custoPrecificado,
         custoRecente: compra.custo_unitario,
         aumentoPct,
       });

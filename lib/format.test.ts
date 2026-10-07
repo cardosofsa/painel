@@ -83,6 +83,22 @@ describe("numeroOuNulo", () => {
     expect(numeroOuNulo("19.90")).toBe(19.9);
   });
 
+  it("ponto de milhar: '1.500' é mil e quinhentos, não 1,5", () => {
+    expect(numeroOuNulo("1.500")).toBe(1500);
+    expect(numeroOuNulo("12.345.678")).toBe(12345678);
+    expect(numeroOuNulo("1.500,00")).toBe(1500);
+    expect(numeroOuNulo("1.234.567,89")).toBe(1234567.89);
+    expect(numeroOuNulo("-1.500")).toBe(-1500);
+  });
+
+  it("ponto que não é grupo de milhar continua decimal", () => {
+    expect(numeroOuNulo("1.5")).toBe(1.5);
+    expect(numeroOuNulo("1.50")).toBe(1.5);
+    expect(numeroOuNulo("1.5000")).toBe(1.5);
+    expect(numeroOuNulo("0.500")).toBe(0.5);
+    expect(numeroOuNulo("1234.567")).toBe(1234.567);
+  });
+
   it("vazio e espaços viram null", () => {
     expect(numeroOuNulo("")).toBeNull();
     expect(numeroOuNulo("   ")).toBeNull();

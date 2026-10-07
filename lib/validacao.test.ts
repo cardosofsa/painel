@@ -21,6 +21,7 @@ import {
   SENHA_MAX,
   dividaAntigaSchema,
   paginaHistoricoSchema,
+  precificacaoSchema,
 } from "./validacao";
 
 describe("senhaSchema", () => {
@@ -206,6 +207,36 @@ describe("precoProdutoSchema", () => {
 
   it("aceita zero — produto de brinde tem preço zero", () => {
     expect(validar(precoProdutoSchema, { produto_id: id, preco_venda: 0 }).preco_venda).toBe(0);
+  });
+});
+
+describe("precificacaoSchema", () => {
+  const base = {
+    produto_id: null,
+    produto_nome: "Caneca",
+    canal: null,
+    titulo_anuncio: null,
+    loja_id: null,
+    componentes: null,
+    taxa_extra_valor: null,
+    taxa_extra_tipo: null,
+    custo: 20,
+    taxa_variavel_pct: 0.2,
+    taxa_fixa: 4,
+    taxa_adicional_pct: 0,
+    imposto_pct: 0.06,
+    margem_pct: 0.2,
+    preco_calculado: 49.9,
+    lucro: 10,
+    origem: "individual" as const,
+  };
+
+  it("aceita uma precificação normal", () => {
+    expect(validar(precificacaoSchema, base).preco_calculado).toBe(49.9);
+  });
+
+  it("recusa preço calculado zero — resultado inviável não vai para o histórico", () => {
+    expect(() => validar(precificacaoSchema, { ...base, preco_calculado: 0 })).toThrow(/maior que zero/);
   });
 });
 

@@ -47,6 +47,16 @@ describe("Raio-X", () => {
     expect(precoMinimo(manual)).toBeCloseTo(45.95, 2); // 34 / 0,74
   });
 
+  it("preço mínimo arredonda para cima: nunca um centavo abaixo do empate", () => {
+    // 10,01 / 0,8 = 12,5125 — arredondar normal daria 12,51, que já é prejuízo.
+    const e = { ...manual, custo: 10.01, taxas: { impostoPct: 0, taxaFixa: 0, taxaVariavelPct: 0.2, taxaAdicionalPct: 0 } };
+    const minimo = precoMinimo(e)!;
+    expect(minimo).toBe(12.52);
+    expect(minimo * 0.8 - 10.01).toBeGreaterThanOrEqual(0);
+    // Empate exato não ganha centavo a mais por ruído de ponto flutuante.
+    expect(precoMinimo({ ...e, custo: 10 })).toBe(12.5);
+  });
+
   it("muito acima do ideal: selo 'acima do ideal' e nota menor", () => {
     const r = analisarRaioX({ ...manual, precoPraticado: 110 });
     expect(r.selo).toBe("caro");

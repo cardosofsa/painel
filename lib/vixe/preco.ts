@@ -8,6 +8,8 @@
 
 import {
   analisarConcorrencia,
+  encontrarFaixa,
+  precoEmCentavos,
   resolverComFaixas,
   resolverPorLucro,
   resultadoParaPreco,
@@ -91,14 +93,6 @@ export function simularPreco(e: Pick<EntradaPreco, "custo" | "impostoPct" | "loj
   return resultadoParaPreco(preco, e.custo, taxasFixas(e));
 }
 
-/** Mesma regra de `encontrarFaixa` (pricing.ts), inclusive o recurso para preço fora da tabela. */
-function faixaDoPreco(faixas: FaixaComissao[], preco: number): FaixaComissao {
-  const exata = faixas.find((f) => preco >= f.min && (f.max == null || preco <= f.max));
-  if (exata) return exata;
-  const maisBarata = faixas.reduce((menor, f) => (f.min < menor.min ? f : menor), faixas[0]);
-  return preco < maisBarata.min ? maisBarata : faixas[faixas.length - 1];
-}
-
 export function precoPsicologico(preco: number): number | null {
   if (!Number.isFinite(preco) || preco < 2) return null;
   const centavos = Math.round((preco % 1) * 100);
@@ -115,7 +109,7 @@ export function analisarPreco(e: EntradaPreco): AnalisePreco {
   let comissaoAplicadaPct = e.loja?.comissaoPct ?? 0;
   let tarifaAplicada = e.loja?.taxaFixa ?? 0;
   if (usaFaixas(e.loja)) {
-    const f = faixaDoPreco(e.loja.faixas, e.preco);
+    const f = encontrarFaixa(e.loja.faixas, e.preco);
     comissaoAplicadaPct = f.comissaoPct;
     tarifaAplicada = f.tarifaFixa;
   }
@@ -123,9 +117,10 @@ export function analisarPreco(e: EntradaPreco): AnalisePreco {
   const minimo = usaFaixas(e.loja)
     ? resolverComFaixas(e.custo, "lucro", 0, taxasBase(e), e.loja.faixas).resultado
     : resolverPorLucro(e.custo, 0, taxasFixas(e));
-  const precoMinimoViavel = minimo.viavel && Number.isFinite(minimo.precoVenda) ? Math.ceil(minimo.precoVenda * 100) / 100 : null;
+  const precoMinimoViavel =
+    minimo.viavel && Number.isFinite(minimo.precoVenda) ? precoEmCentavos(minimo.precoVenda, true, usaFaixas(e.loja) ? e.loja.faixas : []) : null;
 
-  const zonaMorta = usaFaixas(e.loja) ? zonaMortaDeFaixa(e.loja.faixas, e.preco) : null;
+  const zonaMorta = usaFaixas(e.loja) ? zonaMortaDeFaixa(e.loja.faixas, e.preco, taxasBase(e)) : null;
 
   const precos = e.concorrentes.filter((p) => Number.isFinite(p) && p > 0);
   const analise =
@@ -133,7 +128,8 @@ export function analisarPreco(e: EntradaPreco): AnalisePreco {
       ? analisarConcorrencia(
           resultado,
           precos.map((p, i) => ({ id: String(i), nome: "", preco: p, link: null })),
-          usaFaixas(e.loja) ? { ...taxasBase(e), taxaVariavelPct: comissaoAplicadaPct / 100, taxaFixa: tarifaAplicada } : taxasFixas(e),
+          // Com faixas, o preço médio dos concorrentes pode cair noutra faixa que a do seu preço.
+          usaFaixas(e.loja) ? (p: number) => simularPreco(e, p) : taxasFixas(e),
         )
       : null;
   const concorrencia = analise

@@ -153,7 +153,9 @@ export function CalculadoraEmMassa({
       // falharam" sem nunca descobrir o motivo.
       const salvas = await executarComToast(
         salvarPrecificacoesEmMassa(
-          resultados.map((r) => {
+          // Linha inviável (preço 0) não vai para o histórico: o schema recusa preço zero e
+          // derrubaria o lote inteiro.
+          resultados.filter((r) => r.resultado.viavel).map((r) => {
             const { taxaVariavelPct, taxaFixa } = taxasDaLinha(r);
             return {
               produto_id: r.linha.produtoId,

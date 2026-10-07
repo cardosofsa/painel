@@ -7,7 +7,7 @@
  * a comissão segue o preço PROMOCIONAL — a promoção pode cair numa faixa diferente.
  */
 
-import { resultadoParaPreco, resultadoParaPrecoComFaixas, type FaixaComissao, type ResultadoPrecificacao, type TaxasPlataforma } from "./pricing";
+import { encontrarFaixa, resultadoParaPreco, resultadoParaPrecoComFaixas, type FaixaComissao, type ResultadoPrecificacao, type TaxasPlataforma } from "./pricing";
 
 export interface EntradaPromocao {
   preco: number;
@@ -72,7 +72,8 @@ function calcular(preco: number, custo: number, taxas: TaxasPlataforma, faixas: 
 
 function faixaDe(faixas: FaixaComissao[] | undefined, preco: number): number {
   if (!faixas?.length) return -1;
-  return faixas.findIndex((f) => preco >= f.min && (f.max === null || preco <= f.max));
+  // Mesma regra do motor: um preço entre 79,99 e 80 não pode ficar "sem faixa".
+  return faixas.indexOf(encontrarFaixa(faixas, preco));
 }
 
 export function simularPromocao(e: EntradaPromocao): ResultadoPromocao {

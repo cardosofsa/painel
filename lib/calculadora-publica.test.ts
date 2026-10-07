@@ -38,9 +38,19 @@ describe("calcularShopee", () => {
   });
 
   it("margem impossível não vira preço", () => {
-    const r = calcularShopee({ ...base, margemPct: 85 });
+    // 90% + a menor comissão da tabela (14%) passa de 100%: nenhuma faixa atinge.
+    const r = calcularShopee({ ...base, margemPct: 90 });
     expect(r.falta).toBeNull();
     expect(r.viavel).toBe(false);
+  });
+
+  it("margem alta só possível numa faixa de cima não é descartada", () => {
+    // 85% é impossível com 20% de comissão, mas possível com 14% + R$ 26 (faixa de 200+):
+    // (30 + 26) / (1 − 0,14 − 0,85) = 5.600. Antes o motor parava na primeira faixa inviável.
+    const r = calcularShopee({ ...base, margemPct: 85 });
+    expect(r.viavel).toBe(true);
+    expect(r.precoVenda).toBeCloseTo(5600, 6);
+    expect(r.margem).toBeCloseTo(0.85, 9);
   });
 });
 
