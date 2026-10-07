@@ -37,6 +37,58 @@ export interface EventoCalendario {
   antecedencia?: number;
   /** Id do registro de origem (compromisso, data própria, conta) para editar/abrir. */
   origemId?: string;
+  /** Conta a receber gerada pela importação de pedido de marketplace (repasse). */
+  repasse?: RepasseLidoDaConta;
+}
+
+export interface RepasseLidoDaConta {
+  loja: string;
+  pedido: string;
+}
+
+/**
+ * Lê a descrição que a importação de pedidos grava na conta a receber (0046/0052):
+ * "Repasse <loja> — pedido <número>" (antes da 0066, "Repasse Shopee <loja> — ...").
+ * Qualquer outra conta a receber devolve `null` e continua aparecendo sozinha.
+ */
+export function lerRepasse(descricao: string): RepasseLidoDaConta | null {
+  const m = /^Repasse (?:Shopee )?(.+?) — pedido (.+)$/.exec(descricao.trim());
+  return m ? { loja: m[1].trim(), pedido: m[2].trim() } : null;
+}
+
+/** Um item do dia: um evento solto ou os repasses do dia juntos (de uma loja ou de todas). */
+export type ItemDoDia =
+  | { tipo: "evento"; id: string; evento: EventoCalendario }
+  | { tipo: "repasses"; id: string; data: string; loja: string | null; eventos: EventoCalendario[]; total: number };
+
+/**
+ * Junta os repasses de marketplace de um dia: a Shopee gera uma conta a receber por pedido,
+ * e um dia com 40 pedidos virava 40 linhas no calendário. `porLoja` separa um grupo por
+ * loja (lista do dia); sem ele, todos os repasses do dia viram um item só (célula do mês).
+ * O grupo fica na posição do primeiro repasse; um repasse sozinho continua como evento.
+ */
+export function agruparRepasses(lista: EventoCalendario[], porLoja = false): ItemDoDia[] {
+  const grupos = new Map<string, EventoCalendario[]>();
+  for (const e of lista) {
+    if (!e.repasse) continue;
+    const chave = porLoja ? e.repasse.loja : "";
+    grupos.set(chave, [...(grupos.get(chave) ?? []), e]);
+  }
+  const itens: ItemDoDia[] = [];
+  const emitidos = new Set<string>();
+  for (const e of lista) {
+    const chave = e.repasse ? (porLoja ? e.repasse.loja : "") : null;
+    const grupo = chave !== null ? grupos.get(chave)! : null;
+    if (!grupo || grupo.length < 2) {
+      itens.push({ tipo: "evento", id: e.id, evento: e });
+      continue;
+    }
+    if (emitidos.has(chave!)) continue;
+    emitidos.add(chave!);
+    const total = Math.round(grupo.reduce((s, x) => s + (x.valor ?? 0), 0) * 100) / 100;
+    itens.push({ tipo: "repasses", id: `repasses:${e.data}:${chave}`, data: e.data, loja: porLoja ? chave : null, eventos: grupo, total });
+  }
+  return itens;
 }
 
 export interface CompromissoFonte {
@@ -120,7 +172,16 @@ export function eventosDoMes(f: FontesMes): Record<string, EventoCalendario[]> {
   }
   for (const c of f.contas) {
     if (!ligada.has(c.tipo) || !noMes(c.data_vencimento, f.ano, f.mes)) continue;
-    lista.push({ id: `${c.tipo}:${c.id}`, data: c.data_vencimento.slice(0, 10), camada: c.tipo, titulo: c.descricao, valor: c.valor, origemId: c.id });
+    const repasse = c.tipo === "receber" ? lerRepasse(c.descricao) : null;
+    lista.push({
+      id: `${c.tipo}:${c.id}`,
+      data: c.data_vencimento.slice(0, 10),
+      camada: c.tipo,
+      titulo: c.descricao,
+      valor: c.valor,
+      origemId: c.id,
+      ...(repasse ? { repasse } : {}),
+    });
   }
   if (ligada.has("compromisso")) {
     for (const c of f.compromissos) {
