@@ -41,7 +41,9 @@ export async function POST(req: NextRequest) {
       return;
     }
     for (const conexao of (data ?? []) as ConexaoShopee[]) {
-      if (sincronizouHaPouco(conexao.ultima_sincronizacao, Date.now())) continue;
+      // O freio só vale para a relida completa (aviso de envio). Aviso de um pedido relê só ele, é barato,
+      // e descartá-lo perderia um pedido pago logo depois de uma sincronização completa.
+      if (!aviso.pedido && sincronizouHaPouco(conexao.ultima_sincronizacao, Date.now())) continue;
       try {
         // Pedido: só ele. Envio (status da etiqueta/entrega): relê a janela recente.
         await sincronizarConexao(servico, conexao, "servico", aviso.pedido ? [aviso.pedido] : undefined);

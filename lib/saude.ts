@@ -7,7 +7,9 @@
  */
 
 /** Variáveis sem as quais alguma parte do app para. Sai só se existem, nunca o valor. */
-export const VARIAVEIS_ESSENCIAIS = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CRON_SECRET", "IA_CHAVE_COFRE", "SHOPEE_PARTNER_ID", "GEMINI_API_KEY"] as const;
+// Só as que derrubam o app para todo mundo: Shopee, ML e Gemini são opcionais (há instalação
+// sem eles), e exigi-los deixaria o status "degradado" para sempre e o monitor alertando à toa.
+export const VARIAVEIS_ESSENCIAIS = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CRON_SECRET", "IA_CHAVE_COFRE"] as const;
 
 export type VariavelEssencial = (typeof VARIAVEIS_ESSENCIAIS)[number];
 

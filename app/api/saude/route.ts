@@ -74,9 +74,32 @@ async function idadeSincronizacao(): Promise<number | null> {
   }
 }
 
-async function verificar(): Promise<Saude> {
+/**
+ * Resultado guardado por 30 s na instância: a rota é pública, e sem isto um script batendo
+ * nela em loop viraria consultas com a service role a cada requisição. O monitor chama a
+ * cada 5 min, então 30 s não atrasam nenhum alerta.
+ */
+const CACHE_MS = 30_000;
+let ultima: { saude: Saude; em: number } | null = null;
+let emAndamento: Promise<Saude> | null = null;
+
+async function medir(): Promise<Saude> {
   const [banco, sincronizacaoMin] = await Promise.all([checarBanco(), idadeSincronizacao()]);
   return montarSaude({ banco, variaveis: variaveisPresentes(), sincronizacaoMin, agora: new Date() });
+}
+
+async function verificar(): Promise<Saude> {
+  if (ultima && Date.now() - ultima.em < CACHE_MS) return ultima.saude;
+  // Requisições simultâneas esperam a mesma medição em vez de abrir uma cada.
+  emAndamento ??= medir()
+    .then((saude) => {
+      ultima = { saude, em: Date.now() };
+      return saude;
+    })
+    .finally(() => {
+      emAndamento = null;
+    });
+  return emAndamento;
 }
 
 export async function GET() {

@@ -45,7 +45,15 @@ export async function GET(req: NextRequest) {
 
   const resumo: { loja: string; ok: boolean; pedidos?: number; estoque?: number; erro?: string }[] = [];
   const falhas: string[] = [];
-  for (const conexao of (data ?? []) as ConexaoShopee[]) {
+  // Orçamento de tempo (o limite da função é 60 s): parar antes garante que as falhas já
+  // juntadas cheguem ao registro em vez de sumirem com a função encerrada no meio.
+  const inicio = Date.now();
+  const conexoes = (data ?? []) as ConexaoShopee[];
+  for (const [i, conexao] of conexoes.entries()) {
+    if (Date.now() - inicio > 45_000) {
+      falhas.push(`tempo esgotado: ${conexoes.length - i} loja(s) ficaram para a próxima rodada`);
+      break;
+    }
     const nome = NOME[plataformaDa(conexao)];
     try {
       const r = await sincronizarConexao(supabase, conexao, "servico");

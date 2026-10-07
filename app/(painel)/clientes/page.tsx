@@ -46,6 +46,11 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
       n = totalDePaginas(c.count ?? 0);
       r = await buscar(n);
     }
+    // Página vazia sem PGRST103 (offset igual ao total depois de excluir): volta para a última.
+    if (!r.error && (r.data?.length ?? 0) === 0 && n > 1 && (r.count ?? 0) > 0) {
+      n = totalDePaginas(r.count ?? 0);
+      r = await buscar(n);
+    }
     return { ...r, pagina: n };
   }
 

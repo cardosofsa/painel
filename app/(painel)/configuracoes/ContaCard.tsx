@@ -78,8 +78,11 @@ export function ContaCard({ email }: { email: string }) {
       const { erro: erroCodigo } = await verificarSegundoFator(supabase, codigoMfa);
       setCodigoMfa("");
       if (erroCodigo) {
-        setSalvando(false);
-        toast.error(traduzirErroAuth(erroCodigo));
+        // A reentrada acima já trocou a sessão por uma aal1: sem subir de volta, o painel
+        // fica sem dados (0080). Leva para a tela do código e volta para cá depois.
+        toast.error(`${traduzirErroAuth(erroCodigo)} Confirme o código para continuar e tente trocar a senha de novo.`);
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- navegação completa de propósito: a sessão mudou
+        window.location.assign("/auth/mfa?next=%2Fconfiguracoes");
         return;
       }
     }

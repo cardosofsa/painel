@@ -120,6 +120,11 @@ export async function paginaDeProdutos<T extends { id: string }>(
     pagina = totalDePaginas(contagem.count ?? 0, tamanho);
     r = await buscar(pagina);
   }
+  // Página que ficou vazia sem PGRST103 (ex.: offset igual ao total depois de excluir): volta para a última.
+  if (!r.error && (r.data?.length ?? 0) === 0 && pagina > 1 && (r.count ?? 0) > 0) {
+    pagina = totalDePaginas(r.count ?? 0, tamanho);
+    r = await buscar(pagina);
+  }
   if (r.error) return { linhas: [], total: 0, pagina: 1, error: r.error };
   return { linhas: (r.data ?? []) as unknown as T[], total: r.count ?? 0, pagina, error: null };
 }

@@ -66,7 +66,8 @@ function Captcha({ onToken }: { onToken: (token: string | null) => void }) {
         id = window.turnstile.render(caixa.current, {
           sitekey: chave,
           language: "pt-br",
-          theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+          // Sem tema escolhido, o site segue o sistema; "auto" faz o widget seguir também.
+          theme: document.documentElement.dataset.theme === "dark" ? "dark" : document.documentElement.dataset.theme === "light" ? "light" : "auto",
           size: "flexible",
           callback: (token: string) => aoToken.current(token),
           "expired-callback": () => aoToken.current(null),

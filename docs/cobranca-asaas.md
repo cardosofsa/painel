@@ -100,3 +100,22 @@ As renovações mensais são automáticas: cada pagamento estende o período em 
 
 Sem o webhook (variáveis ausentes ou 404), o master ainda pode ativar à mão em Admin, como
 antes.
+
+## Antes de ligar em produção: pendências conhecidas
+
+A revisão do código encontrou casos que **precisam ser resolvidos antes de definir
+`ASAAS_API_KEY`** (enquanto a variável não existe, nada disso acontece):
+
+1. **Fatura da assinatura antiga paga depois da troca de plano.** Se a conta troca de plano
+   e o cliente paga uma fatura pendente da assinatura antiga, o webhook pode reativar o
+   plano antigo (`lib/cobranca/mesclar.ts`, ramo `ativa` com outra `provedor_ref`). Corrigir
+   guardando as refs encerradas (coluna nova, migração) e ignorando pagamento delas.
+2. **Estorno e chargeback** (`PAYMENT_REFUNDED`, `PAYMENT_CHARGEBACK_REQUESTED`,
+   `PAYMENT_DELETED`) são ignorados: a conta segue ativa até o fim do período e o bônus de
+   indicação não é desfeito.
+3. **Trocar para o Grátis** cancela na hora, sem respeitar o período já pago.
+4. **Bônus de indicação** (+30 dias, 0078) é engolido pelo próximo webhook de quem paga pela
+   cobrança automática, porque o Asaas manda o período dele. Precisa de coluna própria de
+   bônus somada ao período ou de desconto na assinatura pelo provedor.
+
+Até lá, mantenha a ativação manual (Admin → conta → Plano), que é o fluxo atual.

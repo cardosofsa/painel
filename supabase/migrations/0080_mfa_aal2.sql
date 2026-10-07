@@ -59,6 +59,11 @@ as $$
   )
   and (
     coalesce(auth.jwt() ->> 'aal', 'aal1') = 'aal2'
+    -- Caminho do servidor (cron/webhooks): as RPCs *_servico rodam com o JWT da service
+    -- role e trocam só o claim.sub para a conta. Esse JWT não tem 'aal', e o navegador não
+    -- consegue forjá-lo (é assinado). Sem esta linha, o cron e o ML parariam de importar
+    -- pedidos de toda conta com MFA.
+    or coalesce(auth.jwt() ->> 'role', '') = 'service_role'
     or not exists (
       select 1 from auth.mfa_factors f
       where f.user_id = auth.uid() and f.status = 'verified'
@@ -82,6 +87,11 @@ as $$
   )
   and (
     coalesce(auth.jwt() ->> 'aal', 'aal1') = 'aal2'
+    -- Caminho do servidor (cron/webhooks): as RPCs *_servico rodam com o JWT da service
+    -- role e trocam só o claim.sub para a conta. Esse JWT não tem 'aal', e o navegador não
+    -- consegue forjá-lo (é assinado). Sem esta linha, o cron e o ML parariam de importar
+    -- pedidos de toda conta com MFA.
+    or coalesce(auth.jwt() ->> 'role', '') = 'service_role'
     or not exists (
       select 1 from auth.mfa_factors f
       where f.user_id = auth.uid() and f.status = 'verified'

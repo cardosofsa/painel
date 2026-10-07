@@ -73,8 +73,13 @@ confere(
   "faxina apaga as origens vencidas do catálogo",
   (await um(`select count(*)::int n from vitrine_frete_cota where ip_hash = 'ip-b'`)).n === 0,
 );
-await q(`update vitrine_frete_cota set contagem = 400 where catalogo_id = $1 and ip_hash = '*'`, [catId]);
-confere("400 no dia por catálogo: a próxima é recusada, de qualquer origem", (await frete("loja-77", "ip-novo")) === false);
+await q(`update vitrine_frete_cota set contagem = 60 where catalogo_id = $1 and ip_hash = 'd:ip-dia'`, [catId]).catch(() => null);
+await frete("loja-77", "ip-dia");
+await q(`update vitrine_frete_cota set contagem = 60, janela_inicio = now() where catalogo_id = $1 and ip_hash = 'd:ip-dia'`, [catId]);
+confere("60 no dia por origem: a próxima dessa origem é recusada", (await frete("loja-77", "ip-dia")) === false);
+confere("outra origem no mesmo dia continua cotando", (await frete("loja-77", "ip-outra")) === true);
+await q(`update vitrine_frete_cota set contagem = 1500 where catalogo_id = $1 and ip_hash = '*'`, [catId]);
+confere("1500 no dia por catálogo: a próxima é recusada, de qualquer origem", (await frete("loja-77", "ip-novo")) === false);
 await q(`update vitrine_frete_cota set janela_inicio = janela_inicio - interval '1 day' where catalogo_id = $1 and ip_hash = '*'`, [catId]);
 confere("virou o dia: o total recomeça", (await frete("loja-77", "ip-outro-dia")) === true);
 confere("contagem do dia recomeçou em 1", (await um(`select contagem from vitrine_frete_cota where catalogo_id = $1 and ip_hash = '*'`, [catId])).contagem === 1);

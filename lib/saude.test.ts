@@ -28,8 +28,6 @@ describe("variaveisPresentes", () => {
       SUPABASE_SERVICE_ROLE_KEY: true,
       CRON_SECRET: false,
       IA_CHAVE_COFRE: false,
-      SHOPEE_PARTNER_ID: false,
-      GEMINI_API_KEY: true,
     });
     expect(JSON.stringify(r)).not.toContain("segredo");
     expect(Object.values(r).every((v) => typeof v === "boolean")).toBe(true);
@@ -102,12 +100,12 @@ describe("montarSaude", () => {
   it("variável faltando ou sincronização atrasada: degradado, com o motivo", () => {
     const s = montarSaude({
       banco: { ok: true, ms: 80 },
-      variaveis: { ...todas, CRON_SECRET: false, GEMINI_API_KEY: false },
+      variaveis: { ...todas, CRON_SECRET: false, IA_CHAVE_COFRE: false },
       sincronizacaoMin: SINCRONIZACAO_ATRASADA_MIN + 120,
       agora,
     });
     expect(s.status).toBe("degradado");
-    expect(s.alertas).toEqual(["Variável ausente: CRON_SECRET, GEMINI_API_KEY.", "Há loja sem sincronizar há 28 h."]);
+    expect(s.alertas).toEqual(["Variável ausente: CRON_SECRET, IA_CHAVE_COFRE.", "Há loja sem sincronizar há 28 h."]);
   });
 
   it("no limite das 26 h ainda não é atraso; sem medida, sincronizacao é null", () => {

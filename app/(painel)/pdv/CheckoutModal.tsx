@@ -155,14 +155,24 @@ export function CheckoutModal({
   });
 
   // F4 = "Finalizar Venda". A ref evita re-registrar o listener a cada tecla do formulário.
+  // Travas do atalho: o mesmo F4 que abre o checkout não pode fechar a venda (ignora os primeiros
+  // 800 ms), uma venda não sai duas vezes (inclusive offline, que não liga `salvando`), e com
+  // Pix ou cadastro aberto o F4 não finaliza: o caixa tem que conferir o recebimento e clicar.
   const finalizarRef = useRef<() => void>(() => undefined);
+  const abertoEmRef = useRef(0);
+  const enviadoRef = useRef(false);
   useEffect(() => {
     finalizarRef.current = () => {
-      if (!salvando) onConfirmar(montarDados("paga"));
+      if (salvando || enviadoRef.current || cadastroAberto || pixValor > 0) return;
+      if (performance.now() - abertoEmRef.current < 800) return;
+      enviadoRef.current = true;
+      onConfirmar(montarDados("paga"));
     };
   });
   useEffect(() => {
     if (!aberto || !atalhoFinalizar) return;
+    abertoEmRef.current = performance.now();
+    enviadoRef.current = false;
     function onKey(e: KeyboardEvent) {
       if (e.key !== "F4" || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
       e.preventDefault();
@@ -322,7 +332,8 @@ export function CheckoutModal({
         )}
       </FormField>
 
-      {pix !== undefined && pixValor > 0 && (
+      {/* Com crediário liberado, o restante pode virar parcelas: o QR do restante cobraria duas vezes. */}
+      {pix !== undefined && pixValor > 0 && !(podeFiado && entradaValor > 0 && entradaForma !== "pix") && (
         <PixPagamento
           pix={pix}
           valor={pixValor}

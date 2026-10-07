@@ -3,7 +3,7 @@
 --
 -- 1) Cota da cotação de frete da vitrine (`/api/vitrine/frete`): cada cotação gasta o token
 --    do Melhor Envio do DONO do catálogo e não tinha freio nenhum. `vitrine_frete_permitido`
---    conta por (catálogo, hash do IP) — 20 em 10 minutos — e por catálogo — 400 por dia — e
+--    conta por (catálogo, hash do IP) — 20 em 10 minutos e 60 no dia — e por catálogo — 1500 por dia — e
 --    recusa catálogo inativo ou de conta suspensa. Só o servidor (service role) chama.
 -- 2) `registrar_erro_app` (0076) estava aberta ao anon sem limite por origem: um script no
 --    console enchia a tabela e apagava os erros do servidor (a retenção era uma só). Agora:
@@ -53,11 +53,14 @@ as $$
 declare
   MAX_IP     constant integer  := 20;
   JANELA     constant interval := interval '10 minutes';
-  MAX_DIA    constant integer  := 400;
+  MAX_DIA    constant integer  := 1500;
+  -- Teto diário por origem: sem ele, um IP só (20 a cada 10 min) esgotava sozinho o total do
+  -- catálogo e derrubava a cotação para todos os clientes do dia.
+  MAX_IP_DIA constant integer  := 60;
   v_id       uuid;
   v_dono     uuid;
   v_ativo    boolean;
-  v_ip       text := left(coalesce(nullif(btrim(p_ip_hash), ''), 'sem-ip'), 128);
+  v_ip       text := left(coalesce(nullif(btrim(p_ip_hash), ''), 'sem-ip'), 120);
   v_hoje     timestamptz := date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo';
   v_n        integer;
 begin
@@ -80,6 +83,17 @@ begin
     return false;
   end if;
 
+  -- Por origem, no dia (linha 'd:<hash>').
+  insert into vitrine_frete_cota as q (catalogo_id, ip_hash, janela_inicio, contagem)
+  values (v_id, 'd:' || v_ip, v_hoje, 1)
+  on conflict (catalogo_id, ip_hash) do update
+    set janela_inicio = case when q.janela_inicio < v_hoje then v_hoje else q.janela_inicio end,
+        contagem      = case when q.janela_inicio < v_hoje then 1 else q.contagem + 1 end
+  returning q.contagem into v_n;
+  if v_n > MAX_IP_DIA then
+    return false;
+  end if;
+
   -- Por catálogo: total do dia (horário de Brasília). Só conta o que passou do freio acima.
   insert into vitrine_frete_cota as q (catalogo_id, ip_hash, janela_inicio, contagem)
   values (v_id, '*', v_hoje, 1)
@@ -90,7 +104,8 @@ begin
 
   -- Faxina das origens com a janela vencida deste catálogo (a tabela não cresce sem fim).
   delete from vitrine_frete_cota
-   where catalogo_id = v_id and ip_hash <> '*' and janela_inicio < now() - JANELA;
+   where catalogo_id = v_id and ip_hash <> '*'
+     and ((ip_hash not like 'd:%' and janela_inicio < now() - JANELA) or (ip_hash like 'd:%' and janela_inicio < v_hoje));
 
   return v_n <= MAX_DIA;
 end;

@@ -14,6 +14,19 @@ export interface Novidade {
 
 export const NOVIDADES: Novidade[] = [
   {
+    data: "2026-10-07",
+    titulo: "Plano de 30 dias: segurança, MFA, PDV rápido, listas paginadas, indicação e calculadora",
+    itens: [
+      "Segurança: Next 16.4 (falha crítica corrigida), cota de frete na vitrine, PIN com bloqueio após 5 erros e fim da listagem pública de imagens",
+      "Login em duas etapas (app autenticador), com a trava no banco, e captcha opcional",
+      "PDV: F2 busca, F4 cobra, F8 desconto, leitor pela câmera, QR do Pix na tela e botão Cobrar no celular",
+      "Produtos, Clientes e Estoque paginados com busca no servidor; gráficos carregam sob demanda",
+      "Indique e ganhe 1 mês; calculadora pública de preço Shopee/ML; WhatsApp e vídeo na página inicial",
+      "Monitoramento: /api/saude, falhas dos crons no Admin → Erros e smoke test após cada deploy",
+    ],
+    migracao: "0077, 0078 e 0080",
+  },
+  {
     data: "2026-10-06",
     titulo: "Plataforma: erros, uso de IA, backup semanal e CI",
     itens: [

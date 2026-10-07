@@ -26,8 +26,10 @@ export function Paginacao({
 }) {
   if (total <= 0) return null;
   const paginas = totalDePaginas(total, tamanho);
-  const de = Math.min(total, (pagina - 1) * tamanho + 1);
-  const ate = Math.min(total, pagina * tamanho);
+  // A página pode chegar além do fim por um instante (lista encolheu): mostra a última, sem "2 de 1".
+  const atual = Math.min(pagina, paginas);
+  const de = Math.min(total, (atual - 1) * tamanho + 1);
+  const ate = Math.min(total, atual * tamanho);
   return (
     <nav aria-label="Paginação" className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border text-sm">
       <span className="text-text-secondary tabular" aria-live="polite">
@@ -35,13 +37,13 @@ export function Paginacao({
       </span>
       {paginas > 1 && (
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" disabled={pagina <= 1 || carregando} onClick={() => onPagina(pagina - 1)} aria-label="Página anterior">
+          <Button variant="secondary" size="sm" disabled={atual <= 1 || carregando} onClick={() => onPagina(atual - 1)} aria-label="Página anterior">
             <ChevronLeft size={14} aria-hidden /> Anterior
           </Button>
           <span className="text-text-tertiary tabular whitespace-nowrap">
-            {pagina} de {paginas}
+            {atual} de {paginas}
           </span>
-          <Button variant="secondary" size="sm" disabled={pagina >= paginas || carregando} onClick={() => onPagina(pagina + 1)} aria-label="Próxima página">
+          <Button variant="secondary" size="sm" disabled={atual >= paginas || carregando} onClick={() => onPagina(atual + 1)} aria-label="Próxima página">
             Próxima <ChevronRight size={14} aria-hidden />
           </Button>
         </div>

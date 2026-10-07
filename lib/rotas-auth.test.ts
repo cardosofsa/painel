@@ -118,6 +118,8 @@ describe("precisaSegundoFator", () => {
 describe("destinoSeguro", () => {
   it("mantém caminho interno com a busca", () => {
     expect(destinoSeguro("/vendas")).toBe("/vendas");
+    expect(destinoSeguro("/estoque?_rsc=1x2y")).toBe("/estoque");
+    expect(destinoSeguro("/vendas?etapa=enviar&_rsc=abc")).toBe("/vendas?etapa=enviar");
     expect(destinoSeguro("/vendas?periodo=mes&canal=shopee")).toBe("/vendas?periodo=mes&canal=shopee");
     expect(destinoSeguro("/auth/reset")).toBe("/auth/reset");
   });

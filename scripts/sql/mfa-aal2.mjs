@@ -121,6 +121,13 @@ confere("usuário comum, aal2: e_master() continua falso", (await eMaster(comFat
 
 // ---------- Fator removido (perdeu o celular, docs/seguranca-login.md) ----------
 await q(`delete from auth.mfa_factors where user_id = $1`, [comFator]);
+{
+  // Cron/webhooks: RPC *_servico com JWT da service role e só o sub trocado para a conta.
+  await db.query(`select set_config('request.jwt.claim.sub', $1, false), set_config('request.jwt.claims', $2, false)`, [comFator, JSON.stringify({ role: "service_role" })]);
+  const r = (await q(`select conta_ativa() as ok`))[0].ok;
+  await db.exec(`select set_config('request.jwt.claims', '', false)`);
+  confere("service role (cron/webhook) em conta com fator: conta_ativa() continua verdadeira", r === true);
+}
 confere("fator removido pelo dono do projeto: aal1 volta a ter acesso", (await produtos(comFator, "aal1")) === 2);
 
 console.log(falhas ? `\n${falhas} falha(s).` : "\nMFA aal2 (0080): tudo certo.");

@@ -142,5 +142,7 @@ export function destinoSeguro(bruto: string | null | undefined, padrao: string =
   }
   if (url.origin !== BASE_FICTICIA) return padrao;
   if (rotaDeMfa(url.pathname) || rotaDeEntrada(url.pathname) || ehOuComeca(url.pathname, ["/api", "/_next"])) return padrao;
+  // `_rsc` é parâmetro interno da navegação do Next: não pode parar na barra de endereço.
+  url.searchParams.delete("_rsc");
   return `${url.pathname}${url.search}`;
 }

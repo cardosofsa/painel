@@ -27,7 +27,10 @@ export async function hashIp(ip: string, segredo: string): Promise<string> {
 
 /** Hash da origem da requisição; null sem IP nos cabeçalhos ou sem segredo configurado. */
 export async function hashIpDaRequisicao(h: Cabecalhos, segredo: string | null = segredoIp()): Promise<string | null> {
-  const ip = ipDoCabecalho(h.get("x-forwarded-for"), h.get("x-real-ip"));
+  // Na Vercel, x-vercel-forwarded-for e x-real-ip são preenchidos pela própria plataforma; o
+  // primeiro item do x-forwarded-for pode vir do cliente atrás de outro proxy. Só cai nele por último.
+  const confiavel = h.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip")?.trim();
+  const ip = confiavel ? confiavel.slice(0, 64) : ipDoCabecalho(h.get("x-forwarded-for"));
   if (!ip || !segredo) return null;
   return hashIp(ip, segredo);
 }
