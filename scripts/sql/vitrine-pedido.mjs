@@ -162,12 +162,14 @@ try {
 await db.exec(`reset role`);
 confere("anon não lê pedidos_vitrine direto", bloqueado);
 
-// 8) A migração que define a RPC atual roda de novo por cima (idempotência), e a 0077 também.
+// 8) A migração que define a RPC atual roda de novo por cima (idempotência), e a 0081 também.
+// (A 0077 não é mais reaplicável por cima da 0081, que troca a assinatura de definir_pin_admin;
+// o EXECUTE por papel dela é coberto por seguranca-0077.mjs, num banco anterior à 0081.)
 for (let i = 0; i < 2; i++) await db.exec(await lerMigracao("0033_atacado_catalogo_consultar_endereco.sql"));
-await db.exec(await lerMigracao("0077_seguranca_rotas.sql"));
+await db.exec(await lerMigracao("0081_pin_segredo_conta_ativa.sql"));
 await esperar10s();
 const deNovo = await pedir([{ produto_id: caneca, quantidade: 1 }]);
-confere("0033 2x + 0077: RPC continua chamável por anon", !!deNovo.linha, deNovo.erro);
+confere("0033 2x + 0081: RPC continua chamável por anon", !!deNovo.linha, deNovo.erro);
 
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam.`);
