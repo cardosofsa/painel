@@ -716,6 +716,9 @@ export const gastosAnunciosSchema = z
   })
   .refine((v) => v.periodo_fim >= v.periodo_inicio, { message: "O fim do período vem antes do início", path: ["periodo_fim"] });
 
+/** Mês do fechamento (sempre o primeiro dia): o relatório de IA do Financeiro (0088). */
+export const relatorioMesSchema = z.object({ mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/, "Mês inválido") });
+
 /** Pix e encargos do crediário (0065). Multa limitada a 2% pelo CDC; o banco também confere. */
 export const crediarioConfigSchema = z.object({
   pix_chave: z.string().trim().max(77, "Chave Pix longa demais").nullable(),

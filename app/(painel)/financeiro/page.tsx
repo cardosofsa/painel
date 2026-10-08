@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { eRepasseMarketplace } from "@/lib/repasse-marketplace";
+import { iaDisponivelParaConta } from "@/lib/ia/resolver";
+import { listarFechamentos } from "@/lib/fechamento-servidor";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
 import { hojeIsoBrasil, hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
@@ -112,6 +114,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     clientesRes,
     fixasPagasRes,
     parcelasCalRes,
+    userRes,
+    iaDisponivel,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -174,7 +178,11 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .select("id, numero, total_parcelas, valor, valor_pago, data_vencimento, status, vendas(numero, cliente_nome, status)")
       .gte("data_vencimento", hojeIsoLocal(new Date(hoje.getFullYear() - 1, hoje.getMonth(), 1)))
       .limit(2000),
+    supabase.auth.getUser(),
+    iaDisponivelParaConta(supabase),
   ]);
+  // Histórico mensal (0088): sem a migração ou sem sessão, a lista fica vazia e a tela segue.
+  const fechamentos = userRes.data.user ? await listarFechamentos(supabase, userRes.data.user.id) : [];
   const fornecedores = (fornecedoresRes.data ?? []) as { id: string; nome: string }[];
   const clientes = (clientesRes.data ?? []) as { id: string; nome: string }[];
   const nomeFornecedor = new Map(fornecedores.map((f) => [f.id, f.nome]));
@@ -389,6 +397,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       fornecedores={fornecedores}
       clientes={clientes}
       calendarioContas={calendarioContas}
+      fechamentos={fechamentos}
+      iaDisponivel={iaDisponivel}
       hoje={hojeIsoBrasil()}
     />
   );

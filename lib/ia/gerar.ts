@@ -33,6 +33,15 @@ import {
   type TemaSugerido,
 } from "./prompts";
 import {
+  montarPromptRelatorio,
+  esquemaRelatorio,
+  interpretarRelatorio,
+  hashContextoRelatorio,
+  relatorioVazio,
+  type ContextoRelatorioIA,
+  type RelatorioMes,
+} from "./prompts-relatorio";
+import {
   montarPromptPreco,
   esquemaPreco,
   interpretarPreco,
@@ -73,7 +82,7 @@ import {
 export type TipoGeracaoTexto = "titulo" | "descricao";
 
 /** Todo tipo de geração, incluindo "tema" (que não é texto — ver `gerarTemaVitrineIA`). */
-export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | FerramentaTexto;
+export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | "relatorio" | FerramentaTexto;
 
 export interface SugestaoGerada {
   texto: string;
@@ -109,6 +118,8 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number }
   tema: { maxTokens: 500, temperatura: 0.8 },
   // Diagnóstico + até 5 estratégias de 280 caracteres, mais o raciocínio.
   preco: { maxTokens: 1600, temperatura: 0.6 },
+  // Relatório mensal: ~1.500 caracteres úteis (cerca de 600 tokens) mais o raciocínio.
+  relatorio: { maxTokens: 3000, temperatura: 0.5 },
   // Ferramentas de texto da 7.7: respostas curtas.
   resposta: { maxTokens: 700, temperatura: 0.5 },
   cobranca: { maxTokens: 700, temperatura: 0.6 },
@@ -332,6 +343,29 @@ export async function gerarDiagnosticoPrecoIA(supabase: SupabaseClient, contexto
     if (!valor.diagnostico && valor.estrategias.length === 0) throw new ErroIA("vazio", "diagnóstico vazio");
     return { diagnostico: valor, ...meta };
   });
+}
+
+export interface SugestaoRelatorio extends MetaGeracao {
+  relatorio: RelatorioMes;
+}
+
+/**
+ * Relatório mensal do Financeiro: análise sobre números que o servidor já agregou
+ * (`lib/fechamento-servidor.ts`). LANÇA em caso de erro — quem chama (a action do Financeiro)
+ * embrulha em `comResultado`. Resposta vazia conta como falha do modelo (a vaga não volta:
+ * o token foi gasto do outro lado).
+ */
+export async function gerarRelatorioIA(supabase: SupabaseClient, contexto: ContextoRelatorioIA): Promise<SugestaoRelatorio> {
+  const { valor, ...meta } = await executarEstruturado(
+    supabase,
+    "relatorio",
+    hashContextoRelatorio(contexto),
+    montarPromptRelatorio(contexto),
+    esquemaRelatorio(),
+    interpretarRelatorio,
+  );
+  if (relatorioVazio(valor)) throw new ErroIA("vazio", "relatório vazio");
+  return { relatorio: valor, ...meta };
 }
 
 function rotuloIA(ia: ProvedorResolvido): string | null {

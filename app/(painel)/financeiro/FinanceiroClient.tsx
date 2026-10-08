@@ -41,6 +41,9 @@ import { Chip } from "@/components/ui/Chip";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
+import { AnaliseMesModal } from "@/components/financeiro/AnaliseMesModal";
+import { fimDoMes, inicioDoMes, projetarSaldo } from "@/lib/saldo-projetado";
+import { rotuloMes, type FechamentoMes } from "@/lib/fechamento-mensal";
 import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
 export interface Conta {
@@ -161,10 +164,16 @@ export function FinanceiroClient({
   fornecedores = [],
   clientes = [],
   calendarioContas = [],
+  fechamentos = [],
+  iaDisponivel = false,
   hoje: hojeServidor,
 }: {
   /** Calendário de contas: contas, parcelas e despesas fixas projetadas, com status. */
   calendarioContas?: ContaCalendarioFonte[];
+  /** Histórico mensal do saldo (0088), do mais recente ao mais antigo. */
+  fechamentos?: FechamentoMes[];
+  /** Liga a análise do mês por IA. */
+  iaDisponivel?: boolean;
   /** Hoje em Brasília, vindo do servidor (evita erro de hidratação depois das 21h). */
   hoje?: string;
   /** Para "Lançar dívida antiga" (0067). */
@@ -197,6 +206,7 @@ export function FinanceiroClient({
   const [filtroPagar, setFiltroPagar] = useState<(typeof FILTROS_PAGAR)[number]>("Todos");
   const [filtroReceber, setFiltroReceber] = useState<(typeof FILTROS_RECEBER)[number]>("Todos");
   const [modalMovimentacao, setModalMovimentacao] = useState(false);
+  const [analiseAberta, setAnaliseAberta] = useState(false);
   const [modalDespesa, setModalDespesa] = useState(false);
   // Abre já do lado certo: o "+ Novo" de A receber abria em "A Pagar".
   const [modalCpr, setModalCpr] = useState<"pagar" | "receber" | null>(null);
@@ -226,6 +236,7 @@ export function FinanceiroClient({
     linhas.push(["Resultado do Mês", centavos(resultadoMensal)]);
     linhas.push(["Saldo Líquido Realizado", centavos(saldoLiquido)]);
     linhas.push(["Saldo Atual em Contas", centavos(saldoAtual)]);
+    linhas.push(["Saldo Projetado (fim do mês)", centavos(projecaoMes.saldoProjetado)]);
     linhas.push(["Saldo Projetado (30 dias)", centavos(saldoProjetado30Dias)]);
     linhas.push([]);
 
@@ -296,9 +307,9 @@ export function FinanceiroClient({
   );
 
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
-  const pendentesEm30Dias = contasPagarReceber.filter((c) => c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em30DiasIso);
-  const aReceberEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "receber").reduce((a, c) => a + restanteParcela(c), 0);
-  const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + restanteParcela(c), 0);
+  // Repasse de marketplace e pedido aguardando não entram: não têm data certa nem baixa (ver `lib/saldo-projetado.ts`).
+  const projecaoMes = projetarSaldo(saldoAtual, contasPagarReceber, fimDoMes(hojeIso));
+  const projecao30Dias = projetarSaldo(saldoAtual, contasPagarReceber, em30DiasIso);
 
   const periodoH = PERIODOS_HISTORICO.find((p) => p.id === periodoHistorico)!;
   const desdeHistorico = periodoH.dias ? diasAntes(hojeIso, periodoH.dias) : "";
@@ -313,7 +324,7 @@ export function FinanceiroClient({
         : { alvo: { contaId: c.id }, titulo: c.descricao },
     );
   }
-  const saldoProjetado30Dias = saldoAtual + aReceberEm30Dias - aPagarEm30Dias;
+  const saldoProjetado30Dias = projecao30Dias.saldoProjetado;
 
   const vencidos = vencimentosProximos.filter((c) => c.data_vencimento < hojeIso);
   const vencendo = vencimentosProximos.filter((c) => c.data_vencimento >= hojeIso);
@@ -472,8 +483,15 @@ export function FinanceiroClient({
 
 
       <Card className="mb-5">
-        <h2 className="text-base font-semibold text-text-primary mb-1">Projeção de Fluxo de Caixa</h2>
-        <p className="text-xs text-text-tertiary mb-4">Saldo atual das contas somado ao que está previsto entrar/sair nos próximos 30 dias</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary mb-1">Projeção de Fluxo de Caixa</h2>
+            <p className="text-xs text-text-tertiary">Saldo atual das contas somado ao que ainda está previsto entrar e sair até o fim de {rotuloMes(inicioDoMes(hojeIso))}</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setAnaliseAberta(true)}>
+            <History size={14} /> Histórico e análise
+          </Button>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
           <div>
             <div className="text-xs text-text-tertiary mb-1">Saldo Atual</div>
@@ -481,17 +499,18 @@ export function FinanceiroClient({
           </div>
           <div>
             <div className="text-xs text-text-tertiary mb-1">
-              A Receber − A Pagar (30 dias) <InfoTooltip text="Soma das contas a pagar e a receber pendentes com vencimento nos próximos 30 dias." />
+              A Receber − A Pagar (até o fim do mês) <InfoTooltip text="Contas a pagar e a receber pendentes com vencimento até o último dia do mês, inclusive as já vencidas. Repasses de marketplace ficam de fora: a plataforma libera quando quiser." />
             </div>
             <div className="font-mono text-xl text-text-primary">
-              <span className="text-positive">+{formatBRL(aReceberEm30Dias)}</span> <span className="text-negative">-{formatBRL(aPagarEm30Dias)}</span>
+              <span className="text-positive">+{formatBRL(projecaoMes.aReceber)}</span> <span className="text-negative">-{formatBRL(projecaoMes.aPagar)}</span>
             </div>
           </div>
           <div>
-            <div className="text-xs text-text-tertiary mb-1">Saldo Projetado (30 dias)</div>
-            <div className={`font-mono text-2xl font-semibold ${saldoProjetado30Dias >= 0 ? "text-accent" : "text-negative"}`}>
-              {formatBRL(saldoProjetado30Dias)}
+            <div className="text-xs text-text-tertiary mb-1">Saldo Projetado (fim do mês)</div>
+            <div className={`font-mono text-2xl font-semibold ${projecaoMes.saldoProjetado >= 0 ? "text-accent" : "text-negative"}`}>
+              {formatBRL(projecaoMes.saldoProjetado)}
             </div>
+            <div className="text-xs text-text-tertiary mt-1">Em 30 dias: {formatBRL(saldoProjetado30Dias)}</div>
           </div>
         </div>
       </Card>
@@ -913,6 +932,7 @@ export function FinanceiroClient({
         servidor aceitou: quando falhava, o modal continuava aberto e vazio e o usuário
         perdia tudo que tinha digitado.
       */}
+      {analiseAberta && <AnaliseMesModal onClose={() => setAnaliseAberta(false)} fechamentos={fechamentos} mesAtual={inicioDoMes(hojeServidor ?? hojeIsoLocal())} iaDisponivel={iaDisponivel} />}
       <NovaMovimentacaoModal key={`mov-${modalMovimentacao}`} open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contas} onSave={adicionarMovimentacao} salvando={pending} />
       <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />
       <NovaCprModal key={`cpr-${modalCpr}`} open={!!modalCpr} tipoInicial={modalCpr ?? "pagar"} onClose={() => setModalCpr(null)} contas={contas} onSave={adicionarCpr} salvando={pending} />
