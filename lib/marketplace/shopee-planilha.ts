@@ -51,6 +51,11 @@ export interface PedidoMarketplace {
   logistica: string | null;
   /** Data limite para enviar (ISO). */
   prazoEnvio: string | null;
+  /** Quando a transportadora entregou (ISO), se a plataforma informa. Só a API (0091). */
+  entregueEm?: string | null;
+  /** Quem cancelou e por quê, se a plataforma informa. Só a API (0091). */
+  canceladoPor?: "comprador" | "vendedor" | "sistema" | null;
+  motivoCancelamento?: string | null;
   itens: ItemMarketplace[];
   /** Σ preço acordado × quantidade. */
   subtotal: number;

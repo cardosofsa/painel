@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { ambienteShopee, assinar, credenciaisShopee, faltandoShopee, pedidoDaApi, statusDaApi, ufDoEstado, urlAutorizacao } from "./shopee-api";
+import { ambienteShopee, assinar, credenciaisShopee, faltandoShopee, pedidoDaApi, quemCancelou, statusDaApi, ufDoEstado, urlAutorizacao } from "./shopee-api";
 
 const c = { partnerId: 123, partnerKey: "segredo", host: "https://partner.shopeemobile.com" };
 
@@ -91,5 +91,36 @@ describe("conversão", () => {
     const base = { order_sn: "A", item_list: [{ model_quantity_purchased: 1, model_discounted_price: 100 }] };
     expect(pedidoDaApi({ ...base, order_status: "READY_TO_SHIP" }, null).repasse).toBe(100);
     expect(pedidoDaApi({ ...base, order_status: "CANCELLED" }, null).repasse).toBe(0);
+  });
+});
+
+describe("entrega e cancelamento (0091)", () => {
+  const base = { order_sn: "2610ABC", order_status: "SHIPPED", create_time: 1_760_000_000, update_time: 1_760_086_400 };
+
+  it("TO_CONFIRM_RECEIVE é entregue (data = update_time); SHIPPED comum não", () => {
+    expect(pedidoDaApi({ ...base, order_status: "TO_CONFIRM_RECEIVE" }, null).entregueEm).toBe("2025-10-10T08:53:20.000Z");
+    expect(pedidoDaApi({ ...base, order_status: "TO_CONFIRM_RECEIVE" }, null).status).toBe("enviado");
+    expect(pedidoDaApi(base, null).entregueEm).toBeNull();
+  });
+  it("pacote com LOGISTICS_DELIVERY_DONE também marca entrega, mas só enquanto está enviado", () => {
+    const pacote = { package_list: [{ logistics_status: "LOGISTICS_DELIVERY_DONE" }] };
+    expect(pedidoDaApi({ ...base, ...pacote }, null).entregueEm).not.toBeNull();
+    expect(pedidoDaApi({ ...base, order_status: "COMPLETED", ...pacote }, null).entregueEm).toBeNull();
+    expect(pedidoDaApi({ ...base, package_list: [{ logistics_status: "LOGISTICS_PICKUP_DONE" }] }, null).entregueEm).toBeNull();
+  });
+  it("cancelado guarda quem cancelou e o motivo; pedido que não é cancelado não guarda", () => {
+    const c = pedidoDaApi({ ...base, order_status: "CANCELLED", cancel_by: "system", cancel_reason: "  Failed delivery  " }, null);
+    expect(c).toMatchObject({ status: "cancelado", canceladoPor: "sistema", motivoCancelamento: "Failed delivery" });
+    expect(pedidoDaApi({ ...base, cancel_by: "buyer", cancel_reason: "x" }, null)).toMatchObject({ canceladoPor: null, motivoCancelamento: null });
+  });
+  it("normaliza as variações do campo cancel_by", () => {
+    expect(quemCancelou("buyer")).toBe("comprador");
+    expect(quemCancelou("Buyer")).toBe("comprador");
+    expect(quemCancelou("seller")).toBe("vendedor");
+    expect(quemCancelou("Seller")).toBe("vendedor");
+    expect(quemCancelou("system")).toBe("sistema");
+    expect(quemCancelou("Backend system")).toBe("sistema");
+    expect(quemCancelou("")).toBeNull();
+    expect(quemCancelou(undefined)).toBeNull();
   });
 });

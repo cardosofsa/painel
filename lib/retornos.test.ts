@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contarSubabas, diasParaResponder, filtrarRetornos, ordenarRetornos, retornoDeDevolucaoSistema, retornoDeLinhaShopee, rotuloStatusShopee, subabaDoRetorno } from "./retornos";
+import { contarCancelamentos, contarSubabas, diasParaResponder, filtrarRetornos, ordenarRetornos, retornoDeDevolucaoSistema, retornoDeLinhaShopee, retornoDePedidoCancelado, rotuloStatusShopee, subabaDoRetorno } from "./retornos";
 
 const lojas = new Map([["L1", "Cardoso e-Shop"]]);
 const shopee = (id: string, status: string, extra: Record<string, unknown> = {}) =>
@@ -45,7 +45,7 @@ describe("lista", () => {
     expect(lista.map((r) => r.id)).toEqual(["sistema:d1", "shopee:4", "shopee:3", "shopee:2", "shopee:1"]);
   });
   it("conta por sub-aba; Todos é o total", () => {
-    expect(contarSubabas(lista)).toEqual({ todos: 5, em_analise: 2, em_devolucao: 0, aprovadas: 1, em_disputa: 1, canceladas: 1 });
+    expect(contarSubabas(lista)).toEqual({ todos: 5, em_analise: 2, em_devolucao: 0, aprovadas: 1, em_disputa: 1, canceladas: 1, pedidos_cancelados: 0 });
   });
   it("filtra por sub-aba e por busca sem acento", () => {
     expect(filtrarRetornos(lista, "em_disputa", "").map((r) => r.referencia)).toEqual(["SN3"]);
@@ -62,5 +62,30 @@ describe("diasParaResponder", () => {
     expect(diasParaResponder("2026-10-08T15:00:00Z", "2026-10-10")).toBe(-2);
     expect(diasParaResponder("2026-10-11T01:00:00Z", "2026-10-10")).toBe(0);
     expect(diasParaResponder(null, "2026-10-10")).toBeNull();
+  });
+});
+
+describe("pedidos cancelados", () => {
+  const cancelado = (chave: string, origem: "pdv" | "catalogo" | "marketplace", canceladoPor: "comprador" | "vendedor" | "sistema" | null, extra: object = {}) =>
+    retornoDePedidoCancelado({ chave, origem, numero: `N-${chave}`, loja: origem === "marketplace" ? "Cardoso e-Shop" : null, canal: "Shopee", cliente: "Ana", total: 50, data: "2026-10-04T12:00:00Z", canceladoPor, motivo: null, itens: [{ nome: "Fita", quantidade: 1 }], ...extra });
+
+  it("diz quem cancelou: comprador, vendedor, sistema da Shopee ou o meu sistema", () => {
+    expect(cancelado("a", "marketplace", "comprador")).toMatchObject({ quem: "comprador", statusRotulo: "Cancelado pelo comprador", origem: "shopee", subaba: "pedidos_cancelados" });
+    expect(cancelado("b", "marketplace", "vendedor").statusRotulo).toBe("Cancelado pelo vendedor");
+    expect(cancelado("c", "marketplace", "sistema")).toMatchObject({ quem: "sistema_shopee", statusRotulo: "Cancelado pelo sistema da Shopee" });
+    expect(cancelado("d", "pdv", null)).toMatchObject({ quem: "painel", origem: "sistema", statusRotulo: "Cancelado no meu sistema" });
+    expect(cancelado("e", "catalogo", null).quem).toBe("painel");
+  });
+  it("pedido antigo da Shopee, sem a informação, fica só Cancelado", () => {
+    expect(cancelado("f", "marketplace", null)).toMatchObject({ quem: "desconhecido", statusRotulo: "Cancelado" });
+  });
+  it("conta e filtra por quem cancelou; Todos mistura devoluções e cancelados", () => {
+    const todos = [shopee("1", "REQUESTED"), cancelado("a", "marketplace", "comprador"), cancelado("c", "marketplace", "sistema"), cancelado("d", "pdv", null), cancelado("f", "marketplace", null)];
+    expect(contarCancelamentos(todos)).toEqual({ todos: 4, comprador: 1, vendedor: 0, sistema_shopee: 1, painel: 1, desconhecido: 1 });
+    expect(contarSubabas(todos)).toMatchObject({ todos: 5, em_analise: 1, pedidos_cancelados: 4 });
+    expect(filtrarRetornos(todos, "pedidos_cancelados", "", "sistema_shopee").map((r) => r.referencia)).toEqual(["N-c"]);
+    expect(filtrarRetornos(todos, "pedidos_cancelados", "", "todos")).toHaveLength(4);
+    // O filtro de quem só vale nessa sub-aba.
+    expect(filtrarRetornos(todos, "todos", "", "comprador")).toHaveLength(5);
   });
 });

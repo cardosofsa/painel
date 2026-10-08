@@ -8,6 +8,9 @@ import {
   FILTROS_VAZIOS,
   indicadores,
   montarCentral,
+  PROXIMA,
+  ANTERIOR,
+  ETAPAS,
   type FiltrosCentral,
   type PedidoMktIn,
   type VendaIn,
@@ -72,6 +75,42 @@ describe("etapas", () => {
     expect(etapaDoMarketplace("concluido", "COMPLETED")).toBe("concluido");
     expect(etapaDoMarketplace("nao_pago", "UNPAID")).toBe("pagamento");
     expect(etapaDoMarketplace("devolvido", "TO_RETURN")).toBe("cancelado");
+  });
+  it("marketplace enviado e já entregue vira Entregue; pedido que não está enviado ignora a entrega", () => {
+    expect(etapaDoMarketplace("enviado", "TO_CONFIRM_RECEIVE", true)).toBe("entregue");
+    expect(etapaDoMarketplace("enviado", "SHIPPED", false)).toBe("enviado");
+    expect(etapaDoMarketplace("concluido", "COMPLETED", true)).toBe("concluido");
+    expect(etapaDoMarketplace("cancelado", "CANCELLED", true)).toBe("cancelado");
+  });
+  it("venda do sistema com etapa entregue continua entregue; cancelada vence", () => {
+    expect(etapaDaVenda({ status: "paga", etapa: "entregue", status_envio: "enviado" })).toBe("entregue");
+    expect(etapaDaVenda({ status: "cancelada", etapa: "entregue", status_envio: "enviado" })).toBe("cancelado");
+  });
+});
+
+describe("central com entrega e cancelamento (0091)", () => {
+  const central = (m: PedidoMktIn[]) => montarCentral({ vendas: [], pedidosCatalogo: [], marketplace: m, lojas, disponivel: new Map() });
+  it("pedido enviado com entregue_em aparece em Entregue; sem ele, em Enviado", () => {
+    const [a, b] = central([mkt({ id: "m1", status: "enviado", status_original: "TO_CONFIRM_RECEIVE", entregue_em: "2026-10-02T10:00:00Z" }), mkt({ id: "m2", numero: "X2", status: "enviado", status_original: "SHIPPED" })]);
+    expect([a.etapa, b.etapa].sort()).toEqual(["entregue", "enviado"]);
+    expect(central([mkt({ status: "enviado", entregue_em: "2026-10-02T10:00:00Z" })])[0].entregueEm).toBe("2026-10-02T10:00:00Z");
+  });
+  it("pedido cancelado leva quem cancelou e o motivo; os outros não", () => {
+    const [c] = central([mkt({ status: "cancelado", status_original: "CANCELLED", cancelado_por: "sistema", motivo_cancelamento: "Não enviado no prazo" })]);
+    expect(c).toMatchObject({ etapa: "cancelado", canceladoPor: "sistema", motivoCancelamento: "Não enviado no prazo" });
+    const [v] = central([mkt({ status: "enviado", cancelado_por: "comprador", motivo_cancelamento: "x" })]);
+    expect(v).toMatchObject({ canceladoPor: null, motivoCancelamento: null });
+  });
+});
+
+describe("esteira com Entregue", () => {
+  it("Enviado → Entregue → Concluído, e dá para voltar", () => {
+    expect(ETAPAS.map((e) => e.id).slice(6, 9)).toEqual(["enviado", "entregue", "concluido"]);
+    expect(PROXIMA.enviado).toEqual({ etapa: "entregue", acao: "Marcar entregue" });
+    expect(PROXIMA.entregue).toEqual({ etapa: "concluido", acao: "Concluir" });
+    expect(ANTERIOR.concluido).toBe("entregue");
+    expect(ANTERIOR.entregue).toBe("enviado");
+    expect(ETAPAS.find((e) => e.id === "entregue")?.pendente).toBe(false);
   });
 });
 

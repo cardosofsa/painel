@@ -55,6 +55,14 @@ export async function sincronizarConexao(
           await (modo === "servico"
             ? supabase.rpc("atualizar_envio_marketplace_servico", { p_user: conexao.user_id, p_loja_id: conexao.loja_id, p_envios: envios })
             : supabase.rpc("atualizar_envio_marketplace", { p_loja_id: conexao.loja_id, p_envios: envios }));
+        // Entrega e quem cancelou (0091); sem a migração a função não existe e é ignorada.
+        const situacoes = lote
+          .filter((p) => p.entregue_em || p.cancelado_por || p.motivo_cancelamento)
+          .map((p) => ({ numero: p.numero, entregue_em: p.entregue_em, cancelado_por: p.cancelado_por, motivo_cancelamento: p.motivo_cancelamento }));
+        if (situacoes.length)
+          await (modo === "servico"
+            ? supabase.rpc("atualizar_situacao_marketplace_servico", { p_user: conexao.user_id, p_loja_id: conexao.loja_id, p_situacoes: situacoes })
+            : supabase.rpc("atualizar_situacao_marketplace", { p_loja_id: conexao.loja_id, p_situacoes: situacoes }));
       }
     } else resultado = { novos: 0, atualizados: 0 };
 

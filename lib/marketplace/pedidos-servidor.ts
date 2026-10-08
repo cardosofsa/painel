@@ -29,6 +29,10 @@ export interface PedidoMarketplaceSalvo {
   /** 0047; ausentes antes da migração. */
   logistica?: string | null;
   prazo_envio?: string | null;
+  /** 0091; ausentes antes da migração. */
+  entregue_em?: string | null;
+  cancelado_por?: "comprador" | "vendedor" | "sistema" | null;
+  motivo_cancelamento?: string | null;
   subtotal: number;
   /** Promoção do vendedor (preço cheio − preço pago) e frete pago pelo comprador: só informativos. */
   desconto_vendedor?: number;

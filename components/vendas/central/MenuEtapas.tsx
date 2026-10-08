@@ -48,7 +48,7 @@ export function MenuEtapas({
           onClick={retornos.onAbrir}
           className={`shrink-0 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-left whitespace-nowrap ${retornos.ativo ? "bg-accent-soft text-accent font-medium" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}
         >
-          <span>Retornos</span>
+          <span>Retornos e cancelados</span>
           <span className="text-xs font-mono text-text-tertiary">{retornos.n}</span>
         </button>
       )}

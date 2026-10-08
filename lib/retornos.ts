@@ -9,7 +9,7 @@
  * Ajustar é mudar `subabaDoRetorno` — sem migração e sem nova sincronização.
  */
 
-export type SubabaRetorno = "todos" | "em_analise" | "em_devolucao" | "aprovadas" | "em_disputa" | "canceladas";
+export type SubabaRetorno = "todos" | "em_analise" | "em_devolucao" | "aprovadas" | "em_disputa" | "canceladas" | "pedidos_cancelados";
 
 export const SUBABAS_RETORNO: { id: SubabaRetorno; rotulo: string }[] = [
   { id: "todos", rotulo: "Todos" },
@@ -18,6 +18,18 @@ export const SUBABAS_RETORNO: { id: SubabaRetorno; rotulo: string }[] = [
   { id: "aprovadas", rotulo: "Aprovadas" },
   { id: "em_disputa", rotulo: "Em disputa" },
   { id: "canceladas", rotulo: "Canceladas" },
+  { id: "pedidos_cancelados", rotulo: "Pedidos cancelados" },
+];
+
+/** Quem cancelou o pedido (filtro da sub-aba Pedidos cancelados). */
+export type QuemCancelou = "comprador" | "vendedor" | "sistema_shopee" | "painel" | "desconhecido";
+
+export const FILTROS_CANCELAMENTO: { id: QuemCancelou | "todos"; rotulo: string }[] = [
+  { id: "todos", rotulo: "Todos" },
+  { id: "comprador", rotulo: "Pelo comprador" },
+  { id: "vendedor", rotulo: "Por mim (vendedor)" },
+  { id: "sistema_shopee", rotulo: "Pelo sistema da Shopee" },
+  { id: "painel", rotulo: "No meu sistema" },
 ];
 
 export interface RetornoCentral {
@@ -40,6 +52,8 @@ export interface RetornoCentral {
   /** Até quando o vendedor pode responder (ISO), quando a Shopee informa. */
   prazoResposta: string | null;
   itens: { nome: string; quantidade: number }[];
+  /** Só em Pedidos cancelados: quem cancelou. */
+  quem?: QuemCancelou;
 }
 
 /**
@@ -132,24 +146,86 @@ export function retornoDeDevolucaoSistema(l: Record<string, unknown>): RetornoCe
   };
 }
 
+const ROTULO_CANCELAMENTO: Record<QuemCancelou, string> = {
+  comprador: "Cancelado pelo comprador",
+  vendedor: "Cancelado pelo vendedor",
+  sistema_shopee: "Cancelado pelo sistema da Shopee",
+  painel: "Cancelado no meu sistema",
+  desconhecido: "Cancelado",
+};
+
+/** O que a central sabe de um pedido cancelado (marketplace ou do próprio sistema). */
+export interface PedidoCanceladoIn {
+  chave: string;
+  origem: "pdv" | "catalogo" | "marketplace";
+  numero: string;
+  loja: string | null;
+  canal: string;
+  cliente: string | null;
+  total: number;
+  data: string;
+  canceladoPor: "comprador" | "vendedor" | "sistema" | null;
+  motivo: string | null;
+  itens: { nome: string; quantidade: number }[];
+}
+
+/**
+ * Pedido cancelado → cartão. Pedido do próprio sistema foi cancelado aqui (painel). No marketplace,
+ * a Shopee diz quem cancelou (0091): comprador, vendedor ou o sistema dela; sem a informação (pedido
+ * antigo, planilha), fica só "Cancelado".
+ */
+export function retornoDePedidoCancelado(p: PedidoCanceladoIn): RetornoCentral {
+  const quem: QuemCancelou = p.origem !== "marketplace" ? "painel" : p.canceladoPor === "sistema" ? "sistema_shopee" : (p.canceladoPor ?? "desconhecido");
+  return {
+    id: `cancelado:${p.chave}`,
+    origem: p.origem === "marketplace" ? "shopee" : "sistema",
+    loja: p.loja,
+    numeroPedido: p.numero,
+    referencia: p.numero,
+    status: "Cancelado",
+    statusRotulo: ROTULO_CANCELAMENTO[quem],
+    subaba: "pedidos_cancelados",
+    motivo: p.motivo,
+    valor: p.total,
+    comprador: p.cliente,
+    rastreio: null,
+    criadoEm: p.data,
+    prazoResposta: null,
+    itens: p.itens,
+    quem,
+  };
+}
+
 /** Mais recentes primeiro; sem data vai para o fim. */
 export function ordenarRetornos(lista: RetornoCentral[]): RetornoCentral[] {
   return [...lista].sort((a, b) => (b.criadoEm ?? "").localeCompare(a.criadoEm ?? ""));
 }
 
 export function contarSubabas(lista: RetornoCentral[]): Record<SubabaRetorno, number> {
-  const c: Record<SubabaRetorno, number> = { todos: lista.length, em_analise: 0, em_devolucao: 0, aprovadas: 0, em_disputa: 0, canceladas: 0 };
+  const c: Record<SubabaRetorno, number> = { todos: lista.length, em_analise: 0, em_devolucao: 0, aprovadas: 0, em_disputa: 0, canceladas: 0, pedidos_cancelados: 0 };
   for (const r of lista) c[r.subaba]++;
   return c;
 }
 
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/** Sub-aba + busca (número do retorno/pedido, comprador, motivo, produto). */
-export function filtrarRetornos(lista: RetornoCentral[], subaba: SubabaRetorno, busca: string): RetornoCentral[] {
+/** Contagem de pedidos cancelados por quem cancelou (para os chips da sub-aba). */
+export function contarCancelamentos(lista: RetornoCentral[]): Record<QuemCancelou | "todos", number> {
+  const c: Record<QuemCancelou | "todos", number> = { todos: 0, comprador: 0, vendedor: 0, sistema_shopee: 0, painel: 0, desconhecido: 0 };
+  for (const r of lista) {
+    if (r.subaba !== "pedidos_cancelados") continue;
+    c.todos++;
+    c[r.quem ?? "desconhecido"]++;
+  }
+  return c;
+}
+
+/** Sub-aba + busca (número do retorno/pedido, comprador, motivo, produto) + quem cancelou. */
+export function filtrarRetornos(lista: RetornoCentral[], subaba: SubabaRetorno, busca: string, quem: QuemCancelou | "todos" = "todos"): RetornoCentral[] {
   const termo = semAcento(busca.trim());
   return lista.filter((r) => {
     if (subaba !== "todos" && r.subaba !== subaba) return false;
+    if (subaba === "pedidos_cancelados" && quem !== "todos" && r.quem !== quem) return false;
     if (!termo) return true;
     return semAcento([r.referencia, r.numeroPedido, r.comprador, r.motivo, r.loja, ...r.itens.map((i) => i.nome)].filter(Boolean).join(" ")).includes(termo);
   });

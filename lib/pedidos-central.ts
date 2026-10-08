@@ -15,7 +15,7 @@
 import { noPeriodo, type Periodo } from "@/lib/periodo";
 import type { OrigemTaxas, StatusMarketplace, TaxaDetalhe } from "@/lib/marketplace/shopee-planilha";
 
-export type Etapa = "pagamento" | "reservar" | "emitir" | "enviar" | "imprimir" | "retirada" | "enviado" | "concluido" | "cancelado";
+export type Etapa = "pagamento" | "reservar" | "emitir" | "enviar" | "imprimir" | "retirada" | "enviado" | "entregue" | "concluido" | "cancelado";
 /** Por que o pedido está em Para Reservar (sub-abas). */
 export type MotivoReserva = "nao_mapeado" | "sem_estoque" | "revisao";
 export type EtapaVenda = Exclude<Etapa, "pagamento" | "cancelado">;
@@ -28,6 +28,7 @@ export const ETAPAS: { id: Etapa; rotulo: string; pendente: boolean }[] = [
   { id: "imprimir", rotulo: "Para Imprimir", pendente: true },
   { id: "retirada", rotulo: "Para Retirada", pendente: true },
   { id: "enviado", rotulo: "Enviado", pendente: false },
+  { id: "entregue", rotulo: "Entregue", pendente: false },
   { id: "concluido", rotulo: "Concluído", pendente: false },
   { id: "cancelado", rotulo: "Cancelado", pendente: false },
 ];
@@ -41,7 +42,8 @@ export const PROXIMA: Partial<Record<Etapa, { etapa: EtapaVenda; acao: string }>
   enviar: { etapa: "imprimir", acao: "Programar envio" },
   imprimir: { etapa: "retirada", acao: "Imprimir" },
   retirada: { etapa: "enviado", acao: "Marcar como enviado" },
-  enviado: { etapa: "concluido", acao: "Marcar entregue" },
+  enviado: { etapa: "entregue", acao: "Marcar entregue" },
+  entregue: { etapa: "concluido", acao: "Concluir" },
 };
 
 /** Etapa anterior (para "Retornar para…"). */
@@ -50,7 +52,8 @@ export const ANTERIOR: Partial<Record<Etapa, EtapaVenda>> = {
   imprimir: "enviar",
   retirada: "imprimir",
   enviado: "retirada",
-  concluido: "enviado",
+  entregue: "enviado",
+  concluido: "entregue",
 };
 
 export const ROTULO_MOTIVO: Record<MotivoReserva, string> = {
@@ -100,6 +103,10 @@ export interface PedidoCentral {
   imposto?: number;
   /** Devolvido: a plataforma não diz se o item voltou — conferir estoque e repasse. */
   devolucaoRevisar?: boolean;
+  /** Marketplace (0091): quando a transportadora entregou; quem cancelou e o motivo. */
+  entregueEm?: string | null;
+  canceladoPor?: "comprador" | "vendedor" | "sistema" | null;
+  motivoCancelamento?: string | null;
   lucro: number;
   etapa: Etapa;
   pagamento: Pagamento;
@@ -193,6 +200,10 @@ export interface PedidoMktIn {
   taxa_transacao: number;
   /** 0085. */
   taxa_outras?: number | null;
+  /** 0091; ausentes antes da migração. */
+  entregue_em?: string | null;
+  cancelado_por?: "comprador" | "vendedor" | "sistema" | null;
+  motivo_cancelamento?: string | null;
   taxas_detalhe?: TaxaDetalhe[] | null;
   taxas_origem?: OrigemTaxas | null;
   devolucao_revisar?: boolean | null;
@@ -232,7 +243,7 @@ export function etapaDaVenda(v: Pick<VendaIn, "status" | "etapa" | "status_envio
 }
 
 /** Status da Shopee → etapa. A enviar = Para Enviar (programar); PROCESSED (etiqueta pronta) = Para Imprimir. */
-export function etapaDoMarketplace(status: StatusMarketplace, original: string | null): Etapa {
+export function etapaDoMarketplace(status: StatusMarketplace, original: string | null, entregue = false): Etapa {
   switch (status) {
     case "nao_pago":
       return "pagamento";
@@ -243,7 +254,8 @@ export function etapaDoMarketplace(status: StatusMarketplace, original: string |
       return /processed|processado|retry_ship/.test(o) ? "imprimir" : "enviar";
     }
     case "enviado":
-      return "enviado";
+      // Entregue = a transportadora já entregou e o comprador ainda não confirmou (0091).
+      return entregue ? "entregue" : "enviado";
     case "concluido":
       return "concluido";
     default:
@@ -342,7 +354,7 @@ export function montarCentral(entrada: {
 
   for (const p of entrada.marketplace) {
     const loja = lojas.get(p.loja_id);
-    const etapaPlataforma = etapaDoMarketplace(p.status, p.status_original);
+    const etapaPlataforma = etapaDoMarketplace(p.status, p.status_original, !!p.entregue_em);
     // Item sem produto antes de baixar: vai para Para Reservar (Não mapeado) até vincular.
     const naoMapeado = p.custo_incompleto && etapaPlataforma === "enviar";
     // Etiqueta já baixada pelo Sertão (0054): pronto, esperando a coleta.
@@ -370,6 +382,9 @@ export function montarCentral(entrada: {
       taxasOrigem: p.taxas_origem ?? null,
       imposto: cancelado ? 0 : Number(p.imposto ?? 0),
       devolucaoRevisar: !!p.devolucao_revisar,
+      entregueEm: p.entregue_em ?? null,
+      canceladoPor: cancelado ? (p.cancelado_por ?? null) : null,
+      motivoCancelamento: cancelado ? (p.motivo_cancelamento ?? null) : null,
       lucro: cancelado ? 0 : Number(p.lucro),
       etapa,
       pagamento: cancelado ? "cancelado" : p.pago_em || etapa !== "pagamento" ? "pago" : "pendente",

@@ -47,6 +47,7 @@ import { LinhaPedido } from "@/components/vendas/central/LinhaPedido";
 import { MenuEtapas } from "@/components/vendas/central/MenuEtapas";
 import { RetornosPainel } from "@/components/vendas/central/RetornosPainel";
 import type { DadosRetornos } from "@/lib/marketplace/retornos-servidor";
+import { retornoDePedidoCancelado } from "@/lib/retornos";
 import { BarraFiltros } from "@/components/vendas/central/BarraFiltros";
 import { FiltrosModal, contarExtras, type FiltrosExtras } from "@/components/vendas/central/FiltrosModal";
 import { KpisVendas } from "@/components/vendas/central/KpisVendas";
@@ -168,6 +169,29 @@ export function VendasClient({
   });
   // Retornos é uma lista à parte (devoluções), não uma etapa dos pedidos.
   const [verRetornos, setVerRetornos] = useState(false);
+  // Pedidos cancelados (marketplace e do sistema) entram na aba Retornos e cancelados, com quem cancelou.
+  // Devolvido é retorno, não cancelamento: fica de fora.
+  const cancelados = useMemo(
+    () =>
+      lista
+        .filter((p) => p.etapa === "cancelado" && !p.devolucaoRevisar)
+        .map((p) =>
+          retornoDePedidoCancelado({
+            chave: p.chave,
+            origem: p.origem,
+            numero: p.numeroExterno ?? p.numero,
+            loja: p.loja,
+            canal: p.canal,
+            cliente: p.cliente,
+            total: p.total,
+            data: p.data,
+            canceladoPor: p.canceladoPor ?? null,
+            motivo: p.motivoCancelamento ?? null,
+            itens: p.itens.map((i) => ({ nome: i.nome, quantidade: i.quantidade })),
+          }),
+        ),
+    [lista],
+  );
   const [motivo, setMotivo] = useState<MotivoReserva | "todos">("todos");
   const [sub, setSub] = useState<SubEnvio | "todos">("todos");
   const daEtapa = useMemo(() => filtrarCentral(lista, filtros, etapa), [lista, filtros, etapa]);
@@ -375,12 +399,12 @@ export function VendasClient({
 
       <div className="grid grid-cols-1 lg:grid-cols-[13rem_minmax(0,1fr)] gap-4 items-start">
         <div className="lg:sticky lg:top-4 min-w-0">
-          <MenuEtapas valor={etapa} onChange={mudarEtapa} contagem={contagem} retornos={{ n: retornos.lista.length, ativo: verRetornos, onAbrir: () => setVerRetornos(true) }} />
+          <MenuEtapas valor={etapa} onChange={mudarEtapa} contagem={contagem} retornos={{ n: retornos.lista.length + cancelados.length, ativo: verRetornos, onAbrir: () => setVerRetornos(true) }} />
           <p className="hidden lg:block text-[11px] text-text-tertiary mt-3 px-3">De Para Reservar até Para Retirada aparecem pedidos de qualquer data. Enviado, Concluído e Cancelado seguem o período.</p>
         </div>
 
         <div className="min-w-0 space-y-3">
-          {verRetornos && <RetornosPainel dados={retornos} />}
+          {verRetornos && <RetornosPainel dados={retornos} cancelados={cancelados} />}
           {!verRetornos && (
             <>
           {etapa === "reservar" && (

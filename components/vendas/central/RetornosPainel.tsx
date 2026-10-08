@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { inputClass } from "@/components/ui/Modal";
 import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
-import { SUBABAS_RETORNO, contarSubabas, diasParaResponder, filtrarRetornos, type RetornoCentral, type SubabaRetorno } from "@/lib/retornos";
+import { FILTROS_CANCELAMENTO, SUBABAS_RETORNO, contarCancelamentos, contarSubabas, diasParaResponder, filtrarRetornos, ordenarRetornos, type QuemCancelou, type RetornoCentral, type SubabaRetorno } from "@/lib/retornos";
 import type { DadosRetornos } from "@/lib/marketplace/retornos-servidor";
 
 const POR_PAGINA = 30;
@@ -20,6 +20,7 @@ const TOM: Record<RetornoCentral["subaba"], "neutral" | "positive" | "negative">
   aprovadas: "positive",
   em_disputa: "negative",
   canceladas: "neutral",
+  pedidos_cancelados: "negative",
 };
 
 /** Falha de permissão da Shopee dita em português; qualquer outra aparece como veio. */
@@ -67,16 +68,20 @@ function Cartao({ r, hoje }: { r: RetornoCentral; hoje: string }) {
 }
 
 /**
- * Aba Retornos de Vendas: devoluções da Shopee e as registradas no sistema, com as sub-abas do
- * Seller Center. Em qual sub-aba cada uma cai vem de `lib/retornos.ts`.
+ * Aba Retornos e cancelados de Vendas: devoluções da Shopee, as registradas no sistema e os pedidos
+ * cancelados (com quem cancelou), com as sub-abas do Seller Center. Em qual sub-aba cada uma cai vem
+ * de `lib/retornos.ts`. `cancelados`: os pedidos cancelados da central (marketplace e do sistema).
  */
-export function RetornosPainel({ dados }: { dados: DadosRetornos }) {
+export function RetornosPainel({ dados, cancelados }: { dados: DadosRetornos; cancelados: RetornoCentral[] }) {
   const [subaba, setSubaba] = useState<SubabaRetorno>("todos");
+  const [quem, setQuem] = useState<QuemCancelou | "todos">("todos");
   const [busca, setBusca] = useState("");
   const [mostrar, setMostrar] = useState(POR_PAGINA);
   const hoje = hojeIsoLocal();
-  const contagem = useMemo(() => contarSubabas(dados.lista), [dados.lista]);
-  const filtrados = useMemo(() => filtrarRetornos(dados.lista, subaba, busca), [dados.lista, subaba, busca]);
+  const lista = useMemo(() => ordenarRetornos([...dados.lista, ...cancelados]), [dados.lista, cancelados]);
+  const contagem = useMemo(() => contarSubabas(lista), [lista]);
+  const porQuem = useMemo(() => contarCancelamentos(lista), [lista]);
+  const filtrados = useMemo(() => filtrarRetornos(lista, subaba, busca, quem), [lista, subaba, busca, quem]);
 
   return (
     <div className="space-y-3">
@@ -94,9 +99,17 @@ export function RetornosPainel({ dados }: { dados: DadosRetornos }) {
 
       <SubAbas
         valor={subaba}
-        onChange={(v) => (setSubaba(v), setMostrar(POR_PAGINA))}
+        onChange={(v) => (setSubaba(v), setQuem("todos"), setMostrar(POR_PAGINA))}
         itens={SUBABAS_RETORNO.map((s) => ({ id: s.id, rotulo: s.rotulo, n: contagem[s.id] }))}
       />
+
+      {subaba === "pedidos_cancelados" && (
+        <SubAbas
+          valor={quem}
+          onChange={(v) => (setQuem(v), setMostrar(POR_PAGINA))}
+          itens={FILTROS_CANCELAMENTO.map((f) => ({ id: f.id, rotulo: f.rotulo, n: porQuem[f.id] }))}
+        />
+      )}
 
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" aria-hidden />
@@ -114,10 +127,10 @@ export function RetornosPainel({ dados }: { dados: DadosRetornos }) {
         <Card>
           <EmptyState
             icon={PackageX}
-            title={dados.lista.length === 0 ? "Nenhum retorno ainda" : "Nenhum retorno aqui"}
+            title={lista.length === 0 ? "Nenhum retorno ou cancelamento ainda" : "Nada aqui"}
             description={
-              dados.lista.length === 0
-                ? "Quando um cliente pedir devolução na Shopee (ou você registrar uma no sistema), ela aparece aqui. Use “Sincronizar pedidos” para buscar as da Shopee."
+              lista.length === 0
+                ? "Devoluções da Shopee, devoluções registradas no sistema e pedidos cancelados aparecem aqui. Use “Sincronizar pedidos” para buscar as da Shopee."
                 : "Mude a sub-aba ou a busca."
             }
           />
