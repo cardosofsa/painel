@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useEffect, useRef, useState } from "react";
 import { Banknote, ChevronLeft, CreditCard, Link2, MoreHorizontal, Smartphone, UserPlus, Wallet } from "lucide-react";
@@ -300,14 +301,12 @@ export function CheckoutModal({
 
       <FormField label="Entrada (opcional)" dica="Dinheiro ou Pix recebido agora, abatido do total antes do restante.">
         <div className="flex gap-2">
-          <input
-            type="number"
-            step="0.01"
-            min="0"
+          <CampoNumero
+            min={0}
             max={aPagar}
-            value={entradaValor || ""}
-            onChange={(e) => {
-              const v = Math.max(0, Number(e.target.value) || 0);
+            value={entradaValor}
+            onChange={(n) => {
+              const v = Math.max(0, n);
               setEntradaValor(v);
               if (v <= 0) setEntradaForma(null);
               else if (!entradaForma) setEntradaForma("dinheiro");
@@ -378,13 +377,11 @@ export function CheckoutModal({
           label={`Valor recebido em dinheiro (opcional)`}
           dica={`Parte em dinheiro: ${formatBRL(troco.emDinheiro)}. O caixa recebe o valor da venda; o troco só vai para o comprovante.`}
         >
-          <input
-            type="number"
-            step="0.01"
-            min="0"
+          <CampoNumero
+            min={0}
             inputMode="decimal"
-            value={recebido || ""}
-            onChange={(e) => setRecebido(Math.max(0, Number(e.target.value) || 0))}
+            value={recebido}
+            onChange={(n) => setRecebido(Math.max(0, n))}
             placeholder={troco.emDinheiro.toFixed(2).replace(".", ",")}
             className={inputClass}
           />
@@ -415,13 +412,11 @@ export function CheckoutModal({
             </select>
           </FormField>
           <FormField label="Taxa da maquineta (%, opcional)" dica="Abate do lucro, não do valor recebido.">
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={taxaMaquinetaPct || ""}
-              onChange={(e) => setTaxaMaquinetaPct(Math.max(0, Number(e.target.value) || 0))}
+            <CampoNumero
+              min={0}
+              max={100}
+              value={taxaMaquinetaPct}
+              onChange={(n) => setTaxaMaquinetaPct(Math.max(0, n))}
               placeholder="0,0"
               className={inputClass}
             />
@@ -462,23 +457,21 @@ export function CheckoutModal({
           {parcelarFiado && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
               <FormField label="Número de parcelas">
-                <input
-                  type="number"
+                <CampoNumero padrao={2}
                   min={2}
                   max={24}
                   className={inputClass}
                   value={parcelasFiado}
-                  onChange={(e) => setParcelasFiado(Math.min(24, Math.max(2, Number(e.target.value) || 2)))}
+                  onChange={(n) => setParcelasFiado(Math.min(24, Math.max(2, n)))}
                 />
               </FormField>
               <FormField label="Dias entre parcelas">
-                <input
-                  type="number"
+                <CampoNumero padrao={30}
                   min={1}
                   max={90}
                   className={inputClass}
                   value={diasEntreParcelas}
-                  onChange={(e) => setDiasEntreParcelas(Math.min(90, Math.max(1, Number(e.target.value) || 30)))}
+                  onChange={(n) => setDiasEntreParcelas(Math.min(90, Math.max(1, n)))}
                 />
               </FormField>
               <div className="sm:col-span-2 text-xs text-text-tertiary border border-border rounded-md p-2 space-y-0.5">

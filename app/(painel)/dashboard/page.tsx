@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { podeVencer, type ContaTalvezRepasse } from "@/lib/repasse-marketplace";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { carregarVendasRelatorio } from "@/lib/relatorios-servidor";
 import { hojeIsoBrasil, formatarDataIso, inicioDiaBrasil, somarDiasIso } from "@/lib/format";
@@ -203,7 +204,7 @@ export default async function DashboardPage() {
   }));
 
   const vencimentos: Vencimento[] = (cprRes.data ?? [])
-    .filter((c) => !(c as { aguardando_liberacao?: boolean | null }).aguardando_liberacao)
+    .filter((c) => podeVencer(c as ContaTalvezRepasse))
     .slice(0, 8)
     .map((c) => {
     const { status, tone } = rotuloVencimento(c.data_vencimento);

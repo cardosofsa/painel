@@ -41,6 +41,8 @@ import { Chip } from "@/components/ui/Chip";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import { AbaRepasses, type PedidoRepasse } from "@/components/financeiro/AbaRepasses";
+import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
+import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
 export interface Conta {
   id: string;
@@ -97,6 +99,8 @@ export interface ContaPagarReceber {
   cliente_nome: string | null;
   /** 0085: repasse de pedido ainda não concluído — não vence nem entra em "Vencidos". */
   aguardando_liberacao: boolean;
+  /** 0087: repasse de marketplace — nunca vence (é liberado ou estornado pela plataforma). */
+  repasse_marketplace: boolean;
 }
 
 /** Uma linha do histórico: pagamento feito (fornecedor/conta) ou recebimento (crediário). */
@@ -116,6 +120,7 @@ const ABAS_FIN = [
   { id: "visao", rotulo: "Visão geral" },
   { id: "a-pagar", rotulo: "A pagar" },
   { id: "a-receber", rotulo: "A receber" },
+  { id: "calendario", rotulo: "Calendário" },
   { id: "historico", rotulo: "Histórico" },
   { id: "lancamentos", rotulo: "Lançamentos" },
   { id: "resultado", rotulo: "Resultado" },
@@ -160,7 +165,13 @@ export function FinanceiroClient({
   repassesOk = true,
   fornecedores = [],
   clientes = [],
+  calendarioContas = [],
+  hoje: hojeServidor,
 }: {
+  /** Calendário de contas: contas, parcelas e despesas fixas projetadas, com status. */
+  calendarioContas?: ContaCalendarioFonte[];
+  /** Hoje em Brasília, vindo do servidor (evita erro de hidratação depois das 21h). */
+  hoje?: string;
   /** Para "Lançar dívida antiga" (0067). */
   fornecedores?: { id: string; nome: string }[];
   clientes?: { id: string; nome: string }[];
@@ -280,14 +291,15 @@ export function FinanceiroClient({
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
-    if (filtroReceber === "Vencidos") return c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento < hojeIso;
+    if (filtroReceber === "Vencidos") return c.status === "pendente" && !c.repasse_marketplace && !c.aguardando_liberacao && c.data_vencimento < hojeIso;
     if (filtroReceber === "Crediário") return c.venda_id !== null || c.cliente_id !== null;
-    if (filtroReceber === "Próximos 7 dias") return c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em7DiasIso;
+    if (filtroReceber === "Próximos 7 dias")
+      return c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em7DiasIso && (!c.repasse_marketplace || c.data_vencimento >= hojeIso);
     return true;
   });
 
   const vencimentosProximos = contasPagarReceber.filter(
-    (c) => c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em7DiasIso,
+    (c) => c.status === "pendente" && !c.aguardando_liberacao && !c.repasse_marketplace && c.data_vencimento <= em7DiasIso,
   );
 
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
@@ -650,7 +662,7 @@ export function FinanceiroClient({
                     <Td mono>{c.status === "pendente" && c.aguardando_liberacao ? "—" : formatarDataIso(c.data_vencimento)}</Td>
                     <Td>
                       <StatusChip
-                        label={c.status === "pendente" ? (c.aguardando_liberacao ? "Aguardando conclusão" : "Pendente") : "Recebido"}
+                        label={c.status === "pendente" ? (c.aguardando_liberacao ? "Aguardando conclusão" : c.repasse_marketplace ? "A liberar" : "Pendente") : "Recebido"}
                         tone={c.status === "pendente" ? "neutral" : "positive"}
                       />
                     </Td>
@@ -895,6 +907,8 @@ export function FinanceiroClient({
       )}
 
       {aba === "resultado" && <AbaResultado dre={dre} gastos={gastosAnuncios} lojas={lojasMarketplace} anunciosOk={anunciosOk} />}
+
+      {aba === "calendario" && <CalendarioContas contas={calendarioContas} hoje={hojeServidor ?? hojeIsoLocal()} />}
 
       {aba === "repasses" && <AbaRepasses pedidos={repasses} contas={contas} repassesOk={repassesOk} />}
       </TabPanel>

@@ -6,7 +6,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL, formatarDataIso, hojeIsoLocal, numeroOuNulo } from "@/lib/format";
-import { distribuirJaPago, previaParcelas } from "@/lib/pagamentos";
+import { parcelasDividaAntiga } from "@/lib/pagamentos";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { lancarDividaAntiga } from "@/app/(painel)/financeiro/pagamentos-actions";
 
@@ -50,6 +50,9 @@ export function DividaAntigaModal({
   const [primeiro, setPrimeiro] = useState(() => hojeIsoLocal());
   const [intervalo, setIntervalo] = useState(30);
   const [jaPago, setJaPago] = useState("");
+  // Dívida que não é de fornecedor (o computador da empresa, um empréstimo, o cartão): o banco
+  // aceita conta a pagar sem fornecedor; "com quem" vai na descrição.
+  const [credor, setCredor] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [inicial] = useState({ total: "", jaPago: "", parcelas: "1" });
   const sujo = useFormularioSujo({ total, jaPago, parcelas }, inicial);
@@ -57,16 +60,17 @@ export function DividaAntigaModal({
   const totalN = numeroOuNulo(total) ?? 0;
   const jaPagoN = numeroOuNulo(jaPago) ?? 0;
   const nParcelas = Math.min(48, Math.max(1, Math.trunc(numeroOuNulo(parcelas) ?? 1)));
+  const semFornecedor = tipo === "pagar" && fornecedorId === "SEM_FORNECEDOR";
   const quem = tipo === "pagar" ? fornecedorId : clienteId;
   const previa = useMemo(
-    () => (totalN > 0 && primeiro ? distribuirJaPago(previaParcelas(totalN, nParcelas, primeiro, intervalo), jaPagoN) : []),
+    () => (totalN > 0 && primeiro && jaPagoN <= totalN ? parcelasDividaAntiga(totalN, jaPagoN, nParcelas, primeiro, intervalo) : []),
     [totalN, nParcelas, primeiro, intervalo, jaPagoN],
   );
   const emAberto = Math.max(0, Math.round((totalN - jaPagoN) * 100) / 100);
   const erro =
     !quem
       ? tipo === "pagar"
-        ? "Escolha o fornecedor."
+        ? "Escolha o fornecedor (ou \"Sem fornecedor\")."
         : "Escolha o cliente."
       : totalN <= 0
         ? "Informe o valor total."
@@ -80,9 +84,9 @@ export function DividaAntigaModal({
     const r = await executarComToast(
       lancarDividaAntiga({
         tipo,
-        fornecedor_id: tipo === "pagar" ? fornecedorId : null,
+        fornecedor_id: tipo === "pagar" && !semFornecedor ? fornecedorId : null,
         cliente_id: tipo === "receber" ? clienteId : null,
-        descricao: descricao.trim(),
+        descricao: semFornecedor && credor.trim() ? `${descricao.trim()} — ${credor.trim()}`.slice(0, 150) : descricao.trim(),
         valor_total: totalN,
         parcelas: nParcelas,
         primeiro_vencimento: primeiro,
@@ -106,7 +110,7 @@ export function DividaAntigaModal({
       {fornecedores.length > 0 && clientes.length > 0 && (
       <div className="flex gap-2 mb-4" role="group" aria-label="Tipo">
         <Button variant={tipo === "pagar" ? "primary" : "secondary"} className="flex-1" aria-pressed={tipo === "pagar"} onClick={() => setTipo("pagar")}>
-          Devo a um fornecedor
+          Eu devo
         </Button>
         <Button variant={tipo === "receber" ? "primary" : "secondary"} className="flex-1" aria-pressed={tipo === "receber"} onClick={() => setTipo("receber")}>
           Um cliente me deve
@@ -118,6 +122,7 @@ export function DividaAntigaModal({
         <FormField label="Fornecedor">
           <select className={inputClass} value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
             <option value="">Escolha…</option>
+            <option value="SEM_FORNECEDOR">Sem fornecedor (equipamento, empréstimo, cartão…)</option>
             {fornecedores.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.nome}
@@ -138,6 +143,11 @@ export function DividaAntigaModal({
         </FormField>
       )}
 
+      {semFornecedor && (
+        <FormField label="Com quem / onde (opcional)" dica="Ex.: a loja onde comprou, o banco ou o cartão. Vai junto na descrição.">
+          <input className={inputClass} value={credor} maxLength={60} onChange={(e) => setCredor(e.target.value)} placeholder="Ex.: Magazine Luiza" />
+        </FormField>
+      )}
       <FormField label="Descrição">
         <input className={inputClass} value={descricao} maxLength={150} onChange={(e) => setDescricao(e.target.value)} />
       </FormField>
@@ -165,6 +175,11 @@ export function DividaAntigaModal({
         </FormField>
       )}
 
+      {totalN > 0 && jaPagoN > 0 && jaPagoN <= totalN && (
+        <p className="text-xs text-text-secondary mb-2">
+          {formatBRL(jaPagoN)} já pagos ficam registrados como quitados; as parcelas dividem só o que fica em aberto.
+        </p>
+      )}
       {previa.length > 0 && (
         <div className="rounded-md border border-border mb-4">
           <div className="flex justify-between px-3 py-2 text-sm border-b border-border bg-surface-2">
@@ -177,10 +192,7 @@ export function DividaAntigaModal({
                 <span className="text-text-secondary">
                   {i + 1}ª · vence {formatarDataIso(p.vencimento)}
                 </span>
-                <span className="font-mono text-text-primary">
-                  {formatBRL(p.valor)}
-                  {p.jaPago > 0 && <span className="text-positive"> · {p.quitada ? "paga" : `${formatBRL(p.jaPago)} pago`}</span>}
-                </span>
+                <span className="font-mono text-text-primary">{formatBRL(p.valor)}</span>
               </li>
             ))}
           </ul>

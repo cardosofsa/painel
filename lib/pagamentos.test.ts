@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diasAntes, distribuirJaPago, previaParcelas, restanteParcela, resumoPagamento, situacaoParcela } from "./pagamentos";
+import { diasAntes, parcelasDividaAntiga, previaParcelas, restanteParcela, resumoPagamento, situacaoParcela } from "./pagamentos";
 
 const hoje = "2026-10-05";
 const p = (o: Partial<{ status: "pendente" | "pago"; valor: number; valor_pago: number; data_vencimento: string }>) => ({
@@ -50,29 +50,27 @@ describe("diasAntes", () => {
   });
 });
 
-/** Prévia da dívida antiga: mesma regra de `lancar_divida_antiga` (0067). */
-describe("distribuirJaPago", () => {
-  it("abate primeiro as parcelas mais antigas", () => {
-    const r = distribuirJaPago(previaParcelas(300, 3, "2026-11-05", 30), 150);
-    expect(r.map((x) => [x.valor, x.jaPago, x.quitada])).toEqual([
-      [100, 100, true],
-      [100, 50, false],
-      [100, 0, false],
+/** Prévia da dívida antiga: mesma regra de `lancar_divida_antiga` (0086). */
+describe("parcelasDividaAntiga", () => {
+  it("divide só o que fica em aberto: 4.200 com 1.200 pagos em 3x = 3 x 1.000", () => {
+    const r = parcelasDividaAntiga(4200, 1200, 3, "2026-10-10", 30);
+    expect(r.map((x) => [x.valor, x.vencimento])).toEqual([
+      [1000, "2026-10-10"],
+      [1000, "2026-11-10"],
+      [1000, "2026-12-10"],
     ]);
   });
 
-  it("nada pago: todas em aberto", () => {
-    expect(distribuirJaPago(previaParcelas(100, 2, "2026-11-01", 30), 0).every((x) => x.jaPago === 0 && !x.quitada)).toBe(true);
+  it("nada pago: divide o total", () => {
+    expect(parcelasDividaAntiga(300, 0, 3, "2026-11-05", 30).map((x) => x.valor)).toEqual([100, 100, 100]);
   });
 
-  it("pago a mais não passa do total (o banco recusa; a prévia não inventa crédito)", () => {
-    const r = distribuirJaPago(previaParcelas(100, 2, "2026-11-01", 30), 500);
-    expect(r.reduce((s, x) => s + x.jaPago, 0)).toBe(100);
+  it("tudo pago: nenhuma parcela", () => {
+    expect(parcelasDividaAntiga(80, 80, 2, "2026-11-05", 30)).toEqual([]);
   });
 
-  it("centavos não se perdem na divisão", () => {
-    const r = distribuirJaPago(previaParcelas(100, 3, "2026-11-01", 30), 66.66);
-    expect(r.map((x) => x.jaPago)).toEqual([33.33, 33.33, 0]);
+  it("centavos ficam na última parcela", () => {
+    expect(parcelasDividaAntiga(150, 50, 3, "2026-11-01", 30).map((x) => x.valor)).toEqual([33.33, 33.33, 33.34]);
   });
 });
 

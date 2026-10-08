@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -79,21 +80,17 @@ export function PainelTaxas({ estado, lojas, iaDisponivel = false }: { estado: E
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="text-xs text-text-secondary mb-1.5 block">Taxa Fixa (R$)</label>
-            <input
-              type="number"
-              step="0.01"
+            <CampoNumero
               value={taxaFixa}
-              onChange={(e) => setTaxaFixa(Number(e.target.value) || 0)}
+              onChange={(n) => setTaxaFixa(n)}
               className={inputClass}
             />
           </div>
           <div>
             <label className="text-xs text-text-secondary mb-1.5 block">Taxa Variável (%)</label>
-            <input
-              type="number"
-              step="0.1"
+            <CampoNumero
               value={taxaVariavelPct}
-              onChange={(e) => setTaxaVariavelPct(Number(e.target.value) || 0)}
+              onChange={(n) => setTaxaVariavelPct(n)}
               className={inputClass}
             />
           </div>
@@ -103,21 +100,17 @@ export function PainelTaxas({ estado, lojas, iaDisponivel = false }: { estado: E
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-xs text-text-secondary mb-1.5 block">Taxa Adicional (%)</label>
-          <input
-            type="number"
-            step="0.1"
+          <CampoNumero
             value={taxaAdicionalPct}
-            onChange={(e) => setTaxaAdicionalPct(Number(e.target.value) || 0)}
+            onChange={(n) => setTaxaAdicionalPct(n)}
             className={inputClass}
           />
         </div>
         <div>
           <label className="text-xs text-text-secondary mb-1.5 block">Imposto / DAS (%)</label>
-          <input
-            type="number"
-            step="0.1"
+          <CampoNumero
             value={impostoPct}
-            onChange={(e) => setImpostoPct(Number(e.target.value) || 0)}
+            onChange={(n) => setImpostoPct(n)}
             className={inputClass}
           />
         </div>

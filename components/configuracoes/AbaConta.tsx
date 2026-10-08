@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -107,7 +108,7 @@ export function AbaConta({
             </select>
           </FormField>
           <FormField label="Alíquota efetiva do imposto (%)" dica="Valor padrão do campo Imposto/DAS na Precificação.">
-            <input type="number" step="0.1" className={inputClass} value={aliquotaDas} onChange={(e) => setAliquotaDas(Number(e.target.value) || 0)} />
+            <CampoNumero className={inputClass} value={aliquotaDas} onChange={(n) => setAliquotaDas(n)} />
           </FormField>
         </div>
         <Button variant="primary" onClick={salvarPerfil} loading={salvandoPerfil}>

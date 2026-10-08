@@ -1,10 +1,11 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
-import { formatBRL, formatarDataIso, hojeIsoLocal, numeroOuNulo } from "@/lib/format";
+import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
 import { previaParcelas } from "@/lib/pagamentos";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { executarComToast } from "@/lib/acao-cliente";
@@ -269,7 +270,7 @@ export function NovoPedidoModal({
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <FormField label="Parcelas">
-              <input type="number" min={1} max={48} className={inputClass} value={parcelas} onChange={(e) => setParcelas(Math.min(48, Math.max(1, Math.trunc(numeroOuNulo(e.target.value) ?? 1))))} />
+              <CampoNumero min={1} max={48} casas={0} padrao={1} value={parcelas} onChange={setParcelas} />
             </FormField>
             <FormField label="1º vencimento">
               <input type="date" className={inputClass} value={dataPrimeiraParcela} onChange={(e) => setDataPrimeiraParcela(e.target.value)} />
@@ -313,20 +314,17 @@ export function NovoPedidoModal({
                 </option>
               ))}
             </select>
-            <input
-              type="number"
+            <CampoNumero
               min={1}
               className={`${inputClass} w-16`}
               value={it.quantidade}
-              onChange={(e) => atualizarItemCampo(i, "quantidade", Number(e.target.value) || 0)}
+              onChange={(n) => atualizarItemCampo(i, "quantidade", n)}
             />
-            <input
-              type="number"
-              step="0.01"
+            <CampoNumero
               min={0}
               className={`${inputClass} w-24`}
               value={it.custo_unitario}
-              onChange={(e) => atualizarItemCampo(i, "custo_unitario", Number(e.target.value) || 0)}
+              onChange={(n) => atualizarItemCampo(i, "custo_unitario", n)}
             />
             <button onClick={() => removerItem(i)} className="text-text-tertiary hover:text-negative shrink-0">
               ×

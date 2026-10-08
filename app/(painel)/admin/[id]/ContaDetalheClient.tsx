@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
@@ -263,23 +264,21 @@ export function ContaDetalheClient({
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <FormField label="Gerações no total">
-                  <input
-                    type="number"
+                  <CampoNumero
                     min={0}
                     max={100000}
                     className={inputClass}
                     value={testeLimite}
-                    onChange={(e) => setTesteLimite(Math.max(0, Math.min(100000, Number(e.target.value) || 0)))}
+                    onChange={(n) => setTesteLimite(Math.max(0, Math.min(100000, n)))}
                   />
                 </FormField>
                 <FormField label="Dias de validade">
-                  <input
-                    type="number"
+                  <CampoNumero
                     min={0}
                     max={3650}
                     className={inputClass}
                     value={testeDias}
-                    onChange={(e) => setTesteDias(Math.max(0, Math.min(3650, Number(e.target.value) || 0)))}
+                    onChange={(n) => setTesteDias(Math.max(0, Math.min(3650, n)))}
                   />
                 </FormField>
               </div>

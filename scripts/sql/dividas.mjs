@@ -35,11 +35,14 @@ const saldo = async () => Number((await um(`select saldo from contas where id = 
 const movs = async () => (await um(`select count(*)::int n from movimentacoes_financeiras where user_id = $1`, [u])).n;
 const movsAntes = await movs();
 
-// 1) R$ 300 em 3x com R$ 50 já pagos: 100 + 100 + 100, a 1ª com 50 pagos.
+// 1) R$ 300 em 3x com R$ 50 já pagos (0086): o já pago vira um lançamento quitado à parte e
+//    as parcelas dividem os 250 em aberto: 83,33 + 83,33 + 83,34.
 const n = (await um(`select lancar_divida_antiga('pagar', $1, null, 'Saldo anterior', 300, 3, '2026-11-05', 30, 50, $2) n`, [forn, caixa])).n;
-const ps = await q(`select * from contas_a_pagar_receber where fornecedor_id = $1 order by parcela_numero`, [forn]);
+const ps = await q(`select * from contas_a_pagar_receber where fornecedor_id = $1 and parcela_numero is not null order by parcela_numero`, [forn]);
+const jaPagoLinha = await um(`select * from contas_a_pagar_receber where fornecedor_id = $1 and parcela_numero is null`, [forn]);
 confere("gera 3 parcelas", n === 3 && ps.length === 3);
-confere("valores e já pago na 1ª", ps.map((p) => `${Number(p.valor)}/${Number(p.valor_pago)}`).join(" ") === "100/50 100/0 100/0", ps.map((p) => `${p.valor}/${p.valor_pago}`).join(" "));
+confere("parcelas dividem só o em aberto", ps.map((p) => `${Number(p.valor)}/${Number(p.valor_pago)}`).join(" ") === "83.33/0 83.33/0 83.34/0", ps.map((p) => `${p.valor}/${p.valor_pago}`).join(" "));
+confere("já pago fica registrado quitado à parte", Number(jaPagoLinha?.valor) === 50 && jaPagoLinha?.status === "pago" && jaPagoLinha?.descricao === "Saldo anterior — já pago antes", JSON.stringify(jaPagoLinha?.descricao));
 confere("vencimentos mensais", ps.map((p) => p.data_vencimento.toISOString().slice(0, 10)).join() === "2026-11-05,2026-12-05,2027-01-05");
 confere("marcadas como saldo inicial e com descrição da parcela", ps.every((p) => p.origem_saldo_inicial) && ps[1].descricao === "Saldo anterior — parcela 2/3");
 confere("NÃO mexe no caixa nem cria lançamento", (await saldo()) === 500 && (await movs()) === movsAntes);
@@ -53,8 +56,8 @@ await q(`select gerar_pagamento_compra($1, true, 1, '2026-11-20', 30, $2)`, [ped
 confere("pedido + dívida antiga = 340", Number((await um(`select em_aberto from em_aberto_por_fornecedor() where fornecedor_id = $1`, [forn])).em_aberto) === 340);
 
 // 3) Pagar uma parcela antiga depois sai do caixa normalmente (é pagamento de hoje).
-await q(`select pagar_conta($1, 50, null, $2)`, [ps[0].id, caixa]);
-confere("pagar o resto da 1ª parcela: quitada e caixa -50", (await um(`select status from contas_a_pagar_receber where id = $1`, [ps[0].id])).status === "pago" && (await saldo()) === 450);
+await q(`select pagar_conta($1, 83.33, null, $2)`, [ps[0].id, caixa]);
+confere("pagar a 1ª parcela: quitada e caixa -83,33", (await um(`select status from contas_a_pagar_receber where id = $1`, [ps[0].id])).status === "pago" && (await saldo()) === 416.67, String(await saldo()));
 
 // 4) Tudo já pago: nasce quitada.
 await q(`select lancar_divida_antiga('pagar', $1, null, 'Já quitada', 80, 1, '2026-01-10', 30, 80)`, [forn]);
@@ -106,7 +109,7 @@ await entrar(u);
 
 await db.exec(await lerMigracao("0067_dividas_antigas.sql"));
 confere("0067 roda 2x sem erro", true);
-confere("depois de rodar 2x, em aberto continua certo", Number((await um(`select em_aberto from em_aberto_por_fornecedor() where fornecedor_id = $1`, [forn])).em_aberto) === 390);
+confere("depois de rodar 2x, em aberto continua certo", Number((await um(`select em_aberto from em_aberto_por_fornecedor() where fornecedor_id = $1`, [forn])).em_aberto) === 356.67);
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : "\nTudo certo");
 process.exitCode = falhas ? 1 : 0;

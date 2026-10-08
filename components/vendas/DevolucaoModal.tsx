@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -108,15 +109,14 @@ export function DevolucaoModal({
                       vendido {i.quantidade} · {formatBRL(i.precoUnitario)}/un{i.devolvido ? ` · já devolvido ${i.devolvido}` : ""}
                     </div>
                   </div>
-                  <input
-                    type="number"
+                  <CampoNumero
                     min={0}
                     max={resta}
                     disabled={resta <= 0}
                     aria-label={`Quantidade a devolver de ${i.produtoNome}`}
                     className={`${inputClass} h-8 text-right`}
                     value={qtd[i.id] ?? 0}
-                    onChange={(e) => (setQtd((x) => ({ ...x, [i.id]: Math.max(0, Math.min(resta, Math.floor(Number(e.target.value) || 0))) })), setValorManual(null))}
+                    onChange={(n) => (setQtd((x) => ({ ...x, [i.id]: Math.max(0, Math.min(resta, Math.floor(n))) })), setValorManual(null))}
                   />
                   <label className="flex items-center gap-1 text-[11px] text-text-secondary whitespace-nowrap" title="Avaria: não volta ao estoque">
                     <input type="checkbox" checked={!!avaria[i.id]} onChange={(e) => setAvaria((x) => ({ ...x, [i.id]: e.target.checked }))} /> avaria

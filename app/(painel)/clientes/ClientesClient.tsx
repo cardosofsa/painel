@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -402,14 +403,12 @@ export function ClientesClient({
         </p>
         {form.permite_fiado && (
           <FormField label="Limite do crediário (R$)" dica="Crédito disponível para este cliente. Some as parcelas em aberto até chegar aqui.">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
+            <CampoNumero
+              min={0}
               className={inputClass}
-              value={form.limite_fiado || ""}
+              value={form.limite_fiado}
               placeholder="0,00"
-              onChange={(e) => setForm({ ...form, limite_fiado: Math.max(0, Number(e.target.value) || 0) })}
+              onChange={(n) => setForm({ ...form, limite_fiado: Math.max(0, n) })}
             />
           </FormField>
         )}

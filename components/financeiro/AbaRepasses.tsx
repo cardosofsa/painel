@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
-import { formatBRL, formatarDataIso, hojeIsoLocal } from "@/lib/format";
+import { formatBRL, formatarDataIso } from "@/lib/format";
 import { lerPlanilha } from "@/lib/importar";
 import { executarComToast } from "@/lib/acao-cliente";
 import { interpretarRelatorioRepasses, situacaoRepasse, type RepasseLido, type SituacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
@@ -24,7 +24,7 @@ export interface PedidoRepasse {
   repasse: number;
   repasse_recebido: number | null;
   repasse_recebido_em: string | null;
-  /** Status do pedido e liberação do escrow (0085): só concluído/liberado pode atrasar. */
+  /** Status do pedido e liberação do escrow (0085). */
   status?: string | null;
   escrow_liberado_em?: string | null;
 }
@@ -32,13 +32,11 @@ export interface PedidoRepasse {
 const SITUACAO: Record<SituacaoRepasse, { rotulo: string; tom: "positive" | "negative" | "neutral" }> = {
   conciliado: { rotulo: "Conferido", tom: "positive" },
   divergente: { rotulo: "Diferente", tom: "negative" },
-  atrasado: { rotulo: "Atrasado", tom: "negative" },
   aguardando: { rotulo: "Aguardando", tom: "neutral" },
 };
 
 const FILTROS: { id: SituacaoRepasse | "todos"; rotulo: string }[] = [
   { id: "todos", rotulo: "Todos" },
-  { id: "atrasado", rotulo: "Atrasados" },
   { id: "divergente", rotulo: "Diferentes" },
   { id: "aguardando", rotulo: "Aguardando" },
   { id: "conciliado", rotulo: "Conferidos" },
@@ -46,14 +44,14 @@ const FILTROS: { id: SituacaoRepasse | "todos"; rotulo: string }[] = [
 
 /**
  * Financeiro → Repasses: o que cada marketplace deveria pagar por pedido × o que pagou de
- * verdade (relatório importado). Atrasado = 15 dias depois do pagamento sem repasse.
+ * verdade (relatório importado ou baixa automática da sincronização, 0087). Repasse nunca
+ * "atrasa": a plataforma libera ou estorna.
  */
 export function AbaRepasses({ pedidos, contas, repassesOk }: { pedidos: PedidoRepasse[]; contas: { id: string; nome: string }[]; repassesOk: boolean }) {
-  const hoje = hojeIsoLocal();
   const [filtro, setFiltro] = useState<SituacaoRepasse | "todos">("todos");
   const [importando, setImportando] = useState(false);
 
-  const comSituacao = useMemo(() => pedidos.map((p) => ({ ...p, situacao: situacaoRepasse(p, hoje) })), [pedidos, hoje]);
+  const comSituacao = useMemo(() => pedidos.map((p) => ({ ...p, situacao: situacaoRepasse(p) })), [pedidos]);
   const contagem = useMemo(() => {
     const c: Record<string, number> = { todos: comSituacao.length };
     for (const p of comSituacao) c[p.situacao] = (c[p.situacao] ?? 0) + 1;
@@ -70,7 +68,7 @@ export function AbaRepasses({ pedidos, contas, repassesOk }: { pedidos: PedidoRe
 
   const lista = filtro === "todos" ? comSituacao : comSituacao.filter((p) => p.situacao === filtro);
   const aReceber = comSituacao.filter((p) => p.repasse_recebido === null).reduce((s, p) => s + p.repasse, 0);
-  const atrasado = comSituacao.filter((p) => p.situacao === "atrasado").reduce((s, p) => s + p.repasse, 0);
+  const aguardando = comSituacao.filter((p) => p.situacao === "aguardando");
   const diferenca = comSituacao.filter((p) => p.situacao === "divergente").reduce((s, p) => s + ((p.repasse_recebido ?? 0) - p.repasse), 0);
 
   return (
@@ -81,8 +79,8 @@ export function AbaRepasses({ pedidos, contas, repassesOk }: { pedidos: PedidoRe
           <HeroMetric value={formatBRL(aReceber)} caption={`${comSituacao.filter((p) => p.repasse_recebido === null).length} pedido(s) sem repasse conferido`} />
         </Card>
         <Card>
-          <CardEyebrow>Atrasado</CardEyebrow>
-          <HeroMetric value={formatBRL(atrasado)} caption="mais de 15 dias depois do pagamento" />
+          <CardEyebrow>Aguardando liberação</CardEyebrow>
+          <HeroMetric value={formatBRL(aguardando.reduce((s, p) => s + p.repasse, 0))} caption={`${aguardando.length} pedido(s): a baixa é automática quando a Shopee libera`} />
         </Card>
         <Card>
           <CardEyebrow>Diferença nos conferidos</CardEyebrow>
