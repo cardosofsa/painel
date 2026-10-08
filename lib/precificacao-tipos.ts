@@ -88,9 +88,9 @@ export interface ProdutoOpcao {
   tipo?: "produto" | "insumo" | "embalagem" | null;
 }
 
-export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "historico" | "raio-x" | "promocao";
+export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "raio-x" | "promocao";
 
-export const VISOES_PRECIFICACAO: VisaoPrecificacao[] = ["individual", "variacoes", "kits", "massa", "historico", "raio-x", "promocao"];
+export const VISOES_PRECIFICACAO: VisaoPrecificacao[] = ["individual", "variacoes", "kits", "massa", "raio-x", "promocao"];
 
 export interface PrecificacaoProps {
   historico: PrecificacaoHist[];

@@ -10,10 +10,13 @@ export function MenuEtapas({
   valor,
   onChange,
   contagem,
+  retornos,
 }: {
   valor: Etapa | "todos" | "oculto";
   onChange: (e: Etapa | "todos" | "oculto") => void;
   contagem: Record<Etapa | "todos" | "oculto", number>;
+  /** Item "Retornos" (devoluções), à parte das etapas: tem a própria lista. */
+  retornos?: { n: number; ativo: boolean; onAbrir: () => void };
 }) {
   const itens = [
     ...ETAPAS.filter((e) => e.id !== "pagamento" || contagem.pagamento > 0),
@@ -23,7 +26,7 @@ export function MenuEtapas({
   return (
     <nav aria-label="Etapas dos pedidos" className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible -mx-4 px-4 lg:mx-0 lg:px-0 pb-1 lg:pb-0">
       {itens.map((e) => {
-        const ativo = valor === e.id;
+        const ativo = valor === e.id && !retornos?.ativo;
         const n = contagem[e.id] ?? 0;
         return (
           <button
@@ -38,6 +41,17 @@ export function MenuEtapas({
           </button>
         );
       })}
+      {retornos && (
+        <button
+          type="button"
+          aria-current={retornos.ativo ? "true" : undefined}
+          onClick={retornos.onAbrir}
+          className={`shrink-0 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-left whitespace-nowrap ${retornos.ativo ? "bg-accent-soft text-accent font-medium" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}
+        >
+          <span>Retornos e cancelados</span>
+          <span className="text-xs font-mono text-text-tertiary">{retornos.n}</span>
+        </button>
+      )}
     </nav>
   );
 }

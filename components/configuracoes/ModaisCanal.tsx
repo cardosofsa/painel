@@ -227,12 +227,15 @@ export function LojaModal({
   const [taxaFixaStr, setTaxaFixaStr] = useState(loja?.taxa_fixa != null ? String(loja.taxa_fixa) : "");
   const [taxaExtraValorStr, setTaxaExtraValorStr] = useState(loja?.taxa_extra_valor != null ? String(loja.taxa_extra_valor) : "");
   const [taxaExtraTipo, setTaxaExtraTipo] = useState<"percentual" | "fixo">(loja?.taxa_extra_tipo ?? "percentual");
+  // 0089: só aparece para loja já salva e com a migração aplicada.
+  const diasOriginal = loja?.prazo_liberacao ?? null;
+  const [diasStr, setDiasStr] = useState(diasOriginal !== null ? String(diasOriginal) : "");
   const { enviar: enviarLogoArquivo, enviando: enviandoLogo } = useSupabaseUpload("canais-logos");
   const [inicial] = useState({
-    nome, link, logoPath, comissaoPctStr, taxaFixaStr, taxaExtraValorStr, taxaExtraTipo,
+    nome, link, logoPath, comissaoPctStr, taxaFixaStr, taxaExtraValorStr, taxaExtraTipo, diasStr,
   });
   const sujo = useFormularioSujo(
-    { nome, link, logoPath, comissaoPctStr, taxaFixaStr, taxaExtraValorStr, taxaExtraTipo },
+    { nome, link, logoPath, comissaoPctStr, taxaFixaStr, taxaExtraValorStr, taxaExtraTipo, diasStr },
     inicial,
   );
 
@@ -332,6 +335,13 @@ export function LojaModal({
         </div>
       </FormField>
 
+      {diasOriginal !== null && (
+        <FormField label="Dias para a plataforma liberar o repasse">
+          <input type="number" min="0" max="60" step="1" className={inputClass} value={diasStr} onChange={(e) => setDiasStr(e.target.value)} placeholder="7" />
+          <p className="mt-1 text-xs text-text-tertiary">Depois que o pedido conclui. Usado só para prever quando o dinheiro entra no saldo projetado.</p>
+        </FormField>
+      )}
+
       <div className="flex gap-2 mt-5">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
@@ -349,6 +359,7 @@ export function LojaModal({
               taxa_fixa: taxaFixaStr.trim() !== "" ? Number(taxaFixaStr) : null,
               taxa_extra_valor: taxaExtraValorStr.trim() !== "" ? Number(taxaExtraValorStr) : null,
               taxa_extra_tipo: taxaExtraValorStr.trim() !== "" ? taxaExtraTipo : null,
+              ...(diasOriginal !== null && diasStr.trim() !== "" && Number(diasStr) !== diasOriginal ? { dias_liberacao_repasse: Number(diasStr) } : {}),
             })
           }
           loading={salvando}

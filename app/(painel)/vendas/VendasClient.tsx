@@ -45,6 +45,9 @@ import { EditarVendaModal, type ClienteOpcao } from "./EditarVendaModal";
 import { DetalheVendaModal } from "@/components/vendas/DetalheVendaModal";
 import { LinhaPedido } from "@/components/vendas/central/LinhaPedido";
 import { MenuEtapas } from "@/components/vendas/central/MenuEtapas";
+import { RetornosPainel } from "@/components/vendas/central/RetornosPainel";
+import type { DadosRetornos } from "@/lib/marketplace/retornos-servidor";
+import { retornoDePedidoCancelado } from "@/lib/retornos";
 import { BarraFiltros } from "@/components/vendas/central/BarraFiltros";
 import { FiltrosModal, contarExtras, type FiltrosExtras } from "@/components/vendas/central/FiltrosModal";
 import { KpisVendas } from "@/components/vendas/central/KpisVendas";
@@ -108,7 +111,10 @@ export function VendasClient({
   freteConectado = false,
   fiscal = { ligada: false, padraoPdv: "comprovante", padraoCatalogo: "perguntar" },
   notas = {},
+  retornos,
 }: {
+  /** Devoluções da Shopee e do sistema (aba Retornos). */
+  retornos: DadosRetornos;
   freteConectado?: boolean;
   fiscal?: FiscalResumo;
   notas?: Record<string, NotaResumo>;
@@ -161,6 +167,31 @@ export function VendasClient({
     if (buscaInicial) return "todos";
     return c.emitir > 0 ? "emitir" : c.imprimir > 0 ? "imprimir" : "todos";
   });
+  // Retornos é uma lista à parte (devoluções), não uma etapa dos pedidos.
+  const [verRetornos, setVerRetornos] = useState(false);
+  // Pedidos cancelados (marketplace e do sistema) entram na aba Retornos e cancelados, com quem cancelou.
+  // Devolvido é retorno, não cancelamento: fica de fora.
+  const cancelados = useMemo(
+    () =>
+      lista
+        .filter((p) => p.etapa === "cancelado" && !p.devolucaoRevisar)
+        .map((p) =>
+          retornoDePedidoCancelado({
+            chave: p.chave,
+            origem: p.origem,
+            numero: p.numeroExterno ?? p.numero,
+            loja: p.loja,
+            canal: p.canal,
+            cliente: p.cliente,
+            total: p.total,
+            data: p.data,
+            canceladoPor: p.canceladoPor ?? null,
+            motivo: p.motivoCancelamento ?? null,
+            itens: p.itens.map((i) => ({ nome: i.nome, quantidade: i.quantidade })),
+          }),
+        ),
+    [lista],
+  );
   const [motivo, setMotivo] = useState<MotivoReserva | "todos">("todos");
   const [sub, setSub] = useState<SubEnvio | "todos">("todos");
   const daEtapa = useMemo(() => filtrarCentral(lista, filtros, etapa), [lista, filtros, etapa]);
@@ -203,6 +234,7 @@ export function VendasClient({
   const { sincronizar, sincronizandoSozinho, sincronizando } = useSincronizarShopee({ conexoes: conexoesLigadas, avisoShopee });
 
   function mudarEtapa(e: Etapa | "todos" | "oculto") {
+    setVerRetornos(false);
     setEtapa(e);
     setMotivo("todos");
     setSub("todos");
@@ -333,6 +365,9 @@ export function VendasClient({
         }
       />
 
+      {/* Período, canais e KPIs são dos pedidos: na aba Retornos ficam de fora. */}
+      {!verRetornos && (
+        <>
       <BarraFiltros
         periodo={periodo}
         onPeriodo={(p) => (setPeriodo(p), setMostrar(POR_PAGINA))}
@@ -353,6 +388,8 @@ export function VendasClient({
       />
 
       <KpisVendas atual={kpiAtual} anterior={kpiAnterior} rotuloAnterior="anterior" />
+        </>
+      )}
 
       {semCusto && (
         <button type="button" onClick={() => setVinculando(true)} className="w-full mb-4 flex items-center gap-2 rounded-md border border-negative/30 bg-negative-soft px-3 py-2 text-sm text-negative text-left">
@@ -362,11 +399,14 @@ export function VendasClient({
 
       <div className="grid grid-cols-1 lg:grid-cols-[13rem_minmax(0,1fr)] gap-4 items-start">
         <div className="lg:sticky lg:top-4 min-w-0">
-          <MenuEtapas valor={etapa} onChange={mudarEtapa} contagem={contagem} />
+          <MenuEtapas valor={etapa} onChange={mudarEtapa} contagem={contagem} retornos={{ n: retornos.lista.length + cancelados.length, ativo: verRetornos, onAbrir: () => setVerRetornos(true) }} />
           <p className="hidden lg:block text-[11px] text-text-tertiary mt-3 px-3">De Para Reservar até Para Retirada aparecem pedidos de qualquer data. Enviado, Concluído e Cancelado seguem o período.</p>
         </div>
 
         <div className="min-w-0 space-y-3">
+          {verRetornos && <RetornosPainel dados={retornos} cancelados={cancelados} />}
+          {!verRetornos && (
+            <>
           {etapa === "reservar" && (
             <SubAbas
               valor={motivo}
@@ -459,6 +499,8 @@ export function VendasClient({
             <Button variant="secondary" className="w-full" onClick={() => setMostrar((m) => m + POR_PAGINA)}>
               Mostrar mais ({filtrados.length - mostrar} restantes)
             </Button>
+          )}
+            </>
           )}
         </div>
       </div>

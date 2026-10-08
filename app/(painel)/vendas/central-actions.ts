@@ -7,7 +7,7 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 
-const ETAPAS_VENDA = ["reservar", "emitir", "enviar", "imprimir", "retirada", "enviado", "concluido"] as const;
+const ETAPAS_VENDA = ["reservar", "emitir", "enviar", "imprimir", "retirada", "enviado", "entregue", "concluido"] as const;
 type EtapaVendaAcao = (typeof ETAPAS_VENDA)[number];
 /** Sem a 0047 a coluna `etapa` não existe: grava o equivalente em `status_envio`. */
 const ENVIO_DA_ETAPA: Record<EtapaVendaAcao, "separacao" | "enviado" | "concluido"> = {
@@ -17,6 +17,8 @@ const ENVIO_DA_ETAPA: Record<EtapaVendaAcao, "separacao" | "enviado" | "concluid
   imprimir: "separacao",
   retirada: "separacao",
   enviado: "enviado",
+  // Entregue ainda é envio em aberto até concluir (mesma regra do trigger, 0091).
+  entregue: "enviado",
   concluido: "concluido",
 };
 /** Banco com 0047 mas sem 0052: só conhece emitir/imprimir/enviar/enviado/concluido (ordem antiga). */
@@ -27,6 +29,8 @@ const ETAPA_0047: Record<EtapaVendaAcao, string> = {
   imprimir: "enviar",
   retirada: "enviar",
   enviado: "enviado",
+  // Sem a 0091 a etapa não existe: fica Enviado até concluir.
+  entregue: "enviado",
   concluido: "concluido",
 };
 
@@ -45,11 +49,17 @@ export async function definirEtapaVendas(ids: string[], etapa: EtapaVendaAcao) {
   return comResultado(async () => {
     const v = validar(z.object({ ids: z.array(z.string().uuid()).min(1).max(500), etapa: z.enum(ETAPAS_VENDA) }), { ids, etapa });
     const supabase = await createClient();
-    let { error } = await supabase.rpc("avancar_etapa_vendas", { p_ids: v.ids, p_etapa: v.etapa });
+    let etapaGravada: EtapaVendaAcao = v.etapa;
+    let { error } = await supabase.rpc("avancar_etapa_vendas", { p_ids: v.ids, p_etapa: etapaGravada });
+    // Antes da 0091 o banco não conhece a etapa Entregue (a RPC recusa): segue como era, indo direto a Concluído.
+    if (error && etapaGravada === "entregue" && /Etapa inválida/.test(error.message)) {
+      etapaGravada = "concluido";
+      ({ error } = await supabase.rpc("avancar_etapa_vendas", { p_ids: v.ids, p_etapa: etapaGravada }));
+    }
     if (error?.code === "PGRST202" || error?.code === "42883") {
       // Sem a 0052: grava direto, na grafia que o banco conhece.
-      ({ error } = await supabase.from("vendas").update({ etapa: ETAPA_0047[v.etapa] }).in("id", v.ids).neq("status", "cancelada"));
-      if (error?.code === "PGRST204") ({ error } = await supabase.from("vendas").update({ status_envio: ENVIO_DA_ETAPA[v.etapa] }).in("id", v.ids).neq("status", "cancelada"));
+      ({ error } = await supabase.from("vendas").update({ etapa: ETAPA_0047[etapaGravada] }).in("id", v.ids).neq("status", "cancelada"));
+      if (error?.code === "PGRST204") ({ error } = await supabase.from("vendas").update({ status_envio: ENVIO_DA_ETAPA[etapaGravada] }).in("id", v.ids).neq("status", "cancelada"));
     }
     if (error) lancarErroSupabase(error);
     revalidar();

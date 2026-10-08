@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { Button, IconButton } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/Badge";
 import { dataLocal, formatBRL } from "@/lib/format";
-import { CAMADAS, agruparRepasses, gradeDoMes, type ItemDoDia } from "@/lib/calendario-dashboard";
+import { CAMADAS, gradeDoMes } from "@/lib/calendario-dashboard";
 import { contadoresDoDia, contasDoMes, resumoDoMes, type ContaCalendario, type ContaCalendarioFonte, type StatusContaCalendario } from "@/lib/calendario-contas";
 
 const SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -29,9 +29,8 @@ const rotuloStatus = (c: ContaCalendario) => (c.status === "paga" && c.tipo === 
 const ORIGEM: Record<ContaCalendario["origem"], string | null> = { conta: null, parcela: "Crediário", fixa: "Despesa fixa" };
 
 /**
- * Calendário só de contas, na aba "Calendário" do Financeiro: a pagar (contas, parcelas de
- * compra, dívidas e despesas fixas projetadas) e a receber (contas, crediário e repasses,
- * estes juntos por dia). Os dados chegam prontos da página (12 meses para trás e para frente).
+ * Calendário só de contas, na Visão geral do Financeiro: a pagar (contas, parcelas de
+ * compra, dívidas e despesas fixas projetadas) e a receber (contas e crediário). Os dados chegam prontos da página (12 meses para trás e para frente).
  */
 export function CalendarioContas({ contas, hoje }: { contas: ContaCalendarioFonte[]; hoje: string }) {
   const [anoHoje, mesHoje] = hoje.split("-").map(Number);
@@ -42,7 +41,7 @@ export function CalendarioContas({ contas, hoje }: { contas: ContaCalendarioFont
   const porDia = contasDoMes(contas, ano, mes, hoje);
   const resumo = resumoDoMes(porDia);
   const grade = gradeDoMes(ano, mes);
-  const doDia = agruparRepasses(porDia[selecionado] ?? [], true);
+  const doDia = porDia[selecionado] ?? [];
 
   function irPara(a: number, m: number) {
     setAno(a);
@@ -163,7 +162,9 @@ export function CalendarioContas({ contas, hoje }: { contas: ContaCalendarioFont
             <p className="text-sm text-text-tertiary">Nenhuma conta vence neste dia.</p>
           ) : (
             <ul className="space-y-2 max-h-96 overflow-y-auto overscroll-contain pr-1">
-              {doDia.map((item) => (item.tipo === "repasses" ? <GrupoRepasses key={item.id} grupo={item} /> : <LinhaConta key={item.id} c={item.evento} />))}
+              {doDia.map((c) => (
+                <LinhaConta key={c.id} c={c} />
+              ))}
             </ul>
           )}
         </section>
@@ -220,41 +221,6 @@ function LinhaConta({ c }: { c: ContaCalendario }) {
         </div>
         <span className={`font-mono text-sm shrink-0 ${c.status === "paga" ? "text-text-tertiary" : c.tipo === "pagar" ? "text-negative" : "text-positive"}`}>{formatBRL(c.valor)}</span>
       </div>
-    </li>
-  );
-}
-
-function GrupoRepasses({ grupo }: { grupo: Extract<ItemDoDia<ContaCalendario>, { tipo: "repasses" }> }) {
-  const vencidas = grupo.eventos.filter((e) => e.status === "vencida").length;
-  const pagas = grupo.eventos.filter((e) => e.status === "paga").length;
-  return (
-    <li className="rounded-md border border-border text-sm" style={{ borderLeft: `3px solid ${COR.receber}` }}>
-      <details className="group">
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-2 p-2.5 [&::-webkit-details-marker]:hidden">
-          <div className="min-w-0">
-            <div className="font-medium text-text-primary">Repasses {grupo.loja}</div>
-            <div className="text-xs text-text-secondary mt-0.5">
-              {plural(grupo.eventos.length, "pedido", "pedidos")}
-              {vencidas > 0 && <span className="text-negative"> · {plural(vencidas, "vencido", "vencidos")}</span>}
-              {pagas > 0 && ` · ${plural(pagas, "recebido", "recebidos")}`}
-            </div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <span className="font-mono text-sm text-positive">{formatBRL(grupo.total)}</span>
-            <ChevronDown size={14} className="text-text-tertiary transition-transform group-open:rotate-180" aria-hidden />
-          </div>
-        </summary>
-        <ul className="border-t border-border px-2.5 py-2 space-y-1">
-          {grupo.eventos.map((e) => (
-            <li key={e.id} className="flex items-center justify-between gap-2 text-xs">
-              <span className="truncate text-text-secondary">
-                Pedido {e.repasse?.pedido} · {rotuloStatus(e)}
-              </span>
-              <span className="font-mono text-text-primary shrink-0">{formatBRL(e.valor)}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
     </li>
   );
 }

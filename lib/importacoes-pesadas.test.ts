@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
  * - `recharts`: só os arquivos de `components/charts/` importam; as telas usam os
  *   gráficos de `components/charts/dinamicos.tsx` (`next/dynamic`, carregado sob demanda);
  * - `html-to-image`: só por `import()` na hora de gerar a imagem (`PreviaImagem.tsx`);
+ * - `exceljs`, `jspdf` e `jspdf-autotable`: só por `import()` dentro da função que exporta/importa
+ *   (centenas de KB que ninguém precisa até clicar em Exportar);
  * - `simple-icons`: em lugar nenhum; os desenhos usados moram em `lib/marcas-desenhos.ts`.
  *
  * `import type` passa: é apagado na compilação e não leva código ao navegador.
@@ -61,6 +63,12 @@ describe("dependências pesadas fora do JavaScript inicial", () => {
 
   it("html-to-image nunca estático", () => {
     const estatico = fontes.filter((f) => importacoesEstaticas(f.codigo).includes("html-to-image"));
+    expect(estatico.map((f) => f.rel)).toEqual([]);
+  });
+
+  it("exceljs e jspdf nunca estáticos", () => {
+    const pesados = ["exceljs", "jspdf", "jspdf-autotable"];
+    const estatico = fontes.filter((f) => importacoesEstaticas(f.codigo).some((m) => pesados.includes(m)));
     expect(estatico.map((f) => f.rel)).toEqual([]);
   });
 

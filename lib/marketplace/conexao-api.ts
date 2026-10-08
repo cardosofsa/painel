@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PedidoMarketplace } from "./shopee-planilha";
 import { buscarAnuncios, buscarPedidos, enviarEstoque, type AnuncioShopee } from "./shopee-api";
 import { buscarAnunciosML, buscarPedidosML, enviarEstoqueML } from "./mercadolivre-api";
+import { buscarRetornos, type RetornoMarketplace } from "./shopee-retornos";
 import { tokenDaConexao, tokenML, type ConexaoShopee } from "./tokens";
 
 /**
@@ -17,6 +18,8 @@ export interface ApiMarketplace {
   buscarPedidos(desde: Date | null, apenas?: string[], reprocessar?: string[]): Promise<PedidoMarketplace[]>;
   buscarAnuncios(): Promise<AnuncioShopee[]>;
   enviarEstoque(itemId: number, estoques: { modelId: number; quantidade: number }[]): Promise<void>;
+  /** Devoluções atualizadas desde `desde` (0090). Só a Shopee tem; no Mercado Livre fica ausente. */
+  buscarRetornos?(desde: Date): Promise<RetornoMarketplace[]>;
 }
 
 export const plataformaDa = (c: Pick<ConexaoShopee, "plataforma">) => (c.plataforma === "mercadolivre" ? "mercadolivre" : "shopee");
@@ -38,5 +41,6 @@ export async function apiDaConexao(supabase: SupabaseClient, conexao: ConexaoSho
     buscarPedidos: (desde, _apenas, reprocessar) => buscarPedidos(c, token, shopId, desde ?? new Date(Date.now() - 86_400_000), reprocessar),
     buscarAnuncios: () => buscarAnuncios(c, token, shopId),
     enviarEstoque: (itemId, estoques) => enviarEstoque(c, token, shopId, itemId, estoques),
+    buscarRetornos: (desde) => buscarRetornos(c, token, shopId, desde),
   };
 }

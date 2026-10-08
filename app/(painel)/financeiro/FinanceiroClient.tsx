@@ -40,8 +40,12 @@ import type { AlvoPagamentos } from "./pagamentos-actions";
 import { Chip } from "@/components/ui/Chip";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
-import { AbaRepasses, type PedidoRepasse } from "@/components/financeiro/AbaRepasses";
 import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
+import { AnaliseMesModal } from "@/components/financeiro/AnaliseMesModal";
+import { SaqueMarketplaceModal } from "@/components/financeiro/SaqueMarketplaceModal";
+import { inicioDoMes, type Projecao } from "@/lib/saldo-projetado";
+import { agruparRepassesPorLoja } from "@/lib/repasse-marketplace";
+import { rotuloMes, type FechamentoMes } from "@/lib/fechamento-mensal";
 import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
 export interface Conta {
@@ -101,6 +105,10 @@ export interface ContaPagarReceber {
   aguardando_liberacao: boolean;
   /** 0087: repasse de marketplace — nunca vence (é liberado ou estornado pela plataforma). */
   repasse_marketplace: boolean;
+  /** Repasse de pedido concluído: data prevista da liberação, loja e número do pedido. */
+  repasse_previsto: string | null;
+  repasse_loja: string | null;
+  repasse_pedido: string | null;
 }
 
 /** Uma linha do histórico: pagamento feito (fornecedor/conta) ou recebimento (crediário). */
@@ -120,11 +128,9 @@ const ABAS_FIN = [
   { id: "visao", rotulo: "Visão geral" },
   { id: "a-pagar", rotulo: "A pagar" },
   { id: "a-receber", rotulo: "A receber" },
-  { id: "calendario", rotulo: "Calendário" },
   { id: "historico", rotulo: "Histórico" },
   { id: "lancamentos", rotulo: "Lançamentos" },
   { id: "resultado", rotulo: "Resultado" },
-  { id: "repasses", rotulo: "Repasses" },
 ] as const;
 type AbaFin = (typeof ABAS_FIN)[number]["id"];
 /** `?aba=a-pagar` (link da Vixe) → "A pagar". Desconhecido: Visão geral. */
@@ -161,15 +167,24 @@ export function FinanceiroClient({
   gastosAnuncios = [],
   lojasMarketplace = [],
   anunciosOk = true,
-  repasses = [],
-  repassesOk = true,
   fornecedores = [],
   clientes = [],
   calendarioContas = [],
+  fechamentos = [],
+  projecaoMes,
+  projecao30Dias,
+  iaDisponivel = false,
   hoje: hojeServidor,
 }: {
   /** Calendário de contas: contas, parcelas e despesas fixas projetadas, com status. */
   calendarioContas?: ContaCalendarioFonte[];
+  /** Histórico mensal do saldo (0088), do mais recente ao mais antigo. */
+  fechamentos?: FechamentoMes[];
+  /** Saldo projetado até o fim do mês e em 30 dias (`lib/saldo-projetado.ts`, calculado no servidor). */
+  projecaoMes: Projecao;
+  projecao30Dias: Projecao;
+  /** Liga a análise do mês por IA. */
+  iaDisponivel?: boolean;
   /** Hoje em Brasília, vindo do servidor (evita erro de hidratação depois das 21h). */
   hoje?: string;
   /** Para "Lançar dívida antiga" (0067). */
@@ -183,8 +198,6 @@ export function FinanceiroClient({
   lojasMarketplace?: { id: string; nome: string; canal: string }[];
   /** false = 0066 ausente. */
   anunciosOk?: boolean;
-  repasses?: PedidoRepasse[];
-  repassesOk?: boolean;
   /** Multa e juros do crediário (0065): a parcela atrasada já sugere o valor atualizado. */
   regraCrediario?: RegraEncargos | null;
   /** Pagamentos feitos e recebimentos de crediário, mais recente primeiro. */
@@ -204,6 +217,8 @@ export function FinanceiroClient({
   const [filtroPagar, setFiltroPagar] = useState<(typeof FILTROS_PAGAR)[number]>("Todos");
   const [filtroReceber, setFiltroReceber] = useState<(typeof FILTROS_RECEBER)[number]>("Todos");
   const [modalMovimentacao, setModalMovimentacao] = useState(false);
+  const [analiseAberta, setAnaliseAberta] = useState(false);
+  const [saque, setSaque] = useState<{ loja: string | null } | null>(null);
   const [modalDespesa, setModalDespesa] = useState(false);
   // Abre já do lado certo: o "+ Novo" de A receber abria em "A Pagar".
   const [modalCpr, setModalCpr] = useState<"pagar" | "receber" | null>(null);
@@ -233,6 +248,7 @@ export function FinanceiroClient({
     linhas.push(["Resultado do Mês", centavos(resultadoMensal)]);
     linhas.push(["Saldo Líquido Realizado", centavos(saldoLiquido)]);
     linhas.push(["Saldo Atual em Contas", centavos(saldoAtual)]);
+    linhas.push(["Saldo Projetado (fim do mês)", centavos(projecaoMes.saldoProjetado)]);
     linhas.push(["Saldo Projetado (30 dias)", centavos(saldoProjetado30Dias)]);
     linhas.push([]);
 
@@ -265,18 +281,22 @@ export function FinanceiroClient({
 
   const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
   // O que falta (valor - valor_pago): recebido em parte (0065) não conta de novo.
-  const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
+  // Repasse só aparece quando o pedido já concluiu (aguardando é invisível) e em resumo por loja,
+  // não uma linha por pedido. Fora do total "pendente": o dinheiro ainda está com a plataforma.
+  const repassesAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente" && c.repasse_marketplace && !c.aguardando_liberacao);
+  const gruposRepasses = agruparRepassesPorLoja(
+    repassesAReceber.map((c) => ({ loja: c.repasse_loja ?? "Marketplace", pedido: c.repasse_pedido ?? "—", valor: restanteParcela(c), previsto: c.repasse_previsto ?? c.data_vencimento })),
+  );
+  const totalRepasses = gruposRepasses.reduce((a, g) => a + g.total, 0);
+  const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente" && !c.aguardando_liberacao && !c.repasse_marketplace).reduce((a, c) => a + restanteParcela(c), 0);
 
   const hoje = new Date();
   const em7Dias = new Date(hoje);
   em7Dias.setDate(em7Dias.getDate() + 7);
-  const em30Dias = new Date(hoje);
-  em30Dias.setDate(em30Dias.getDate() + 30);
   // `toISOString()` converteria para UTC e, depois das 21h em Brasília, já devolveria o dia
   // seguinte — jogando os vencimentos de hoje para fora de todos os filtros abaixo.
   const hojeIso = hojeIsoLocal(hoje);
   const em7DiasIso = hojeIsoLocal(em7Dias);
-  const em30DiasIso = hojeIsoLocal(em30Dias);
 
   // Separadas de verdade — duas listas, dois filtros, cada um com as opções que fazem
   // sentido pro tipo (Fiado só existe do lado de A Receber).
@@ -291,6 +311,8 @@ export function FinanceiroClient({
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
+    // Repasse nunca é linha da lista: os a liberar viram resumo por loja e os baixados já estão no saque lançado.
+    if (c.aguardando_liberacao || c.repasse_marketplace) return false;
     if (filtroReceber === "Vencidos") return c.status === "pendente" && !c.repasse_marketplace && !c.aguardando_liberacao && c.data_vencimento < hojeIso;
     if (filtroReceber === "Crediário") return c.venda_id !== null || c.cliente_id !== null;
     if (filtroReceber === "Próximos 7 dias")
@@ -303,9 +325,6 @@ export function FinanceiroClient({
   );
 
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
-  const pendentesEm30Dias = contasPagarReceber.filter((c) => c.status === "pendente" && !c.aguardando_liberacao && c.data_vencimento <= em30DiasIso);
-  const aReceberEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "receber").reduce((a, c) => a + restanteParcela(c), 0);
-  const aPagarEm30Dias = pendentesEm30Dias.filter((c) => c.tipo === "pagar").reduce((a, c) => a + restanteParcela(c), 0);
 
   const periodoH = PERIODOS_HISTORICO.find((p) => p.id === periodoHistorico)!;
   const desdeHistorico = periodoH.dias ? diasAntes(hojeIso, periodoH.dias) : "";
@@ -320,7 +339,7 @@ export function FinanceiroClient({
         : { alvo: { contaId: c.id }, titulo: c.descricao },
     );
   }
-  const saldoProjetado30Dias = saldoAtual + aReceberEm30Dias - aPagarEm30Dias;
+  const saldoProjetado30Dias = projecao30Dias.saldoProjetado;
 
   const vencidos = vencimentosProximos.filter((c) => c.data_vencimento < hojeIso);
   const vencendo = vencimentosProximos.filter((c) => c.data_vencimento >= hojeIso);
@@ -479,8 +498,15 @@ export function FinanceiroClient({
 
 
       <Card className="mb-5">
-        <h2 className="text-base font-semibold text-text-primary mb-1">Projeção de Fluxo de Caixa</h2>
-        <p className="text-xs text-text-tertiary mb-4">Saldo atual das contas somado ao que está previsto entrar/sair nos próximos 30 dias</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary mb-1">Projeção de Fluxo de Caixa</h2>
+            <p className="text-xs text-text-tertiary">Saldo atual das contas somado ao que ainda está previsto entrar e sair até o fim de {rotuloMes(inicioDoMes(hojeServidor ?? hojeIso))}</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setAnaliseAberta(true)}>
+            <History size={14} /> Histórico e análise
+          </Button>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
           <div>
             <div className="text-xs text-text-tertiary mb-1">Saldo Atual</div>
@@ -488,19 +514,55 @@ export function FinanceiroClient({
           </div>
           <div>
             <div className="text-xs text-text-tertiary mb-1">
-              A Receber − A Pagar (30 dias) <InfoTooltip text="Soma das contas a pagar e a receber pendentes com vencimento nos próximos 30 dias." />
+              O que entra e sai até o fim do mês{" "}
+              <InfoTooltip text="Contas com data, parcelas do crediário, despesas fixas ainda não pagas e repasses de pedidos já concluídos (na data prevista de liberação). Já vencidas entram hoje." />
             </div>
             <div className="font-mono text-xl text-text-primary">
-              <span className="text-positive">+{formatBRL(aReceberEm30Dias)}</span> <span className="text-negative">-{formatBRL(aPagarEm30Dias)}</span>
+              <span className="text-positive">+{formatBRL(projecaoMes.aReceber + projecaoMes.crediario + projecaoMes.repasses)}</span>{" "}
+              <span className="text-negative">-{formatBRL(projecaoMes.aPagar + projecaoMes.despesasFixas)}</span>
             </div>
           </div>
           <div>
-            <div className="text-xs text-text-tertiary mb-1">Saldo Projetado (30 dias)</div>
-            <div className={`font-mono text-2xl font-semibold ${saldoProjetado30Dias >= 0 ? "text-accent" : "text-negative"}`}>
-              {formatBRL(saldoProjetado30Dias)}
+            <div className="text-xs text-text-tertiary mb-1">Saldo Projetado (fim do mês)</div>
+            <div className={`font-mono text-2xl font-semibold ${projecaoMes.saldoProjetado >= 0 ? "text-accent" : "text-negative"}`}>
+              {formatBRL(projecaoMes.saldoProjetado)}
+            </div>
+            <div className="text-xs text-text-tertiary mt-1">
+              Sem repasses: {formatBRL(projecaoMes.saldoConservador)} · Em 30 dias: {formatBRL(projecao30Dias.saldoProjetado)}
             </div>
           </div>
         </div>
+        {projecaoMes.menorSaldo.valor < 0 && (
+          <p className="mt-4 flex items-start gap-2 text-sm text-negative" role="status">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+            <span>
+              O saldo pode ficar negativo em {formatarDataIso(projecaoMes.menorSaldo.data)} ({formatBRL(projecaoMes.menorSaldo.valor)}), antes de entrar o que está previsto. Vale conferir as contas dessa data.
+            </span>
+          </p>
+        )}
+        <details className="mt-4 text-sm group">
+          <summary className="cursor-pointer text-text-secondary hover:text-text-primary">Como calculamos</summary>
+          <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-6 gap-y-1 max-w-md">
+            <dt className="text-text-secondary">Saldo atual das contas</dt>
+            <dd className="font-mono text-right">{formatBRL(projecaoMes.saldoAtual)}</dd>
+            <dt className="text-text-secondary">+ Contas a receber com data</dt>
+            <dd className="font-mono text-right text-positive">{formatBRL(projecaoMes.aReceber)}</dd>
+            <dt className="text-text-secondary">+ Parcelas do crediário</dt>
+            <dd className="font-mono text-right text-positive">{formatBRL(projecaoMes.crediario)}</dd>
+            <dt className="text-text-secondary">+ Repasses de pedidos concluídos</dt>
+            <dd className="font-mono text-right text-positive">{formatBRL(projecaoMes.repasses)}</dd>
+            <dt className="text-text-secondary">− Contas a pagar</dt>
+            <dd className="font-mono text-right text-negative">{formatBRL(projecaoMes.aPagar)}</dd>
+            <dt className="text-text-secondary">− Despesas fixas ainda não pagas</dt>
+            <dd className="font-mono text-right text-negative">{formatBRL(projecaoMes.despesasFixas)}</dd>
+            <dt className="font-medium text-text-primary border-t border-border pt-1">= Saldo projetado</dt>
+            <dd className="font-mono text-right font-medium border-t border-border pt-1">{formatBRL(projecaoMes.saldoProjetado)}</dd>
+          </dl>
+          <p className="mt-2 text-xs text-text-tertiary max-w-xl">
+            O cartão já cai no saldo na hora da venda, por isso não há o que projetar. Entradas vencidas há mais de 60 dias não entram na previsão
+            {projecaoMes.naoProjetado > 0 ? ` (hoje: ${formatBRL(projecaoMes.naoProjetado)} fora)` : ""}; dívidas a pagar atrasadas continuam contando.
+          </p>
+        </details>
       </Card>
 
       <div className="mb-5">
@@ -525,6 +587,10 @@ export function FinanceiroClient({
           {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
         </div>
       </Card>
+      </div>
+
+      <div className="mt-5">
+        <CalendarioContas contas={calendarioContas} hoje={hojeServidor ?? hojeIsoLocal()} />
       </div>
         </>
       )}
@@ -611,9 +677,17 @@ export function FinanceiroClient({
         <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
           <div>
             <h2 className="text-base font-semibold text-text-primary">Contas a Receber</h2>
-            <p className="text-sm text-positive">{formatBRL(totalAReceber)} pendente</p>
+            <p className="text-sm text-positive">
+              {formatBRL(totalAReceber)} pendente
+              {totalRepasses > 0 && <span className="text-text-secondary"> · {formatBRL(totalRepasses)} de repasses a liberar</span>}
+            </p>
           </div>
           <div className="flex gap-2">
+            {gruposRepasses.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => setSaque({ loja: null })}>
+                Registrei um saque
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => setDividaAntiga({ tipo: "receber" })}>
               Crediário antigo
             </Button>
@@ -629,9 +703,37 @@ export function FinanceiroClient({
             </Chip>
           ))}
         </div>
-        {receberFiltrado.length === 0 ? (
+        {filtroReceber === "Todos" && gruposRepasses.length > 0 && (
+          <div className="px-5 pb-4 space-y-2">
+            {gruposRepasses.map((g) => (
+              <details key={g.loja} className="rounded-md border border-border group">
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-text-primary">Repasses a liberar · {g.loja}</div>
+                    <div className="text-xs text-text-secondary mt-0.5">
+                      {g.pedidos} {g.pedidos === 1 ? "pedido concluído" : "pedidos concluídos"} · previsto até {formatarDataIso(g.ate)}
+                    </div>
+                  </div>
+                  <span className="font-mono text-sm text-positive shrink-0">{formatBRL(g.total)}</span>
+                </summary>
+                <ul className="border-t border-border px-3 py-2 space-y-1 max-h-64 overflow-y-auto">
+                  {g.linhas.map((l) => (
+                    <li key={l.pedido} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate text-text-secondary">
+                        Pedido {l.pedido} · previsto {formatarDataIso(l.previsto)}
+                      </span>
+                      <span className="font-mono text-text-primary shrink-0">{formatBRL(l.valor)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+            <p className="text-xs text-text-tertiary">Pedidos que ainda não concluíram não aparecem. A data é uma previsão da plataforma; quando você sacar o dinheiro, registre o saque para dar baixa.</p>
+          </div>
+        )}
+        {receberFiltrado.length === 0 && (filtroReceber !== "Todos" || gruposRepasses.length === 0) ? (
           <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a receber encontrada para esse filtro." />
-        ) : (
+        ) : receberFiltrado.length === 0 ? null : (
           <Table>
             <Thead>
               <tr>
@@ -908,9 +1010,6 @@ export function FinanceiroClient({
 
       {aba === "resultado" && <AbaResultado dre={dre} gastos={gastosAnuncios} lojas={lojasMarketplace} anunciosOk={anunciosOk} />}
 
-      {aba === "calendario" && <CalendarioContas contas={calendarioContas} hoje={hojeServidor ?? hojeIsoLocal()} />}
-
-      {aba === "repasses" && <AbaRepasses pedidos={repasses} contas={contas} repassesOk={repassesOk} />}
       </TabPanel>
 
       {/*
@@ -919,6 +1018,16 @@ export function FinanceiroClient({
         servidor aceitou: quando falhava, o modal continuava aberto e vazio e o usuário
         perdia tudo que tinha digitado.
       */}
+      {saque && (
+        <SaqueMarketplaceModal
+          lojas={lojasMarketplace}
+          contas={contas.map((c) => ({ id: c.id, nome: c.nome }))}
+          liberadoPorLoja={Object.fromEntries(gruposRepasses.map((g) => [g.loja, g.total]))}
+          lojaInicial={saque.loja}
+          onClose={() => setSaque(null)}
+        />
+      )}
+      {analiseAberta && <AnaliseMesModal onClose={() => setAnaliseAberta(false)} fechamentos={fechamentos} mesAtual={inicioDoMes(hojeServidor ?? hojeIsoLocal())} iaDisponivel={iaDisponivel} />}
       <NovaMovimentacaoModal key={`mov-${modalMovimentacao}`} open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contas} onSave={adicionarMovimentacao} salvando={pending} />
       <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />
       <NovaCprModal key={`cpr-${modalCpr}`} open={!!modalCpr} tipoInicial={modalCpr ?? "pagar"} onClose={() => setModalCpr(null)} contas={contas} onSave={adicionarCpr} salvando={pending} />

@@ -61,7 +61,7 @@ export function useSincronizarShopee({ conexoes, avisoShopee }: { /** Só as con
       return;
     }
     const d = r.dado;
-    toast.success(`${d.lojas} loja(s): ${d.pedidos} pedido(s) lido(s), ${d.novos} novo(s).`);
+    toast.success(`${d.lojas} loja(s): ${d.pedidos} pedido(s) lido(s), ${d.novos} novo(s)${d.retornos > 0 ? `, ${d.retornos} devolução(ões) lida(s)` : ""}.`);
     if (d.erros.length) toast.error(d.erros.join(" · "));
     router.refresh();
   }

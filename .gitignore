@@ -47,3 +47,6 @@ next-env.d.ts
 # Playwright
 /test-results/
 /playwright-report/
+
+# Estado local do Supabase CLI
+supabase/.temp

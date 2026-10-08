@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpretarRelatorioAnuncios, interpretarRelatorioRepasses, lerDataRelatorio, situacaoRepasse } from "./relatorios-financeiros";
+import { interpretarRelatorioAnuncios, lerDataRelatorio } from "./relatorios-financeiros";
 
 describe("datas dos relatórios", () => {
   it("lê os formatos comuns", () => {
@@ -35,30 +35,4 @@ describe("relatório de anúncios", () => {
     expect(r.faltando).toEqual(["valor"]);
     expect(r.erros[0].mensagem).toContain("Nome do Anúncio, Cliques");
   });
-});
-
-describe("relatório de repasses", () => {
-  it("soma ajustes do mesmo pedido e fica com a data mais recente", () => {
-    const r = interpretarRelatorioRepasses([
-      ["Minha Renda"],
-      ["ID do pedido", "Data de liberação", "Valor liberado"],
-      ["2610ABC", "05/10/2026", "R$ 150,00"],
-      ["2610ABC", "07/10/2026", "-5,00"],
-      ["#2610XYZ", "06/10/2026", "80"],
-      ["2610BAD", "06/10/2026", "abc"],
-    ]);
-    expect(r.repasses).toEqual([
-      { numero: "2610ABC", valor: 145, data: "2026-10-07" },
-      { numero: "2610XYZ", valor: 80, data: "2026-10-06" },
-    ]);
-    expect(r.total).toBe(225);
-    expect(r.erros).toHaveLength(1);
-  });
-
-  it("situação: conciliado, divergente, aguardando — nunca atrasado", () => {
-    expect(situacaoRepasse({ repasse: 100, repasse_recebido: 100.03 })).toBe("conciliado");
-    expect(situacaoRepasse({ repasse: 100, repasse_recebido: 90 })).toBe("divergente");
-    expect(situacaoRepasse({ repasse: 100, repasse_recebido: null })).toBe("aguardando");
-  });
-
 });

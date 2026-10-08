@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, MapPin, Pencil, Plus, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, MapPin, Pencil, Plus, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { Card, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Chip, ChipRow } from "@/components/ui/Chip";
@@ -16,14 +16,12 @@ import { dataLocal, formatBRL } from "@/lib/format";
 import { UFS, daUf } from "@/lib/feriados";
 import {
   CAMADAS,
-  agruparRepasses,
   diasAte,
   eventosDoMes,
   gradeDoMes,
   proximosEventos,
   type Camada,
   type EventoCalendario,
-  type ItemDoDia as ItemAgrupado,
 } from "@/lib/calendario-dashboard";
 import type { FontesPeriodo } from "@/lib/calendario-servidor";
 import {
@@ -54,10 +52,6 @@ const diaCurto = (iso: string) => dataLocal(iso).toLocaleDateString("pt-BR", { d
 /** Fundo suave da cor da camada, que segue o tema (mesma ideia do `-soft` dos tokens). */
 const fundo = (cor: string) => `color-mix(in srgb, ${cor} 14%, transparent)`;
 
-const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
-/** Rótulo curto de um item: o título do evento ou "Repasses (N) · R$ total". */
-const rotuloItem = (i: ItemAgrupado) => (i.tipo === "evento" ? i.evento.titulo : `Repasses (${i.eventos.length}) · ${formatBRL(i.total)}`);
-const camadaItem = (i: ItemAgrupado): Camada => (i.tipo === "evento" ? i.evento.camada : "receber");
 
 type CompromissoEditando = { id: string | null; titulo: string; data: string; hora: string; descricao: string };
 
@@ -111,10 +105,10 @@ export function CalendarioDashboard({
   ).reduce<Record<string, EventoCalendario[]>>((acc, e) => ((acc[e.data] ??= []).push(e), acc), {});
   const proximos = Object.keys(proximosPorDia)
     .sort()
-    .flatMap((dia) => agruparRepasses(proximosPorDia[dia]).map((item) => ({ dia, item })))
+    .flatMap((dia) => proximosPorDia[dia].map((e) => ({ dia, e })))
     .slice(0, 12);
   const grade = gradeDoMes(ano, mes);
-  const doDia = agruparRepasses(eventos[selecionado] ?? [], true);
+  const doDia = eventos[selecionado] ?? [];
 
   /** Substitui o que estava no período pelo que veio agora (ao navegar e depois de salvar). */
   function mesclar(novo: FontesPeriodo, inicio: string, fim: string) {
@@ -265,7 +259,6 @@ export function CalendarioDashboard({
             {grade.map((dia, i) => {
               if (!dia) return <div key={`vazio-${i}`} aria-hidden />;
               const lista = eventos[dia] ?? [];
-              const itens = agruparRepasses(lista);
               const feriado = lista.find((e) => e.camada === "feriado" && e.tipoFeriado !== "facultativo") ?? lista.find((e) => e.camada === "minhas");
               const ehHoje = dia === hoje;
               const ativo = dia === selecionado;
@@ -275,7 +268,7 @@ export function CalendarioDashboard({
                   type="button"
                   role="gridcell"
                   aria-selected={ativo}
-                  aria-label={`${diaPorExtenso(dia)}${itens.length ? `: ${itens.map(rotuloItem).join(", ")}` : ""}`}
+                  aria-label={`${diaPorExtenso(dia)}${lista.length ? `: ${lista.map((e) => e.titulo).join(", ")}` : ""}`}
                   onClick={() => setSelecionado(dia)}
                   className={`relative flex flex-col items-stretch text-left rounded-md border min-h-12 sm:min-h-20 p-1 sm:p-1.5 transition-colors ${
                     ativo ? "border-accent bg-accent-soft" : "border-border hover:bg-surface-2"
@@ -288,21 +281,21 @@ export function CalendarioDashboard({
                   </span>
                   {/* Celular: só os pontos. Tela maior: as duas primeiras linhas + "+N". */}
                   <span className="flex flex-wrap gap-0.5 mt-1 sm:hidden">
-                    {itens.slice(0, 4).map((i) => (
-                      <span key={i.id} className="w-1.5 h-1.5 rounded-full" style={{ background: corDe(camadaItem(i)) }} />
+                    {lista.slice(0, 4).map((e) => (
+                      <span key={e.id} className="w-1.5 h-1.5 rounded-full" style={{ background: corDe(e.camada) }} />
                     ))}
                   </span>
                   <span className="hidden sm:flex flex-col gap-0.5 mt-1 min-w-0">
-                    {itens.slice(0, 2).map((i) => (
+                    {lista.slice(0, 2).map((e) => (
                       <span
-                        key={i.id}
+                        key={e.id}
                         className="truncate text-xs leading-4 rounded px-1 text-text-primary"
-                        style={{ background: fundo(corDe(camadaItem(i))), borderLeft: `2px solid ${corDe(camadaItem(i))}` }}
+                        style={{ background: fundo(corDe(e.camada)), borderLeft: `2px solid ${corDe(e.camada)}` }}
                       >
-                        {rotuloItem(i)}
+                        {e.titulo}
                       </span>
                     ))}
-                    {itens.length > 2 && <span className="text-xs text-text-tertiary px-1">+{itens.length - 2}</span>}
+                    {lista.length > 2 && <span className="text-xs text-text-tertiary px-1">+{lista.length - 2}</span>}
                   </span>
                 </button>
               );
@@ -319,9 +312,7 @@ export function CalendarioDashboard({
             ) : (
               // Altura limitada com rolagem própria: um dia de muitos pedidos não estica a página.
               <ul className="space-y-2 max-h-96 overflow-y-auto overscroll-contain pr-1">
-                {doDia.map((item) => {
-                  if (item.tipo === "repasses") return <GrupoRepasses key={item.id} grupo={item} />;
-                  const e = item.evento;
+                {doDia.map((e) => {
                   return (
                     <ItemDoDia
                       key={e.id}
@@ -348,10 +339,10 @@ export function CalendarioDashboard({
               <p className="text-sm text-text-tertiary">Nada nos próximos 30 dias.</p>
             ) : (
               <ul className="space-y-1.5">
-                {proximos.map(({ dia, item }) => {
-                  const valor = item.tipo === "evento" ? item.evento.valor : item.total;
+                {proximos.map(({ dia, e }) => {
+                  const valor = e.valor;
                   return (
-                    <li key={`p-${item.id}`}>
+                    <li key={`p-${e.id}`}>
                       <button
                         type="button"
                         onClick={() => {
@@ -362,8 +353,8 @@ export function CalendarioDashboard({
                         className="w-full flex items-center gap-2 text-left text-sm rounded px-1 py-0.5 hover:bg-surface-2"
                       >
                         <span className="font-mono text-xs text-text-tertiary w-12 shrink-0 whitespace-nowrap">{diaCurto(dia)}</span>
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: corDe(camadaItem(item)) }} aria-hidden />
-                        <span className="truncate text-text-primary">{item.tipo === "evento" ? item.evento.titulo : `Repasses (${item.eventos.length})`}</span>
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: corDe(e.camada) }} aria-hidden />
+                        <span className="truncate text-text-primary">{e.titulo}</span>
                         {valor != null && <span className="ml-auto font-mono text-xs text-text-secondary shrink-0">{formatBRL(valor)}</span>}
                       </button>
                     </li>
@@ -397,40 +388,6 @@ export function CalendarioDashboard({
       )}
       {ConfirmDialog}
     </Card>
-  );
-}
-
-/** Repasses de uma loja no dia: um resumo, e os pedidos ao expandir. */
-function GrupoRepasses({ grupo }: { grupo: Extract<ItemAgrupado, { tipo: "repasses" }> }) {
-  const cor = corDe("receber");
-  return (
-    <li className="rounded-md border border-border text-sm" style={{ borderLeft: `3px solid ${cor}` }}>
-      <details className="group">
-        <summary className="flex cursor-pointer list-none items-start justify-between gap-2 p-2.5 [&::-webkit-details-marker]:hidden">
-          <div className="min-w-0">
-            <div className="font-medium text-text-primary">Repasses {grupo.loja}</div>
-            <div className="text-xs text-text-secondary mt-0.5">{plural(grupo.eventos.length, "pedido", "pedidos")} a receber</div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <span className="font-mono text-sm text-positive">{formatBRL(grupo.total)}</span>
-            <ChevronDown size={14} className="text-text-tertiary transition-transform group-open:rotate-180" aria-hidden />
-          </div>
-        </summary>
-        <ul className="border-t border-border px-2.5 py-2 space-y-1">
-          {grupo.eventos.map((e) => (
-            <li key={e.id} className="flex items-center justify-between gap-2 text-xs">
-              <span className="truncate text-text-secondary">Pedido {e.repasse?.pedido}</span>
-              {e.valor != null && <span className="font-mono text-text-primary shrink-0">{formatBRL(e.valor)}</span>}
-            </li>
-          ))}
-        </ul>
-        <div className="px-2.5 pb-2.5">
-          <Link href="/financeiro?aba=repasses" className="text-xs text-accent hover:underline">
-            Conferir repasses no Financeiro ›
-          </Link>
-        </div>
-      </details>
-    </li>
   );
 }
 

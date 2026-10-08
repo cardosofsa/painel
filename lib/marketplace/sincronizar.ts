@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FaixaComissao } from "@/lib/pricing";
 import { montarPedidosParaGravar } from "./margem";
 import { apiDaConexao } from "./conexao-api";
+import { sincronizarRetornos } from "./sincronizar-retornos";
 import type { ConexaoShopee } from "./tokens";
 
 export { aadToken, aadTokenML, tokenDaConexao, tokenML, type ConexaoShopee } from "./tokens";
@@ -20,7 +21,7 @@ export async function sincronizarConexao(
   modo: "dono" | "servico",
   /** Só estes pedidos (notificação do Mercado Livre); sem isso, tudo desde a última vez. */
   apenas?: string[],
-): Promise<{ pedidos: number; resultado: Record<string, number> }> {
+): Promise<{ pedidos: number; resultado: Record<string, number>; retornos: number }> {
   try {
     const api = await apiDaConexao(supabase, conexao);
 
@@ -54,11 +55,21 @@ export async function sincronizarConexao(
           await (modo === "servico"
             ? supabase.rpc("atualizar_envio_marketplace_servico", { p_user: conexao.user_id, p_loja_id: conexao.loja_id, p_envios: envios })
             : supabase.rpc("atualizar_envio_marketplace", { p_loja_id: conexao.loja_id, p_envios: envios }));
+        // Entrega e quem cancelou (0091); sem a migração a função não existe e é ignorada.
+        const situacoes = lote
+          .filter((p) => p.entregue_em || p.cancelado_por || p.motivo_cancelamento)
+          .map((p) => ({ numero: p.numero, entregue_em: p.entregue_em, cancelado_por: p.cancelado_por, motivo_cancelamento: p.motivo_cancelamento }));
+        if (situacoes.length)
+          await (modo === "servico"
+            ? supabase.rpc("atualizar_situacao_marketplace_servico", { p_user: conexao.user_id, p_loja_id: conexao.loja_id, p_situacoes: situacoes })
+            : supabase.rpc("atualizar_situacao_marketplace", { p_loja_id: conexao.loja_id, p_situacoes: situacoes }));
       }
     } else resultado = { novos: 0, atualizados: 0 };
 
     if (!apenas?.length) await supabase.from("marketplace_conexoes").update({ ultima_sincronizacao: new Date().toISOString(), ultimo_erro: null }).eq("id", conexao.id);
-    return { pedidos: pedidos.length, resultado };
+    // Devoluções (0090): passo à parte, que nunca derruba a sincronização dos pedidos.
+    const { retornos } = apenas?.length ? { retornos: 0 } : await sincronizarRetornos(supabase, conexao, api, modo);
+    return { pedidos: pedidos.length, resultado, retornos };
   } catch (e) {
     const msg = e instanceof Error ? e.message.slice(0, 300) : "Erro desconhecido";
     await supabase.from("marketplace_conexoes").update({ ultimo_erro: msg }).eq("id", conexao.id);

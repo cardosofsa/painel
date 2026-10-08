@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/fechamento",
+      "schedule": "30 8 * * *"
+    },
+    {
       "path": "/api/cron/shopee",
       "schedule": "0 9 * * *"
     },

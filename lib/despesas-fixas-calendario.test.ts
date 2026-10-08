@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ocorrenciasDespesasFixas } from "./despesas-fixas-calendario";
 import { contasDoMes, resumoDoMes, contadoresDoDia, type ContaCalendarioFonte } from "./calendario-contas";
-import { agruparRepasses } from "./calendario-dashboard";
 
 const aluguel = { id: "a", nome: "Aluguel", valor: 1200, dia_vencimento: 10 };
 const internet = { id: "i", nome: "Internet", valor: 99.9, dia_vencimento: 31 };
@@ -47,7 +46,7 @@ describe("calendário de contas", () => {
     f({ id: "1", data_vencimento: "2026-10-05" }),
     f({ id: "2", quitada: true, valor: 50 }),
     f({ id: "3", tipo: "receber", descricao: "Repasse Loja A — pedido 1", valor: 30, valorAberto: 30, data_vencimento: "2026-10-12" }),
-    f({ id: "4", tipo: "receber", descricao: "Repasse Loja A — pedido 2", valor: 20, valorAberto: 20, data_vencimento: "2026-10-12" }),
+    f({ id: "4", tipo: "receber", descricao: "Venda V-1 — parcela 1/2", valor: 50, valorAberto: 50, data_vencimento: "2026-10-12", origem: "parcela" }),
     f({ id: "5", origem: "fixa", valorAberto: 40, valor: 40, data_vencimento: "2026-10-20" }),
     f({ id: "6", data_vencimento: "2026-11-01" }),
   ];
@@ -63,13 +62,13 @@ describe("calendário de contas", () => {
   it("resumo soma só o que está em aberto", () => {
     const r = resumoDoMes(porDia);
     expect(r.pagar).toEqual({ total: 50, quantidade: 3, vencidas: 1, pagas: 1 });
-    expect(r.receber).toMatchObject({ total: 50, quantidade: 2 });
+    expect(r.receber).toMatchObject({ total: 50, quantidade: 1 });
   });
 
-  it("repasses do dia viram um grupo e os contadores somam", () => {
-    const itens = agruparRepasses(porDia["2026-10-12"]);
-    expect(itens).toHaveLength(1);
-    expect(itens[0]).toMatchObject({ tipo: "repasses", total: 50 });
-    expect(contadoresDoDia(porDia["2026-10-12"]).receber).toEqual({ qtd: 2, total: 50, vencida: false });
+  it("repasse de marketplace fica fora do calendário e dos contadores", () => {
+    const lista = porDia["2026-10-12"];
+    expect(lista).toHaveLength(1);
+    expect(lista[0].descricao).toContain("Venda V-1");
+    expect(contadoresDoDia(lista).receber).toEqual({ qtd: 1, total: 50, vencida: false });
   });
 });

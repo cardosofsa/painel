@@ -35,7 +35,7 @@ export function VariacoesView({
   anuncios,
   aliquotaDasPadrao,
   confirm,
-  setVisao,
+  onVerHistorico,
   iaDisponivel,
   empresa = null,
 }: {
@@ -47,7 +47,8 @@ export function VariacoesView({
   /** Vem do servidor via PrecificacaoClient: `GEMINI_API_KEY` não é lida no cliente. */
   iaDisponivel: boolean;
   confirm: (options: { title: string; message: string; confirmLabel?: string }) => Promise<boolean>;
-  setVisao: (visao: "individual" | "variacoes" | "massa" | "historico") => void;
+  /** Abre o pop-up com o histórico de precificações. */
+  onVerHistorico: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [nomeAnuncio, setNomeAnuncio] = useState("");
@@ -420,7 +421,7 @@ export function VariacoesView({
         anuncios={anuncios}
         onExcluir={excluirAnuncio}
         onExportarCsv={() => setExportandoAnuncios(true)}
-        onVerHistorico={() => setVisao("historico")}
+        onVerHistorico={onVerHistorico}
       />
 
       {modaisExportacao}

@@ -144,6 +144,7 @@ export const lojaSchema = z.object({
   taxa_fixa: dinheiroOpcional,
   taxa_extra_valor: dinheiroOpcional,
   taxa_extra_tipo: z.enum(["percentual", "fixo"]).nullable(),
+  dias_liberacao_repasse: z.number().int("Use dias inteiros").min(0, "Mínimo 0 dia").max(60, "Máximo 60 dias").optional(),
 });
 
 /** Limites de texto do canal (0037). Mesmos intervalos do check do banco; null = sem limite próprio. */
@@ -716,14 +717,16 @@ export const gastosAnunciosSchema = z
   })
   .refine((v) => v.periodo_fim >= v.periodo_inicio, { message: "O fim do período vem antes do início", path: ["periodo_fim"] });
 
-/** Repasses lidos do relatório da plataforma (0066). */
-export const repassesSchema = z.object({
+/** Saque do marketplace para o banco (0089). */
+export const saqueMarketplaceSchema = z.object({
+  loja_id: uuid,
+  valor: z.number().finite().positive("Informe o valor que caiu na conta").max(10_000_000, "Valor alto demais"),
   conta_id: uuid,
-  itens: z
-    .array(z.object({ numero: z.string().trim().min(1).max(80), valor: z.number().finite().min(-10_000_000).max(10_000_000), data: dataIso.nullable() }))
-    .min(1, "Nenhum repasse para conciliar")
-    .max(5000, "No máximo 5.000 pedidos por vez"),
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
 });
+
+/** Mês do fechamento (sempre o primeiro dia): o relatório de IA do Financeiro (0088). */
+export const relatorioMesSchema = z.object({ mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/, "Mês inválido") });
 
 /** Pix e encargos do crediário (0065). Multa limitada a 2% pelo CDC; o banco também confere. */
 export const crediarioConfigSchema = z.object({

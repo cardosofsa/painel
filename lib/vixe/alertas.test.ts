@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { situacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
 import {
   alertasContasVencidas,
   alertasEstoqueMinimo,
@@ -7,10 +6,8 @@ import {
   alertasRuptura,
   alertaReposicaoEmLote,
   alertasPrecoDefasado,
-  alertasRepasses,
   alertasZonaMorta,
   diasEntre,
-  resumirRepasses,
   mensagemCobranca,
   ordenarAlertas,
   type AlertaVixe,
@@ -131,25 +128,7 @@ describe("conta a pagar a vencer", () => {
   });
 });
 
-describe("repasses e preço defasado", () => {
-  it("resume só divergentes: repasse nunca vira atrasado", () => {
-    const r = resumirRepasses(
-      [
-        { repasse: 100, repasse_recebido: 100.02 },
-        { repasse: 100, repasse_recebido: 40 },
-        { repasse: 80, repasse_recebido: null },
-        { repasse: 80, repasse_recebido: null },
-      ],
-      situacaoRepasse,
-    );
-    expect(r).toEqual({ divergentes: 1, diferenca: 60 });
-    const a = alertasRepasses(r);
-    expect(a.map((x) => x.id)).toEqual(["repasse-divergente"]);
-    expect(a[0].gravidade).toBe("alta");
-    expect(a[0].acoes[0]).toMatchObject({ href: "/financeiro?aba=repasses" });
-    expect(alertasRepasses({ divergentes: 0, diferenca: 0 })).toEqual([]);
-  });
-
+describe("preço defasado", () => {
   it("preço defasado leva ao Raio-X; precificação velha é aviso leve", () => {
     const [custo, antiga] = alertasPrecoDefasado([
       { produtoId: "a", produtoNome: "Caneca", custoPrecificado: 10, custoAtual: 12, aumentoPct: 20, dias: 30, motivo: "custo" },

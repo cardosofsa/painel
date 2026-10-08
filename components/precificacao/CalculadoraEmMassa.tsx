@@ -31,14 +31,15 @@ export function CalculadoraEmMassa({
   produtos,
   lojas,
   historico,
-  setVisao,
+  onVerHistorico,
   empresa = null,
 }: {
   empresa?: { nome: string | null; logoUrl: string | null } | null;
   produtos: ProdutoMassa[];
   lojas: LojaMassa[];
   historico: PrecificacaoHist[];
-  setVisao: (visao: "individual" | "variacoes" | "massa" | "historico") => void;
+  /** Abre o pop-up com o histórico de precificações. */
+  onVerHistorico: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -312,7 +313,7 @@ export function CalculadoraEmMassa({
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-text-primary">Precificações Salvas</h2>
             <button
-              onClick={() => setVisao("historico")}
+              onClick={onVerHistorico}
               className="text-xs text-accent hover:underline flex items-center gap-1"
             >
               <Clock size={12} />

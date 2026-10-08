@@ -109,7 +109,7 @@ export function mensagensPendentes(e: EntradaMensagens, enviadas: Set<string>): 
         rastreio: v.rastreio ? ` Código de rastreio: ${v.rastreio}.` : "",
       });
       add({ chave: `enviado:${v.id}`, assunto: "enviado", cliente: v.cliente ?? "", whatsapp: v.whatsapp, quando: v.data, referencia: v.numero, texto });
-    } else if (v.doCatalogo && v.status === "paga" && v.etapa !== "concluido") {
+    } else if (v.doCatalogo && v.status === "paga" && v.etapa !== "concluido" && v.etapa !== "entregue") {
       const texto = aplicarModelo(modeloDe("pago", e.modelos), { ...pessoa(v.cliente), pedido: v.numero, valor: formatBRL(v.total) });
       add({ chave: `pago:${v.id}`, assunto: "pago", cliente: v.cliente ?? "", whatsapp: v.whatsapp, quando: v.data, referencia: v.numero, texto });
     }

@@ -163,6 +163,32 @@ export interface PedidoApi {
   item_list?: ItemApi[];
   shipping_carrier?: string;
   ship_by_date?: number;
+  update_time?: number;
+  /** Quem cancelou (`buyer`/`seller`/`system`, com variações de caixa e texto) e o motivo. */
+  cancel_by?: string;
+  cancel_reason?: string;
+  package_list?: { logistics_status?: string }[];
+}
+
+/** "Buyer"/"Seller"/"Backend system"… da Shopee → comprador, vendedor ou sistema (qualquer outro). */
+export function quemCancelou(cancelBy: string | undefined | null): "comprador" | "vendedor" | "sistema" | null {
+  const t = (cancelBy ?? "").trim();
+  if (!t) return null;
+  if (/buyer|comprador/i.test(t)) return "comprador";
+  if (/seller|vendedor/i.test(t)) return "vendedor";
+  return "sistema";
+}
+
+/**
+ * Entrega: `TO_CONFIRM_RECEIVE` é o pedido que a transportadora já entregou, esperando o comprador
+ * confirmar o recebimento; `LOGISTICS_DELIVERY_DONE` no pacote diz o mesmo antes disso. A hora é o
+ * `update_time` da Shopee (a mudança de status); sem ele, o pagamento ou a criação. Pedido concluído não precisa:
+ * a etapa Concluído já diz mais.
+ */
+function entregaDoPedido(p: PedidoApi, status: StatusMarketplace): string | null {
+  const entregue = p.order_status === "TO_CONFIRM_RECEIVE" || (status === "enviado" && (p.package_list ?? []).some((k) => k.logistics_status === "LOGISTICS_DELIVERY_DONE"));
+  // Sem `update_time`, uma data que não muda a cada sincronização (a RPC regrava o campo).
+  return entregue ? (iso(p.update_time) ?? iso(p.pay_time) ?? iso(p.create_time)) : null;
 }
 
 /**
@@ -305,6 +331,9 @@ export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null, liberadoEm: strin
     rastreio: null,
     logistica: p.shipping_carrier?.trim() || null,
     prazoEnvio: iso(p.ship_by_date),
+    entregueEm: entregaDoPedido(p, status),
+    canceladoPor: status === "cancelado" ? quemCancelou(p.cancel_by) : null,
+    motivoCancelamento: status === "cancelado" ? p.cancel_reason?.trim() || null : null,
     itens,
     subtotal,
     descontoVendedor,
@@ -390,7 +419,7 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
     const lote = numeros.slice(i, i + 50);
     const d = await getLoja(c, "/api/v2/order/get_order_detail", token, shopId, {
       order_sn_list: lote.join(","),
-      response_optional_fields: "buyer_username,item_list,recipient_address,pay_time,shipping_carrier",
+      response_optional_fields: "buyer_username,item_list,recipient_address,pay_time,shipping_carrier,package_list",
     });
     const lista = (d.order_list as PedidoApi[] | undefined) ?? [];
     // Escrow é um GET por pedido: de 5 em 5 em vez de um por vez. Escrow que falha não

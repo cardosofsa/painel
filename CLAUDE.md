@@ -16,7 +16,7 @@ Stack: Next.js 16 (App Router, Turbopack) + React 19 + TypeScript `strict`, Supa
 **Chave anônima por padrão; service role só em rota de servidor sem sessão.** Telas e Server
 Actions usam a anon key + RLS. A `SUPABASE_SERVICE_ROLE_KEY` existe e passa só por
 `clienteServico()` (`lib/supabase/servico.ts`), usada onde não há usuário logado: cron da
-Shopee (`app/api/cron/shopee`), webhooks (`api/mercadolivre/notificacoes`, `api/cobranca/webhook`)
+Shopee (`app/api/cron/shopee`), fechamento mensal (`app/api/cron/fechamento`) e backup, webhooks (`api/mercadolivre/notificacoes`, `api/cobranca/webhook`)
 e a vitrine pública (`api/vitrine/frete`, `api/vitrine/pedido`). Ela ignora RLS: toda consulta
 ali filtra `user_id` explicitamente. **Nunca** use `clienteServico()` em tela ou Server Action
 de usuário logado — lá a trava é o RLS.

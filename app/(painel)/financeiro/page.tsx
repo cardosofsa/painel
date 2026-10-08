@@ -1,7 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
-import { eRepasseMarketplace } from "@/lib/repasse-marketplace";
+import { eRepasseMarketplace, lerRepasse } from "@/lib/repasse-marketplace";
+import { montarEntradaProjecao, repassesConcluidos, type PedidoMkt } from "@/lib/projecao-dados";
+import { fimDoMes, projetarSaldo } from "@/lib/saldo-projetado";
+import { iaDisponivelParaConta } from "@/lib/ia/resolver";
+import { listarFechamentos } from "@/lib/fechamento-servidor";
+import { buscarEmLotes } from "@/lib/lotes";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
-import { hojeIsoBrasil, hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil, hojeIsoLocal, somarDiasIso } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { carregarCrediario } from "@/lib/crediario-servidor";
 import type { GastoAnuncio } from "@/components/financeiro/AbaResultado";
@@ -82,6 +88,26 @@ const RESUMO_VAZIO: ResumoFinanceiro = {
 // Brasília, já apontava para o dia seguinte — deslocando toda a janela de consulta.
 const isoDate = hojeIsoLocal;
 
+const COLUNAS_CONTAS = "*, vendas(numero, total_parcelas_fiado), pedidos_compra(numero, fornecedores(nome)), clientes(nome)";
+
+/**
+ * Contas a pagar/receber: TODAS as pendentes (em lotes, porque o PostgREST corta em 1.000 linhas e,
+ * ordenadas por vencimento, o corte levava justamente o que vence depois — o que a projeção mais precisa)
+ * mais as quitadas mais recentes, para o filtro "Pagos".
+ */
+async function carregarContasPagarReceber(supabase: SupabaseClient) {
+  const [pendentes, quitadas] = await Promise.all([
+    buscarEmLotes((de, ate) =>
+      // `*`: valor_pago, data_pagamento e parcela só existem a partir da 0064.
+      supabase.from("contas_a_pagar_receber").select(COLUNAS_CONTAS, { count: "exact" }).eq("status", "pendente").order("data_vencimento").order("id").range(de, ate),
+    { maximo: 20000 },
+    ),
+    supabase.from("contas_a_pagar_receber").select(COLUNAS_CONTAS).neq("status", "pendente").order("data_vencimento", { ascending: false }).limit(500),
+  ]);
+  const data = [...pendentes.data, ...(quitadas.error ? [] : (quitadas.data ?? []))].sort((a, b) => String((a as { data_vencimento: string }).data_vencimento).localeCompare(String((b as { data_vencimento: string }).data_vencimento)));
+  return { data, error: pendentes.error ?? quitadas.error };
+}
+
 export default async function FinanceiroPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
   const { aba } = await searchParams;
   const supabase = await createClient();
@@ -108,11 +134,15 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     dreRes,
     gastosRes,
     lojasRes,
-    repassesRes,
     fornecedoresRes,
     clientesRes,
     fixasPagasRes,
     parcelasCalRes,
+    userRes,
+    iaDisponivel,
+    pedidosMktRes,
+    diasLojasRes,
+    parcelasPendRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -121,11 +151,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .order("data_movimentacao", { ascending: false })
       .limit(100),
     supabase.from("despesas_fixas").select("id, nome, metodo, valor, dia_vencimento, conta_id, criado_em").order("dia_vencimento"),
-    supabase
-      .from("contas_a_pagar_receber")
-      // `*`: valor_pago, data_pagamento e parcela só existem a partir da 0064.
-      .select("*, vendas(numero, total_parcelas_fiado), pedidos_compra(numero, fornecedores(nome)), clientes(nome)")
-      .order("data_vencimento"),
+    carregarContasPagarReceber(supabase),
     supabase
       .from("movimentacoes_financeiras")
       .select("data_movimentacao, valor")
@@ -156,14 +182,6 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     supabase.rpc("dre_mensal", { p_inicio: hojeIsoLocal(new Date(hoje.getFullYear(), hoje.getMonth() - 5, 1)), p_fim: hojeIsoLocal(hoje) }),
     supabase.from("gastos_anuncios").select("id, periodo_inicio, periodo_fim, canal, campanha, valor, pedidos, vendas, origem").order("periodo_fim", { ascending: false }).limit(200),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
-    // Repasses: pedidos pagos dos últimos ~4 meses. `*`: repasse_recebido só a partir da 0066.
-    supabase
-      .from("pedidos_marketplace")
-      .select("*")
-      .not("status", "in", "(cancelado,nao_pago,devolvido)")
-      .gte("pago_em", new Date(hoje.getTime() - 120 * 86_400_000).toISOString())
-      .order("pago_em", { ascending: false })
-      .limit(1000),
     // Para "Lançar dívida antiga" (0067) e para dar nome a conta ligada direto a eles.
     supabase.from("fornecedores").select("id, nome").order("nome"),
     // Só o seletor da dívida antiga usa esta lista — e só cliente ativo, como no PDV. O
@@ -183,17 +201,32 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .select("id, numero, total_parcelas, valor, valor_pago, data_vencimento, status, vendas(numero, cliente_nome, status)")
       .gte("data_vencimento", hojeIsoLocal(new Date(hoje.getFullYear() - 1, hoje.getMonth(), 1)))
       .limit(2000),
+    supabase.auth.getUser(),
+    iaDisponivelParaConta(supabase),
+    // Pedidos concluídos dos últimos ~4 meses: a data real de liberação (0085) e a loja de cada repasse.
+    // Falha aqui só tira a precisão da data prevista (vale o prazo padrão), não derruba a tela.
+    supabase
+      .from("pedidos_marketplace")
+      .select("id, loja_id, escrow_liberado_em")
+      .eq("status", "concluido")
+      .gte("pago_em", new Date(hoje.getTime() - 120 * 86_400_000).toISOString())
+      .limit(1000),
+    // 0089: prazo de liberação por loja. Sem a migração a consulta falha e vale o padrão (7 dias).
+    supabase.from("lojas_canal").select("id, dias_liberacao_repasse"),
+    // Parcelas de crediário ainda por receber, TODAS (o calendário acima traz só a janela e corta em 1.000).
+    buscarEmLotes((de, ate) =>
+      supabase.from("venda_parcelas").select("status, valor, valor_pago, data_vencimento, vendas(status)", { count: "exact" }).eq("status", "pendente").order("data_vencimento").order("id").range(de, ate),
+    { maximo: 20000 },
+    ),
   ]);
+  // Histórico mensal (0088): sem a migração ou sem sessão, a lista fica vazia e a tela segue.
+  const fechamentos = userRes.data.user ? await listarFechamentos(supabase, userRes.data.user.id) : [];
   const fornecedores = (fornecedoresRes.data ?? []) as { id: string; nome: string }[];
   const clientes = (clientesRes.data ?? []) as { id: string; nome: string }[];
   const nomeFornecedor = new Map(fornecedores.map((f) => [f.id, f.nome]));
   const nomeCliente = new Map(clientes.map((c) => [c.id, c.nome]));
 
   const lojasMarketplace = ((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => ({ id: l.id, nome: l.nome, canal: l.canais?.nome ?? "Loja" }));
-  const nomeLoja = new Map(lojasMarketplace.map((l) => [l.id, `${l.canal} · ${l.nome}`]));
-  const linhasRepasse = (repassesRes.data ?? []) as Record<string, unknown>[];
-  // Sem a 0066 a coluna não vem: a aba explica em vez de mostrar tudo como "aguardando".
-  const repassesOk = !repassesRes.error && !dreRes.error && (linhasRepasse.length === 0 || "repasse_recebido" in linhasRepasse[0]);
 
   // Só as consultas ESSENCIAIS derrubam a tela. Antes eram 11 `throw`: uma falha em
   // `precificacoes` — que alimenta apenas o card de erosão de margem — apagava saldo, fluxo
@@ -253,6 +286,40 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     referencia_despesa_fixa_id: m.referencia_despesa_fixa_id,
   }));
 
+  // Saldo projetado (mesma função do cron de fechamento): contas com data, crediário por parcela,
+  // despesas fixas ainda não pagas e repasses de pedidos concluídos com data prevista.
+  const hojeBr = hojeIsoBrasil();
+  const pedidosMkt = new Map<string, PedidoMkt>(
+    ((pedidosMktRes.error ? [] : (pedidosMktRes.data ?? [])) as { id: string; loja_id: string | null; escrow_liberado_em: string | null }[]).map((p) => [p.id, { loja_id: p.loja_id, escrow_liberado_em: p.escrow_liberado_em }]),
+  );
+  const diasPorLoja = Object.fromEntries(((diasLojasRes.error ? [] : (diasLojasRes.data ?? [])) as { id: string; dias_liberacao_repasse: number }[]).map((l) => [l.id, l.dias_liberacao_repasse]));
+  const linhasCpr = ((cprRes.data ?? []) as unknown as LinhaCpr[]).map((c) => ({
+    id: c.id,
+    tipo: c.tipo,
+    descricao: c.descricao,
+    valor: Number(c.valor),
+    valor_pago: Number(c.valor_pago ?? (c.status === "pendente" ? 0 : c.valor)),
+    status: c.status,
+    data_vencimento: c.data_vencimento,
+    aguardando_liberacao: c.aguardando_liberacao,
+    referencia_pedido_marketplace_id: c.referencia_pedido_marketplace_id,
+    total_parcelas_fiado: c.vendas?.total_parcelas_fiado ?? null,
+  }));
+  const dadosProjecao = {
+    saldoAtual: (contasRes.data ?? []).reduce((s, c) => s + Number(c.saldo), 0),
+    hoje: hojeBr,
+    contas: linhasCpr,
+    parcelas: ((parcelasPendRes.error ? [] : parcelasPendRes.data) as unknown as { status: string; valor: number; valor_pago: number | null; data_vencimento: string; vendas: { status: string } | null }[]).map((p) => ({ ...p, valor: Number(p.valor) })),
+    despesasFixas: (despesasRes.data ?? []) as { id: string; nome: string; valor: number; dia_vencimento: number; criado_em: string | null }[],
+    pagamentosFixas: ((fixasPagasRes.error ? [] : fixasPagasRes.data) ?? []).map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
+    pedidos: pedidosMkt,
+    diasPorLoja,
+  };
+  const entradaProjecao = montarEntradaProjecao(dadosProjecao);
+  const projecaoMes = projetarSaldo(entradaProjecao, fimDoMes(hojeBr));
+  const projecao30Dias = projetarSaldo(entradaProjecao, somarDiasIso(hojeBr, 30));
+  const previstoDoRepasse = new Map(repassesConcluidos(linhasCpr, pedidosMkt, diasPorLoja).map((r) => [r.id, r.previsto]));
+
   const contasPagarReceber: ContaPagarReceber[] = ((cprRes.data ?? []) as unknown as LinhaCpr[]).map((c) => ({
     id: c.id,
     tipo: c.tipo,
@@ -277,6 +344,9 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     cliente_nome: c.clientes?.nome ?? (c.cliente_id ? (nomeCliente.get(c.cliente_id) ?? null) : null),
     aguardando_liberacao: !!c.aguardando_liberacao,
     repasse_marketplace: eRepasseMarketplace(c),
+    repasse_previsto: previstoDoRepasse.get(c.id) ?? null,
+    repasse_loja: lerRepasse(c.descricao)?.loja ?? null,
+    repasse_pedido: lerRepasse(c.descricao)?.pedido ?? null,
   }));
 
   // Calendário de contas: contas, parcelas de crediário e despesas fixas projetadas
@@ -284,7 +354,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   type ParcelaCal = { id: string; numero: number; total_parcelas: number; valor: number; valor_pago: number | null; data_vencimento: string; status: string; vendas: { numero: string; cliente_nome: string | null; status: string } | null };
   const calendarioContas: ContaCalendarioFonte[] = [
     ...contasPagarReceber
-      .filter((c) => (c.total_parcelas_fiado ?? 1) <= 1 && !c.aguardando_liberacao)
+      .filter((c) => (c.total_parcelas_fiado ?? 1) <= 1 && !c.repasse_marketplace)
       .map((c) => ({
         id: c.id,
         tipo: c.tipo,
@@ -399,21 +469,13 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       gastosAnuncios={((gastosRes.data ?? []) as GastoAnuncio[]).map((g) => ({ ...g, valor: Number(g.valor), vendas: g.vendas == null ? null : Number(g.vendas) }))}
       lojasMarketplace={lojasMarketplace}
       anunciosOk={!gastosRes.error && !dreRes.error}
-      repasses={linhasRepasse.map((p) => ({
-        id: String(p.id),
-        numero: String(p.numero),
-        loja: nomeLoja.get(String(p.loja_id)) ?? "Marketplace",
-        pago_em: (p.pago_em as string | null) ?? null,
-        repasse: Number(p.repasse ?? 0),
-        repasse_recebido: p.repasse_recebido == null ? null : Number(p.repasse_recebido),
-        repasse_recebido_em: (p.repasse_recebido_em as string | null) ?? null,
-        status: (p.status as string | null) ?? null,
-        escrow_liberado_em: (p.escrow_liberado_em as string | null) ?? null,
-      }))}
-      repassesOk={repassesOk}
       fornecedores={fornecedores}
       clientes={clientes}
       calendarioContas={calendarioContas}
+      fechamentos={fechamentos}
+      projecaoMes={projecaoMes}
+      projecao30Dias={projecao30Dias}
+      iaDisponivel={iaDisponivel}
       hoje={hojeIsoBrasil()}
     />
   );

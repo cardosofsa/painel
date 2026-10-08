@@ -194,3 +194,10 @@ string à mão — já esteve duplicada em 17 lugares, todos sem o `transition-c
    novo vê primeiro, e `<p>` avulso colapsa o card para 60px ao lado de um de 300px.
 8. Formulário dentro de modal que precisa refletir o item selecionado leva `key` **no
    componente que tem o `useState`**, não no `<Modal>` interno.
+9. **O layout do painel não espera por dado de tela.** Só o que a navegação precisa (papel e
+   abas, vindos do middleware) é aguardado; sino, plano e avisos chegam em `<Suspense>`
+   (`components/layout/TopBarServidor.tsx`). Consulta nova no layout vai para dentro dele.
+10. **Cada página mostra poucas coisas por vez**: no máximo 2 botões de ação no cabeçalho
+    (o resto vai num menu ou dentro da tela) e abas só para o que o iniciante usa todo dia.
+11. **Movimento entre páginas é o esmaecer do `template.tsx`** (View Transitions, ~220ms, desligado em
+    `prefers-reduced-motion`). Não crie animação própria de troca de rota.

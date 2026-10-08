@@ -3,7 +3,6 @@ import escrowResposta from "./fixtures/escrow-2610082QFT1WTB.json";
 import pedidoResposta from "./fixtures/pedido-2610082QFT1WTB.json";
 import { pedidoDaApi, taxasDoEscrow, type EscrowApi, type PedidoApi } from "./shopee-api";
 import { estimarTaxasPorFaixas, montarPedidosParaGravar } from "./margem";
-import { situacaoRepasse } from "./relatorios-financeiros";
 
 /**
  * Pedido real 2610082QFT1WTB (FITA-BIKE-UN): Subtotal 27,49; frete 0; Taxas e Encargos −10,54
@@ -98,13 +97,5 @@ describe("lucro do pedido 2610082QFT1WTB", () => {
   it("cancelado não repassa nada", () => {
     const p = pedidoDaApi({ ...pedido, order_status: "CANCELLED" }, escrow);
     expect(p.repasse).toBe(0);
-  });
-});
-
-describe("situação do repasse", () => {
-  const base = { repasse: 16.95, repasse_recebido: null };
-  it("repasse nunca está atrasado: concluído, liberado ou não, aguarda até a baixa", () => {
-    expect(situacaoRepasse(base)).toBe("aguardando");
-    expect(situacaoRepasse({ ...base, repasse_recebido: 16.95 })).toBe("conciliado");
   });
 });

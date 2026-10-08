@@ -33,7 +33,7 @@ Variáveis de ambiente (em `.env.local`):
 | `ACESSO_SEGREDO` | Opcional. Assina o cookie de acesso do middleware (sem ela, usa `IA_CHAVE_COFRE`) |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Opcional. Liga o captcha (Cloudflare Turnstile) no login, cadastro e recuperação — ver `docs/seguranca-login.md` antes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Só servidor. Cron, webhooks e vitrine pública (frete e pedido). Sem ela, esses recursos ficam desligados |
-| `CRON_SECRET` | Protege `/api/cron/shopee` (sincronização automática) |
+| `CRON_SECRET` | Protege `/api/cron/shopee` (sincronização automática), `/api/cron/fechamento` (foto diária do saldo e fechamento do mês) e `/api/cron/backup` |
 | `SHOPEE_PARTNER_ID`, `SHOPEE_PARTNER_KEY`, `SHOPEE_AMBIENTE`, `SHOPEE_HOST` | API da Shopee (ver `docs/shopee-api.md`) |
 | `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | API do Mercado Livre (ver `docs/mercadolivre-api.md`) |
 | `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `ASAAS_AMBIENTE` | Opcionais. Cobrança automática das assinaturas pelo Asaas (`ASAAS_AMBIENTE=sandbox` para testes) — ver `docs/cobranca-asaas.md`. Sem as duas primeiras, o plano segue por pedido + ativação manual |

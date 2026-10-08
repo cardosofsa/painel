@@ -1,10 +1,9 @@
 /**
  * Calendário de contas do Financeiro: só o que vence — a pagar (contas, parcelas de compra,
- * dívidas e despesas fixas projetadas) e a receber (contas, parcelas de crediário e
- * repasses de marketplace). Puro; coberto por `calendario-contas.test.ts`.
+ * dívidas e despesas fixas projetadas) e a receber (contas e parcelas de crediário). Puro; coberto por `calendario-contas.test.ts`.
  */
 
-import { lerRepasse, type RepasseLidoDaConta } from "./calendario-dashboard";
+import { eRepasseMarketplace } from "./repasse-marketplace";
 
 export type StatusContaCalendario = "pendente" | "vencida" | "paga";
 export type OrigemContaCalendario = "conta" | "parcela" | "fixa";
@@ -19,7 +18,6 @@ export interface ContaCalendario {
   data: string;
   status: StatusContaCalendario;
   origem: OrigemContaCalendario;
-  repasse?: RepasseLidoDaConta | null;
 }
 
 /** Entrada crua: `quitada` = pago/recebido; `valorAberto` = o que falta. */
@@ -60,6 +58,8 @@ export function contasDoMes(fontes: ContaCalendarioFonte[], ano: number, mes: nu
   for (const f of fontes) {
     const data = f.data_vencimento.slice(0, 10);
     if (!data.startsWith(prefixo)) continue;
+    // Repasse de marketplace não é conta com data: é liberado pela plataforma. Não entra no calendário.
+    if (eRepasseMarketplace({ tipo: f.tipo, descricao: f.descricao })) continue;
     const status = statusDaConta(f.quitada, data, hoje);
     const valor = centavos(status === "paga" ? f.valor : f.valorAberto);
     if (valor <= 0.004 && status !== "paga") continue;
@@ -71,7 +71,6 @@ export function contasDoMes(fontes: ContaCalendarioFonte[], ano: number, mes: nu
       data,
       status,
       origem: f.origem,
-      repasse: f.tipo === "receber" ? lerRepasse(f.descricao) : null,
     });
   }
   const ordemStatus = { vencida: 0, pendente: 1, paga: 2 } as const;

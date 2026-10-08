@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { agruparRepasses, eventosDoMes, lerRepasse, gradeDoMes, proximosEventos, CAMADAS_PADRAO, type FontesMes } from "./calendario-dashboard";
+import { eventosDoMes, gradeDoMes, proximosEventos, CAMADAS_PADRAO, type FontesMes } from "./calendario-dashboard";
 
 const base: FontesMes = {
   ano: 2026,
@@ -84,50 +84,15 @@ describe("proximosEventos", () => {
 });
 
 describe("repasses de marketplace", () => {
-  const repasse = (id: string, loja: string, pedido: string, valor: number) => ({
-    id,
-    tipo: "receber" as const,
-    descricao: `Repasse ${loja} — pedido ${pedido}`,
-    valor,
-    data_vencimento: "2026-10-22",
-  });
-  const ev = eventosDoMes({
-    ...base,
-    contas: [
-      repasse("a1", "Cardoso e-Shop", "250101A", 10.5),
-      repasse("a2", "Cardoso e-Shop", "250101B", 20.25),
-      { id: "x", tipo: "receber", descricao: "Crediário — venda V-0002", valor: 50, data_vencimento: "2026-10-22" },
-      repasse("b1", "Loja Dois", "250101C", 5),
-      repasse("b2", "Loja Dois", "250101D", 7),
-    ],
-  })["2026-10-22"];
-
-  it("lê loja e pedido da descrição, inclusive no formato antigo", () => {
-    expect(lerRepasse("Repasse Cardoso e-Shop — pedido 2501ABC")).toEqual({ loja: "Cardoso e-Shop", pedido: "2501ABC" });
-    expect(lerRepasse("Repasse Shopee Cardoso e-Shop — pedido 2501ABC")).toEqual({ loja: "Cardoso e-Shop", pedido: "2501ABC" });
-    expect(lerRepasse("Crediário — venda V-0001")).toBeNull();
-  });
-
-  it("na célula do mês, todos os repasses do dia viram um item só com o total", () => {
-    const itens = agruparRepasses(ev);
-    const grupos = itens.filter((i) => i.tipo === "repasses");
-    expect(grupos).toHaveLength(1);
-    expect(grupos[0].tipo === "repasses" && grupos[0].eventos).toHaveLength(4);
-    expect(grupos[0].tipo === "repasses" && grupos[0].total).toBe(42.75);
-    // A conta que não é repasse continua sozinha.
-    expect(itens.some((i) => i.tipo === "evento" && i.evento.titulo.startsWith("Crediário"))).toBe(true);
-  });
-
-  it("na lista do dia, um grupo por loja", () => {
-    const grupos = agruparRepasses(ev, true).filter((i) => i.tipo === "repasses");
-    expect(grupos.map((g) => g.tipo === "repasses" && [g.loja, g.eventos.length, g.total])).toEqual([
-      ["Cardoso e-Shop", 2, 30.75],
-      ["Loja Dois", 2, 12],
-    ]);
-  });
-
-  it("repasse sozinho continua como evento", () => {
-    const itens = agruparRepasses(ev.filter((e) => e.origemId !== "a2" && e.origemId !== "b2"), true);
-    expect(itens.every((i) => i.tipo === "evento")).toBe(true);
+  it("não aparecem no calendário; as outras contas a receber continuam", () => {
+    const ev = eventosDoMes({
+      ...base,
+      contas: [
+        { id: "a1", tipo: "receber", descricao: "Repasse Cardoso e-Shop — pedido 250101A", valor: 10.5, data_vencimento: "2026-10-22" },
+        { id: "a2", tipo: "receber", descricao: "Repasse Shopee Loja Dois — pedido 250101B", valor: 20, data_vencimento: "2026-10-22" },
+        { id: "x", tipo: "receber", descricao: "Crediário — venda V-0002", valor: 50, data_vencimento: "2026-10-22" },
+      ],
+    })["2026-10-22"];
+    expect(ev.map((e) => e.origemId)).toEqual(["x"]);
   });
 });

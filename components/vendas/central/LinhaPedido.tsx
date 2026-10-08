@@ -19,6 +19,7 @@ const TOM_ETAPA: Record<PedidoCentral["etapa"], string> = {
   imprimir: "text-accent",
   enviar: "text-accent",
   enviado: "text-text-primary",
+  entregue: "text-text-primary",
   concluido: "text-positive",
   cancelado: "text-negative",
 };
@@ -154,7 +155,7 @@ export function LinhaPedido({
               {dataHora(p.pagoEm)}
             </div>
           )}
-          {p.prazoEnvio && !cancelado && p.etapa !== "concluido" && p.etapa !== "enviado" && (
+          {p.prazoEnvio && !cancelado && p.etapa !== "concluido" && p.etapa !== "enviado" && p.etapa !== "entregue" && (
             <div className="text-negative">
               <span>Enviar até </span>
               {dataHora(p.prazoEnvio)}

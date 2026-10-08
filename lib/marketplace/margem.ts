@@ -102,6 +102,10 @@ export interface PedidoParaGravar {
   rastreio: string | null;
   logistica: string | null;
   prazo_envio: string | null;
+  /** 0091: gravados por `atualizar_situacao_marketplace`, não pela importação (que ignora estas chaves). */
+  entregue_em?: string | null;
+  cancelado_por?: "comprador" | "vendedor" | "sistema" | null;
+  motivo_cancelamento?: string | null;
   subtotal: number;
   desconto_vendedor: number;
   cupom_vendedor: number;
@@ -187,6 +191,9 @@ export function montarPedidosParaGravar(
       rastreio: p.rastreio,
       logistica: p.logistica,
       prazo_envio: p.prazoEnvio,
+      entregue_em: p.entregueEm ?? null,
+      cancelado_por: p.canceladoPor ?? null,
+      motivo_cancelamento: p.motivoCancelamento ?? null,
       subtotal: p.subtotal,
       desconto_vendedor: p.descontoVendedor,
       cupom_vendedor: p.cupomVendedor,
