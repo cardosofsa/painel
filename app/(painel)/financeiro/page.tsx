@@ -119,6 +119,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     userRes,
     iaDisponivel,
     pedidosMktRes,
+    diasLojasRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -191,6 +192,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .eq("status", "concluido")
       .gte("pago_em", new Date(hoje.getTime() - 120 * 86_400_000).toISOString())
       .limit(1000),
+    // 0089: prazo de liberação por loja. Sem a migração a consulta falha e vale o padrão (7 dias).
+    supabase.from("lojas_canal").select("id, dias_liberacao_repasse"),
   ]);
   // Histórico mensal (0088): sem a migração ou sem sessão, a lista fica vazia e a tela segue.
   const fechamentos = userRes.data.user ? await listarFechamentos(supabase, userRes.data.user.id) : [];
@@ -265,6 +268,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const pedidosMkt = new Map<string, PedidoMkt>(
     ((pedidosMktRes.error ? [] : (pedidosMktRes.data ?? [])) as { id: string; loja_id: string | null; escrow_liberado_em: string | null }[]).map((p) => [p.id, { loja_id: p.loja_id, escrow_liberado_em: p.escrow_liberado_em }]),
   );
+  const diasPorLoja = Object.fromEntries(((diasLojasRes.error ? [] : (diasLojasRes.data ?? [])) as { id: string; dias_liberacao_repasse: number }[]).map((l) => [l.id, l.dias_liberacao_repasse]));
   const linhasCpr = ((cprRes.data ?? []) as unknown as LinhaCpr[]).map((c) => ({
     id: c.id,
     tipo: c.tipo,
@@ -285,11 +289,12 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     despesasFixas: (despesasRes.data ?? []) as { id: string; nome: string; valor: number; dia_vencimento: number; criado_em: string | null }[],
     pagamentosFixas: ((fixasPagasRes.error ? [] : fixasPagasRes.data) ?? []).map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
     pedidos: pedidosMkt,
+    diasPorLoja,
   };
   const entradaProjecao = montarEntradaProjecao(dadosProjecao);
   const projecaoMes = projetarSaldo(entradaProjecao, fimDoMes(hojeBr));
   const projecao30Dias = projetarSaldo(entradaProjecao, somarDiasIso(hojeBr, 30));
-  const previstoDoRepasse = new Map(repassesConcluidos(linhasCpr, pedidosMkt).map((r) => [r.id, r.previsto]));
+  const previstoDoRepasse = new Map(repassesConcluidos(linhasCpr, pedidosMkt, diasPorLoja).map((r) => [r.id, r.previsto]));
 
   const contasPagarReceber: ContaPagarReceber[] = ((cprRes.data ?? []) as unknown as LinhaCpr[]).map((c) => ({
     id: c.id,

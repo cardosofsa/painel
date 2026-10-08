@@ -144,6 +144,7 @@ export const lojaSchema = z.object({
   taxa_fixa: dinheiroOpcional,
   taxa_extra_valor: dinheiroOpcional,
   taxa_extra_tipo: z.enum(["percentual", "fixo"]).nullable(),
+  dias_liberacao_repasse: z.number().int("Use dias inteiros").min(0, "Mínimo 0 dia").max(60, "Máximo 60 dias").optional(),
 });
 
 /** Limites de texto do canal (0037). Mesmos intervalos do check do banco; null = sem limite próprio. */
@@ -715,6 +716,14 @@ export const gastosAnunciosSchema = z
       .max(2000, "Linhas demais de uma vez"),
   })
   .refine((v) => v.periodo_fim >= v.periodo_inicio, { message: "O fim do período vem antes do início", path: ["periodo_fim"] });
+
+/** Saque do marketplace para o banco (0089). */
+export const saqueMarketplaceSchema = z.object({
+  loja_id: uuid,
+  valor: z.number().finite().positive("Informe o valor que caiu na conta").max(10_000_000, "Valor alto demais"),
+  conta_id: uuid,
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+});
 
 /** Mês do fechamento (sempre o primeiro dia): o relatório de IA do Financeiro (0088). */
 export const relatorioMesSchema = z.object({ mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/, "Mês inválido") });

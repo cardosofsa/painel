@@ -49,7 +49,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     return <MasterConfiguracoesClient email={user?.email ?? ""} planos={planosRes.error ? null : ((planosRes.data ?? []) as Plano[])} />;
   }
 
-  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes, conexoesRes, pinAdmin] =
+  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes, conexoesRes, pinAdmin, diasRes] =
     await Promise.all([
       // `*`: `tipo` só existe a partir da 0042.
       supabase.from("categorias").select("*").order("nome"),
@@ -79,6 +79,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       supabase.from("marketplace_conexoes").select("*"),
       // Só SE existe PIN: o hash não sai do banco (0081).
       temPinAdmin(supabase),
+      // 0089: prazo de liberação do repasse por loja. Sem a migração a consulta falha e o campo some.
+      supabase.from("lojas_canal").select("id, dias_liberacao_repasse"),
     ]);
 
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
@@ -90,8 +92,10 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   if (formasPagamentoRes.error) throw new Error(formasPagamentoRes.error.message);
   if (perfilRes.error) throw new Error(perfilRes.error.message);
 
+  const diasPorLoja = new Map(((diasRes.error ? [] : (diasRes.data ?? [])) as { id: string; dias_liberacao_repasse: number }[]).map((d) => [d.id, d.dias_liberacao_repasse]));
   const lojas: Loja[] = (lojasRes.data ?? []).map((l) => ({
     ...l,
+    prazo_liberacao: diasPorLoja.get(l.id) ?? null,
     logo_url: l.logo_path ? supabase.storage.from("canais-logos").getPublicUrl(l.logo_path).data.publicUrl : null,
   }));
 

@@ -42,6 +42,7 @@ import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
 import { AnaliseMesModal } from "@/components/financeiro/AnaliseMesModal";
+import { SaqueMarketplaceModal } from "@/components/financeiro/SaqueMarketplaceModal";
 import { inicioDoMes, type Projecao } from "@/lib/saldo-projetado";
 import { agruparRepassesPorLoja } from "@/lib/repasse-marketplace";
 import { rotuloMes, type FechamentoMes } from "@/lib/fechamento-mensal";
@@ -217,6 +218,7 @@ export function FinanceiroClient({
   const [filtroReceber, setFiltroReceber] = useState<(typeof FILTROS_RECEBER)[number]>("Todos");
   const [modalMovimentacao, setModalMovimentacao] = useState(false);
   const [analiseAberta, setAnaliseAberta] = useState(false);
+  const [saque, setSaque] = useState<{ loja: string | null } | null>(null);
   const [modalDespesa, setModalDespesa] = useState(false);
   // Abre já do lado certo: o "+ Novo" de A receber abria em "A Pagar".
   const [modalCpr, setModalCpr] = useState<"pagar" | "receber" | null>(null);
@@ -309,7 +311,8 @@ export function FinanceiroClient({
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
-    if (c.aguardando_liberacao || (c.repasse_marketplace && c.status === "pendente")) return false;
+    // Repasse nunca é linha da lista: os a liberar viram resumo por loja e os baixados já estão no saque lançado.
+    if (c.aguardando_liberacao || c.repasse_marketplace) return false;
     if (filtroReceber === "Vencidos") return c.status === "pendente" && !c.repasse_marketplace && !c.aguardando_liberacao && c.data_vencimento < hojeIso;
     if (filtroReceber === "Crediário") return c.venda_id !== null || c.cliente_id !== null;
     if (filtroReceber === "Próximos 7 dias")
@@ -680,6 +683,11 @@ export function FinanceiroClient({
             </p>
           </div>
           <div className="flex gap-2">
+            {gruposRepasses.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => setSaque({ loja: null })}>
+                Registrei um saque
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => setDividaAntiga({ tipo: "receber" })}>
               Crediário antigo
             </Button>
@@ -1010,6 +1018,15 @@ export function FinanceiroClient({
         servidor aceitou: quando falhava, o modal continuava aberto e vazio e o usuário
         perdia tudo que tinha digitado.
       */}
+      {saque && (
+        <SaqueMarketplaceModal
+          lojas={lojasMarketplace}
+          contas={contas.map((c) => ({ id: c.id, nome: c.nome }))}
+          liberadoPorLoja={Object.fromEntries(gruposRepasses.map((g) => [g.loja, g.total]))}
+          lojaInicial={saque.loja}
+          onClose={() => setSaque(null)}
+        />
+      )}
       {analiseAberta && <AnaliseMesModal onClose={() => setAnaliseAberta(false)} fechamentos={fechamentos} mesAtual={inicioDoMes(hojeServidor ?? hojeIsoLocal())} iaDisponivel={iaDisponivel} />}
       <NovaMovimentacaoModal key={`mov-${modalMovimentacao}`} open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contas} onSave={adicionarMovimentacao} salvando={pending} />
       <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />

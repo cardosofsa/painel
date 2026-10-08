@@ -64,6 +64,8 @@ export interface LojaInput {
   taxa_fixa: number | null;
   taxa_extra_valor: number | null;
   taxa_extra_tipo: "percentual" | "fixo" | null;
+  /** 0089. Só vai no envio quando o dono mexeu no campo (antes da migração a coluna não existe). */
+  dias_liberacao_repasse?: number;
 }
 
 export async function criarLoja(dados: LojaInput) {

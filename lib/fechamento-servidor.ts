@@ -70,7 +70,7 @@ async function saldoAtualDasContas(supabase: SupabaseClient, userId: string): Pr
 async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: string, saldoAtual: number): Promise<DadosProjecao> {
   const inicioMes = inicioDoMes(hoje);
   const desde120 = new Date(Date.now() - 120 * 86_400_000).toISOString();
-  const [contas, parcelas, despesasFixas, pagas, pedidosRes] = await Promise.all([
+  const [contas, parcelas, despesasFixas, pagas, pedidosRes, diasRes] = await Promise.all([
     // `*`: valor_pago, aguardando_liberacao e referencia_pedido_marketplace_id só existem nas migrações novas.
     lerTodas<DadosProjecao["contas"][number] & { vendas?: { total_parcelas_fiado: number | null } | null }>((de, ate) =>
       supabase.from("contas_a_pagar_receber").select("*, vendas(total_parcelas_fiado)").eq("user_id", userId).eq("status", "pendente").order("id").range(de, ate),
@@ -91,6 +91,8 @@ async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: s
     ),
     // Falha aqui só tira a precisão da data prevista do repasse (vale o prazo padrão).
     supabase.from("pedidos_marketplace").select("id, loja_id, escrow_liberado_em").eq("user_id", userId).eq("status", "concluido").gte("pago_em", desde120).limit(1000),
+    // 0089: sem a migração a consulta falha e vale o prazo padrão.
+    supabase.from("lojas_canal").select("id, dias_liberacao_repasse").eq("user_id", userId),
   ]);
   const pedidos = new Map<string, PedidoMkt>(
     ((pedidosRes.error ? [] : (pedidosRes.data ?? [])) as { id: string; loja_id: string | null; escrow_liberado_em: string | null }[]).map((p) => [p.id, { loja_id: p.loja_id, escrow_liberado_em: p.escrow_liberado_em }]),
@@ -103,6 +105,7 @@ async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: s
     despesasFixas: despesasFixas.map((d) => ({ ...d, valor: Number(d.valor) })),
     pagamentosFixas: pagas.map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
     pedidos,
+    diasPorLoja: Object.fromEntries(((diasRes.error ? [] : (diasRes.data ?? [])) as { id: string; dias_liberacao_repasse: number }[]).map((l) => [l.id, l.dias_liberacao_repasse])),
   };
 }
 

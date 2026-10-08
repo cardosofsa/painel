@@ -69,6 +69,8 @@ export interface Canal {
 export interface Loja extends LojaInput {
   id: string;
   logo_url: string | null;
+  /** 0089; `null` = a migração ainda não foi aplicada (o campo não aparece). */
+  prazo_liberacao: number | null;
 }
 export interface Conta extends ContaInput {
   id: string;
