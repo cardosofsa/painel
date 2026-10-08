@@ -91,6 +91,8 @@ await db.exec(`set role anon`);
 await espera("anônimo não executa", () => db.query(`select atualizar_situacao_marketplace($1, '[]'::jsonb)`, [loja]), "permission denied");
 await db.exec(`reset role`);
 await espera("lista que não é array é recusada", () => sit(u, loja, {}), "no máximo");
+await q(`update perfis_acesso set status = 'suspenso' where user_id = $1`, [outro]);
+await espera("conta suspensa não grava", () => sit(outro, lojaO, [{ numero: "A1" }]), "sem acesso");
 
 await db.exec(await lerMigracao("0091_entregue_e_cancelamento.sql"));
 confere("0091 roda 2x sem erro e mantém os dados", (await um(`select etapa from vendas where id = $1`, [v1])).etapa === "entregue" && (await um(`select cancelado_por from pedidos_marketplace where numero = 'A2'`)).cancelado_por === "sistema");

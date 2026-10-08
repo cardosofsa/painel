@@ -4,6 +4,8 @@ import { montarEntradaProjecao, repassesConcluidos, type PedidoMkt } from "@/lib
 import { fimDoMes, projetarSaldo } from "@/lib/saldo-projetado";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { listarFechamentos } from "@/lib/fechamento-servidor";
+import { buscarEmLotes } from "@/lib/lotes";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
 import { hojeIsoBrasil, hojeIsoLocal, somarDiasIso } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
@@ -86,6 +88,26 @@ const RESUMO_VAZIO: ResumoFinanceiro = {
 // Brasília, já apontava para o dia seguinte — deslocando toda a janela de consulta.
 const isoDate = hojeIsoLocal;
 
+const COLUNAS_CONTAS = "*, vendas(numero, total_parcelas_fiado), pedidos_compra(numero, fornecedores(nome)), clientes(nome)";
+
+/**
+ * Contas a pagar/receber: TODAS as pendentes (em lotes, porque o PostgREST corta em 1.000 linhas e,
+ * ordenadas por vencimento, o corte levava justamente o que vence depois — o que a projeção mais precisa)
+ * mais as quitadas mais recentes, para o filtro "Pagos".
+ */
+async function carregarContasPagarReceber(supabase: SupabaseClient) {
+  const [pendentes, quitadas] = await Promise.all([
+    buscarEmLotes((de, ate) =>
+      // `*`: valor_pago, data_pagamento e parcela só existem a partir da 0064.
+      supabase.from("contas_a_pagar_receber").select(COLUNAS_CONTAS, { count: "exact" }).eq("status", "pendente").order("data_vencimento").order("id").range(de, ate),
+    { maximo: 20000 },
+    ),
+    supabase.from("contas_a_pagar_receber").select(COLUNAS_CONTAS).neq("status", "pendente").order("data_vencimento", { ascending: false }).limit(500),
+  ]);
+  const data = [...pendentes.data, ...(quitadas.error ? [] : (quitadas.data ?? []))].sort((a, b) => String((a as { data_vencimento: string }).data_vencimento).localeCompare(String((b as { data_vencimento: string }).data_vencimento)));
+  return { data, error: pendentes.error ?? quitadas.error };
+}
+
 export default async function FinanceiroPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
   const { aba } = await searchParams;
   const supabase = await createClient();
@@ -120,6 +142,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     iaDisponivel,
     pedidosMktRes,
     diasLojasRes,
+    parcelasPendRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -128,11 +151,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .order("data_movimentacao", { ascending: false })
       .limit(100),
     supabase.from("despesas_fixas").select("id, nome, metodo, valor, dia_vencimento, conta_id, criado_em").order("dia_vencimento"),
-    supabase
-      .from("contas_a_pagar_receber")
-      // `*`: valor_pago, data_pagamento e parcela só existem a partir da 0064.
-      .select("*, vendas(numero, total_parcelas_fiado), pedidos_compra(numero, fornecedores(nome)), clientes(nome)")
-      .order("data_vencimento"),
+    carregarContasPagarReceber(supabase),
     supabase
       .from("movimentacoes_financeiras")
       .select("data_movimentacao, valor")
@@ -194,6 +213,11 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .limit(1000),
     // 0089: prazo de liberação por loja. Sem a migração a consulta falha e vale o padrão (7 dias).
     supabase.from("lojas_canal").select("id, dias_liberacao_repasse"),
+    // Parcelas de crediário ainda por receber, TODAS (o calendário acima traz só a janela e corta em 1.000).
+    buscarEmLotes((de, ate) =>
+      supabase.from("venda_parcelas").select("status, valor, valor_pago, data_vencimento, vendas(status)", { count: "exact" }).eq("status", "pendente").order("data_vencimento").order("id").range(de, ate),
+    { maximo: 20000 },
+    ),
   ]);
   // Histórico mensal (0088): sem a migração ou sem sessão, a lista fica vazia e a tela segue.
   const fechamentos = userRes.data.user ? await listarFechamentos(supabase, userRes.data.user.id) : [];
@@ -285,7 +309,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     saldoAtual: (contasRes.data ?? []).reduce((s, c) => s + Number(c.saldo), 0),
     hoje: hojeBr,
     contas: linhasCpr,
-    parcelas: ((parcelasCalRes.error ? [] : (parcelasCalRes.data ?? [])) as unknown as { status: string; valor: number; valor_pago: number | null; data_vencimento: string; vendas: { status: string } | null }[]).map((p) => ({ ...p, valor: Number(p.valor) })),
+    parcelas: ((parcelasPendRes.error ? [] : parcelasPendRes.data) as unknown as { status: string; valor: number; valor_pago: number | null; data_vencimento: string; vendas: { status: string } | null }[]).map((p) => ({ ...p, valor: Number(p.valor) })),
     despesasFixas: (despesasRes.data ?? []) as { id: string; nome: string; valor: number; dia_vencimento: number; criado_em: string | null }[],
     pagamentosFixas: ((fixasPagasRes.error ? [] : fixasPagasRes.data) ?? []).map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
     pedidos: pedidosMkt,

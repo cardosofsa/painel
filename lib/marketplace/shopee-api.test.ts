@@ -102,6 +102,13 @@ describe("entrega e cancelamento (0091)", () => {
     expect(pedidoDaApi({ ...base, order_status: "TO_CONFIRM_RECEIVE" }, null).status).toBe("enviado");
     expect(pedidoDaApi(base, null).entregueEm).toBeNull();
   });
+  it("sem update_time, a data de entrega não muda a cada sincronização", () => {
+    const sem = { order_sn: "X", order_status: "TO_CONFIRM_RECEIVE", create_time: 1_760_000_000, pay_time: 1_760_000_500 };
+    const a = pedidoDaApi(sem, null).entregueEm;
+    expect(a).toBe("2025-10-09T09:01:40.000Z");
+    expect(pedidoDaApi(sem, null).entregueEm).toBe(a);
+    expect(pedidoDaApi({ order_sn: "X", order_status: "TO_CONFIRM_RECEIVE" }, null).entregueEm).toBeNull();
+  });
   it("pacote com LOGISTICS_DELIVERY_DONE também marca entrega, mas só enquanto está enviado", () => {
     const pacote = { package_list: [{ logistics_status: "LOGISTICS_DELIVERY_DONE" }] };
     expect(pedidoDaApi({ ...base, ...pacote }, null).entregueEm).not.toBeNull();

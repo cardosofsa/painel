@@ -21,7 +21,8 @@ export async function carregarRetornos(supabase: SupabaseClient, dias: number, l
     buscarEmLotes((de, ate) =>
       supabase
         .from("retornos_marketplace")
-        .select("*", { count: "exact" })
+        // Sem `bruto` (o payload inteiro): a tela não o usa e ele iria no RSC de /vendas.
+        .select("id, loja_id, return_sn, numero_pedido, status, motivo, valor_reembolso, comprador, rastreio, itens, criado_em_plataforma, prazo_resposta", { count: "exact" })
         .gte("criado_em_plataforma", desde)
         .order("criado_em_plataforma", { ascending: false })
         .order("id")

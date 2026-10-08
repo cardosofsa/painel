@@ -501,7 +501,7 @@ export function FinanceiroClient({
         <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
           <div>
             <h2 className="text-base font-semibold text-text-primary mb-1">Projeção de Fluxo de Caixa</h2>
-            <p className="text-xs text-text-tertiary">Saldo atual das contas somado ao que ainda está previsto entrar e sair até o fim de {rotuloMes(inicioDoMes(hojeIso))}</p>
+            <p className="text-xs text-text-tertiary">Saldo atual das contas somado ao que ainda está previsto entrar e sair até o fim de {rotuloMes(inicioDoMes(hojeServidor ?? hojeIso))}</p>
           </div>
           <Button variant="secondary" size="sm" onClick={() => setAnaliseAberta(true)}>
             <History size={14} /> Histórico e análise

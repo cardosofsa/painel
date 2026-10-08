@@ -182,12 +182,13 @@ export function quemCancelou(cancelBy: string | undefined | null): "comprador" |
 /**
  * Entrega: `TO_CONFIRM_RECEIVE` é o pedido que a transportadora já entregou, esperando o comprador
  * confirmar o recebimento; `LOGISTICS_DELIVERY_DONE` no pacote diz o mesmo antes disso. A hora é o
- * `update_time` da Shopee (a mudança de status); sem ele, agora. Pedido concluído não precisa:
+ * `update_time` da Shopee (a mudança de status); sem ele, o pagamento ou a criação. Pedido concluído não precisa:
  * a etapa Concluído já diz mais.
  */
 function entregaDoPedido(p: PedidoApi, status: StatusMarketplace): string | null {
   const entregue = p.order_status === "TO_CONFIRM_RECEIVE" || (status === "enviado" && (p.package_list ?? []).some((k) => k.logistics_status === "LOGISTICS_DELIVERY_DONE"));
-  return entregue ? (iso(p.update_time) ?? new Date().toISOString()) : null;
+  // Sem `update_time`, uma data que não muda a cada sincronização (a RPC regrava o campo).
+  return entregue ? (iso(p.update_time) ?? iso(p.pay_time) ?? iso(p.create_time)) : null;
 }
 
 /**

@@ -49,14 +49,18 @@ export async function definirEtapaVendas(ids: string[], etapa: EtapaVendaAcao) {
   return comResultado(async () => {
     const v = validar(z.object({ ids: z.array(z.string().uuid()).min(1).max(500), etapa: z.enum(ETAPAS_VENDA) }), { ids, etapa });
     const supabase = await createClient();
-    let { error } = await supabase.rpc("avancar_etapa_vendas", { p_ids: v.ids, p_etapa: v.etapa });
+    let etapaGravada: EtapaVendaAcao = v.etapa;
+    let { error } = await supabase.rpc("avancar_etapa_vendas", { p_ids: v.ids, p_etapa: etapaGravada });
+    // Antes da 0091 o banco não conhece a etapa Entregue (a RPC recusa): segue como era, indo direto a Concluído.
+    if (error && etapaGravada === "entregue" && /Etapa inválida/.test(error.message)) {
+      etapaGravada = "concluido";
+      ({ error } = await supabase.rpc("avancar_etapa_vendas", { p_ids: v.ids, p_etapa: etapaGravada }));
+    }
     if (error?.code === "PGRST202" || error?.code === "42883") {
       // Sem a 0052: grava direto, na grafia que o banco conhece.
-      ({ error } = await supabase.from("vendas").update({ etapa: ETAPA_0047[v.etapa] }).in("id", v.ids).neq("status", "cancelada"));
-      if (error?.code === "PGRST204") ({ error } = await supabase.from("vendas").update({ status_envio: ENVIO_DA_ETAPA[v.etapa] }).in("id", v.ids).neq("status", "cancelada"));
+      ({ error } = await supabase.from("vendas").update({ etapa: ETAPA_0047[etapaGravada] }).in("id", v.ids).neq("status", "cancelada"));
+      if (error?.code === "PGRST204") ({ error } = await supabase.from("vendas").update({ status_envio: ENVIO_DA_ETAPA[etapaGravada] }).in("id", v.ids).neq("status", "cancelada"));
     }
-    // Antes da 0091 o banco não conhece a etapa Entregue (a RPC recusa; sem a RPC, a regra da coluna).
-    if (error && v.etapa === "entregue" && (/Etapa inválida/.test(error.message) || error.code === "23514")) throw new Error("A etapa Entregue precisa da migração 0091. Aplique no Supabase e recarregue.");
     if (error) lancarErroSupabase(error);
     revalidar();
     return v.ids.length;

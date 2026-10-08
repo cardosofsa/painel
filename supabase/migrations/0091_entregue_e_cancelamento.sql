@@ -156,7 +156,13 @@ declare
   v_s    jsonb;
   v_n    integer := 0;
 begin
-  if v_user is null or not exists (select 1 from lojas_canal where id = p_loja_id and user_id = v_user) then
+  if v_user is null then
+    raise exception 'Sessão expirada. Entre de novo.';
+  end if;
+  if not conta_ativa() then
+    raise exception 'Conta sem acesso no momento.';
+  end if;
+  if not exists (select 1 from lojas_canal where id = p_loja_id and user_id = v_user) then
     raise exception 'Loja não encontrada.';
   end if;
   if jsonb_typeof(p_situacoes) <> 'array' or jsonb_array_length(p_situacoes) > 2000 then

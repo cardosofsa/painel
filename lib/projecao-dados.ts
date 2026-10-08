@@ -4,7 +4,7 @@
  * histórico e o da tela vêm do mesmo caminho. Puro; coberto por `projecao-dados.test.ts`.
  */
 
-import { ocorrenciasDespesasFixas, type DespesaFixaFonte, type PagamentoDespesaFixa } from "./despesas-fixas-calendario";
+import { ocorrenciasDespesasFixas, type ContaExistente, type DespesaFixaFonte, type PagamentoDespesaFixa } from "./despesas-fixas-calendario";
 import { DIAS_LIBERACAO_PADRAO, eRepasseMarketplace, previsaoRepasse } from "./repasse-marketplace";
 import { restanteParcela } from "./pagamentos";
 import { fimDoMes, inicioDoMes, type ContaParaProjecao, type EntradaProjecao } from "./saldo-projetado";
@@ -32,6 +32,8 @@ export interface DadosProjecao {
   parcelas: ParcelaCrua[];
   despesasFixas: DespesaFixaFonte[];
   pagamentosFixas: PagamentoDespesaFixa[];
+  /** Contas a pagar do mês, de QUALQUER status: uma fixa já paga por conta a pagar não conta de novo. Sem isso, vale `contas`. */
+  contasExistentes?: ContaExistente[];
   /** Por id do pedido (`referencia_pedido_marketplace_id`). */
   pedidos: Map<string, PedidoMkt>;
   /** Prazo de liberação por loja (0089); sem entrada, vale o padrão. */
@@ -46,7 +48,8 @@ export function repassesConcluidos(contas: DadosProjecao["contas"], pedidos: Dad
     const valor = restanteParcela({ status: c.status, valor: Number(c.valor), valor_pago: Number(c.valor_pago ?? 0) });
     if (valor <= 0.004) continue;
     const pedido = c.referencia_pedido_marketplace_id ? pedidos.get(c.referencia_pedido_marketplace_id) : undefined;
-    const dias = (pedido?.loja_id && diasPorLoja[pedido.loja_id]) || DIAS_LIBERACAO_PADRAO;
+    // `??`, não `||`: 0 dia é um prazo válido (a plataforma libera na hora).
+    const dias = (pedido?.loja_id ? diasPorLoja[pedido.loja_id] : undefined) ?? DIAS_LIBERACAO_PADRAO;
     saida.push({ id: c.id, valor, lojaId: pedido?.loja_id ?? null, previsto: previsaoRepasse(c.data_vencimento, pedido?.escrow_liberado_em, dias) });
   }
   return saida;
@@ -59,7 +62,7 @@ export function montarEntradaProjecao(d: DadosProjecao): EntradaProjecao {
     inicioDoMes(d.hoje),
     fimDoMes(somarDiasIso(d.hoje, 30)),
     d.pagamentosFixas,
-    d.contas.map((c) => ({ tipo: c.tipo, descricao: c.descricao ?? "", data_vencimento: c.data_vencimento })),
+    d.contasExistentes ?? d.contas.map((c) => ({ tipo: c.tipo, descricao: c.descricao ?? "", data_vencimento: c.data_vencimento })),
   ).map((o) => ({ valor: o.valor, data_vencimento: o.data_vencimento, paga: o.paga }));
 
   return {

@@ -17,6 +17,9 @@ export async function sincronizarRetornos(
 ): Promise<{ retornos: number; erro: string | null }> {
   if (!api.buscarRetornos) return { retornos: 0, erro: null };
   try {
+    // Sem a 0090 não há onde gravar: nem chama a Shopee (a resposta se perderia a cada sincronização).
+    const tabela = await supabase.from("retornos_marketplace").select("id").limit(1);
+    if (tabela.error) throw new Error("Falta aplicar a migração 0090 (retornos) no Supabase.");
     // Um dia de folga sobre a última vez; primeira vez: 90 dias (o máximo que a busca olha).
     const desde = conexao.ultima_sincronizacao_retornos ? new Date(new Date(conexao.ultima_sincronizacao_retornos).getTime() - 86_400_000) : new Date(Date.now() - 90 * 86_400_000);
     const retornos = await api.buscarRetornos(desde);

@@ -26,6 +26,20 @@ describe("repasses concluídos", () => {
   });
 });
 
+describe("prazo de liberação 0 e dedupe de fixa", () => {
+  it("loja configurada com 0 dia libera na data da conclusão (0 não vira o padrão)", () => {
+    const pedidos = new Map([["p1", { loja_id: "L1", escrow_liberado_em: null }]]);
+    expect(repassesConcluidos([repasse("1", "p1")], pedidos, { L1: 0 }).map((x) => x.previsto)).toEqual(["2026-10-09"]);
+    expect(repassesConcluidos([repasse("1", "p1")], pedidos, {}).map((x) => x.previsto)).toEqual(["2026-10-16"]);
+  });
+  it("fixa já paga por uma conta a pagar (qualquer status) não desconta de novo", () => {
+    const fixa = [{ id: "f1", nome: "Aluguel", valor: 500, dia_vencimento: 5, criado_em: "2026-01-01" }];
+    const com = montarEntradaProjecao(base({ despesasFixas: fixa, contasExistentes: [{ tipo: "pagar", descricao: "aluguel", data_vencimento: "2026-10-05" }] }));
+    expect(projetarSaldo(com, "2026-10-31").despesasFixas).toBe(0);
+    expect(projetarSaldo(montarEntradaProjecao(base({ despesasFixas: fixa })), "2026-10-31").despesasFixas).toBe(500);
+  });
+});
+
 describe("entrada completa", () => {
   it("junta contas, parcelas, fixas e repasses, sem contar o pai da venda parcelada nem venda cancelada", () => {
     const entrada = montarEntradaProjecao(

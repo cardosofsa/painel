@@ -70,7 +70,7 @@ async function saldoAtualDasContas(supabase: SupabaseClient, userId: string): Pr
 async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: string, saldoAtual: number): Promise<DadosProjecao> {
   const inicioMes = inicioDoMes(hoje);
   const desde120 = new Date(Date.now() - 120 * 86_400_000).toISOString();
-  const [contas, parcelas, despesasFixas, pagas, pedidosRes, diasRes] = await Promise.all([
+  const [contas, parcelas, despesasFixas, pagas, pedidosRes, diasRes, existentes] = await Promise.all([
     // `*`: valor_pago, aguardando_liberacao e referencia_pedido_marketplace_id só existem nas migrações novas.
     lerTodas<DadosProjecao["contas"][number] & { vendas?: { total_parcelas_fiado: number | null } | null }>((de, ate) =>
       supabase.from("contas_a_pagar_receber").select("*, vendas(total_parcelas_fiado)").eq("user_id", userId).eq("status", "pendente").order("id").range(de, ate),
@@ -93,6 +93,10 @@ async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: s
     supabase.from("pedidos_marketplace").select("id, loja_id, escrow_liberado_em").eq("user_id", userId).eq("status", "concluido").gte("pago_em", desde120).limit(1000),
     // 0089: sem a migração a consulta falha e vale o prazo padrão.
     supabase.from("lojas_canal").select("id, dias_liberacao_repasse").eq("user_id", userId),
+    // Contas a pagar do mês em diante, de qualquer status: serve só para a fixa já paga por conta não contar de novo.
+    lerTodas<{ tipo: "pagar" | "receber"; descricao: string; data_vencimento: string }>((de, ate) =>
+      supabase.from("contas_a_pagar_receber").select("tipo, descricao, data_vencimento").eq("user_id", userId).eq("tipo", "pagar").gte("data_vencimento", inicioMes).order("id").range(de, ate),
+    ),
   ]);
   const pedidos = new Map<string, PedidoMkt>(
     ((pedidosRes.error ? [] : (pedidosRes.data ?? [])) as { id: string; loja_id: string | null; escrow_liberado_em: string | null }[]).map((p) => [p.id, { loja_id: p.loja_id, escrow_liberado_em: p.escrow_liberado_em }]),
@@ -105,6 +109,7 @@ async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: s
     despesasFixas: despesasFixas.map((d) => ({ ...d, valor: Number(d.valor) })),
     pagamentosFixas: pagas.map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
     pedidos,
+    contasExistentes: existentes,
     diasPorLoja: Object.fromEntries(((diasRes.error ? [] : (diasRes.data ?? [])) as { id: string; dias_liberacao_repasse: number }[]).map((l) => [l.id, l.dias_liberacao_repasse])),
   };
 }
@@ -176,7 +181,8 @@ export async function atualizarFechamentos(supabase: SupabaseClient, userId: str
 
 /** Contas ativas de usuário (para o cron). */
 export async function contasAtivas(supabase: SupabaseClient): Promise<string[]> {
-  const { data, error } = await supabase.from("perfis_acesso").select("user_id").eq("papel", "usuario").eq("status", "ativo");
+  // Master também: quem administra o sistema costuma ser o dono de um negócio e precisa do próprio histórico.
+  const { data, error } = await supabase.from("perfis_acesso").select("user_id").in("papel", ["usuario", "master"]).eq("status", "ativo");
   if (error) throw new Error(error.message);
   return ((data ?? []) as { user_id: string }[]).map((c) => c.user_id);
 }
@@ -212,7 +218,7 @@ export async function montarContextoRelatorio(
   const [movimentos, dreRes, fixasRes] = await Promise.all([
     movimentosDoMes(supabase, userId, mes),
     supabase.rpc("dre_mensal", { p_inicio: anteriores[anteriores.length - 1], p_fim: fimDoMes(mes) }),
-    supabase.from("despesas_fixas").select("nome, valor").eq("user_id", userId).eq("ativo", true).order("valor", { ascending: false }).limit(12),
+    supabase.from("despesas_fixas").select("nome, valor").eq("user_id", userId).order("valor", { ascending: false }).limit(12),
   ]);
   const dre = ((dreRes.error ? [] : (dreRes.data ?? [])) as Record<string, unknown>[]).map(
     (d): LinhaDre => ({
