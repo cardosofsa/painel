@@ -41,6 +41,8 @@ import { Chip } from "@/components/ui/Chip";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import { AbaRepasses, type PedidoRepasse } from "@/components/financeiro/AbaRepasses";
+import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
+import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
 export interface Conta {
   id: string;
@@ -116,6 +118,7 @@ const ABAS_FIN = [
   { id: "visao", rotulo: "Visão geral" },
   { id: "a-pagar", rotulo: "A pagar" },
   { id: "a-receber", rotulo: "A receber" },
+  { id: "calendario", rotulo: "Calendário" },
   { id: "historico", rotulo: "Histórico" },
   { id: "lancamentos", rotulo: "Lançamentos" },
   { id: "resultado", rotulo: "Resultado" },
@@ -160,7 +163,13 @@ export function FinanceiroClient({
   repassesOk = true,
   fornecedores = [],
   clientes = [],
+  calendarioContas = [],
+  hoje: hojeServidor,
 }: {
+  /** Calendário de contas: contas, parcelas e despesas fixas projetadas, com status. */
+  calendarioContas?: ContaCalendarioFonte[];
+  /** Hoje em Brasília, vindo do servidor (evita erro de hidratação depois das 21h). */
+  hoje?: string;
   /** Para "Lançar dívida antiga" (0067). */
   fornecedores?: { id: string; nome: string }[];
   clientes?: { id: string; nome: string }[];
@@ -895,6 +904,8 @@ export function FinanceiroClient({
       )}
 
       {aba === "resultado" && <AbaResultado dre={dre} gastos={gastosAnuncios} lojas={lojasMarketplace} anunciosOk={anunciosOk} />}
+
+      {aba === "calendario" && <CalendarioContas contas={calendarioContas} hoje={hojeServidor ?? hojeIsoLocal()} />}
 
       {aba === "repasses" && <AbaRepasses pedidos={repasses} contas={contas} repassesOk={repassesOk} />}
       </TabPanel>
