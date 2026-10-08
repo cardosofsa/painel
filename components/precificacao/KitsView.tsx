@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -118,13 +119,12 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
                   <span className="truncate text-text-primary" title={i.nome}>
                     {i.nome}
                   </span>
-                  <input
-                    type="number"
+                  <CampoNumero padrao={1}
                     min={1}
                     className={`${inputClass} h-8 text-right`}
                     value={i.quantidade}
                     aria-label={`Quantidade de ${i.nome}`}
-                    onChange={(e) => setItens((x) => x.map((y) => (y.produtoId === i.produtoId ? { ...y, quantidade: Math.max(1, Math.floor(Number(e.target.value) || 1)) } : y)))}
+                    onChange={(n) => setItens((x) => x.map((y) => (y.produtoId === i.produtoId ? { ...y, quantidade: Math.max(1, Math.floor(n)) } : y)))}
                   />
                   <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">custo {formatBRL(i.custo * i.quantidade)}</span>
                   <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">avulso {formatBRL(i.preco * i.quantidade)}</span>

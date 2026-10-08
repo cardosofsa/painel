@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState } from "react";
 import { Minus, Plus, ShoppingCart, Trash2, X } from "lucide-react";
@@ -135,12 +136,10 @@ export function Carrinho({
                 <div className="flex items-center gap-1.5">
                   <div className="flex items-center gap-1 h-7 pl-2 pr-1.5 bg-surface-1 border border-border rounded-md focus-within:border-accent">
                     <span className="text-xs text-text-tertiary">R$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
+                    <CampoNumero
+                      min={0}
                       value={item.preco_unitario}
-                      onChange={(e) => onAlterarPreco(item.produto_id, Number(e.target.value) || 0)}
+                      onChange={(n) => onAlterarPreco(item.produto_id, n)}
                       className="w-16 bg-transparent text-sm text-right font-mono text-text-primary outline-none"
                     />
                   </div>
@@ -162,15 +161,13 @@ export function Carrinho({
                 ) : (
                   <>
                     <span className="text-text-secondary">Garantia</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="3650"
+                    <CampoNumero
+                      min={1}
+                      max={3650}
+                      casas={0}
+                      padrao={1}
                       value={item.garantia_dias}
-                      onChange={(e) => {
-                        const n = Math.floor(Number(e.target.value));
-                        onAlterarGarantia(item.produto_id, n >= 1 ? Math.min(n, 3650) : 1);
-                      }}
+                      onChange={(n) => onAlterarGarantia(item.produto_id, n)}
                       className="w-14 h-6 px-1.5 bg-surface-1 border border-border rounded-md text-right font-mono text-text-primary outline-none focus:border-accent"
                       aria-label="Garantia em dias"
                     />
@@ -232,12 +229,10 @@ export function Carrinho({
                 </button>
               ))}
             </div>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={estado.descontoEntrada || ""}
-              onChange={(e) => onEstado({ descontoEntrada: Number(e.target.value) || 0 })}
+            <CampoNumero
+              min={0}
+              value={estado.descontoEntrada}
+              onChange={(n) => onEstado({ descontoEntrada: n })}
               placeholder="0,00"
               data-pdv-desconto=""
               aria-label="Valor do desconto"
@@ -247,12 +242,10 @@ export function Carrinho({
         )}
 
         {mostrarEntrega && (
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={estado.valorEntrega || ""}
-            onChange={(e) => onEstado({ valorEntrega: Number(e.target.value) || 0 })}
+          <CampoNumero
+            min={0}
+            value={estado.valorEntrega}
+            onChange={(n) => onEstado({ valorEntrega: n })}
             placeholder="Valor da entrega"
             className={inputClass}
           />

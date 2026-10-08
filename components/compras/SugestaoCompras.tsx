@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState } from "react";
 import { PackageCheck, TrendingDown, TrendingUp } from "lucide-react";
@@ -120,13 +121,12 @@ export function SugestaoCompras({
                     </div>
                   </div>
                   <span className="text-xs text-text-tertiary font-mono hidden sm:inline">{formatBRL(l.produto.custo)}</span>
-                  <input
-                    type="number"
+                  <CampoNumero
                     min={0}
                     aria-label={`Quantidade a comprar de ${l.produto.nome}`}
                     className={`${campoBase} w-20 text-right`}
                     value={qtd[l.produto.id] ?? 0}
-                    onChange={(e) => setQtd((q) => ({ ...q, [l.produto.id]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                    onChange={(n) => setQtd((q) => ({ ...q, [l.produto.id]: Math.max(0, Math.floor(n)) }))}
                   />
                 </label>
               ))}

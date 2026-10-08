@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState } from "react";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
@@ -85,23 +86,19 @@ export function EditarVendaModal({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Desconto (R$)">
-          <input
-            type="number"
-            step="0.01"
-            min="0"
+          <CampoNumero
+            min={0}
             className={inputClass}
             value={desconto}
-            onChange={(e) => setDesconto(Number(e.target.value) || 0)}
+            onChange={(n) => setDesconto(n)}
           />
         </FormField>
         <FormField label="Entrega (R$)">
-          <input
-            type="number"
-            step="0.01"
-            min="0"
+          <CampoNumero
+            min={0}
             className={inputClass}
             value={valorEntrega}
-            onChange={(e) => setValorEntrega(Number(e.target.value) || 0)}
+            onChange={(n) => setValorEntrega(n)}
           />
         </FormField>
       </div>

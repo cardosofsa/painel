@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -32,7 +33,7 @@ export function ContaModal({
         <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} />
       </FormField>
       <FormField label="Saldo Atual (R$)">
-        <input type="number" step="0.01" className={inputClass} value={saldo} onChange={(e) => setSaldo(Number(e.target.value) || 0)} />
+        <CampoNumero className={inputClass} value={saldo} onChange={(n) => setSaldo(n)} />
       </FormField>
       <FormField label="Detalhe">
         <input className={inputClass} value={detalhe} onChange={(e) => setDetalhe(e.target.value)} placeholder="Ex: Conta corrente PJ" />

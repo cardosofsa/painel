@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState } from "react";
 import { toast } from "sonner";
@@ -84,7 +85,7 @@ export function NovaMovimentacaoModal({
         </select>
       </FormField>
       <FormField label="Valor (R$)">
-        <input type="number" step="0.01" className={inputClass} value={valor} onChange={(e) => setValor(Number(e.target.value) || 0)} />
+        <CampoNumero className={inputClass} value={valor} onChange={(n) => setValor(n)} />
       </FormField>
       <label className="flex items-center gap-2 mb-1 cursor-pointer">
         <input type="checkbox" checked={afetaLucro} onChange={(e) => setAfetaLucro(e.target.checked)} className="w-4 h-4 accent-accent" />
@@ -139,16 +140,15 @@ export function NovaDespesaFixaModal({
       </FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Valor Mensal (R$)">
-          <input type="number" step="0.01" className={inputClass} value={valor} onChange={(e) => setValor(Number(e.target.value) || 0)} />
+          <CampoNumero className={inputClass} value={valor} onChange={(n) => setValor(n)} />
         </FormField>
         <FormField label="Dia de Cobrança">
-          <input
-            type="number"
+          <CampoNumero padrao={1}
             min={1}
             max={31}
             className={inputClass}
             value={dia}
-            onChange={(e) => setDia(Math.min(31, Math.max(1, Number(e.target.value) || 1)))}
+            onChange={(n) => setDia(Math.min(31, Math.max(1, n)))}
           />
         </FormField>
       </div>
@@ -224,7 +224,7 @@ export function NovaCprModal({
       </FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Valor (R$)">
-          <input type="number" step="0.01" className={inputClass} value={valor} onChange={(e) => setValor(Number(e.target.value) || 0)} />
+          <CampoNumero className={inputClass} value={valor} onChange={(n) => setValor(n)} />
         </FormField>
         <FormField label="Vencimento">
           <input type="date" className={inputClass} value={vencimento} onChange={(e) => setVencimento(e.target.value)} />

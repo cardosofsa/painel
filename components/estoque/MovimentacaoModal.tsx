@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -159,7 +160,7 @@ export function MovimentacaoModal({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Quantidade">
-          <input type="number" min={1} className={inputClass} value={quantidade} onChange={(e) => setQuantidade(Math.floor(Number(e.target.value) || 0))} />
+          <CampoNumero min={1} className={inputClass} value={quantidade} onChange={(n) => setQuantidade(Math.floor(n))} />
         </FormField>
         {tipo === "transferencia" ? (
           <FormField label="Para o armazém">
@@ -174,7 +175,7 @@ export function MovimentacaoModal({
           </FormField>
         ) : tipo === "entrada" ? (
           <FormField label="Custo unitário (R$)" dica="O custo do produto vira a média ponderada.">
-            <input type="number" min={0} step="0.01" className={inputClass} value={custo || ""} placeholder="0,00" onChange={(e) => setCusto(Number(e.target.value) || 0)} />
+            <CampoNumero min={0} className={inputClass} value={custo} placeholder="0,00" onChange={(n) => setCusto(n)} />
           </FormField>
         ) : (
           <div />
