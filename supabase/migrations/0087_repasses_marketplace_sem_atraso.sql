@@ -1,5 +1,5 @@
 -- ============================================================
--- 0087 — Repasse de marketplace nunca "atrasa" e é recebido sozinho.
+-- 0087 — Repasse de marketplace nunca "atrasa" (e não mexe no financeiro).
 --
 -- Na Shopee tudo acontece dentro da plataforma: o pedido feito já está pago e o repasse ou
 -- é LIBERADO ou é ESTORNADO/REEMBOLSADO — a plataforma comunica os dois. Não existe
@@ -11,19 +11,9 @@
 --      depender do texto. Preenchida para as linhas existentes (pelo vínculo do pedido e,
 --      na falta dele, pela descrição "Repasse <loja> — pedido <n>" + loja) e gravada pela
 --      importação daqui em diante. Alertas, Dashboard, Calendário e "Vencidos" ignoram.
---   2. Baixa automática: pedido concluído com o escrow liberado → o repasse vira RECEBIDO
---      com o valor real e a entrada cai na conta financeira da loja (lojas_canal.
---      conta_financeira_id), criada na hora se não existir ("Shopee — <loja>"). Uma vez só:
---      a trava é pedidos_marketplace.repasse_recebido (+ repasse_conta_id = foi automático).
---      Repasse recebido à mão (ou conciliado pelo relatório, 0066) não é tocado.
---   3. Estorno/reembolso depois da baixa automática: o valor final que a Shopee informar
---      gera a saída (ou o ajuste) da diferença na mesma conta.
---   4. Dados existentes: repasses de pedidos concluídos com escrow liberado e ainda
---      pendentes viram recebidos (sem duplicar); repasse sem pedido encontrado fica
---      "aguardando" (não vence).
---
--- As funções novas são internas (sem EXECUTE para anon/authenticated): só a importação
--- (security definer, que confere sessão, conta_ativa() e o dono da loja) as chama.
+--   2. Nada de valor da Shopee entra no financeiro: o dono lança quando faz o saque para a
+--      conta dele. O repasse só fica identificado e nunca "atrasa".
+--   3. Dados existentes: repasse sem pedido encontrado fica "aguardando" (não vence).
 -- Idempotente. Termina com NOTIFY.
 -- ============================================================
 
@@ -33,8 +23,6 @@ alter table contas_a_pagar_receber
 create index if not exists contas_pr_pedido_mkt_idx on contas_a_pagar_receber (referencia_pedido_marketplace_id)
   where referencia_pedido_marketplace_id is not null;
 
-alter table lojas_canal add column if not exists conta_financeira_id uuid references contas(id) on delete set null;
-alter table pedidos_marketplace add column if not exists repasse_conta_id uuid references contas(id) on delete set null;
 
 -- FK nova não pode apontar para linha de outra conta (mesma trava da 0026).
 drop trigger if exists contas_pr_vinculo_pedido_mkt on contas_a_pagar_receber;
@@ -42,146 +30,8 @@ create trigger contas_pr_vinculo_pedido_mkt
   before insert or update of referencia_pedido_marketplace_id on contas_a_pagar_receber
   for each row execute function validar_vinculo_do_dono('referencia_pedido_marketplace_id', 'pedidos_marketplace');
 
-drop trigger if exists lojas_canal_vinculo_conta_fin on lojas_canal;
-create trigger lojas_canal_vinculo_conta_fin
-  before insert or update of conta_financeira_id on lojas_canal
-  for each row execute function validar_vinculo_do_dono('conta_financeira_id', 'contas');
 
--- 2) Conta financeira da loja: a gravada na loja ou, sem ela, "<Canal> — <loja>" (criada).
-create or replace function conta_financeira_da_loja(p_user uuid, p_loja uuid)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_conta uuid;
-  v_loja  text;
-  v_canal text;
-  v_nome  text;
-begin
-  select l.conta_financeira_id, l.nome, c.nome into v_conta, v_loja, v_canal
-    from lojas_canal l
-    left join canais c on c.id = l.canal_id and c.user_id = l.user_id
-   where l.id = p_loja and l.user_id = p_user
-   for update of l;
-  if v_loja is null then
-    raise exception 'Loja não encontrada.';
-  end if;
-  if v_conta is not null and exists (select 1 from contas where id = v_conta and user_id = p_user) then
-    return v_conta;
-  end if;
-
-  v_canal := coalesce(nullif(trim(v_canal), ''), 'Marketplace');
-  v_nome := left(case when v_loja ilike v_canal || '%' then v_loja else v_canal || ' — ' || v_loja end, 80);
-  select id into v_conta from contas where user_id = p_user and nome = v_nome order by criado_em limit 1;
-  if v_conta is null then
-    insert into contas (user_id, nome, saldo, detalhe)
-    values (p_user, v_nome, 0, 'Carteira do marketplace — criada pela baixa automática dos repasses')
-    returning id into v_conta;
-  end if;
-  update lojas_canal set conta_financeira_id = v_conta where id = p_loja and user_id = p_user;
-  return v_conta;
-end;
-$$;
-
-revoke execute on function conta_financeira_da_loja(uuid, uuid) from public, anon, authenticated;
-
--- 3) Baixa (e estorno) automática do repasse de um pedido. Devolve o que fez:
---    'recebido' | 'estornado' | 'ajustado' | 'manual' | 'aguardando' | 'sem_mudanca' | 'nao_encontrado'.
-create or replace function liquidar_repasse_marketplace(p_user uuid, p_pedido uuid)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_p       pedidos_marketplace%rowtype;
-  v_cpr     contas_a_pagar_receber%rowtype;
-  v_tem_cpr boolean := false;
-  v_loja    text;
-  v_conta   uuid;
-  v_hoje    date := (now() at time zone 'America/Sao_Paulo')::date;
-  v_data    date;
-  v_valor   numeric;
-  v_final   numeric;
-  v_dif     numeric;
-  v_cpr_id  uuid;
-begin
-  select * into v_p from pedidos_marketplace where id = p_pedido and user_id = p_user for update;
-  if not found then
-    return 'nao_encontrado';
-  end if;
-  select nome into v_loja from lojas_canal where id = v_p.loja_id and user_id = p_user;
-  if v_p.conta_receber_id is not null then
-    select * into v_cpr from contas_a_pagar_receber where id = v_p.conta_receber_id and user_id = p_user for update;
-    v_tem_cpr := found;
-  end if;
-
-  -- a) Já recebido pela baixa automática: acompanha o valor final que a plataforma informa
-  --    (cancelado/estornado → 0; devolução/reembolso → o que sobrou).
-  if v_p.repasse_conta_id is not null and v_p.repasse_recebido is not null then
-    v_final := case when v_p.status in ('cancelado', 'nao_pago') then 0 else greatest(coalesce(v_p.repasse, 0), 0) end;
-    v_dif := round(v_final - v_p.repasse_recebido, 2);
-    if abs(v_dif) < 0.01 then
-      return 'sem_mudanca';
-    end if;
-    insert into movimentacoes_financeiras (user_id, tipo, valor, descricao, origem, categoria, conta_id, afeta_lucro, data_movimentacao)
-    values (
-      p_user, case when v_dif > 0 then 'entrada' else 'saida' end, v_dif,
-      left(format('%s do repasse %s — pedido %s', case when v_dif > 0 then 'Ajuste' else 'Estorno' end, v_loja, v_p.numero), 300),
-      'Repasse automático', 'Repasse marketplace', v_p.repasse_conta_id, true, v_hoje
-    );
-    update contas set saldo = saldo + v_dif where id = v_p.repasse_conta_id and user_id = p_user;
-    update pedidos_marketplace set repasse_recebido = v_final where id = v_p.id;
-    if v_tem_cpr and v_cpr.status = 'recebido' and v_final > 0 then
-      update contas_a_pagar_receber set valor = v_final, valor_pago = v_final where id = v_cpr.id;
-    end if;
-    return case when v_dif > 0 then 'ajustado' else 'estornado' end;
-  end if;
-
-  -- b) Receber: concluído (ou devolvido com o valor final) e escrow liberado pela Shopee.
-  if v_p.status not in ('concluido', 'devolvido')
-     or v_p.escrow_liberado_em is null or v_p.escrow_liberado_em > now()
-     or v_p.repasse_recebido is not null
-     or coalesce(v_p.repasse, 0) <= 0 then
-    return 'aguardando';
-  end if;
-  if v_tem_cpr and (v_cpr.status <> 'pendente' or coalesce(v_cpr.valor_pago, 0) > 0) then
-    return 'manual';  -- recebido (ou em parte) à mão: não toca
-  end if;
-
-  v_valor := round(v_p.repasse, 2);
-  v_data := least((v_p.escrow_liberado_em at time zone 'America/Sao_Paulo')::date, v_hoje);
-  v_conta := conta_financeira_da_loja(p_user, v_p.loja_id);
-
-  insert into movimentacoes_financeiras (user_id, tipo, valor, descricao, origem, categoria, conta_id, afeta_lucro, data_movimentacao)
-  values (p_user, 'entrada', v_valor, left(format('Repasse %s — pedido %s', v_loja, v_p.numero), 300),
-          'Repasse automático', 'Repasse marketplace', v_conta, true, v_data);
-  update contas set saldo = saldo + v_valor where id = v_conta and user_id = p_user;
-
-  if v_tem_cpr then
-    update contas_a_pagar_receber
-       set status = 'recebido', valor = v_valor, valor_pago = v_valor, data_pagamento = v_data,
-           conta_id = v_conta, aguardando_liberacao = false, referencia_pedido_marketplace_id = v_p.id
-     where id = v_cpr.id;
-    v_cpr_id := v_cpr.id;
-  else
-    insert into contas_a_pagar_receber (user_id, tipo, descricao, valor, data_vencimento, status, valor_pago, data_pagamento, conta_id, referencia_pedido_marketplace_id)
-    values (p_user, 'receber', left(format('Repasse %s — pedido %s', v_loja, v_p.numero), 300), v_valor, v_data, 'recebido', v_valor, v_data, v_conta, v_p.id)
-    returning id into v_cpr_id;
-  end if;
-
-  update pedidos_marketplace
-     set repasse_recebido = v_valor, repasse_recebido_em = v_data, repasse_conta_id = v_conta, conta_receber_id = v_cpr_id
-   where id = v_p.id;
-  return 'recebido';
-end;
-$$;
-
-revoke execute on function liquidar_repasse_marketplace(uuid, uuid) from public, anon, authenticated;
-
--- 4) Importação (planilha, API e cron): grava a referência e chama a baixa automática.
+-- 2) Importação (planilha, API e cron): grava a referência do repasse.
 create or replace function importar_pedidos_marketplace(p_loja_id uuid, p_pedidos jsonb)
 returns jsonb
 language plpgsql
@@ -218,7 +68,6 @@ declare
   v_atual    integer := 0;
   v_baixas   integer := 0;
   v_estornos integer := 0;
-  v_recebidos integer := 0;
   v_item     record;
 begin
   if v_user is null then
@@ -415,21 +264,16 @@ begin
       atualizado_em        = now()
     where id = v_id;
 
-    -- 0087: concluído e liberado pela Shopee → repasse recebido na conta da loja; estorno ou
-    -- reembolso depois de recebido → saída na mesma conta. Idempotente.
-    if liquidar_repasse_marketplace(v_user, v_id) = 'recebido' then
-      v_recebidos := v_recebidos + 1;
-    end if;
   end loop;
 
-  return jsonb_build_object('novos', v_novos, 'atualizados', v_atual, 'baixas', v_baixas, 'estornos', v_estornos, 'recebidos', v_recebidos, 'armazem_id', v_armazem);
+  return jsonb_build_object('novos', v_novos, 'atualizados', v_atual, 'baixas', v_baixas, 'estornos', v_estornos, 'armazem_id', v_armazem);
 end;
 $$;
 
 revoke execute on function importar_pedidos_marketplace(uuid, jsonb) from public, anon;
 grant execute on function importar_pedidos_marketplace(uuid, jsonb) to authenticated;
 
--- 5) Dados existentes (idempotente).
+-- 3) Dados existentes (idempotente).
 --    a) Referência pelo vínculo do pedido.
 update contas_a_pagar_receber c
    set referencia_pedido_marketplace_id = p.id
@@ -448,7 +292,7 @@ update contas_a_pagar_receber c
    and c.referencia_pedido_marketplace_id is null
    and c.descricao in (format('Repasse %s — pedido %s', l.nome, p.numero), format('Repasse Shopee %s — pedido %s', l.nome, p.numero));
 
---    c) Pedido sem conta ligada que tem a conta achada em (b): liga, para a baixa achar.
+--    c) Pedido sem conta ligada que tem a conta achada em (b): liga.
 update pedidos_marketplace p
    set conta_receber_id = c.id
   from contas_a_pagar_receber c
@@ -465,22 +309,9 @@ update contas_a_pagar_receber
    and not aguardando_liberacao
    and descricao ~ '^Repasse .+ — pedido \S+$';
 
---    e) Concluído com escrow liberado e repasse ainda pendente: recebido na conta da loja.
-do $$
-declare
-  r record;
-begin
-  for r in
-    select p.user_id, p.id
-      from pedidos_marketplace p
-     where p.repasse_recebido is null
-       and p.escrow_liberado_em is not null
-       and p.escrow_liberado_em <= now()
-       and p.status in ('concluido', 'devolvido')
-       and coalesce(p.repasse, 0) > 0
-  loop
-    perform liquidar_repasse_marketplace(r.user_id, r.id);
-  end loop;
-end $$;
+-- Sem baixa automática nem conta "Shopee — loja" (decisão do dono): limpa o que uma versão
+-- anterior desta migração possa ter criado em teste.
+drop function if exists liquidar_repasse_marketplace(uuid, uuid);
+drop function if exists conta_financeira_da_loja(uuid, uuid);
 
 NOTIFY pgrst, 'reload schema';
