@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { podeVencer } from "@/lib/repasse-marketplace";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
 import { hojeIsoBrasil } from "@/lib/format";
@@ -71,8 +72,8 @@ export default async function VixeInsightsPage() {
   const parcelas = (parcelasRes.data ?? []) as { venda_id: string; valor: number; data_vencimento: string }[];
   const vendasComParcelas = new Set(parcelas.map((p) => p.venda_id));
   // `*` + filtro aqui: repasse aguardando a conclusão do pedido (0085) não tem vencimento; sem a migração a coluna não existe.
-  const cpr = ((cprRes.data ?? []) as { tipo: "pagar" | "receber"; valor: number; data_vencimento: string; referencia_venda_id: string | null; aguardando_liberacao?: boolean | null }[]).filter(
-    (c) => !c.aguardando_liberacao,
+  const cpr = ((cprRes.data ?? []) as { tipo: "pagar" | "receber"; valor: number; data_vencimento: string; referencia_venda_id: string | null; aguardando_liberacao?: boolean | null; descricao?: string; referencia_pedido_marketplace_id?: string | null }[]).filter(
+    podeVencer,
   );
   const pendencias: Pendencia[] = [
     ...parcelas.map((p) => ({ tipo: "receber" as const, valor: p.valor, vencimento: p.data_vencimento })),

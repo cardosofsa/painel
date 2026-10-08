@@ -153,19 +153,14 @@ export function interpretarRelatorioRepasses(matriz: string[][]): { repasses: Re
 
 // ---------- Situação do repasse na tela ----------
 
-export type SituacaoRepasse = "conciliado" | "divergente" | "atrasado" | "aguardando";
+export type SituacaoRepasse = "conciliado" | "divergente" | "aguardando";
 
-/** Repasse da plataforma: conferido, diferente do esperado, atrasado (15+ dias do pagamento) ou aguardando. */
-export function situacaoRepasse(
-  p: { repasse: number; repasse_recebido: number | null; pago_em: string | null; status?: string | null; escrow_liberado_em?: string | null },
-  hoje: string,
-  diasPrazo = 15,
-): SituacaoRepasse {
+/**
+ * Repasse da plataforma: conferido, diferente do esperado ou aguardando. NUNCA "atrasado":
+ * na Shopee o pedido feito já está pago; o repasse ou é liberado (e a sincronização dá a
+ * baixa sozinha, 0087) ou é estornado — a plataforma comunica os dois.
+ */
+export function situacaoRepasse(p: { repasse: number; repasse_recebido: number | null }): SituacaoRepasse {
   if (p.repasse_recebido !== null) return Math.abs(p.repasse_recebido - p.repasse) <= 0.05 ? "conciliado" : "divergente";
-  // A plataforma só paga depois de concluído: antes disso nunca está atrasado (0085).
-  if (p.escrow_liberado_em) return p.escrow_liberado_em.slice(0, 10) < hoje ? "atrasado" : "aguardando";
-  if (p.status != null && p.status !== "concluido") return "aguardando";
-  if (!p.pago_em) return "aguardando";
-  const d = new Date(Date.UTC(+p.pago_em.slice(0, 4), +p.pago_em.slice(5, 7) - 1, +p.pago_em.slice(8, 10) + diasPrazo)).toISOString().slice(0, 10);
-  return d < hoje ? "atrasado" : "aguardando";
+  return "aguardando";
 }

@@ -8,6 +8,7 @@
  *    o resto.
  */
 
+import { podeVencer } from "@/lib/repasse-marketplace";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AbaId } from "@/lib/acesso";
 import { hojeIsoBrasil } from "@/lib/format";
@@ -81,7 +82,7 @@ export async function carregarAlertasVixe(supabase: SupabaseClient, abasLiberada
       ),
     );
     tarefas.push(
-      repasses(supabase, hoje).then(
+      repasses(supabase).then(
         (a) => void blocos.push(a),
         (e) => void falhas.push(`repasses (${mensagem(e)})`),
       ),
@@ -167,8 +168,8 @@ async function margem(supabase: SupabaseClient): Promise<AlertaVixe[]> {
   return [...alertasMargem(erosao), ...alertasPrecoDefasado(defasado)];
 }
 
-/** Repasses da Shopee/ML (0066): divergentes e atrasados dos últimos 120 dias. */
-async function repasses(supabase: SupabaseClient, hoje: string): Promise<AlertaVixe[]> {
+/** Repasses da Shopee/ML (0066): divergentes dos últimos 120 dias (repasse nunca "atrasa", 0087). */
+async function repasses(supabase: SupabaseClient): Promise<AlertaVixe[]> {
   const r = await supabase
     .from("pedidos_marketplace")
     // `*`: repasse_recebido só existe a partir da 0066.
@@ -184,9 +185,8 @@ async function repasses(supabase: SupabaseClient, hoje: string): Promise<AlertaV
     .map((l) => ({
       repasse: Number(l.repasse),
       repasse_recebido: l.repasse_recebido === null ? null : Number(l.repasse_recebido),
-      pago_em: typeof l.pago_em === "string" ? hojeIsoBrasil(new Date(l.pago_em)) : null,
     }));
-  return alertasRepasses(resumirRepasses(pedidos, hoje, situacaoRepasse));
+  return alertasRepasses(resumirRepasses(pedidos, situacaoRepasse));
 }
 
 interface ParcelaBruta {
@@ -221,11 +221,11 @@ async function contas(supabase: SupabaseClient, hoje: string): Promise<AlertaVix
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
   ]);
   const parcelas = ok<ParcelaBruta[]>(parcelasRes as never);
-  // Repasse de pedido de marketplace ainda não concluído (0085) não está vencido.
+  // Repasse de marketplace nunca vence (0085/0087): é liberado ou estornado pela plataforma.
   const cpr = ok<
-    { id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null; aguardando_liberacao?: boolean | null }[]
+    { id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null; aguardando_liberacao?: boolean | null; referencia_pedido_marketplace_id?: string | null }[]
   >(cprRes)
-    .filter((c) => !c.aguardando_liberacao)
+    .filter(podeVencer)
     .slice(0, 150);
 
   // Venda parcelada no fiado tem as parcelas em `venda_parcelas`; a conta a receber ligada a

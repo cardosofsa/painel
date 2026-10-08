@@ -102,13 +102,9 @@ describe("lucro do pedido 2610082QFT1WTB", () => {
 });
 
 describe("situação do repasse", () => {
-  const base = { repasse: 16.95, repasse_recebido: null, pago_em: "2026-08-01T10:00:00Z" };
-  it("pedido não concluído nunca está atrasado", () => {
-    expect(situacaoRepasse({ ...base, status: "enviado" }, "2026-10-07")).toBe("aguardando");
-    expect(situacaoRepasse({ ...base, status: "a_enviar" }, "2026-10-07")).toBe("aguardando");
-  });
-  it("liberado pela Shopee e não recebido: atrasa a partir da liberação", () => {
-    expect(situacaoRepasse({ ...base, status: "concluido", escrow_liberado_em: "2026-10-01T10:00:00Z" }, "2026-10-07")).toBe("atrasado");
-    expect(situacaoRepasse({ ...base, status: "concluido", escrow_liberado_em: "2026-10-07T10:00:00Z" }, "2026-10-07")).toBe("aguardando");
+  const base = { repasse: 16.95, repasse_recebido: null };
+  it("repasse nunca está atrasado: concluído, liberado ou não, aguarda até a baixa", () => {
+    expect(situacaoRepasse(base)).toBe("aguardando");
+    expect(situacaoRepasse({ ...base, repasse_recebido: 16.95 })).toBe("conciliado");
   });
 });

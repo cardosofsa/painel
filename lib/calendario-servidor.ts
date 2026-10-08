@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { podeVencer } from "@/lib/repasse-marketplace";
 import type { CompromissoFonte, ContaFonte, DataPropriaFonte } from "./calendario-dashboard";
 import { ocorrenciasDespesasFixas, type DespesaFixaFonte } from "./despesas-fixas-calendario";
 
@@ -44,7 +45,7 @@ export async function carregarFontesPeriodo(supabase: SupabaseClient, inicio: st
   if (compromissosRes.error) throw new Error(compromissosRes.error.message);
   if (contasRes.error) throw new Error(contasRes.error.message);
 
-  type Cpr = { aguardando_liberacao?: boolean | null; id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null; vendas: { total_parcelas_fiado: number | null } | null };
+  type Cpr = { aguardando_liberacao?: boolean | null; referencia_pedido_marketplace_id?: string | null; id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null; vendas: { total_parcelas_fiado: number | null } | null };
   type Parcela = { id: string; numero: number; total_parcelas: number; valor: number; valor_pago: number | null; data_vencimento: string; vendas: { numero: string; cliente_nome: string | null; status: string } | null };
   const parcelas = (parcelasRes.error ? [] : (parcelasRes.data ?? [])) as unknown as Parcela[];
   const contas: ContaFonte[] = [
@@ -59,8 +60,8 @@ export async function carregarFontesPeriodo(supabase: SupabaseClient, inicio: st
       })),
     ...((contasRes.data ?? []) as Cpr[])
       // A conta "pai" de uma venda parcelada é a soma das parcelas: aparece pelas parcelas.
-      // Repasse de marketplace aguardando a conclusão do pedido (0085) não tem data ainda.
-      .filter((c) => (c.vendas?.total_parcelas_fiado ?? 1) <= 1 && !c.aguardando_liberacao)
+      // Repasse de marketplace não vence (0085/0087): é liberado ou estornado pela plataforma.
+      .filter((c) => (c.vendas?.total_parcelas_fiado ?? 1) <= 1 && podeVencer(c))
       .map((c) => ({ id: c.id, tipo: c.tipo, descricao: c.descricao, valor: Number(c.valor) - Number(c.valor_pago ?? 0), data_vencimento: c.data_vencimento })),
   ];
   const fixas = ocorrenciasDespesasFixas(

@@ -132,23 +132,22 @@ describe("conta a pagar a vencer", () => {
 });
 
 describe("repasses e preço defasado", () => {
-  it("resume divergentes e atrasados e gera um alerta para cada", () => {
+  it("resume só divergentes: repasse nunca vira atrasado", () => {
     const r = resumirRepasses(
       [
-        { repasse: 100, repasse_recebido: 100.02, pago_em: "2026-09-01" },
-        { repasse: 100, repasse_recebido: 40, pago_em: "2026-09-01" },
-        { repasse: 80, repasse_recebido: null, pago_em: "2026-09-01" },
-        { repasse: 80, repasse_recebido: null, pago_em: "2026-10-01" },
+        { repasse: 100, repasse_recebido: 100.02 },
+        { repasse: 100, repasse_recebido: 40 },
+        { repasse: 80, repasse_recebido: null },
+        { repasse: 80, repasse_recebido: null },
       ],
-      "2026-10-06",
       situacaoRepasse,
     );
-    expect(r).toEqual({ divergentes: 1, diferenca: 60, atrasados: 1, valorAtrasado: 80 });
+    expect(r).toEqual({ divergentes: 1, diferenca: 60 });
     const a = alertasRepasses(r);
-    expect(a.map((x) => x.id)).toEqual(["repasse-divergente", "repasse-atrasado"]);
+    expect(a.map((x) => x.id)).toEqual(["repasse-divergente"]);
     expect(a[0].gravidade).toBe("alta");
     expect(a[0].acoes[0]).toMatchObject({ href: "/financeiro?aba=repasses" });
-    expect(alertasRepasses({ divergentes: 0, diferenca: 0, atrasados: 0, valorAtrasado: 0 })).toEqual([]);
+    expect(alertasRepasses({ divergentes: 0, diferenca: 0 })).toEqual([]);
   });
 
   it("preço defasado leva ao Raio-X; precificação velha é aviso leve", () => {

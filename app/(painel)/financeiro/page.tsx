@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { eRepasseMarketplace } from "@/lib/repasse-marketplace";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
 import { hojeIsoBrasil, hojeIsoLocal } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
@@ -14,6 +15,8 @@ export const metadata: Metadata = { title: "Financeiro" };
 interface LinhaCpr {
   /** 0085; ausente antes da migração. */
   aguardando_liberacao?: boolean | null;
+  /** 0087; ausente antes da migração. */
+  referencia_pedido_marketplace_id?: string | null;
   id: string;
   tipo: "pagar" | "receber";
   descricao: string;
@@ -273,6 +276,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     cliente_id: c.cliente_id ?? null,
     cliente_nome: c.clientes?.nome ?? (c.cliente_id ? (nomeCliente.get(c.cliente_id) ?? null) : null),
     aguardando_liberacao: !!c.aguardando_liberacao,
+    repasse_marketplace: eRepasseMarketplace(c),
   }));
 
   // Calendário de contas: contas, parcelas de crediário e despesas fixas projetadas
