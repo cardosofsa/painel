@@ -20,6 +20,8 @@ export interface ConexaoShopee {
   refresh_token_cifrado: string | null;
   expira_em: string | null;
   ultima_sincronizacao: string | null;
+  /** 0090: retornos (devoluções) sincronizados à parte dos pedidos. */
+  ultima_sincronizacao_retornos?: string | null;
   /** 0049: estoque do Sertão enviado sozinho para os anúncios desta loja. */
   estoque_auto?: boolean;
   /** 0049: quando o dono conferiu a prévia e ativou (sem isso, nada é enviado). */

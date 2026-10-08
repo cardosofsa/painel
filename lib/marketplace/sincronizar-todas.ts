@@ -9,6 +9,8 @@ export interface ResumoSincronizacao {
   lojas: number;
   pedidos: number;
   novos: number;
+  /** Devoluções lidas (0090). */
+  retornos: number;
   erros: string[];
 }
 
@@ -21,17 +23,19 @@ export async function sincronizarTodasAsLojas(supabase: SupabaseClient): Promise
   if (!conexoes.length) throw new Error("Nenhuma loja conectada à API. Conecte em Configurações → Canais de venda.");
   let pedidos = 0;
   let novos = 0;
+  let retornos = 0;
   const erros: string[] = [];
   for (const c of conexoes) {
     try {
       const r = await sincronizarConexao(supabase, c, "dono");
       pedidos += r.pedidos;
       novos += r.resultado.novos ?? 0;
+      retornos += r.retornos;
       const e = await enviarEstoqueConexao(supabase, c).catch(() => ({ enviados: 0, erros: [] as string[] }));
       erros.push(...e.erros);
     } catch (e) {
       erros.push(e instanceof Error ? e.message : "erro");
     }
   }
-  return { lojas: conexoes.length, pedidos, novos, erros };
+  return { lojas: conexoes.length, pedidos, novos, retornos, erros };
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { carregarPedidosVitrine } from "@/lib/pedidos-vitrine-servidor";
 import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
+import { carregarRetornos } from "@/lib/marketplace/retornos-servidor";
 import { buscarEmLotes } from "@/lib/lotes";
 import { credenciaisShopee, faltandoShopee } from "@/lib/marketplace/shopee-api";
 import { credenciaisML } from "@/lib/marketplace/mercadolivre-api";
@@ -56,9 +57,11 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     : Object.fromEntries((disponivelRes.data ?? []).map((d) => [d.produto_id as string, Number(d.disponivel)]));
 
   // 0062: padrão da etapa Emitir e as notas de cada venda (sem a migração: comprovante, sem notas).
-  const [fiscalRes, notasRes] = await Promise.all([
+  const [fiscalRes, notasRes, retornos] = await Promise.all([
     supabase.from("fiscal_config").select("*").maybeSingle(),
     supabase.from("notas_fiscais").select("venda_id, tipo, status, numero, danfe_url, mensagem, criado_em").gte("criado_em", inicio.toISOString()).order("criado_em"),
+    // Retornos (devoluções da Shopee, 0090, e do sistema, 0059): sem as tabelas, vazio.
+    carregarRetornos(supabase, DIAS_JANELA, new Map(((lojasRes.data ?? []) as { id: string; nome: string }[]).map((l) => [l.id, l.nome]))),
   ]);
   const fiscal = {
     ligada: !!fiscalRes.data?.token_cifrado,
@@ -108,6 +111,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       freteConectado={!!freteRes.data?.token_cifrado}
       fiscal={fiscal}
       notas={notas}
+      retornos={retornos}
     />
   );
 }
