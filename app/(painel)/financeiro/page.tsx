@@ -5,6 +5,8 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { carregarCrediario } from "@/lib/crediario-servidor";
 import type { GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import type { Metadata } from "next";
+import { ocorrenciasDespesasFixas } from "@/lib/despesas-fixas-calendario";
+import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
 export const metadata: Metadata = { title: "Financeiro" };
 
@@ -106,6 +108,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     repassesRes,
     fornecedoresRes,
     clientesRes,
+    fixasPagasRes,
+    parcelasCalRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -113,7 +117,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .select("id, data_movimentacao, descricao, origem, categoria, conta_id, valor, afeta_lucro, referencia_despesa_fixa_id")
       .order("data_movimentacao", { ascending: false })
       .limit(100),
-    supabase.from("despesas_fixas").select("id, nome, metodo, valor, dia_vencimento, conta_id").order("dia_vencimento"),
+    supabase.from("despesas_fixas").select("id, nome, metodo, valor, dia_vencimento, conta_id, criado_em").order("dia_vencimento"),
     supabase
       .from("contas_a_pagar_receber")
       // `*`: valor_pago, data_pagamento e parcela só existem a partir da 0064.
@@ -163,6 +167,19 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     // nome do cliente de cada conta vem embutido na própria consulta de contas acima, então
     // não é mais preciso trazer a tabela de clientes inteira.
     supabase.from("clientes").select("id, nome").eq("status", "ativo").order("nome"),
+    // Calendário de contas: lançamentos que pagaram despesa fixa (marca o mês como pago)…
+    supabase
+      .from("movimentacoes_financeiras")
+      .select("referencia_despesa_fixa_id, data_movimentacao")
+      .not("referencia_despesa_fixa_id", "is", null)
+      .gte("data_movimentacao", hojeIsoLocal(new Date(hoje.getFullYear() - 1, hoje.getMonth(), 1)))
+      .limit(1000),
+    // …e parcelas de crediário (a conta "pai" da venda parcelada é a soma delas).
+    supabase
+      .from("venda_parcelas")
+      .select("id, numero, total_parcelas, valor, valor_pago, data_vencimento, status, vendas(numero, cliente_nome, status)")
+      .gte("data_vencimento", hojeIsoLocal(new Date(hoje.getFullYear() - 1, hoje.getMonth(), 1)))
+      .limit(2000),
   ]);
   const fornecedores = (fornecedoresRes.data ?? []) as { id: string; nome: string }[];
   const clientes = (clientesRes.data ?? []) as { id: string; nome: string }[];
@@ -258,6 +275,52 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     aguardando_liberacao: !!c.aguardando_liberacao,
   }));
 
+  // Calendário de contas: contas, parcelas de crediário e despesas fixas projetadas
+  // (de 12 meses atrás a 12 meses à frente), com o status de cada uma.
+  type ParcelaCal = { id: string; numero: number; total_parcelas: number; valor: number; valor_pago: number | null; data_vencimento: string; status: string; vendas: { numero: string; cliente_nome: string | null; status: string } | null };
+  const calendarioContas: ContaCalendarioFonte[] = [
+    ...contasPagarReceber
+      .filter((c) => (c.total_parcelas_fiado ?? 1) <= 1 && !c.aguardando_liberacao)
+      .map((c) => ({
+        id: c.id,
+        tipo: c.tipo,
+        descricao: c.descricao,
+        valor: Number(c.valor),
+        valorAberto: Number(c.valor) - c.valor_pago,
+        data_vencimento: c.data_vencimento,
+        quitada: c.status !== "pendente",
+        origem: "conta" as const,
+      })),
+    ...((parcelasCalRes.error ? [] : (parcelasCalRes.data ?? [])) as unknown as ParcelaCal[])
+      .filter((p) => p.vendas?.status !== "cancelada" && p.status !== "cancelada")
+      .map((p) => ({
+        id: p.id,
+        tipo: "receber" as const,
+        descricao: `Venda ${p.vendas?.numero ?? ""} — parcela ${p.numero}/${p.total_parcelas}${p.vendas?.cliente_nome ? ` · ${p.vendas.cliente_nome}` : ""}`,
+        valor: Number(p.valor),
+        valorAberto: Number(p.valor) - Number(p.valor_pago ?? 0),
+        data_vencimento: p.data_vencimento,
+        quitada: p.status === "paga",
+        origem: "parcela" as const,
+      })),
+    ...ocorrenciasDespesasFixas(
+      (despesasRes.data ?? []) as { id: string; nome: string; valor: number; dia_vencimento: number; criado_em: string | null }[],
+      hojeIsoLocal(new Date(hoje.getFullYear() - 1, hoje.getMonth(), 1)),
+      hojeIsoLocal(new Date(hoje.getFullYear() + 1, hoje.getMonth() + 1, 0)),
+      ((fixasPagasRes.error ? [] : fixasPagasRes.data) ?? []).map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
+      contasPagarReceber,
+    ).map((o) => ({
+      id: o.id,
+      tipo: "pagar" as const,
+      descricao: o.descricao,
+      valor: o.valor,
+      valorAberto: o.paga ? 0 : o.valor,
+      data_vencimento: o.data_vencimento,
+      quitada: o.paga,
+      origem: "fixa" as const,
+    })),
+  ];
+
   // Histórico: pagamentos a fornecedores/contas (0064) + recebimentos de crediário.
   const historico: ItemHistorico[] = [
     ...((pagamentosRes.data ?? []) as unknown as PagamentoBruto[]).map((g) => ({
@@ -346,6 +409,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       repassesOk={repassesOk}
       fornecedores={fornecedores}
       clientes={clientes}
+      calendarioContas={calendarioContas}
+      hoje={hojeIsoBrasil()}
     />
   );
 }
