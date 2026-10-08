@@ -8,7 +8,6 @@
 
 import { formatBRL, formatarDataIso } from "@/lib/format";
 import type { AlertaErosaoMargem, AlertaPrecoDefasado, AlertaRupturaEstoque } from "@/lib/alertas";
-import type { SituacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
 import type { ZonaMorta } from "@/lib/pricing";
 
 export type Gravidade = "alta" | "media" | "baixa";
@@ -252,43 +251,4 @@ export function alertasZonaMorta(itens: PrecoEmZonaMorta[]): AlertaVixe[] {
       { tipo: "link", rotulo: "Abrir Precificação", href: "/precificacao" },
     ],
   }));
-}
-
-// ---------- Repasses (Fase 5, onda A) ----------
-
-export interface ResumoRepasses {
-  divergentes: number;
-  /** Soma de |recebido − esperado| dos divergentes. */
-  diferenca: number;
-}
-
-/** Repasse nunca "atrasa" (0087): só a divergência entre recebido e esperado vira alerta. */
-export function resumirRepasses(
-  pedidos: { repasse: number; repasse_recebido: number | null }[],
-  situacao: (p: { repasse: number; repasse_recebido: number | null }) => SituacaoRepasse,
-): ResumoRepasses {
-  const r: ResumoRepasses = { divergentes: 0, diferenca: 0 };
-  for (const p of pedidos) {
-    if (situacao(p) === "divergente") {
-      r.divergentes++;
-      r.diferenca += Math.abs(Number(p.repasse_recebido) - Number(p.repasse));
-    }
-  }
-  r.diferenca = Math.round(r.diferenca * 100) / 100;
-  return r;
-}
-
-/** Repasse da Shopee/ML diferente do esperado. */
-export function alertasRepasses(r: ResumoRepasses): AlertaVixe[] {
-  if (r.divergentes === 0) return [];
-  return [
-    {
-      id: "repasse-divergente",
-      categoria: "financeiro",
-      gravidade: r.diferenca >= 50 ? "alta" : "media",
-      titulo: `${r.divergentes} ${r.divergentes === 1 ? "repasse veio diferente" : "repasses vieram diferentes"} do esperado`,
-      detalhe: `Diferença somada de ${formatBRL(r.diferenca)} entre o que a plataforma pagou e o que o pedido previa. Confira taxas, frete e devoluções.`,
-      acoes: [{ tipo: "link" as const, rotulo: "Conferir repasses", href: "/financeiro?aba=repasses" }],
-    },
-  ];
 }

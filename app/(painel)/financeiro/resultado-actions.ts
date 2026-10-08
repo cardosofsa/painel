@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
-import { validar, gastosAnunciosSchema, repassesSchema } from "@/lib/validacao";
+import { validar, gastosAnunciosSchema } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 
-const SEM_MIGRACAO = "Anúncios e repasses precisam da migração 0066. Aplique no Supabase e recarregue.";
+const SEM_MIGRACAO = "Os gastos com anúncios precisam da migração 0066. Aplique no Supabase e recarregue.";
 const faltaMigracao = (code?: string) => code === "PGRST205" || code === "42P01" || code === "PGRST202" || code === "PGRST204" || code === "42703";
 
 function revalidateTudo() {
@@ -88,23 +88,3 @@ export async function removerGastoAnuncio(id: string) {
   });
 }
 
-export interface ResultadoConciliacao {
-  numero: string;
-  status: "conciliado" | "divergente" | "nao_encontrado" | "ja_conciliado";
-  esperado: number | null;
-  recebido: number;
-}
-
-/** Concilia os repasses lidos do relatório da plataforma (0066) e dá baixa no Financeiro. */
-export async function conciliarRepasses(dados: { conta_id: string; itens: { numero: string; valor: number; data: string | null }[] }) {
-  return comResultado(async (): Promise<ResultadoConciliacao[]> => {
-    const v = validar(repassesSchema, dados);
-    const supabase = await createClient();
-    const { data, error } = await supabase.rpc("conciliar_repasses", { p_itens: v.itens, p_conta_id: v.conta_id });
-    if (faltaMigracao(error?.code)) throw new Error(SEM_MIGRACAO);
-    if (error) lancarErroSupabase(error);
-    revalidateTudo();
-    revalidatePath("/vendas");
-    return ((data ?? []) as ResultadoConciliacao[]).map((r) => ({ ...r, esperado: r.esperado === null ? null : Number(r.esperado), recebido: Number(r.recebido) }));
-  });
-}

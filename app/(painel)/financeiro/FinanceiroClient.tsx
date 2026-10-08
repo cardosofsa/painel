@@ -40,7 +40,6 @@ import type { AlvoPagamentos } from "./pagamentos-actions";
 import { Chip } from "@/components/ui/Chip";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
-import { AbaRepasses, type PedidoRepasse } from "@/components/financeiro/AbaRepasses";
 import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
 import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
@@ -120,11 +119,9 @@ const ABAS_FIN = [
   { id: "visao", rotulo: "Visão geral" },
   { id: "a-pagar", rotulo: "A pagar" },
   { id: "a-receber", rotulo: "A receber" },
-  { id: "calendario", rotulo: "Calendário" },
   { id: "historico", rotulo: "Histórico" },
   { id: "lancamentos", rotulo: "Lançamentos" },
   { id: "resultado", rotulo: "Resultado" },
-  { id: "repasses", rotulo: "Repasses" },
 ] as const;
 type AbaFin = (typeof ABAS_FIN)[number]["id"];
 /** `?aba=a-pagar` (link da Vixe) → "A pagar". Desconhecido: Visão geral. */
@@ -161,8 +158,6 @@ export function FinanceiroClient({
   gastosAnuncios = [],
   lojasMarketplace = [],
   anunciosOk = true,
-  repasses = [],
-  repassesOk = true,
   fornecedores = [],
   clientes = [],
   calendarioContas = [],
@@ -183,8 +178,6 @@ export function FinanceiroClient({
   lojasMarketplace?: { id: string; nome: string; canal: string }[];
   /** false = 0066 ausente. */
   anunciosOk?: boolean;
-  repasses?: PedidoRepasse[];
-  repassesOk?: boolean;
   /** Multa e juros do crediário (0065): a parcela atrasada já sugere o valor atualizado. */
   regraCrediario?: RegraEncargos | null;
   /** Pagamentos feitos e recebimentos de crediário, mais recente primeiro. */
@@ -525,6 +518,10 @@ export function FinanceiroClient({
           {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
         </div>
       </Card>
+      </div>
+
+      <div className="mt-5">
+        <CalendarioContas contas={calendarioContas} hoje={hojeServidor ?? hojeIsoLocal()} />
       </div>
         </>
       )}
@@ -908,9 +905,6 @@ export function FinanceiroClient({
 
       {aba === "resultado" && <AbaResultado dre={dre} gastos={gastosAnuncios} lojas={lojasMarketplace} anunciosOk={anunciosOk} />}
 
-      {aba === "calendario" && <CalendarioContas contas={calendarioContas} hoje={hojeServidor ?? hojeIsoLocal()} />}
-
-      {aba === "repasses" && <AbaRepasses pedidos={repasses} contas={contas} repassesOk={repassesOk} />}
       </TabPanel>
 
       {/*

@@ -716,15 +716,6 @@ export const gastosAnunciosSchema = z
   })
   .refine((v) => v.periodo_fim >= v.periodo_inicio, { message: "O fim do período vem antes do início", path: ["periodo_fim"] });
 
-/** Repasses lidos do relatório da plataforma (0066). */
-export const repassesSchema = z.object({
-  conta_id: uuid,
-  itens: z
-    .array(z.object({ numero: z.string().trim().min(1).max(80), valor: z.number().finite().min(-10_000_000).max(10_000_000), data: dataIso.nullable() }))
-    .min(1, "Nenhum repasse para conciliar")
-    .max(5000, "No máximo 5.000 pedidos por vez"),
-});
-
 /** Pix e encargos do crediário (0065). Multa limitada a 2% pelo CDC; o banco também confere. */
 export const crediarioConfigSchema = z.object({
   pix_chave: z.string().trim().max(77, "Chave Pix longa demais").nullable(),

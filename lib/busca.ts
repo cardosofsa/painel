@@ -38,7 +38,6 @@ export const ATALHOS_EXTRAS: AtalhoTela[] = [
   { rotulo: "Financeiro · A pagar", href: "/financeiro?aba=a-pagar", aba: "financeiro", sinonimos: "contas fornecedor boleto" },
   { rotulo: "Financeiro · A receber", href: "/financeiro?aba=a-receber", aba: "financeiro", sinonimos: "crediario fiado" },
   { rotulo: "Financeiro · Resultado do mês", href: "/financeiro?aba=resultado", aba: "financeiro", sinonimos: "dre lucro liquido anuncios ads" },
-  { rotulo: "Financeiro · Repasses", href: "/financeiro?aba=repasses", aba: "financeiro", sinonimos: "conciliacao shopee mercado livre liberado" },
   { rotulo: "Financeiro · Histórico de pagamentos", href: "/financeiro?aba=historico", aba: "financeiro" },
   { rotulo: "Valor do estoque", href: "/estoque/valor", aba: "estoque", sinonimos: "giro parados cobertura" },
   { rotulo: "Vixe · Alertas", href: "/vixe", aba: "vixe" },

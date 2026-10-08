@@ -248,7 +248,7 @@ export default async function Home() {
             itens={[
               "Lucro e margem de cada venda, já sem taxa, frete e imposto",
               "Faturamento e lucro por dia, por produto, curva ABC e por estado",
-              "Repasses da Shopee conferidos com o que você esperava receber",
+              "Resultado do mês com taxas, frete e anúncios já descontados",
               "Contas a pagar e a receber, crediário com parcelas e cobrança por Pix",
             ]}
             imagem={

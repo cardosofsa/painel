@@ -13,7 +13,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AbaId } from "@/lib/acesso";
 import { hojeIsoBrasil } from "@/lib/format";
 import { calcularErosaoMargem, calcularPrecoDefasado, calcularPrevisaoRuptura, quantidadeSugeridaCompra, ultimaPrecificacaoPorProduto } from "@/lib/alertas";
-import { situacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
 import { zonaMortaDeFaixa, type ComponenteKit, type FaixaComissao } from "@/lib/pricing";
 import {
   alertasContasVencidas,
@@ -22,9 +21,7 @@ import {
   alertasEstoqueMinimo,
   alertasMargem,
   alertasPrecoDefasado,
-  alertasRepasses,
   alertasRuptura,
-  resumirRepasses,
   alertasZonaMorta,
   ordenarAlertas,
   type AlertaVixe,
@@ -79,12 +76,6 @@ export async function carregarAlertasVixe(supabase: SupabaseClient, abasLiberada
       contas(supabase, hoje).then(
         (a) => void blocos.push(a),
         (e) => void falhas.push(`contas e crediário (${mensagem(e)})`),
-      ),
-    );
-    tarefas.push(
-      repasses(supabase).then(
-        (a) => void blocos.push(a),
-        (e) => void falhas.push(`repasses (${mensagem(e)})`),
       ),
     );
   }
@@ -166,27 +157,6 @@ async function margem(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     new Set(erosao.map((e) => e.produtoId)),
   );
   return [...alertasMargem(erosao), ...alertasPrecoDefasado(defasado)];
-}
-
-/** Repasses da Shopee/ML (0066): divergentes dos últimos 120 dias (repasse nunca "atrasa", 0087). */
-async function repasses(supabase: SupabaseClient): Promise<AlertaVixe[]> {
-  const r = await supabase
-    .from("pedidos_marketplace")
-    // `*`: repasse_recebido só existe a partir da 0066.
-    .select("*")
-    .not("status", "in", "(cancelado,nao_pago,devolvido)")
-    .gte("pago_em", new Date(Date.now() - 120 * 86_400_000).toISOString())
-    .limit(2000);
-  const linhas = ok<Record<string, unknown>[]>(r);
-  // Sem a 0066 a conciliação não existe: nada a avisar (a aba Repasses explica).
-  if (linhas.length === 0 || !("repasse_recebido" in linhas[0])) return [];
-  const pedidos = linhas
-    .filter((l) => l.repasse !== null && l.repasse !== undefined)
-    .map((l) => ({
-      repasse: Number(l.repasse),
-      repasse_recebido: l.repasse_recebido === null ? null : Number(l.repasse_recebido),
-    }));
-  return alertasRepasses(resumirRepasses(pedidos, situacaoRepasse));
 }
 
 interface ParcelaBruta {

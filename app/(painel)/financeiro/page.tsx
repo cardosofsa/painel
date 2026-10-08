@@ -108,7 +108,6 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     dreRes,
     gastosRes,
     lojasRes,
-    repassesRes,
     fornecedoresRes,
     clientesRes,
     fixasPagasRes,
@@ -156,14 +155,6 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     supabase.rpc("dre_mensal", { p_inicio: hojeIsoLocal(new Date(hoje.getFullYear(), hoje.getMonth() - 5, 1)), p_fim: hojeIsoLocal(hoje) }),
     supabase.from("gastos_anuncios").select("id, periodo_inicio, periodo_fim, canal, campanha, valor, pedidos, vendas, origem").order("periodo_fim", { ascending: false }).limit(200),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
-    // Repasses: pedidos pagos dos últimos ~4 meses. `*`: repasse_recebido só a partir da 0066.
-    supabase
-      .from("pedidos_marketplace")
-      .select("*")
-      .not("status", "in", "(cancelado,nao_pago,devolvido)")
-      .gte("pago_em", new Date(hoje.getTime() - 120 * 86_400_000).toISOString())
-      .order("pago_em", { ascending: false })
-      .limit(1000),
     // Para "Lançar dívida antiga" (0067) e para dar nome a conta ligada direto a eles.
     supabase.from("fornecedores").select("id, nome").order("nome"),
     // Só o seletor da dívida antiga usa esta lista — e só cliente ativo, como no PDV. O
@@ -190,10 +181,6 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   const nomeCliente = new Map(clientes.map((c) => [c.id, c.nome]));
 
   const lojasMarketplace = ((lojasRes.data ?? []) as unknown as { id: string; nome: string; canais: { nome: string } | null }[]).map((l) => ({ id: l.id, nome: l.nome, canal: l.canais?.nome ?? "Loja" }));
-  const nomeLoja = new Map(lojasMarketplace.map((l) => [l.id, `${l.canal} · ${l.nome}`]));
-  const linhasRepasse = (repassesRes.data ?? []) as Record<string, unknown>[];
-  // Sem a 0066 a coluna não vem: a aba explica em vez de mostrar tudo como "aguardando".
-  const repassesOk = !repassesRes.error && !dreRes.error && (linhasRepasse.length === 0 || "repasse_recebido" in linhasRepasse[0]);
 
   // Só as consultas ESSENCIAIS derrubam a tela. Antes eram 11 `throw`: uma falha em
   // `precificacoes` — que alimenta apenas o card de erosão de margem — apagava saldo, fluxo
@@ -284,7 +271,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   type ParcelaCal = { id: string; numero: number; total_parcelas: number; valor: number; valor_pago: number | null; data_vencimento: string; status: string; vendas: { numero: string; cliente_nome: string | null; status: string } | null };
   const calendarioContas: ContaCalendarioFonte[] = [
     ...contasPagarReceber
-      .filter((c) => (c.total_parcelas_fiado ?? 1) <= 1 && !c.aguardando_liberacao)
+      .filter((c) => (c.total_parcelas_fiado ?? 1) <= 1 && !c.repasse_marketplace)
       .map((c) => ({
         id: c.id,
         tipo: c.tipo,
@@ -399,18 +386,6 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       gastosAnuncios={((gastosRes.data ?? []) as GastoAnuncio[]).map((g) => ({ ...g, valor: Number(g.valor), vendas: g.vendas == null ? null : Number(g.vendas) }))}
       lojasMarketplace={lojasMarketplace}
       anunciosOk={!gastosRes.error && !dreRes.error}
-      repasses={linhasRepasse.map((p) => ({
-        id: String(p.id),
-        numero: String(p.numero),
-        loja: nomeLoja.get(String(p.loja_id)) ?? "Marketplace",
-        pago_em: (p.pago_em as string | null) ?? null,
-        repasse: Number(p.repasse ?? 0),
-        repasse_recebido: p.repasse_recebido == null ? null : Number(p.repasse_recebido),
-        repasse_recebido_em: (p.repasse_recebido_em as string | null) ?? null,
-        status: (p.status as string | null) ?? null,
-        escrow_liberado_em: (p.escrow_liberado_em as string | null) ?? null,
-      }))}
-      repassesOk={repassesOk}
       fornecedores={fornecedores}
       clientes={clientes}
       calendarioContas={calendarioContas}

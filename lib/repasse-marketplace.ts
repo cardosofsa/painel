@@ -2,8 +2,9 @@
  * Repasse de marketplace (Shopee, Mercado Livre) no Financeiro.
  *
  * Na Shopee tudo acontece dentro da plataforma: o pedido feito já está pago, e o repasse ou
- * é liberado (a sincronização dá a baixa sozinha, 0087) ou é estornado. Ele NUNCA "atrasa":
- * não entra em alerta de vencida, em "Vencidos", no sininho nem como atrasado no calendário.
+ * é liberado ou é estornado pela plataforma. Ele NUNCA "atrasa": não entra em alerta de
+ * vencida, em "Vencidos" nem nos calendários, e não há baixa automática nem conciliação
+ * (a aba Repasses foi removida; a conta a receber continua sendo criada pela importação).
  *
  * A identificação é pela coluna `referencia_pedido_marketplace_id` (0087) ou pelo
  * `aguardando_liberacao` (0085). A descrição "Repasse … — pedido N" só decide quando a

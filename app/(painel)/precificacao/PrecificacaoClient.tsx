@@ -45,7 +45,6 @@ const ABAS_PRECIFICACAO = [
   { value: "variacoes", label: "Variações" },
   { value: "kits", label: "Kits" },
   { value: "massa", label: "Em Massa" },
-  { value: "historico", label: "Histórico" },
   { value: "raio-x", label: "Raio-X" },
   { value: "promocao", label: "Promoção" },
 ] as const satisfies readonly TabItem<VisaoPrecificacao>[];
@@ -80,6 +79,8 @@ export function PrecificacaoClient({
   visaoInicial?: VisaoPrecificacao;
 }) {
   const [exportandoSalvas, setExportandoSalvas] = useState(false);
+  // O histórico abre num pop-up (antes era uma aba).
+  const [historicoAberto, setHistoricoAberto] = useState(false);
   // Linhas mais antigas buscadas sob demanda (a página traz só as 50 mais recentes).
   const [maisAntigas, setMaisAntigas] = useState<PrecificacaoHist[]>([]);
   const [temMais, setTemMais] = useState(historico.length >= POR_PAGINA);
@@ -113,14 +114,21 @@ export function PrecificacaoClient({
 
   return (
     <>
-      <PageHeader title="Calculadora de Precificação" />
+      <PageHeader
+        title="Calculadora de Precificação"
+        actions={
+          <Button variant="secondary" size="sm" onClick={() => setHistoricoAberto(true)}>
+            <History size={14} /> Histórico
+          </Button>
+        }
+      />
 
       {/* Estas quatro abas eram <button> cru: sem indicador, sem ARIA e sem teclado —
           na tela mais importante do produto, enquanto Admin e Configurações já usavam
           o <Tabs>. Duas telas do mesmo app navegavam de jeitos visualmente diferentes. */}
       <Tabs tabs={ABAS_PRECIFICACAO} value={visao} onChange={setVisao} className="mb-5" />
 
-      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} setVisao={setVisao} empresa={empresa} />}
+      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} onVerHistorico={() => setHistoricoAberto(true)} empresa={empresa} />}
 
       {visao === "kits" && <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} />}
 
@@ -131,7 +139,7 @@ export function PrecificacaoClient({
           anuncios={anuncios}
           aliquotaDasPadrao={aliquotaDasPadrao}
           confirm={estado.confirm}
-          setVisao={setVisao}
+          onVerHistorico={() => setHistoricoAberto(true)}
           iaDisponivel={iaDisponivel}
           empresa={empresa}
         />
@@ -162,7 +170,7 @@ export function PrecificacaoClient({
                 <Button variant="secondary" size="sm" onClick={() => setExportandoSalvas(true)} disabled={!historico.some((h) => h.origem === "individual")}>
                   <Download size={14} /> Exportar
                 </Button>
-                <IconButton onClick={() => setVisao("historico")} aria-label="Ver histórico completo" title="Ver histórico completo">
+                <IconButton onClick={() => setHistoricoAberto(true)} aria-label="Ver histórico completo" title="Ver histórico completo">
                   <History size={14} />
                 </IconButton>
               </div>
@@ -191,18 +199,25 @@ export function PrecificacaoClient({
         </>
       )}
 
-      {visao === "historico" && (
+      {visao === "raio-x" && <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />}
+      {visao === "promocao" && <SimuladorPromocao historico={historicoCompleto} lojas={lojas} produtos={produtos} />}
+
+      <Modal open={historicoAberto} onClose={() => setHistoricoAberto(false)} title="Histórico de precificações" width="max-w-5xl">
         <HistoricoPrecificacoes
-          estado={estado}
+          // Duplicar leva a precificação para a aba Individual: o pop-up fecha junto.
+          estado={{
+            ...estado,
+            duplicarHistorico: (h) => {
+              estado.duplicarHistorico(h);
+              setHistoricoAberto(false);
+            },
+          }}
           anuncios={anuncios}
           acoesLigarProduto={acoesLigarProduto}
           empresa={empresa}
           paginacao={{ temMais, carregando: carregandoMais, carregarMais: () => carregarMais(false), carregarTudo: () => carregarMais(true) }}
         />
-      )}
-
-      {visao === "raio-x" && <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />}
-      {visao === "promocao" && <SimuladorPromocao historico={historicoCompleto} lojas={lojas} produtos={produtos} />}
+      </Modal>
 
       <ModalVincularProduto
         aberto={!!estado.vinculandoId}
