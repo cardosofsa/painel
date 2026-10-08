@@ -57,9 +57,17 @@ export function lerRepasse(descricao: string): RepasseLidoDaConta | null {
 }
 
 /** Um item do dia: um evento solto ou os repasses do dia juntos (de uma loja ou de todas). */
-export type ItemDoDia =
-  | { tipo: "evento"; id: string; evento: EventoCalendario }
-  | { tipo: "repasses"; id: string; data: string; loja: string | null; eventos: EventoCalendario[]; total: number };
+export type ItemDoDia<T = EventoCalendario> =
+  | { tipo: "evento"; id: string; evento: T }
+  | { tipo: "repasses"; id: string; data: string; loja: string | null; eventos: T[]; total: number };
+
+/** O mínimo para agrupar repasses (evento do Dashboard ou conta do calendário do Financeiro). */
+interface Agrupavel {
+  id: string;
+  data: string;
+  valor?: number;
+  repasse?: RepasseLidoDaConta | null;
+}
 
 /**
  * Junta os repasses de marketplace de um dia: a Shopee gera uma conta a receber por pedido,
@@ -67,14 +75,14 @@ export type ItemDoDia =
  * loja (lista do dia); sem ele, todos os repasses do dia viram um item só (célula do mês).
  * O grupo fica na posição do primeiro repasse; um repasse sozinho continua como evento.
  */
-export function agruparRepasses(lista: EventoCalendario[], porLoja = false): ItemDoDia[] {
-  const grupos = new Map<string, EventoCalendario[]>();
+export function agruparRepasses<T extends Agrupavel = EventoCalendario>(lista: T[], porLoja = false): ItemDoDia<T>[] {
+  const grupos = new Map<string, T[]>();
   for (const e of lista) {
     if (!e.repasse) continue;
     const chave = porLoja ? e.repasse.loja : "";
     grupos.set(chave, [...(grupos.get(chave) ?? []), e]);
   }
-  const itens: ItemDoDia[] = [];
+  const itens: ItemDoDia<T>[] = [];
   const emitidos = new Set<string>();
   for (const e of lista) {
     const chave = e.repasse ? (porLoja ? e.repasse.loja : "") : null;
