@@ -5,6 +5,12 @@ const supabaseHost = process.env.NEXT_PUBLIC_SUPABASE_URL
   : undefined;
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Voltar para uma página já visitada (ou reabrir uma aba) usa o cache do navegador por 30 s
+    // em vez de refazer todas as consultas. Toda mutação do app termina em `revalidatePath`, que
+    // invalida esse cache: o dado alterado nunca aparece velho.
+    staleTimes: { dynamic: 30, static: 180 },
+  },
   images: {
     // As fotos de produto vivem no Storage do Supabase. Sem liberar o host aqui, o
     // next/image recusa a URL e a imagem não carrega.

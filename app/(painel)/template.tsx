@@ -1,8 +1,11 @@
+import { ViewTransition } from "react";
+
 /**
- * Remonta a cada navegação dentro do painel: o conteúdo novo entra com um esmaecer curto
- * (só opacidade, sem transform, para não virar bloco de contenção de modal `fixed`).
- * `prefers-reduced-motion` zera a animação no globals.css.
+ * Remonta a cada navegação dentro do painel. O conteúdo novo entra com um esmaecer curto pela
+ * View Transitions API (a navegação do Next já é uma transição do React, então não precisa de
+ * configuração). Só a área da página anima: menu e cabeçalho ficam parados. A duração e o
+ * `prefers-reduced-motion` estão no `globals.css`; sem suporte do navegador, a página só troca.
  */
 export default function PainelTemplate({ children }: { children: React.ReactNode }) {
-  return <div className="animate-esmaecer">{children}</div>;
+  return <ViewTransition>{children}</ViewTransition>;
 }

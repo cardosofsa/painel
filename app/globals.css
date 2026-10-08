@@ -332,3 +332,19 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Transição entre páginas do painel (`app/(painel)/template.tsx`): esmaecer curto, mesma duração e
+   curva dos demais movimentos. Pseudo-elementos de view transition não entram no `*` do bloco de
+   `prefers-reduced-motion` acima, então ele é repetido aqui. */
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--duracao-media);
+  animation-timing-function: var(--curva);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
