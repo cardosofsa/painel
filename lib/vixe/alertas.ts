@@ -260,53 +260,35 @@ export interface ResumoRepasses {
   divergentes: number;
   /** Soma de |recebido − esperado| dos divergentes. */
   diferenca: number;
-  atrasados: number;
-  /** Soma do esperado dos atrasados. */
-  valorAtrasado: number;
 }
 
+/** Repasse nunca "atrasa" (0087): só a divergência entre recebido e esperado vira alerta. */
 export function resumirRepasses(
-  pedidos: { repasse: number; repasse_recebido: number | null; pago_em: string | null }[],
-  hoje: string,
-  situacao: (p: { repasse: number; repasse_recebido: number | null; pago_em: string | null }, hoje: string) => SituacaoRepasse,
+  pedidos: { repasse: number; repasse_recebido: number | null }[],
+  situacao: (p: { repasse: number; repasse_recebido: number | null }) => SituacaoRepasse,
 ): ResumoRepasses {
-  const r: ResumoRepasses = { divergentes: 0, diferenca: 0, atrasados: 0, valorAtrasado: 0 };
+  const r: ResumoRepasses = { divergentes: 0, diferenca: 0 };
   for (const p of pedidos) {
-    const s = situacao(p, hoje);
-    if (s === "divergente") {
+    if (situacao(p) === "divergente") {
       r.divergentes++;
       r.diferenca += Math.abs(Number(p.repasse_recebido) - Number(p.repasse));
-    } else if (s === "atrasado") {
-      r.atrasados++;
-      r.valorAtrasado += Number(p.repasse);
     }
   }
   r.diferenca = Math.round(r.diferenca * 100) / 100;
-  r.valorAtrasado = Math.round(r.valorAtrasado * 100) / 100;
   return r;
 }
 
-/** Repasse da Shopee/ML diferente do esperado ou atrasado: um alerta por situação. */
+/** Repasse da Shopee/ML diferente do esperado. */
 export function alertasRepasses(r: ResumoRepasses): AlertaVixe[] {
-  const link = { tipo: "link" as const, rotulo: "Conferir repasses", href: "/financeiro?aba=repasses" };
-  const saida: AlertaVixe[] = [];
-  if (r.divergentes > 0)
-    saida.push({
+  if (r.divergentes === 0) return [];
+  return [
+    {
       id: "repasse-divergente",
       categoria: "financeiro",
       gravidade: r.diferenca >= 50 ? "alta" : "media",
       titulo: `${r.divergentes} ${r.divergentes === 1 ? "repasse veio diferente" : "repasses vieram diferentes"} do esperado`,
       detalhe: `Diferença somada de ${formatBRL(r.diferenca)} entre o que a plataforma pagou e o que o pedido previa. Confira taxas, frete e devoluções.`,
-      acoes: [link],
-    });
-  if (r.atrasados > 0)
-    saida.push({
-      id: "repasse-atrasado",
-      categoria: "financeiro",
-      gravidade: "media",
-      titulo: `${r.atrasados} ${r.atrasados === 1 ? "repasse atrasado" : "repasses atrasados"}`,
-      detalhe: `${formatBRL(r.valorAtrasado)} de pedidos pagos há mais de 15 dias que ainda não aparecem como recebidos. Importe o relatório de repasses para conferir.`,
-      acoes: [link],
-    });
-  return saida;
+      acoes: [{ tipo: "link" as const, rotulo: "Conferir repasses", href: "/financeiro?aba=repasses" }],
+    },
+  ];
 }

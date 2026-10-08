@@ -55,10 +55,10 @@ describe("relatório de repasses", () => {
     expect(r.erros).toHaveLength(1);
   });
 
-  it("situação: conciliado, divergente, atrasado, aguardando", () => {
-    expect(situacaoRepasse({ repasse: 100, repasse_recebido: 100.03, pago_em: null }, "2026-10-05")).toBe("conciliado");
-    expect(situacaoRepasse({ repasse: 100, repasse_recebido: 90, pago_em: null }, "2026-10-05")).toBe("divergente");
-    expect(situacaoRepasse({ repasse: 100, repasse_recebido: null, pago_em: "2026-09-01T10:00:00Z" }, "2026-10-05")).toBe("atrasado");
-    expect(situacaoRepasse({ repasse: 100, repasse_recebido: null, pago_em: "2026-10-01T10:00:00Z" }, "2026-10-05")).toBe("aguardando");
+  it("situação: conciliado, divergente, aguardando — nunca atrasado", () => {
+    expect(situacaoRepasse({ repasse: 100, repasse_recebido: 100.03 })).toBe("conciliado");
+    expect(situacaoRepasse({ repasse: 100, repasse_recebido: 90 })).toBe("divergente");
+    expect(situacaoRepasse({ repasse: 100, repasse_recebido: null })).toBe("aguardando");
   });
+
 });
