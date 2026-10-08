@@ -6,7 +6,7 @@ import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL, formatarDataIso, hojeIsoLocal, numeroOuNulo } from "@/lib/format";
-import { distribuirJaPago, previaParcelas } from "@/lib/pagamentos";
+import { parcelasDividaAntiga } from "@/lib/pagamentos";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { lancarDividaAntiga } from "@/app/(painel)/financeiro/pagamentos-actions";
 
@@ -59,7 +59,7 @@ export function DividaAntigaModal({
   const nParcelas = Math.min(48, Math.max(1, Math.trunc(numeroOuNulo(parcelas) ?? 1)));
   const quem = tipo === "pagar" ? fornecedorId : clienteId;
   const previa = useMemo(
-    () => (totalN > 0 && primeiro ? distribuirJaPago(previaParcelas(totalN, nParcelas, primeiro, intervalo), jaPagoN) : []),
+    () => (totalN > 0 && primeiro && jaPagoN <= totalN ? parcelasDividaAntiga(totalN, jaPagoN, nParcelas, primeiro, intervalo) : []),
     [totalN, nParcelas, primeiro, intervalo, jaPagoN],
   );
   const emAberto = Math.max(0, Math.round((totalN - jaPagoN) * 100) / 100);
@@ -165,6 +165,11 @@ export function DividaAntigaModal({
         </FormField>
       )}
 
+      {totalN > 0 && jaPagoN > 0 && jaPagoN <= totalN && (
+        <p className="text-xs text-text-secondary mb-2">
+          {formatBRL(jaPagoN)} já pagos ficam registrados como quitados; as parcelas dividem só o que fica em aberto.
+        </p>
+      )}
       {previa.length > 0 && (
         <div className="rounded-md border border-border mb-4">
           <div className="flex justify-between px-3 py-2 text-sm border-b border-border bg-surface-2">
@@ -177,10 +182,7 @@ export function DividaAntigaModal({
                 <span className="text-text-secondary">
                   {i + 1}ª · vence {formatarDataIso(p.vencimento)}
                 </span>
-                <span className="font-mono text-text-primary">
-                  {formatBRL(p.valor)}
-                  {p.jaPago > 0 && <span className="text-positive"> · {p.quitada ? "paga" : `${formatBRL(p.jaPago)} pago`}</span>}
-                </span>
+                <span className="font-mono text-text-primary">{formatBRL(p.valor)}</span>
               </li>
             ))}
           </ul>
