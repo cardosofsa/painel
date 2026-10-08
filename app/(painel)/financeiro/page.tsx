@@ -1,9 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
-import { eRepasseMarketplace } from "@/lib/repasse-marketplace";
+import { eRepasseMarketplace, lerRepasse } from "@/lib/repasse-marketplace";
+import { montarEntradaProjecao, repassesConcluidos, type PedidoMkt } from "@/lib/projecao-dados";
+import { fimDoMes, projetarSaldo } from "@/lib/saldo-projetado";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { listarFechamentos } from "@/lib/fechamento-servidor";
 import { FinanceiroClient, type Movimentacao, type ContaPagarReceber, type ItemHistorico } from "./FinanceiroClient";
-import { hojeIsoBrasil, hojeIsoLocal } from "@/lib/format";
+import { hojeIsoBrasil, hojeIsoLocal, somarDiasIso } from "@/lib/format";
 import { lancarErroSupabase } from "@/lib/erros";
 import { carregarCrediario } from "@/lib/crediario-servidor";
 import type { GastoAnuncio } from "@/components/financeiro/AbaResultado";
@@ -116,6 +118,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     parcelasCalRes,
     userRes,
     iaDisponivel,
+    pedidosMktRes,
   ] = await Promise.all([
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase
@@ -180,6 +183,14 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .limit(2000),
     supabase.auth.getUser(),
     iaDisponivelParaConta(supabase),
+    // Pedidos concluídos dos últimos ~4 meses: a data real de liberação (0085) e a loja de cada repasse.
+    // Falha aqui só tira a precisão da data prevista (vale o prazo padrão), não derruba a tela.
+    supabase
+      .from("pedidos_marketplace")
+      .select("id, loja_id, escrow_liberado_em")
+      .eq("status", "concluido")
+      .gte("pago_em", new Date(hoje.getTime() - 120 * 86_400_000).toISOString())
+      .limit(1000),
   ]);
   // Histórico mensal (0088): sem a migração ou sem sessão, a lista fica vazia e a tela segue.
   const fechamentos = userRes.data.user ? await listarFechamentos(supabase, userRes.data.user.id) : [];
@@ -248,6 +259,38 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     referencia_despesa_fixa_id: m.referencia_despesa_fixa_id,
   }));
 
+  // Saldo projetado (mesma função do cron de fechamento): contas com data, crediário por parcela,
+  // despesas fixas ainda não pagas e repasses de pedidos concluídos com data prevista.
+  const hojeBr = hojeIsoBrasil();
+  const pedidosMkt = new Map<string, PedidoMkt>(
+    ((pedidosMktRes.error ? [] : (pedidosMktRes.data ?? [])) as { id: string; loja_id: string | null; escrow_liberado_em: string | null }[]).map((p) => [p.id, { loja_id: p.loja_id, escrow_liberado_em: p.escrow_liberado_em }]),
+  );
+  const linhasCpr = ((cprRes.data ?? []) as unknown as LinhaCpr[]).map((c) => ({
+    id: c.id,
+    tipo: c.tipo,
+    descricao: c.descricao,
+    valor: Number(c.valor),
+    valor_pago: Number(c.valor_pago ?? (c.status === "pendente" ? 0 : c.valor)),
+    status: c.status,
+    data_vencimento: c.data_vencimento,
+    aguardando_liberacao: c.aguardando_liberacao,
+    referencia_pedido_marketplace_id: c.referencia_pedido_marketplace_id,
+    total_parcelas_fiado: c.vendas?.total_parcelas_fiado ?? null,
+  }));
+  const dadosProjecao = {
+    saldoAtual: (contasRes.data ?? []).reduce((s, c) => s + Number(c.saldo), 0),
+    hoje: hojeBr,
+    contas: linhasCpr,
+    parcelas: ((parcelasCalRes.error ? [] : (parcelasCalRes.data ?? [])) as unknown as { status: string; valor: number; valor_pago: number | null; data_vencimento: string; vendas: { status: string } | null }[]).map((p) => ({ ...p, valor: Number(p.valor) })),
+    despesasFixas: (despesasRes.data ?? []) as { id: string; nome: string; valor: number; dia_vencimento: number; criado_em: string | null }[],
+    pagamentosFixas: ((fixasPagasRes.error ? [] : fixasPagasRes.data) ?? []).map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
+    pedidos: pedidosMkt,
+  };
+  const entradaProjecao = montarEntradaProjecao(dadosProjecao);
+  const projecaoMes = projetarSaldo(entradaProjecao, fimDoMes(hojeBr));
+  const projecao30Dias = projetarSaldo(entradaProjecao, somarDiasIso(hojeBr, 30));
+  const previstoDoRepasse = new Map(repassesConcluidos(linhasCpr, pedidosMkt).map((r) => [r.id, r.previsto]));
+
   const contasPagarReceber: ContaPagarReceber[] = ((cprRes.data ?? []) as unknown as LinhaCpr[]).map((c) => ({
     id: c.id,
     tipo: c.tipo,
@@ -272,6 +315,9 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     cliente_nome: c.clientes?.nome ?? (c.cliente_id ? (nomeCliente.get(c.cliente_id) ?? null) : null),
     aguardando_liberacao: !!c.aguardando_liberacao,
     repasse_marketplace: eRepasseMarketplace(c),
+    repasse_previsto: previstoDoRepasse.get(c.id) ?? null,
+    repasse_loja: lerRepasse(c.descricao)?.loja ?? null,
+    repasse_pedido: lerRepasse(c.descricao)?.pedido ?? null,
   }));
 
   // Calendário de contas: contas, parcelas de crediário e despesas fixas projetadas
@@ -398,6 +444,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       clientes={clientes}
       calendarioContas={calendarioContas}
       fechamentos={fechamentos}
+      projecaoMes={projecaoMes}
+      projecao30Dias={projecao30Dias}
       iaDisponivel={iaDisponivel}
       hoje={hojeIsoBrasil()}
     />

@@ -42,7 +42,8 @@ import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
 import { AnaliseMesModal } from "@/components/financeiro/AnaliseMesModal";
-import { fimDoMes, inicioDoMes, projetarSaldo } from "@/lib/saldo-projetado";
+import { inicioDoMes, type Projecao } from "@/lib/saldo-projetado";
+import { agruparRepassesPorLoja } from "@/lib/repasse-marketplace";
 import { rotuloMes, type FechamentoMes } from "@/lib/fechamento-mensal";
 import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
@@ -103,6 +104,10 @@ export interface ContaPagarReceber {
   aguardando_liberacao: boolean;
   /** 0087: repasse de marketplace — nunca vence (é liberado ou estornado pela plataforma). */
   repasse_marketplace: boolean;
+  /** Repasse de pedido concluído: data prevista da liberação, loja e número do pedido. */
+  repasse_previsto: string | null;
+  repasse_loja: string | null;
+  repasse_pedido: string | null;
 }
 
 /** Uma linha do histórico: pagamento feito (fornecedor/conta) ou recebimento (crediário). */
@@ -165,6 +170,8 @@ export function FinanceiroClient({
   clientes = [],
   calendarioContas = [],
   fechamentos = [],
+  projecaoMes,
+  projecao30Dias,
   iaDisponivel = false,
   hoje: hojeServidor,
 }: {
@@ -172,6 +179,9 @@ export function FinanceiroClient({
   calendarioContas?: ContaCalendarioFonte[];
   /** Histórico mensal do saldo (0088), do mais recente ao mais antigo. */
   fechamentos?: FechamentoMes[];
+  /** Saldo projetado até o fim do mês e em 30 dias (`lib/saldo-projetado.ts`, calculado no servidor). */
+  projecaoMes: Projecao;
+  projecao30Dias: Projecao;
   /** Liga a análise do mês por IA. */
   iaDisponivel?: boolean;
   /** Hoje em Brasília, vindo do servidor (evita erro de hidratação depois das 21h). */
@@ -269,18 +279,22 @@ export function FinanceiroClient({
 
   const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
   // O que falta (valor - valor_pago): recebido em parte (0065) não conta de novo.
-  const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
+  // Repasse só aparece quando o pedido já concluiu (aguardando é invisível) e em resumo por loja,
+  // não uma linha por pedido. Fora do total "pendente": o dinheiro ainda está com a plataforma.
+  const repassesAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente" && c.repasse_marketplace && !c.aguardando_liberacao);
+  const gruposRepasses = agruparRepassesPorLoja(
+    repassesAReceber.map((c) => ({ loja: c.repasse_loja ?? "Marketplace", pedido: c.repasse_pedido ?? "—", valor: restanteParcela(c), previsto: c.repasse_previsto ?? c.data_vencimento })),
+  );
+  const totalRepasses = gruposRepasses.reduce((a, g) => a + g.total, 0);
+  const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente" && !c.aguardando_liberacao && !c.repasse_marketplace).reduce((a, c) => a + restanteParcela(c), 0);
 
   const hoje = new Date();
   const em7Dias = new Date(hoje);
   em7Dias.setDate(em7Dias.getDate() + 7);
-  const em30Dias = new Date(hoje);
-  em30Dias.setDate(em30Dias.getDate() + 30);
   // `toISOString()` converteria para UTC e, depois das 21h em Brasília, já devolveria o dia
   // seguinte — jogando os vencimentos de hoje para fora de todos os filtros abaixo.
   const hojeIso = hojeIsoLocal(hoje);
   const em7DiasIso = hojeIsoLocal(em7Dias);
-  const em30DiasIso = hojeIsoLocal(em30Dias);
 
   // Separadas de verdade — duas listas, dois filtros, cada um com as opções que fazem
   // sentido pro tipo (Fiado só existe do lado de A Receber).
@@ -295,6 +309,7 @@ export function FinanceiroClient({
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
+    if (c.aguardando_liberacao || (c.repasse_marketplace && c.status === "pendente")) return false;
     if (filtroReceber === "Vencidos") return c.status === "pendente" && !c.repasse_marketplace && !c.aguardando_liberacao && c.data_vencimento < hojeIso;
     if (filtroReceber === "Crediário") return c.venda_id !== null || c.cliente_id !== null;
     if (filtroReceber === "Próximos 7 dias")
@@ -307,9 +322,6 @@ export function FinanceiroClient({
   );
 
   const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
-  // Repasse de marketplace e pedido aguardando não entram: não têm data certa nem baixa (ver `lib/saldo-projetado.ts`).
-  const projecaoMes = projetarSaldo(saldoAtual, contasPagarReceber, fimDoMes(hojeIso));
-  const projecao30Dias = projetarSaldo(saldoAtual, contasPagarReceber, em30DiasIso);
 
   const periodoH = PERIODOS_HISTORICO.find((p) => p.id === periodoHistorico)!;
   const desdeHistorico = periodoH.dias ? diasAntes(hojeIso, periodoH.dias) : "";
@@ -499,10 +511,12 @@ export function FinanceiroClient({
           </div>
           <div>
             <div className="text-xs text-text-tertiary mb-1">
-              A Receber − A Pagar (até o fim do mês) <InfoTooltip text="Contas a pagar e a receber pendentes com vencimento até o último dia do mês, inclusive as já vencidas. Repasses de marketplace ficam de fora: a plataforma libera quando quiser." />
+              O que entra e sai até o fim do mês{" "}
+              <InfoTooltip text="Contas com data, parcelas do crediário, despesas fixas ainda não pagas e repasses de pedidos já concluídos (na data prevista de liberação). Já vencidas entram hoje." />
             </div>
             <div className="font-mono text-xl text-text-primary">
-              <span className="text-positive">+{formatBRL(projecaoMes.aReceber)}</span> <span className="text-negative">-{formatBRL(projecaoMes.aPagar)}</span>
+              <span className="text-positive">+{formatBRL(projecaoMes.aReceber + projecaoMes.crediario + projecaoMes.repasses)}</span>{" "}
+              <span className="text-negative">-{formatBRL(projecaoMes.aPagar + projecaoMes.despesasFixas)}</span>
             </div>
           </div>
           <div>
@@ -510,9 +524,42 @@ export function FinanceiroClient({
             <div className={`font-mono text-2xl font-semibold ${projecaoMes.saldoProjetado >= 0 ? "text-accent" : "text-negative"}`}>
               {formatBRL(projecaoMes.saldoProjetado)}
             </div>
-            <div className="text-xs text-text-tertiary mt-1">Em 30 dias: {formatBRL(saldoProjetado30Dias)}</div>
+            <div className="text-xs text-text-tertiary mt-1">
+              Sem repasses: {formatBRL(projecaoMes.saldoConservador)} · Em 30 dias: {formatBRL(projecao30Dias.saldoProjetado)}
+            </div>
           </div>
         </div>
+        {projecaoMes.menorSaldo.valor < 0 && (
+          <p className="mt-4 flex items-start gap-2 text-sm text-negative" role="status">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+            <span>
+              O saldo pode ficar negativo em {formatarDataIso(projecaoMes.menorSaldo.data)} ({formatBRL(projecaoMes.menorSaldo.valor)}), antes de entrar o que está previsto. Vale conferir as contas dessa data.
+            </span>
+          </p>
+        )}
+        <details className="mt-4 text-sm group">
+          <summary className="cursor-pointer text-text-secondary hover:text-text-primary">Como calculamos</summary>
+          <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-6 gap-y-1 max-w-md">
+            <dt className="text-text-secondary">Saldo atual das contas</dt>
+            <dd className="font-mono text-right">{formatBRL(projecaoMes.saldoAtual)}</dd>
+            <dt className="text-text-secondary">+ Contas a receber com data</dt>
+            <dd className="font-mono text-right text-positive">{formatBRL(projecaoMes.aReceber)}</dd>
+            <dt className="text-text-secondary">+ Parcelas do crediário</dt>
+            <dd className="font-mono text-right text-positive">{formatBRL(projecaoMes.crediario)}</dd>
+            <dt className="text-text-secondary">+ Repasses de pedidos concluídos</dt>
+            <dd className="font-mono text-right text-positive">{formatBRL(projecaoMes.repasses)}</dd>
+            <dt className="text-text-secondary">− Contas a pagar</dt>
+            <dd className="font-mono text-right text-negative">{formatBRL(projecaoMes.aPagar)}</dd>
+            <dt className="text-text-secondary">− Despesas fixas ainda não pagas</dt>
+            <dd className="font-mono text-right text-negative">{formatBRL(projecaoMes.despesasFixas)}</dd>
+            <dt className="font-medium text-text-primary border-t border-border pt-1">= Saldo projetado</dt>
+            <dd className="font-mono text-right font-medium border-t border-border pt-1">{formatBRL(projecaoMes.saldoProjetado)}</dd>
+          </dl>
+          <p className="mt-2 text-xs text-text-tertiary max-w-xl">
+            O cartão já cai no saldo na hora da venda, por isso não há o que projetar. Entradas vencidas há mais de 60 dias não entram na previsão
+            {projecaoMes.naoProjetado > 0 ? ` (hoje: ${formatBRL(projecaoMes.naoProjetado)} fora)` : ""}; dívidas a pagar atrasadas continuam contando.
+          </p>
+        </details>
       </Card>
 
       <div className="mb-5">
@@ -627,7 +674,10 @@ export function FinanceiroClient({
         <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
           <div>
             <h2 className="text-base font-semibold text-text-primary">Contas a Receber</h2>
-            <p className="text-sm text-positive">{formatBRL(totalAReceber)} pendente</p>
+            <p className="text-sm text-positive">
+              {formatBRL(totalAReceber)} pendente
+              {totalRepasses > 0 && <span className="text-text-secondary"> · {formatBRL(totalRepasses)} de repasses a liberar</span>}
+            </p>
           </div>
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={() => setDividaAntiga({ tipo: "receber" })}>
@@ -645,9 +695,37 @@ export function FinanceiroClient({
             </Chip>
           ))}
         </div>
-        {receberFiltrado.length === 0 ? (
+        {filtroReceber === "Todos" && gruposRepasses.length > 0 && (
+          <div className="px-5 pb-4 space-y-2">
+            {gruposRepasses.map((g) => (
+              <details key={g.loja} className="rounded-md border border-border group">
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-text-primary">Repasses a liberar · {g.loja}</div>
+                    <div className="text-xs text-text-secondary mt-0.5">
+                      {g.pedidos} {g.pedidos === 1 ? "pedido concluído" : "pedidos concluídos"} · previsto até {formatarDataIso(g.ate)}
+                    </div>
+                  </div>
+                  <span className="font-mono text-sm text-positive shrink-0">{formatBRL(g.total)}</span>
+                </summary>
+                <ul className="border-t border-border px-3 py-2 space-y-1 max-h-64 overflow-y-auto">
+                  {g.linhas.map((l) => (
+                    <li key={l.pedido} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate text-text-secondary">
+                        Pedido {l.pedido} · previsto {formatarDataIso(l.previsto)}
+                      </span>
+                      <span className="font-mono text-text-primary shrink-0">{formatBRL(l.valor)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+            <p className="text-xs text-text-tertiary">Pedidos que ainda não concluíram não aparecem. A data é uma previsão da plataforma; quando você sacar o dinheiro, registre o saque para dar baixa.</p>
+          </div>
+        )}
+        {receberFiltrado.length === 0 && (filtroReceber !== "Todos" || gruposRepasses.length === 0) ? (
           <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a receber encontrada para esse filtro." />
-        ) : (
+        ) : receberFiltrado.length === 0 ? null : (
           <Table>
             <Thead>
               <tr>

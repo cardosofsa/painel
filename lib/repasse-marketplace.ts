@@ -30,3 +30,56 @@ export function eRepasseMarketplace(c: ContaTalvezRepasse): boolean {
 export function podeVencer(c: ContaTalvezRepasse): boolean {
   return !eRepasseMarketplace(c);
 }
+
+/** Dias que a plataforma leva para liberar o repasse depois que o pedido conclui (ajustável por loja). */
+export const DIAS_LIBERACAO_PADRAO = 7;
+
+/** "Repasse Cardoso e-Shop — pedido 2501ABC" (ou, antes da 0066, "Repasse Shopee …"). */
+export function lerRepasse(descricao: string | null | undefined): { loja: string; pedido: string } | null {
+  const m = /^Repasse (?:Shopee )?(.+?) — pedido (.+)$/.exec((descricao ?? "").trim());
+  return m ? { loja: m[1].trim(), pedido: m[2].trim() } : null;
+}
+
+/**
+ * Quando o repasse de um pedido CONCLUÍDO deve ser liberado. Com a data real da plataforma
+ * (`escrow_liberado_em`) vale ela; sem ela, a conta guarda o dia da conclusão no vencimento
+ * (0087) e soma-se o prazo de liberação da loja.
+ */
+export function previsaoRepasse(dataVencimento: string, liberadoEm: string | null | undefined, dias = DIAS_LIBERACAO_PADRAO): string {
+  if (liberadoEm) return new Date(liberadoEm).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const [a, m, d] = dataVencimento.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d + dias)).toISOString().slice(0, 10);
+}
+
+export interface RepasseLinha {
+  loja: string;
+  pedido: string;
+  valor: number;
+  /** AAAA-MM-DD */
+  previsto: string;
+}
+
+export interface GrupoRepasses {
+  loja: string;
+  pedidos: number;
+  total: number;
+  /** A data prevista mais distante do grupo. */
+  ate: string;
+  linhas: RepasseLinha[];
+}
+
+/** Um grupo por loja (a lista de A receber mostra um resumo por loja em vez de uma linha por pedido). */
+export function agruparRepassesPorLoja(linhas: RepasseLinha[]): GrupoRepasses[] {
+  const grupos = new Map<string, GrupoRepasses>();
+  for (const l of linhas) {
+    const g = grupos.get(l.loja) ?? { loja: l.loja, pedidos: 0, total: 0, ate: l.previsto, linhas: [] };
+    g.pedidos++;
+    g.total = Math.round((g.total + l.valor) * 100) / 100;
+    if (l.previsto > g.ate) g.ate = l.previsto;
+    g.linhas.push(l);
+    grupos.set(l.loja, g);
+  }
+  return [...grupos.values()]
+    .map((g) => ({ ...g, linhas: g.linhas.sort((a, b) => a.previsto.localeCompare(b.previsto) || a.pedido.localeCompare(b.pedido)) }))
+    .sort((a, b) => a.loja.localeCompare(b.loja, "pt-BR"));
+}

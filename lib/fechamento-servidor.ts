@@ -8,7 +8,9 @@
 
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fimDoMes, inicioDoMes, projetarSaldo, type ContaParaProjecao } from "./saldo-projetado";
+import { fimDoMes, inicioDoMes, projetarSaldo } from "./saldo-projetado";
+import { montarEntradaProjecao, type DadosProjecao, type ParcelaCrua, type PedidoMkt } from "./projecao-dados";
+import type { DespesaFixaFonte } from "./despesas-fixas-calendario";
 import {
   agregarMes,
   categoriasEmAlta,
@@ -60,11 +62,48 @@ async function saldoAtualDasContas(supabase: SupabaseClient, userId: string): Pr
   return Math.round(((data ?? []) as { saldo: number }[]).reduce((s, c) => s + Number(c.saldo), 0) * 100) / 100;
 }
 
-async function contasPendentes(supabase: SupabaseClient, userId: string): Promise<ContaParaProjecao[]> {
-  // `*`: aguardando_liberacao e referencia_pedido_marketplace_id só existem a partir da 0085/0087.
-  return lerTodas<ContaParaProjecao>((de, ate) =>
-    supabase.from("contas_a_pagar_receber").select("*").eq("user_id", userId).eq("status", "pendente").order("id").range(de, ate),
+/**
+ * Tudo que o saldo projetado precisa, com `user_id` explícito. A tela do Financeiro monta a
+ * mesma `EntradaProjecao` pelos mesmos dados (`projecao-dados.ts`), então o número do histórico
+ * é o da tela.
+ */
+async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: string, saldoAtual: number): Promise<DadosProjecao> {
+  const inicioMes = inicioDoMes(hoje);
+  const desde120 = new Date(Date.now() - 120 * 86_400_000).toISOString();
+  const [contas, parcelas, despesasFixas, pagas, pedidosRes] = await Promise.all([
+    // `*`: valor_pago, aguardando_liberacao e referencia_pedido_marketplace_id só existem nas migrações novas.
+    lerTodas<DadosProjecao["contas"][number] & { vendas?: { total_parcelas_fiado: number | null } | null }>((de, ate) =>
+      supabase.from("contas_a_pagar_receber").select("*, vendas(total_parcelas_fiado)").eq("user_id", userId).eq("status", "pendente").order("id").range(de, ate),
+    ),
+    lerTodas<ParcelaCrua>((de, ate) =>
+      supabase.from("venda_parcelas").select("status, valor, valor_pago, data_vencimento, vendas(status)").eq("user_id", userId).eq("status", "pendente").order("id").range(de, ate),
+    ),
+    lerTodas<DespesaFixaFonte>((de, ate) => supabase.from("despesas_fixas").select("id, nome, valor, dia_vencimento, criado_em").eq("user_id", userId).order("id").range(de, ate)),
+    lerTodas<{ referencia_despesa_fixa_id: string; data_movimentacao: string }>((de, ate) =>
+      supabase
+        .from("movimentacoes_financeiras")
+        .select("referencia_despesa_fixa_id, data_movimentacao")
+        .eq("user_id", userId)
+        .not("referencia_despesa_fixa_id", "is", null)
+        .gte("data_movimentacao", inicioMes)
+        .order("id")
+        .range(de, ate),
+    ),
+    // Falha aqui só tira a precisão da data prevista do repasse (vale o prazo padrão).
+    supabase.from("pedidos_marketplace").select("id, loja_id, escrow_liberado_em").eq("user_id", userId).eq("status", "concluido").gte("pago_em", desde120).limit(1000),
+  ]);
+  const pedidos = new Map<string, PedidoMkt>(
+    ((pedidosRes.error ? [] : (pedidosRes.data ?? [])) as { id: string; loja_id: string | null; escrow_liberado_em: string | null }[]).map((p) => [p.id, { loja_id: p.loja_id, escrow_liberado_em: p.escrow_liberado_em }]),
   );
+  return {
+    saldoAtual,
+    hoje,
+    contas: contas.map((c) => ({ ...c, valor: Number(c.valor), total_parcelas_fiado: c.vendas?.total_parcelas_fiado ?? null })),
+    parcelas: parcelas.map((p) => ({ ...p, valor: Number(p.valor) })),
+    despesasFixas: despesasFixas.map((d) => ({ ...d, valor: Number(d.valor) })),
+    pagamentosFixas: pagas.map((m) => ({ despesa_id: String(m.referencia_despesa_fixa_id), data: String(m.data_movimentacao) })),
+    pedidos,
+  };
 }
 
 async function linhasDeFechamento(supabase: SupabaseClient, userId: string, limite: number): Promise<FechamentoMes[]> {
@@ -92,12 +131,9 @@ export async function atualizarFechamentos(supabase: SupabaseClient, userId: str
   if (erroLeitura) throw new Error(erroLeitura.message);
   const plano = planejarFechamentos(hoje, ((existentesBrutos ?? []) as { mes: string; fechado_em: string | null }[]));
 
-  const [saldoAtual, pendentes, movimentosAtual] = await Promise.all([
-    saldoAtualDasContas(supabase, userId),
-    contasPendentes(supabase, userId),
-    movimentosDoMes(supabase, userId, plano.mesAtual),
-  ]);
-  const projecao = projetarSaldo(saldoAtual, pendentes, fimDoMes(plano.mesAtual)).saldoProjetado;
+  const saldoAtual = await saldoAtualDasContas(supabase, userId);
+  const [dados, movimentosAtual] = await Promise.all([dadosDaProjecao(supabase, userId, hoje, saldoAtual), movimentosDoMes(supabase, userId, plano.mesAtual)]);
+  const projecao = projetarSaldo(montarEntradaProjecao(dados), fimDoMes(plano.mesAtual)).saldoProjetado;
   const detalhesAtual = agregarMes(movimentosAtual);
   const agora = new Date().toISOString();
 
