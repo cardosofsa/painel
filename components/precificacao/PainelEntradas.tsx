@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { inputClass } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
@@ -168,12 +169,10 @@ export function PainelEntradas({
         <label className="block text-xs font-medium text-text-secondary mb-1.5">
           Custo do Produto (R$) <span className="text-negative">*</span>
         </label>
-        <input
-          type="number"
+        <CampoNumero
           min={0}
-          step="0.01"
-          value={custoProduto || ""}
-          onChange={(e) => setCustoProduto(Number(e.target.value) || 0)}
+          value={custoProduto}
+          onChange={(n) => setCustoProduto(n)}
           className={inputClass}
           placeholder="0,00"
         />

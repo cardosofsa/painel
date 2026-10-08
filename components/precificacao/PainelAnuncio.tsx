@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { Megaphone } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -76,13 +77,11 @@ export function PainelAnuncio({ estado }: { estado: EstadoPrecificacao }) {
           </div>
           <div className="mt-2">
             <label className="text-xs text-text-secondary mb-1.5 block">Margem que quer manter depois do anúncio (%)</label>
-            <input
-              type="number"
-              min="0"
-              max="90"
-              step="1"
+            <CampoNumero
+              min={0}
+              max={90}
               value={margemAlvoAnuncio}
-              onChange={(e) => setMargemAlvoAnuncio(Math.min(90, Math.max(0, Number(e.target.value) || 0)))}
+              onChange={(n) => setMargemAlvoAnuncio(Math.min(90, Math.max(0, n)))}
               className={inputClass}
             />
           </div>

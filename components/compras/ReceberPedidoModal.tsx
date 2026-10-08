@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -74,14 +75,13 @@ export function ReceberPedidoModal({ pedido, armazens, onClose }: { pedido: Pedi
                 </div>
               </div>
               <span className="w-20 text-right font-mono text-text-secondary">{faltaReceber(i)}</span>
-              <input
-                type="number"
+              <CampoNumero
                 min={0}
                 max={faltaReceber(i)}
                 aria-label={`Quantidade que chegou de ${i.produto_nome}`}
                 className={`${campoBase} w-24 text-right`}
                 value={qtd[chave] ?? 0}
-                onChange={(e) => setQtd((q) => ({ ...q, [chave]: Math.min(faltaReceber(i), Math.max(0, Math.floor(Number(e.target.value) || 0))) }))}
+                onChange={(n) => setQtd((q) => ({ ...q, [chave]: Math.min(faltaReceber(i), Math.max(0, Math.floor(n))) }))}
               />
             </div>
           );

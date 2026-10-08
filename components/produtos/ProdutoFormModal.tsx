@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { Megaphone, Wand2 } from "lucide-react";
@@ -326,12 +327,10 @@ export function ProdutoFormModal({
           )}
         </FormField>
         <FormField label="Valor do Produto (R$)" dica="O que você pagou pelo produto em si, sem embalagem.">
-          <input
-            type="number"
-            step="0.01"
+          <CampoNumero
             className={inputClass}
             value={form.custo_base}
-            onChange={(e) => setForm({ ...form, custo_base: Number(e.target.value) || 0 })}
+            onChange={(n) => setForm({ ...form, custo_base: n })}
           />
         </FormField>
         <label className="flex items-start gap-2 text-sm text-text-secondary mb-3 rounded-md border border-border px-3 py-2">
@@ -359,12 +358,10 @@ export function ProdutoFormModal({
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Preço Varejo (R$)">
-            <input
-              type="number"
-              step="0.01"
+            <CampoNumero
               className={inputClass}
               value={form.preco_venda}
-              onChange={(e) => setForm({ ...form, preco_venda: Number(e.target.value) || 0 })}
+              onChange={(n) => setForm({ ...form, preco_venda: n })}
             />
           </FormField>
           <FormField label="Preço Atacado (R$)" dica="Vazio = aparece como “A consultar” no catálogo de atacado.">
@@ -469,30 +466,27 @@ export function ProdutoFormModal({
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Estoque Atual" dica={form.e_kit ? "Kit: calculado pelos itens da composição." : undefined}>
-            <input
-              type="number"
+            <CampoNumero
               className={inputClass}
               value={form.estoque}
               disabled={!!form.e_kit}
-              onChange={(e) => setForm({ ...form, estoque: Number(e.target.value) || 0 })}
+              onChange={(n) => setForm({ ...form, estoque: n })}
             />
           </FormField>
           <FormField label="Estoque Mínimo (alerta)">
-            <input
-              type="number"
+            <CampoNumero
               className={inputClass}
               value={form.estoque_minimo}
-              onChange={(e) => setForm({ ...form, estoque_minimo: Number(e.target.value) || 0 })}
+              onChange={(n) => setForm({ ...form, estoque_minimo: n })}
             />
           </FormField>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Saída Média Semanal">
-            <input
-              type="number"
+            <CampoNumero
               className={inputClass}
               value={form.saida_media_semanal}
-              onChange={(e) => setForm({ ...form, saida_media_semanal: Number(e.target.value) || 0 })}
+              onChange={(n) => setForm({ ...form, saida_media_semanal: n })}
             />
           </FormField>
           <FormField label="Código de Barras (opcional)">

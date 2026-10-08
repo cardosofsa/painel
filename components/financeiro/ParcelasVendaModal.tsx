@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useEffect, useState } from "react";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
@@ -125,13 +126,11 @@ export function ParcelasVendaModal({
                   <div className="mt-2.5 pt-2.5 border-t border-border space-y-2.5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <FormField label="Valor recebido (R$)">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <CampoNumero
+                          min={0}
                           className={inputClass}
-                          value={valorPago || ""}
-                          onChange={(e) => setValorPago(Number(e.target.value) || 0)}
+                          value={valorPago}
+                          onChange={(n) => setValorPago(n)}
                         />
                       </FormField>
                       <FormField label="Data do recebimento">

@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { Card } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
@@ -26,11 +27,9 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
       {modo === "margem" && (
         <div>
           <label className="text-xs text-text-secondary mb-1.5 block">Margem Líquida Alvo (%)</label>
-          <input
-            type="number"
-            step="0.1"
+          <CampoNumero
             value={margemPct}
-            onChange={(e) => setMargemPct(Number(e.target.value) || 0)}
+            onChange={(n) => setMargemPct(n)}
             className={inputClass}
           />
         </div>
@@ -38,11 +37,9 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
       {modo === "markup" && (
         <div>
           <label className="text-xs text-text-secondary mb-1.5 block">Markup sobre o Custo (%)</label>
-          <input
-            type="number"
-            step="0.1"
+          <CampoNumero
             value={markupPct}
-            onChange={(e) => setMarkupPct(Number(e.target.value) || 0)}
+            onChange={(n) => setMarkupPct(n)}
             className={inputClass}
           />
           <p className="text-xs text-text-tertiary mt-1.5">
@@ -54,11 +51,9 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
       {modo === "lucro" && (
         <div>
           <label className="text-xs text-text-secondary mb-1.5 block">Lucro Líquido Desejado (R$)</label>
-          <input
-            type="number"
-            step="0.01"
+          <CampoNumero
             value={lucroDesejado}
-            onChange={(e) => setLucroDesejado(Number(e.target.value) || 0)}
+            onChange={(n) => setLucroDesejado(n)}
             className={inputClass}
           />
         </div>
@@ -66,11 +61,9 @@ export function PainelModo({ estado }: { estado: EstadoPrecificacao }) {
       {modo === "preco" && (
         <div>
           <label className="text-xs text-text-secondary mb-1.5 block">Preço de Venda (R$)</label>
-          <input
-            type="number"
-            step="0.01"
+          <CampoNumero
             value={precoFixo}
-            onChange={(e) => setPrecoFixo(Number(e.target.value) || 0)}
+            onChange={(n) => setPrecoFixo(n)}
             className={inputClass}
           />
         </div>

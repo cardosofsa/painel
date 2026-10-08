@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useState, useTransition } from "react";
 import { CheckCircle2, Circle, FileText } from "lucide-react";
@@ -190,11 +191,11 @@ export function AbaFiscal({ fiscal, cofreOk }: { fiscal: FiscalConfigTela | null
               </select>
             </FormField>
             <FormField label="Série">
-              <input
+              <CampoNumero padrao={1}
                 className={inputClass}
                 inputMode="numeric"
                 value={f.serie}
-                onChange={(e) => setF((x) => ({ ...x, serie: Math.max(1, Math.min(999, Number(e.target.value) || 1)) }))}
+                onChange={(n) => setF((x) => ({ ...x, serie: Math.max(1, Math.min(999, n)) }))}
               />
             </FormField>
           </div>

@@ -1,4 +1,5 @@
 "use client";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -305,11 +306,9 @@ export function VariacoesView({
             <label className="text-xs text-text-secondary mb-1.5 block">
               Custo Unitário Base (R$) <span className="text-negative">*</span>
             </label>
-            <input
-              type="number"
-              step="0.01"
+            <CampoNumero
               value={custoUnitarioBase}
-              onChange={(e) => setCustoUnitarioBase(Number(e.target.value) || 0)}
+              onChange={(n) => setCustoUnitarioBase(n)}
               className={inputClass}
             />
           </div>
@@ -323,12 +322,9 @@ export function VariacoesView({
                     ? "Lucro Líquido Desejado (R$)"
                     : "Preço de Venda (R$)"}
             </label>
-            <input
-              type="number"
-              step={modo === "margem" || modo === "markup" ? "0.1" : "0.01"}
+            <CampoNumero
               value={parametroPadrao}
-              onChange={(e) => {
-                const valor = Number(e.target.value) || 0;
+              onChange={(valor) => {
                 if (modo === "margem") setMargemPct(valor);
                 else if (modo === "markup") setMarkupPct(valor);
                 else if (modo === "lucro") setLucroDesejado(valor);
@@ -339,21 +335,17 @@ export function VariacoesView({
           </div>
           <div>
             <label className="text-xs text-text-secondary mb-1.5 block">Taxa Adicional (%)</label>
-            <input
-              type="number"
-              step="0.1"
+            <CampoNumero
               value={taxaAdicionalPct}
-              onChange={(e) => setTaxaAdicionalPct(Number(e.target.value) || 0)}
+              onChange={(n) => setTaxaAdicionalPct(n)}
               className={inputClass}
             />
           </div>
           <div>
             <label className="text-xs text-text-secondary mb-1.5 block">Imposto / DAS (%)</label>
-            <input
-              type="number"
-              step="0.1"
+            <CampoNumero
               value={impostoPct}
-              onChange={(e) => setImpostoPct(Number(e.target.value) || 0)}
+              onChange={(n) => setImpostoPct(n)}
               className={inputClass}
             />
           </div>
@@ -372,21 +364,17 @@ export function VariacoesView({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-text-secondary mb-1.5 block">Taxa Fixa (R$)</label>
-              <input
-                type="number"
-                step="0.01"
+              <CampoNumero
                 value={taxaFixa}
-                onChange={(e) => setTaxaFixa(Number(e.target.value) || 0)}
+                onChange={(n) => setTaxaFixa(n)}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="text-xs text-text-secondary mb-1.5 block">Taxa Variável (%)</label>
-              <input
-                type="number"
-                step="0.1"
+              <CampoNumero
                 value={taxaVariavelPct}
-                onChange={(e) => setTaxaVariavelPct(Number(e.target.value) || 0)}
+                onChange={(n) => setTaxaVariavelPct(n)}
                 className={inputClass}
               />
             </div>
