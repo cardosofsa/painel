@@ -226,7 +226,7 @@ function OrigemIcone({ origem }: { origem: PedidoCentral["origem"] }) {
 function ValorPedido({ p }: { p: PedidoCentral }) {
   const cancelado = p.etapa === "cancelado";
   const confirmar = p.chave.startsWith("catalogo:");
-  const outros = Math.max(0, Math.round((p.total - p.taxas - p.custo - p.lucro) * 100) / 100);
+  const outros = Math.max(0, Math.round((p.total - p.taxas - p.custo - (p.imposto ?? 0) - p.lucro) * 100) / 100);
   const margem = p.total > 0 ? p.lucro / p.total : 0;
   return (
     <div className="relative group inline-block" tabIndex={0}>
@@ -238,14 +238,24 @@ function ValorPedido({ p }: { p: PedidoCentral }) {
           </div>
           <div className="invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100 transition-opacity absolute left-0 top-full mt-1 z-30 w-60 rounded-md border border-border bg-surface-1 shadow-elev-2 p-3 text-xs">
             <Linha rotulo="Venda" valor={p.total} />
-            {p.taxas > 0 && <Linha rotulo="Taxas da plataforma" valor={-p.taxas} />}
+            {p.taxas > 0 && (
+              <Linha rotulo={p.taxasOrigem === "estimado" ? "Taxas da plataforma (estimadas)" : p.taxasOrigem === "real" ? "Taxas e encargos (Shopee)" : "Taxas da plataforma"} valor={-p.taxas} />
+            )}
+            {(p.taxasDetalhe ?? []).map((t) => (
+              <div key={t.rotulo} className="flex justify-between gap-3 pl-3 text-[11px] text-text-tertiary">
+                <span>{t.rotulo}</span>
+                <span className="font-mono">{formatBRL(-t.valor)}</span>
+              </div>
+            ))}
             <Linha rotulo="Custo dos produtos" valor={-p.custo} />
-            {outros > 0 && <Linha rotulo="Imposto e outras deduções" valor={-outros} />}
+            {p.imposto != null && p.imposto > 0 && <Linha rotulo="Imposto sobre a venda" valor={-p.imposto} />}
+            {outros > 0 && <Linha rotulo={p.imposto != null && p.imposto > 0 ? "Outras deduções" : "Imposto e outras deduções"} valor={-outros} />}
             <div className="border-t border-border my-1.5" />
             <div className={`flex justify-between font-semibold ${p.lucro >= 0 ? "text-positive" : "text-negative"}`}>
               <span>Lucro ({pct(margem)})</span>
               <span className="font-mono">{formatBRL(p.lucro)}</span>
             </div>
+            {p.taxasOrigem === "estimado" && <p className="text-[11px] text-text-tertiary mt-1.5">A Shopee ainda não informou a renda deste pedido: taxas pela regra de faixas.</p>}
             {p.semCusto && <p className="text-[11px] text-negative mt-1.5">Item sem produto vinculado: custo contado como zero.</p>}
           </div>
         </>

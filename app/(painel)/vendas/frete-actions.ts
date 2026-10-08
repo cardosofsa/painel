@@ -134,6 +134,7 @@ export async function comprarEtiquetaVenda(vendaId: string, servicoId: number) {
         frete_servico: `${cotacao.transportadora} ${cotacao.servico}`.trim(),
         frete_servico_id: servico,
         frete_etiqueta_id: r.etiquetaId,
+        // O gatilho trg_lucro_venda (0083) tira este frete do lucro da venda na mesma gravação.
         frete_custo: cotacao.valor,
         rastreio: r.rastreio,
         logistica: `${cotacao.transportadora} ${cotacao.servico}`.trim(),

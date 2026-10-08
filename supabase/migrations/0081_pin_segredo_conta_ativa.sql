@@ -341,11 +341,16 @@ begin
    where n.nspname = 'public' and p.proname = 'editar_venda' limit 1;
   if v_oid is not null then
     v_def := pg_get_functiondef(v_oid);
-    v_novo := replace(v_def,
-      'select pin_admin_hash into v_hash from perfil_negocio where user_id = v_user;',
-      'v_hash := case when tem_pin_admin() then ''cadastrado'' end;');
+    -- Tolerante a espaço, quebra de linha \r\n (SQL colado no Editor) e maiúsculas.
+    v_novo := regexp_replace(v_def,
+      'select\s+pin_admin_hash\s+into\s+v_hash\s+from\s+perfil_negocio\s+where\s+user_id\s*=\s*v_user\s*;',
+      'v_hash := case when tem_pin_admin() then ''cadastrado'' end;', 'i');
     if v_novo <> v_def then
       execute v_novo;
+    end if;
+    -- Sem o remendo, editar_venda leria a coluna zerada e recusaria toda edição de venda.
+    if exists (select 1 from pg_proc where oid = v_oid and prosrc ~* 'pin_admin_hash') then
+      raise exception 'Remendo da 0081: editar_venda ainda lê pin_admin_hash';
     end if;
   end if;
 
@@ -358,8 +363,14 @@ begin
        where n.nspname = 'public' and p.proname = v_fn and p.prosrc !~ 'conta_ativa\('
     loop
       v_def := pg_get_functiondef(v_oid);
-      -- Primeiro `begin` de linha inteira: o do bloco principal (o `declare` vem antes).
-      v_novo := regexp_replace(v_def, E'\\nbegin\\n', CHECA, '');
+      -- Primeiro `begin` sozinho na linha: o do bloco principal (o `declare` vem antes).
+      -- Aceita BEGIN maiúsculo, recuo e \r\n: no banco de produção as funções foram coladas
+      -- pelo SQL Editor e o texto guardado não é igual ao do arquivo.
+      v_novo := regexp_replace(v_def, E'\\n[ \\t]*begin[ \\t]*\\r?\\n', CHECA, 'i');
+      if v_novo = v_def then
+        -- Sem linha própria: primeira palavra `begin` do corpo (depois do cabeçalho `AS $...$`).
+        v_novo := regexp_replace(v_def, E'(\\$function\\$.*?)\\mbegin\\M', E'\\1' || CHECA, 'is');
+      end if;
       if v_novo = v_def then
         raise exception 'Remendo da 0081: não achei o begin de %', v_fn;
       end if;

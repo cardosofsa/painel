@@ -13,7 +13,7 @@
  */
 
 import { noPeriodo, type Periodo } from "@/lib/periodo";
-import type { StatusMarketplace } from "@/lib/marketplace/shopee-planilha";
+import type { OrigemTaxas, StatusMarketplace, TaxaDetalhe } from "@/lib/marketplace/shopee-planilha";
 
 export type Etapa = "pagamento" | "reservar" | "emitir" | "enviar" | "imprimir" | "retirada" | "enviado" | "concluido" | "cancelado";
 /** Por que o pedido está em Para Reservar (sub-abas). */
@@ -93,6 +93,13 @@ export interface PedidoCentral {
   custo: number;
   /** Taxas da plataforma (marketplace); 0 nas vendas do sistema. */
   taxas: number;
+  /** 0085: cada taxa como a plataforma lista e de onde veio ("real" = escrow da Shopee). */
+  taxasDetalhe?: TaxaDetalhe[];
+  taxasOrigem?: OrigemTaxas | null;
+  /** Imposto sobre a venda (marketplace). */
+  imposto?: number;
+  /** Devolvido: a plataforma não diz se o item voltou — conferir estoque e repasse. */
+  devolucaoRevisar?: boolean;
   lucro: number;
   etapa: Etapa;
   pagamento: Pagamento;
@@ -184,6 +191,12 @@ export interface PedidoMktIn {
   comissao: number;
   taxa_servico: number;
   taxa_transacao: number;
+  /** 0085. */
+  taxa_outras?: number | null;
+  taxas_detalhe?: TaxaDetalhe[] | null;
+  taxas_origem?: OrigemTaxas | null;
+  devolucao_revisar?: boolean | null;
+  imposto?: number | null;
   custo: number;
   lucro: number;
   custo_incompleto: boolean;
@@ -352,7 +365,11 @@ export function montarCentral(entrada: {
       itens: p.pedidos_marketplace_itens.map((i) => ({ nome: i.variacao ? `${i.nome} · ${i.variacao}` : i.nome, sku: i.sku, quantidade: i.quantidade, preco: Number(i.preco_unitario) })),
       total: Number(p.subtotal),
       custo: cancelado ? 0 : Number(p.custo),
-      taxas: cancelado ? 0 : Number(p.comissao) + Number(p.taxa_servico) + Number(p.taxa_transacao) + Number(p.cupom_vendedor),
+      taxas: cancelado ? 0 : Math.round((Number(p.comissao) + Number(p.taxa_servico) + Number(p.taxa_transacao) + Number(p.taxa_outras ?? 0) + Number(p.cupom_vendedor)) * 100) / 100,
+      taxasDetalhe: cancelado ? [] : detalheDasTaxas(p),
+      taxasOrigem: p.taxas_origem ?? null,
+      imposto: cancelado ? 0 : Number(p.imposto ?? 0),
+      devolucaoRevisar: !!p.devolucao_revisar,
       lucro: cancelado ? 0 : Number(p.lucro),
       etapa,
       pagamento: cancelado ? "cancelado" : p.pago_em || etapa !== "pagamento" ? "pago" : "pendente",
@@ -371,6 +388,24 @@ export function montarCentral(entrada: {
   }
 
   return lista.sort((a, b) => b.data.localeCompare(a.data));
+}
+
+/**
+ * Linhas de taxa para o tooltip e o detalhe: as gravadas da plataforma (0085) ou, em pedido
+ * antigo/planilha, as colunas de sempre. O cupom do vendedor entra como linha própria.
+ */
+export function detalheDasTaxas(p: Pick<PedidoMktIn, "comissao" | "taxa_servico" | "taxa_transacao" | "taxa_outras" | "taxas_detalhe" | "cupom_vendedor">): TaxaDetalhe[] {
+  const cupom = Number(p.cupom_vendedor ?? 0);
+  const linhas: TaxaDetalhe[] =
+    p.taxas_detalhe && p.taxas_detalhe.length
+      ? p.taxas_detalhe.map((t) => ({ rotulo: t.rotulo, valor: Number(t.valor) }))
+      : [
+          { rotulo: "Comissão", valor: Number(p.comissao ?? 0) },
+          { rotulo: "Taxa de serviço", valor: Number(p.taxa_servico ?? 0) },
+          { rotulo: "Taxa de transação", valor: Number(p.taxa_transacao ?? 0) },
+          { rotulo: "Outros encargos", valor: Number(p.taxa_outras ?? 0) },
+        ];
+  return [...(cupom > 0 ? [{ rotulo: "Cupom do vendedor", valor: cupom }] : []), ...linhas].filter((t) => Math.abs(t.valor) >= 0.01);
 }
 
 /** Pedido do catálogo ainda não aprovado tem problema? (item apagado, ou falta disponível). */

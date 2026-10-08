@@ -3,6 +3,8 @@ import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { buscarEmLotes } from "@/lib/lotes";
 import { lerFiltroProdutos, palavrasDaBusca, resumoDeEstoque, type ParamsUrl } from "@/lib/listas";
 import { gruposPorPalavra, paginaDeProdutos } from "./consulta";
+import { semColuna } from "@/lib/variacoes-consulta";
+import type { VariacaoSalva } from "@/lib/variacoes";
 import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient";
 import type { Metadata } from "next";
 
@@ -24,9 +26,13 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   // A busca também procura no nome do grupo de variantes (é ele que aparece na lista):
   // a página espera só os grupos, e o resto da primeira leva roda junto.
   const gruposP = supabase.from("produto_grupos").select("id, nome").order("nome");
-  const paginaP = gruposP.then((g) =>
-    paginaDeProdutos<LinhaProduto>(supabase, filtro, gruposPorPalavra(g.data ?? [], filtro.q, palavrasDaBusca(filtro.q))),
-  );
+  // Variações por quantidade (0084) não são linhas soltas: vêm embaixo do pai. Sem a
+  // migração a coluna não existe e a lista volta a ser a de sempre.
+  const paginaP = gruposP.then(async (g) => {
+    const grupos = gruposPorPalavra(g.data ?? [], filtro.q, palavrasDaBusca(filtro.q));
+    const r = await paginaDeProdutos<LinhaProduto>(supabase, filtro, grupos, undefined, true);
+    return semColuna(r.error) ? paginaDeProdutos<LinhaProduto>(supabase, filtro, grupos) : r;
+  });
 
   const [pagina, gruposRes, categoriasRes, fornecedoresRes, armazensRes, lojasRes, resumoRes, iaDisponivel] = await Promise.all([
     paginaP,
@@ -37,8 +43,10 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     supabase.from("armazens").select("id, nome").order("nome"),
     supabase.from("lojas_canal").select("id, nome").order("nome"),
     // Cards e chips são da conta inteira, não da página: leitura enxuta só das três colunas.
+    // Sem as variações filhas: o estoque delas é o do pai (contaria duas vezes).
     buscarEmLotes<{ custo: number; estoque: number; estoque_minimo: number }>(async (de, ate) => {
-      const r = await supabase.from("produtos").select("custo, estoque, estoque_minimo", { count: "exact" }).order("id").range(de, ate);
+      let r = await supabase.from("produtos").select("custo, estoque, estoque_minimo", { count: "exact" }).is("produto_pai_id", null).order("id").range(de, ate);
+      if (semColuna(r.error)) r = await supabase.from("produtos").select("custo, estoque, estoque_minimo", { count: "exact" }).order("id").range(de, ate);
       return { data: r.data, error: r.error, count: r.count };
     }),
     iaDisponivelParaConta(supabase),
@@ -55,7 +63,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   // Histórico do resumo e preço por canal: só dos produtos desta página.
   const ids = pagina.linhas.map((p) => p.id);
   const vazio = { data: [], error: null };
-  const [movimentacoesRes, precificacoesRes, precosCanalRes] = await Promise.all([
+  const [movimentacoesRes, precificacoesRes, precosCanalRes, variacoesRes] = await Promise.all([
     ids.length
       ? supabase
           .from("estoque_movimentacoes")
@@ -75,6 +83,14 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     // Migração 0029: se ainda não foi aplicada, a RPC não existe — falha vira uma lista
     // vazia (tratado abaixo, não interrompe a página) em vez de derrubar /produtos.
     ids.length ? supabase.rpc("precos_canal_por_produto").in("produto_id", ids) : vazio,
+    // Variações (0084) dos pais desta página. Sem a migração: nenhuma.
+    ids.length
+      ? supabase
+          .from("produtos")
+          .select("id, produto_pai_id, variante_nome, quantidade_por_unidade, sku, custo, custo_manual, preco_venda, estoque, ativo")
+          .in("produto_pai_id", ids)
+          .order("quantidade_por_unidade")
+      : vazio,
   ]);
 
   if (movimentacoesRes.error) throw new Error(movimentacoesRes.error.message);
@@ -82,6 +98,20 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   // Não derruba a página: quem ainda não aplicou a migração 0029 continua usando
   // Produtos normalmente, só sem margem/markup por canal na lista e no resumo.
   if (precosCanalRes.error) console.error("[produtos] precos_canal_por_produto:", precosCanalRes.error.message);
+
+  if (variacoesRes.error && !semColuna(variacoesRes.error)) console.error("[produtos] variações:", variacoesRes.error.message);
+  const variacoes: VariacaoSalva[] = (variacoesRes.error ? [] : ((variacoesRes.data ?? []) as Record<string, unknown>[])).map((v) => ({
+    id: String(v.id),
+    produto_pai_id: String(v.produto_pai_id),
+    variante_nome: String(v.variante_nome ?? ""),
+    quantidade: Number(v.quantidade_por_unidade ?? 1),
+    sku: String(v.sku ?? ""),
+    custo: Number(v.custo ?? 0),
+    custo_manual: v.custo_manual == null ? null : Number(v.custo_manual),
+    preco_venda: Number(v.preco_venda ?? 0),
+    estoque: Number(v.estoque ?? 0),
+    ativo: v.ativo !== false,
+  }));
 
   const categoriasPorId = new Map((categoriasRes.data ?? []).map((c) => [c.id, c.nome]));
   const fornecedoresPorId = new Map((fornecedoresRes.data ?? []).map((f) => [f.id, f.nome]));
@@ -151,6 +181,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       movimentacoes={movimentacoesRes.data ?? []}
       precificacoes={precificacoesRes.data ?? []}
       precosCanal={precosCanal}
+      variacoes={variacoes}
       lojas={lojasRes.data ?? []}
       grupos={gruposRes.data ?? []}
       // Lido no servidor de propósito: `GEMINI_API_KEY` não é `NEXT_PUBLIC_`, então no

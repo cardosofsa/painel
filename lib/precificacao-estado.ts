@@ -18,6 +18,8 @@ import {
   type ResultadoPrecificacao,
   pctPorModo,
   zonaMortaDeFaixa,
+  encontrarFaixa,
+  precoEmCentavos,
   ID_CUSTO_PRODUTO,
   type FaixaComissao,
 } from "@/lib/pricing";
@@ -161,16 +163,27 @@ export function usePrecificacao({
   const { resultado, faixaShopee } = useMemo(() => {
     const parametro =
       modo === "margem" ? margemPct / 100 : modo === "markup" ? markupPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo;
+    // Margem, lucro e markup: o preço vai PARA CIMA ao centavo, para não gravar abaixo da
+    // meta. O que aparece na tela e o que vai para o banco é sempre o preço em centavos,
+    // com lucro e taxas recalculados nele.
+    const paraCima = modo !== "preco";
 
     if (usaFaixas && lojaSelecionada) {
-      const { resultado: r, faixa } = resolverComFaixas(custoTotal, modo, parametro, taxasBaseFaixas, lojaSelecionada.faixas);
-      return { resultado: r, faixaShopee: faixa as FaixaComissao | null };
+      const faixas = lojaSelecionada.faixas;
+      const { resultado: bruto, faixa } = resolverComFaixas(custoTotal, modo, parametro, taxasBaseFaixas, faixas);
+      if (!bruto.viavel) return { resultado: bruto, faixaShopee: faixa as FaixaComissao | null };
+      const preco = precoEmCentavos(bruto.precoVenda, paraCima, faixas);
+      return {
+        resultado: resultadoParaPrecoComFaixas(preco, custoTotal, taxasBaseFaixas, faixas),
+        faixaShopee: encontrarFaixa(faixas, preco) as FaixaComissao | null,
+      };
     }
     let r;
     if (modo === "margem") r = resolverPorMargem(custoTotal, margemPct / 100, taxas);
     else if (modo === "markup") r = resolverPorMarkup(custoTotal, markupPct / 100, taxas);
     else if (modo === "lucro") r = resolverPorLucro(custoTotal, lucroDesejado, taxas);
     else r = resultadoParaPreco(precoFixo, custoTotal, taxas);
+    if (r.viavel) r = resultadoParaPreco(precoEmCentavos(r.precoVenda, paraCima), custoTotal, taxas);
     return { resultado: r, faixaShopee: null as FaixaComissao | null };
   }, [usaFaixas, lojaSelecionada, custoTotal, modo, margemPct, markupPct, lucroDesejado, precoFixo, taxas, taxasBaseFaixas]);
 
@@ -190,9 +203,9 @@ export function usePrecificacao({
   const zonaMorta = useMemo(
     () =>
       usaFaixas && lojaSelecionada && resultado.viavel
-        ? zonaMortaDeFaixa(lojaSelecionada.faixas, resultado.precoVenda)
+        ? zonaMortaDeFaixa(lojaSelecionada.faixas, resultado.precoVenda, taxasBaseFaixas)
         : null,
-    [usaFaixas, lojaSelecionada, resultado],
+    [usaFaixas, lojaSelecionada, resultado, taxasBaseFaixas],
   );
 
   /** Passa para o modo "preço" fixo no valor que rende mais — o cálculo refaz sozinho. */
@@ -277,8 +290,10 @@ export function usePrecificacao({
   }, [historico, filtroHistoricoTexto, filtroHistoricoDataIni, filtroHistoricoDataFim]);
 
   const analiseConcorrencia = useMemo(
-    () => analisarConcorrencia(resultado, concorrentes, taxas),
-    [resultado, concorrentes, taxas],
+    // Loja com faixas: o preço médio dos concorrentes pode cair noutra faixa, e `taxas` aqui
+    // seriam os campos manuais (20% + R$ 4), não a comissão da loja.
+    () => analisarConcorrencia(resultado, concorrentes, usaFaixas ? resultadoNoPreco : taxas),
+    [resultado, concorrentes, usaFaixas, resultadoNoPreco, taxas],
   );
 
   /** Abaixo disso a venda dá prejuízo (lucro zero com as mesmas taxas). */
@@ -287,7 +302,9 @@ export function usePrecificacao({
       usaFaixas && lojaSelecionada
         ? resolverComFaixas(custoTotal, "lucro", 0, taxasBaseFaixas, lojaSelecionada.faixas).resultado
         : resolverPorLucro(custoTotal, 0, taxas);
-    return r.viavel && Number.isFinite(r.precoVenda) ? Math.ceil(r.precoVenda * 100) / 100 : null;
+    return r.viavel && Number.isFinite(r.precoVenda)
+      ? precoEmCentavos(r.precoVenda, true, usaFaixas && lojaSelecionada ? lojaSelecionada.faixas : [])
+      : null;
   }, [usaFaixas, lojaSelecionada, custoTotal, taxasBaseFaixas, taxas]);
 
   const extras = useExtrasPrecificacao({

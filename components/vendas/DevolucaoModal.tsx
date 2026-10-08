@@ -83,7 +83,7 @@ export function DevolucaoModal({
       if (forma === "troca") {
         toast.success(`${r.dado.numero}: crédito de ${formatBRL(r.dado.estorno)}. Monte a nova venda no PDV.`);
         // Leva o crédito para o PDV (desconto da nova venda).
-        router.push(`/pdv?troca=${encodeURIComponent(r.dado.numero)}&credito=${r.dado.estorno}`);
+        router.push(`/pdv?troca=${encodeURIComponent(r.dado.numero)}`);
         return;
       }
       toast.success(`Devolução ${r.dado.numero} registrada${r.dado.estorno ? ` · estorno ${formatBRL(r.dado.estorno)}` : ""}.`);

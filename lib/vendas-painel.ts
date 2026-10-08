@@ -40,27 +40,49 @@ export interface DecomposicaoVenda {
   receita: number;
   desconto: number;
   entrega: number;
+  /** Valor já devolvido ao cliente (devoluções): sai da receita. */
+  devolvido: number;
   custoProdutos: number;
-  /** Imposto, taxa de maquininha e outras deduções: o que sobra entre total, custo e lucro. */
+  /** Imposto, taxa de maquininha e outras deduções: o que sobra entre total, custo, frete e lucro. */
   impostosTaxas: number;
+  /** Frete pago pela loja (etiqueta comprada). */
+  fretePago: number;
   lucro: number;
   /** Lucro ÷ receita líquida (total). */
   margem: number;
 }
 
+const centavos = (x: number) => Math.round(x * 100) / 100;
+
 /**
- * Do total ao lucro. O banco grava total, custo e lucro (com imposto e taxa de maquininha
- * já abatidos); a diferença que sobra é o que foi para imposto e taxas.
+ * Do total ao lucro, na mesma conta do DRE (0083):
+ *   lucro = subtotal − desconto + entrega − devolvido − custo − imposto − taxa − frete pago.
+ * O banco grava cada parte; imposto e taxas são o que sobra entre o total, o custo, o frete e
+ * o lucro — assim a conta da tela fecha sempre com o lucro gravado, até em venda antiga.
  */
-export function decomporVenda(v: { subtotal: number; desconto: number; valor_entrega: number; total: number; custo_total: number; lucro: number }): DecomposicaoVenda {
-  const impostosTaxas = Math.max(0, Math.round((v.total - v.valor_entrega - v.custo_total - v.lucro) * 100) / 100);
+export function decomporVenda(v: {
+  subtotal: number;
+  desconto: number;
+  valor_entrega: number;
+  total: number;
+  custo_total: number;
+  lucro: number;
+  valor_devolvido?: number | null;
+  frete_custo?: number | null;
+}): DecomposicaoVenda {
+  const devolvido = Number(v.valor_devolvido ?? 0);
+  const fretePago = Number(v.frete_custo ?? 0);
+  const liquido = centavos(Number(v.subtotal) - Number(v.desconto) + Number(v.valor_entrega) - devolvido);
+  const impostosTaxas = Math.max(0, centavos(liquido - Number(v.custo_total) - fretePago - Number(v.lucro)));
   return {
-    receita: v.subtotal,
-    desconto: v.desconto,
-    entrega: v.valor_entrega,
-    custoProdutos: v.custo_total,
+    receita: Number(v.subtotal),
+    desconto: Number(v.desconto),
+    entrega: Number(v.valor_entrega),
+    devolvido,
+    custoProdutos: Number(v.custo_total),
     impostosTaxas,
-    lucro: v.lucro,
+    fretePago,
+    lucro: Number(v.lucro),
     margem: v.total > 0 ? v.lucro / v.total : 0,
   };
 }

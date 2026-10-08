@@ -140,7 +140,7 @@ export default async function Home() {
               <p className="mt-3 text-sm text-text-tertiary">14 dias do plano Pro liberados ao criar a conta. Sem cartão.</p>
               <p className="mt-2 text-sm">
                 <Link href="/calculadora" className="inline-flex items-center gap-1 text-accent hover:underline">
-                  <Calculator size={15} aria-hidden /> Só quer saber o preço? Use a calculadora da Shopee e do Mercado Livre
+                  <Calculator size={15} aria-hidden /> Teste gratuitamente nossa calculadora
                 </Link>
               </p>
               <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-text-secondary">

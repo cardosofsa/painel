@@ -6,6 +6,7 @@
  */
 
 import {
+  precoEmCentavos,
   resolverComFaixas,
   resolverPorLucro,
   resolverPorMargem,
@@ -81,10 +82,14 @@ export function resultadoNoPreco(e: Pick<EntradaRaioX, "custo" | "taxas" | "faix
   return e.faixas.length ? resultadoParaPrecoComFaixas(preco, e.custo, taxasBase(e.taxas), e.faixas) : resultadoParaPreco(preco, e.custo, e.taxas);
 }
 
-/** Preço de empate (lucro zero). */
+/**
+ * Preço de empate (lucro zero), levado ao centavo PARA CIMA: arredondar normal podia
+ * devolver um centavo abaixo do empate (12,5125 → 12,51), um "mínimo" que já dá prejuízo.
+ * Com faixas, `precoEmCentavos` não deixa o centavo a mais atravessar o piso da faixa.
+ */
 export function precoMinimo(e: Pick<EntradaRaioX, "custo" | "taxas" | "faixas">): number | null {
   const r = e.faixas.length ? resolverComFaixas(e.custo, "lucro", 0, taxasBase(e.taxas), e.faixas).resultado : resolverPorLucro(e.custo, 0, e.taxas);
-  return r.viavel ? r2(r.precoVenda) : null;
+  return r.viavel ? precoEmCentavos(r.precoVenda, true, e.faixas) : null;
 }
 
 /**
@@ -118,7 +123,7 @@ export function analisarRaioX(e: EntradaRaioX): ResultadoRaioX {
   }
 
   const praticado = resultadoNoPreco(e, e.precoPraticado);
-  const zona = e.faixas.length ? zonaMortaDeFaixa(e.faixas, e.precoPraticado) : null;
+  const zona = e.faixas.length ? zonaMortaDeFaixa(e.faixas, e.precoPraticado, taxasBase(e.taxas)) : null;
   const diferenca = ideal.viavel ? r2(praticado.lucroLiquido - ideal.lucroLiquido) : null;
   const diferencaMes = diferenca !== null && e.vendasMes > 0 ? r2(diferenca * e.vendasMes) : null;
   const nota = ideal.viavel ? notaRaioX(praticado.margemEfetivaPct, e.margemAlvo, e.precoPraticado, ideal.precoVenda, !!zona) : null;

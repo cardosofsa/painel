@@ -38,4 +38,16 @@ describe("radar", () => {
     expect(r[0].precoSugerido).toBe(36.93);
     expect(r[0].lucroHojeUnit).toBe(-4);
   });
+
+  it("arredondar para cima não pula para a faixa de comissão de cima", () => {
+    const faixas = [
+      { min: 0, max: 79.99, comissaoPct: 20, tarifaFixa: 4 },
+      { min: 80, max: null, comissaoPct: 14, tarifaFixa: 16 },
+    ];
+    const lojaFaixas = new Map([["L2", { ...shopee, tipoTaxa: "faixas" as const, comissaoPct: 0, taxaFixa: 0, faixas }]]);
+    // (43,997 + 4) / (1 − 0,20 − 0,20) = 79,995: R$ 80,00 cairia em 14% + R$ 16.
+    const prods = new Map([["a", { nome: "Caneca", sku: "CAN", custo: 43.997 }]]);
+    const r = montarRadar([{ produtoId: "a", canal: "L2", quantidade: 1, receita: 50, custo: 44, deducoes: 14 }], prods, lojaFaixas, { margemAlvo: 0.2, impostoPct: 0 });
+    expect(r[0].precoSugerido).toBe(79.99);
+  });
 });

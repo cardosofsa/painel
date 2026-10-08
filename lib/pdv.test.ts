@@ -3,6 +3,9 @@ import {
   montarCards,
   dividirEmParcelas,
   calcularRestante,
+  subtotalDoCarrinho,
+  descontoDoCarrinho,
+  calcularTroco,
   calcularTaxaMaquineta,
   type ProdutoPdv,
 } from "./pdv";
@@ -152,5 +155,52 @@ describe("calcularTaxaMaquineta", () => {
 
   it("taxa negativa é tratada como zero, não gera valor negativo", () => {
     expect(calcularTaxaMaquineta(200, -5)).toBe(0);
+  });
+});
+
+describe("subtotalDoCarrinho / descontoDoCarrinho", () => {
+  it("soma cada linha em centavos, como a RPC", () => {
+    expect(subtotalDoCarrinho([{ preco_unitario: 0.1, quantidade: 3 }])).toBe(0.3);
+    expect(subtotalDoCarrinho([{ preco_unitario: 10.05, quantidade: 1 }, { preco_unitario: 0.335, quantidade: 3 }])).toBe(11.06);
+  });
+
+  it("arredonda o desconto percentual para centavos", () => {
+    expect(descontoDoCarrinho("percentual", 50, 10.05)).toBe(5.03);
+    expect(descontoDoCarrinho("percentual", 33.333, 100)).toBe(33.33);
+  });
+
+  it("trava o desconto entre 0 e o subtotal", () => {
+    expect(descontoDoCarrinho("valor", 200, 150)).toBe(150);
+    expect(descontoDoCarrinho("valor", -5, 150)).toBe(0);
+    expect(descontoDoCarrinho("valor", Number.NaN, 150)).toBe(0);
+    expect(descontoDoCarrinho("valor", 12.345, 150)).toBe(12.35);
+  });
+});
+
+describe("calcularTroco", () => {
+  const base = { total: 50, entradaValor: 0, entradaDinheiro: false, formaPrincipalDinheiro: true, fiado: false, recebido: 100 };
+
+  it("venda em dinheiro: troco = recebido − total", () => {
+    expect(calcularTroco(base)).toEqual({ emDinheiro: 50, troco: 50, falta: 0 });
+  });
+
+  it("pagamento dividido: troco só sobre a parte em dinheiro", () => {
+    expect(calcularTroco({ ...base, total: 100, entradaValor: 30, entradaDinheiro: true, formaPrincipalDinheiro: false, recebido: 50 })).toEqual({ emDinheiro: 30, troco: 20, falta: 0 });
+  });
+
+  it("crediário: só a entrada é paga agora", () => {
+    expect(calcularTroco({ ...base, total: 100, entradaValor: 20, entradaDinheiro: true, fiado: true, recebido: 50 }).troco).toBe(30);
+  });
+
+  it("crédito de troca sai da parte em dinheiro", () => {
+    expect(calcularTroco({ ...base, total: 80, credito: 50, recebido: 50 })).toEqual({ emDinheiro: 30, troco: 20, falta: 0 });
+  });
+
+  it("recebido menor que a parte em dinheiro mostra o que falta", () => {
+    expect(calcularTroco({ ...base, recebido: 40 })).toEqual({ emDinheiro: 50, troco: 0, falta: 10 });
+  });
+
+  it("sem dinheiro no pagamento não há troco", () => {
+    expect(calcularTroco({ ...base, formaPrincipalDinheiro: false })).toEqual({ emDinheiro: 0, troco: 0, falta: 0 });
   });
 });

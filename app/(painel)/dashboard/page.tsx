@@ -117,11 +117,12 @@ export default async function DashboardPage() {
       supabase.from("fornecedores").select("id, nome"),
       supabase
         .from("contas_a_pagar_receber")
-        // `*`: valor_pago (pagamento parcial) só existe a partir da 0064.
+        // `*`: valor_pago (pagamento parcial) só existe a partir da 0064. Folga para tirar os
+        // repasses que aguardam a conclusão do pedido (0085) e ainda sobrar 8.
         .select("*")
         .eq("status", "pendente")
         .order("data_vencimento")
-        .limit(8),
+        .limit(60),
       supabase.from("pedidos_compra").select("valor_total").gte("data_pedido", inicioMesIso),
       supabase.from("precificacoes").select("id", { count: "exact", head: true }).gte("criado_em", inicioMesData.toISOString()),
       // O resto do calendário (os outros meses) vem sob demanda, ao navegar.
@@ -201,7 +202,10 @@ export default async function DashboardPage() {
     fornecedor_nome: (p.fornecedor_id && fornecedoresPorId.get(p.fornecedor_id)) ?? "—",
   }));
 
-  const vencimentos: Vencimento[] = (cprRes.data ?? []).map((c) => {
+  const vencimentos: Vencimento[] = (cprRes.data ?? [])
+    .filter((c) => !(c as { aguardando_liberacao?: boolean | null }).aguardando_liberacao)
+    .slice(0, 8)
+    .map((c) => {
     const { status, tone } = rotuloVencimento(c.data_vencimento);
     return {
       status,
@@ -209,7 +213,8 @@ export default async function DashboardPage() {
       vencimento: formatarDataIso(c.data_vencimento),
       tipo: c.tipo === "pagar" ? "A Pagar" : "A Receber",
       descricao: c.descricao,
-      valor: c.tipo === "pagar" ? -(c.valor - Number(c.valor_pago ?? 0)) : c.valor,
+      // O que ainda falta (pagamento parcial, 0064/0083), nos dois sentidos.
+      valor: (c.tipo === "pagar" ? -1 : 1) * Math.max(0, Number(c.valor) - Number(c.valor_pago ?? 0)),
     };
   });
 

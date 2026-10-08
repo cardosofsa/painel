@@ -81,12 +81,23 @@ export function classeValor(valor: number): string {
  * Existe porque `Number("19,90")` devolve `NaN`, e `NaN` é traiçoeiro: `??` não o captura,
  * `NaN <= 0` é `false`, e `JSON.stringify(NaN)` vira `null`. Um NaN nascido num input
  * chegava até o INSERT sem que nenhum guard no caminho o percebesse.
+ *
+ * Ponto de milhar: com vírgula na string, todo ponto é milhar ("1.500,00" → 1500). Sem
+ * vírgula, ponto seguido de grupos de exatamente 3 dígitos também é milhar ("1.500" → 1500,
+ * "12.345.678" → 12345678) — antes "1.500" virava 1,5. Qualquer outro ponto continua
+ * decimal ("19.90" → 19,9; "1.5" → 1,5; "0.500" → 0,5).
  */
 export function numeroOuNulo(valor: string): number | null {
-  const limpo = valor.trim().replace(",", ".");
+  const limpo = normalizarNumeroDigitado(valor.trim());
   if (limpo === "") return null;
   const n = Number(limpo);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizarNumeroDigitado(texto: string): string {
+  if (texto.includes(",")) return texto.replace(/\./g, "").replace(",", ".");
+  if (/^[-+]?[1-9]\d{0,2}(\.\d{3})+$/.test(texto)) return texto.replace(/\./g, "");
+  return texto;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   imagemProdutoSchema,
   acaoEmMassaProdutosSchema,
   exportarListaSchema,
+  variacoesProdutoSchema,
   type ExportarListaInput,
 } from "@/lib/validacao";
 import { gerarComIA, gerarProdutoPelaFotoIA } from "@/lib/ia/gerar";
@@ -20,6 +21,8 @@ import type { ComponenteKit } from "@/lib/pricing";
 import { buscarEmLotes } from "@/lib/lotes";
 import { lerFiltroProdutos, palavrasDaBusca } from "@/lib/listas";
 import { gruposPorPalavra, todosOsProdutos } from "./consulta";
+import type { VariacaoForm } from "@/lib/variacoes";
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 const PATH = "/produtos";
 
@@ -156,6 +159,27 @@ export async function atualizarProduto(id: string, dados: ProdutoInput) {
     if (error) lancarErroSupabase(error);
     await sincronizarLojasProduto(supabase, id, loja_ids);
     revalidateTudo();
+  });
+}
+
+/**
+ * Grava a lista de variações por quantidade de um produto pai (0084) de uma vez: cria as
+ * novas, atualiza as que vieram com `id` e remove as que saíram da lista. Estoque e custo
+ * da variação são derivados no banco (pai × N).
+ */
+export async function salvarVariacoesProduto(paiId: string, variacoes: VariacaoForm[]) {
+  return comResultado(async () => {
+    const v = validar(variacoesProdutoSchema, { pai_id: paiId, variacoes });
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("salvar_variacoes_produto", { p_pai: v.pai_id, p_variacoes: v.variacoes });
+    if (error) {
+      if (error.code === "PGRST202" || error.code === "42883") throw new Error("Variações por quantidade precisam da migração 0084. Aplique no Supabase e tente de novo.");
+      lancarErroSupabase(error);
+    }
+    revalidateTudo();
+    revalidatePath("/vendas");
+    const r = (data ?? {}) as { novas?: number; atualizadas?: number; removidas?: number };
+    return { novas: r.novas ?? 0, atualizadas: r.atualizadas ?? 0, removidas: r.removidas ?? 0 };
   });
 }
 
@@ -373,7 +397,11 @@ export async function opcoesFormularioProduto() {
     const supabase = await createClient();
     const [insumosRes, envioRes] = await Promise.all([
       buscarEmLotes<ProdutoParaInsumo>(async (de, ate) => {
-        const r = await supabase.from("produtos").select("id, nome, custo, sku, categoria_id", { count: "exact" }).order("nome").order("id").range(de, ate);
+        // Variação filha (0084) é kit do pai: não serve de componente de outro kit.
+        const r = await semVariacoesFilhas((filtrar) => {
+          const q = supabase.from("produtos").select("id, nome, custo, sku, categoria_id", { count: "exact" });
+          return (filtrar ? q.is("produto_pai_id", null) : q).order("nome").order("id").range(de, ate);
+        });
         return { data: r.data as ProdutoParaInsumo[] | null, error: r.error, count: r.count };
       }),
       // Envio (0041): sem a migração as colunas não existem e o padrão fica vazio.

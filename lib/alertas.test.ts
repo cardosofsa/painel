@@ -42,6 +42,34 @@ describe("calcularErosaoMargem", () => {
     expect(custoZero).toHaveLength(0);
   });
 
+  it("compara a compra com o valor do produto SEM insumos (linha custo-produto)", () => {
+    // Produto 30 + insumos 5 = 35 na precificação; compra a 34 = +13,3% no produto.
+    const componentes = [
+      { id: "custo-produto", nome: "Custo do produto", quantidade: 1, custoUnitario: 30 },
+      { id: "i1", nome: "Caixa", quantidade: 1, custoUnitario: 5 },
+    ];
+    const alertas = calcularErosaoMargem(
+      new Map([["p1", { custo: 35, componentes }]]),
+      new Map([["p1", { custo_unitario: 34, produto_nome: "Óleo" }]]),
+    );
+    expect(alertas).toHaveLength(1);
+    expect(alertas[0].custoPrecificado).toBe(30);
+    expect(alertas[0].aumentoPct).toBeCloseTo((4 / 30) * 100, 9);
+  });
+
+  it("sem a linha custo-produto (precificação antiga), usa o custo total como antes", () => {
+    const alertas = calcularErosaoMargem(
+      new Map([["p1", { custo: 35, componentes: [{ id: "i1", nome: "Caixa", quantidade: 1, custoUnitario: 5 }] }]]),
+      new Map([["p1", { custo_unitario: 34, produto_nome: "Óleo" }]]),
+    );
+    expect(alertas).toHaveLength(0);
+    const semComponentes = calcularErosaoMargem(
+      new Map([["p1", { custo: 35, componentes: null }]]),
+      new Map([["p1", { custo_unitario: 40, produto_nome: "Óleo" }]]),
+    );
+    expect(semComponentes[0].custoPrecificado).toBe(35);
+  });
+
   it("ordena do maior aumento para o menor", () => {
     const alertas = calcularErosaoMargem(
       new Map([

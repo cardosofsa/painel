@@ -114,7 +114,8 @@ export const precificacaoSchema = z.object({
   taxa_adicional_pct: fracao,
   imposto_pct: fracao,
   margem_pct: z.number().finite().min(-1).max(1).nullable(),
-  preco_calculado: dinheiro,
+  // Preço zero não é venda: o card mostrava "inviável" mas o Salvar gravava R$ 0,00.
+  preco_calculado: dinheiro.positive("O preço precisa ser maior que zero"),
   lucro: z.number().finite().min(-10_000_000).max(10_000_000),
   origem: z.enum(["individual", "em_massa"]),
   // 0045; opcionais: a calculadora em massa não manda.
@@ -247,6 +248,23 @@ export const gerarTemaSchema = z.object({
   instrucaoExtra: z.string().trim().max(300).nullable(),
 });
 
+/** Variações por quantidade de um produto pai (0084): o banco confere tudo de novo. */
+export const variacoesProdutoSchema = z.object({
+  pai_id: uuid,
+  variacoes: z
+    .array(
+      z.object({
+        id: uuid.optional(),
+        variante_nome: z.string().trim().min(1, "Dê um nome a cada variação").max(80, "Nome longo demais"),
+        quantidade: z.number().int("A quantidade precisa ser inteira").min(1, "A quantidade mínima é 1").max(100_000, "Quantidade alta demais"),
+        sku: z.string().trim().min(1, "Informe o SKU de cada variação").max(80, "SKU longo demais"),
+        custo_manual: dinheiroOpcional,
+        preco_venda: dinheiro,
+      }),
+    )
+    .max(50, "No máximo 50 variações por produto"),
+});
+
 export const grupoProdutoSchema = z.object({
   nome: textoCurto,
   descricao: z.string().trim().max(2000).nullable(),
@@ -318,6 +336,12 @@ export const vendaSchema = z.object({
   // dela conferir o limite de fiado.
   parcelas_fiado: z.number().int("Número de parcelas inválido").min(1).max(24, "Máximo de 24 parcelas"),
   dias_entre_parcelas: z.number().int().min(1).max(90),
+  // 0083: crédito de troca é forma de pagamento (não desconto) e aponta para a devolução de
+  // origem; o saldo livre do crédito é conferido na RPC, com trava.
+  credito_troca: dinheiro.optional(),
+  troca_devolucao_id: uuidOpcional.optional(),
+  // 0083: quanto o cliente entregou em dinheiro (troco). Só informativo: o caixa recebe a venda.
+  valor_recebido: dinheiroOpcional.optional(),
 });
 
 export const perfilNegocioSchema = z.object({

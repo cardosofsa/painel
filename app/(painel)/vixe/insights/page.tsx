@@ -47,7 +47,7 @@ export default async function VixeInsightsPage() {
       : vazio,
     verEstoque ? supabase.from("produtos").select("id, nome, estoque, custo, grupo_id, variante_nome").eq("ativo", true) : vazio,
     supabase.from("produto_grupos").select("id, nome"),
-    verFinanceiro ? supabase.from("contas_a_pagar_receber").select("tipo, valor, data_vencimento, referencia_venda_id").eq("status", "pendente") : vazio,
+    verFinanceiro ? supabase.from("contas_a_pagar_receber").select("*").eq("status", "pendente") : vazio,
     verFinanceiro ? supabase.from("venda_parcelas").select("venda_id, valor, data_vencimento").eq("status", "pendente") : vazio,
     supabase.from("perfil_negocio").select("nome_negocio, whatsapp").maybeSingle(),
   ]);
@@ -70,7 +70,10 @@ export default async function VixeInsightsPage() {
   // dinheiro das parcelas, então não entra duas vezes.
   const parcelas = (parcelasRes.data ?? []) as { venda_id: string; valor: number; data_vencimento: string }[];
   const vendasComParcelas = new Set(parcelas.map((p) => p.venda_id));
-  const cpr = (cprRes.data ?? []) as { tipo: "pagar" | "receber"; valor: number; data_vencimento: string; referencia_venda_id: string | null }[];
+  // `*` + filtro aqui: repasse aguardando a conclusão do pedido (0085) não tem vencimento; sem a migração a coluna não existe.
+  const cpr = ((cprRes.data ?? []) as { tipo: "pagar" | "receber"; valor: number; data_vencimento: string; referencia_venda_id: string | null; aguardando_liberacao?: boolean | null }[]).filter(
+    (c) => !c.aguardando_liberacao,
+  );
   const pendencias: Pendencia[] = [
     ...parcelas.map((p) => ({ tipo: "receber" as const, valor: p.valor, vencimento: p.data_vencimento })),
     ...cpr

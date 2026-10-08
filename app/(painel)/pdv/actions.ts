@@ -27,6 +27,11 @@ export interface VendaInput {
   taxa_maquineta_pct: number;
   parcelas_fiado: number;
   dias_entre_parcelas: number;
+  /** 0083: crédito de troca usado como pagamento (não entra no caixa) e a devolução de origem. */
+  credito_troca?: number;
+  troca_devolucao_id?: string | null;
+  /** 0083: dinheiro entregue pelo cliente, para o troco (o caixa recebe o valor da venda). */
+  valor_recebido?: number | null;
 }
 
 export interface VendaRegistrada {
@@ -69,6 +74,8 @@ export async function registrarVenda(dados: VendaInput) {
       p_taxa_maquineta_pct: venda.taxa_maquineta_pct,
       p_parcelas_fiado: venda.parcelas_fiado,
       p_dias_entre_parcelas: venda.dias_entre_parcelas,
+      ...((venda.credito_troca ?? 0) > 0 ? { p_credito_troca: venda.credito_troca, p_troca_devolucao_id: venda.troca_devolucao_id ?? null } : {}),
+      ...(venda.valor_recebido ? { p_valor_recebido: venda.valor_recebido } : {}),
     });
 
     if (error) lancarErroSupabase(error);
@@ -116,6 +123,8 @@ export async function registrarVendaOffline(chave: string, feitaEm: string, dado
   return comResultado(async (): Promise<VendaRegistrada & { ja_enviada: boolean }> => {
     const supabase = await createClient();
     const venda = validar(vendaSchema, dados);
+    // O crédito de troca é conferido e travado no banco na hora: não vai na fila sem internet.
+    if ((venda.credito_troca ?? 0) > 0) throw new Error("Venda com crédito de troca precisa de internet.");
     const k = validar(z.string().uuid(), chave);
     const quando = validar(z.string().datetime({ offset: true }), feitaEm);
     const { data, error } = await supabase.rpc("registrar_venda_offline", {
@@ -137,6 +146,7 @@ export async function registrarVendaOffline(chave: string, feitaEm: string, dado
       p_taxa_maquineta_pct: venda.taxa_maquineta_pct,
       p_parcelas_fiado: venda.parcelas_fiado,
       p_dias_entre_parcelas: venda.dias_entre_parcelas,
+      ...(venda.valor_recebido ? { p_valor_recebido: venda.valor_recebido } : {}),
     });
     if (error?.code === "PGRST202") throw new Error("Vendas offline precisam da migração 0060.");
     if (error) lancarErroSupabase(error);

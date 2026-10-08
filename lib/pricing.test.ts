@@ -13,6 +13,8 @@ import {
   custoDeInsumos,
   custoComposto,
   custoMedioPonderado,
+  encontrarFaixa,
+  precoEmCentavos,
   type TaxasPlataforma,
   type FaixaComissao,
   type ComponenteKit,
@@ -485,5 +487,188 @@ describe("custoMedioPonderado", () => {
 
   it("NaN não escapa em silêncio: propaga (para o chamador tratar, como o resto do módulo)", () => {
     expect(custoMedioPonderado(10, 4, 10, NaN)).toBeNaN();
+  });
+});
+
+/** Tabela padrão da Shopee (seed da 0005), em `FaixaComissao`. */
+const FAIXAS_SHOPEE_PADRAO: FaixaComissao[] = [
+  { min: 0, max: 7.99, comissaoPct: 50, tarifaFixa: 0 },
+  { min: 8, max: 79.99, comissaoPct: 20, tarifaFixa: 4 },
+  { min: 80, max: 99.99, comissaoPct: 14, tarifaFixa: 16 },
+  { min: 100, max: 199.99, comissaoPct: 14, tarifaFixa: 20 },
+  { min: 200, max: null, comissaoPct: 14, tarifaFixa: 26 },
+];
+const SEM_IMPOSTO = { impostoPct: 0, taxaAdicionalPct: 0 };
+
+/** Força bruta em milésimos de real: menor preço que atinge a meta, com a faixa real de cada preço. */
+function menorPrecoForcaBruta(
+  faixas: FaixaComissao[],
+  custo: number,
+  imposto: number,
+  atinge: (lucro: number, preco: number) => boolean,
+  ate = 1000,
+): number | null {
+  for (let m = 1; m <= ate * 1000; m++) {
+    const p = m / 1000;
+    let f = faixas[0];
+    for (const x of faixas) if (m >= Math.round(x.min * 1000)) f = x;
+    const lucro = p - custo - p * (f.comissaoPct / 100) - f.tarifaFixa - p * imposto;
+    if (atinge(lucro, p)) return p;
+  }
+  return null;
+}
+
+describe("encontrarFaixa: preço entre duas faixas fechadas no centavo", () => {
+  it("79,9925 fica na faixa de 8 a 79,99, não cai na última", () => {
+    expect(encontrarFaixa(FAIXAS_SHOPEE_PADRAO, 79.9925).comissaoPct).toBe(20);
+    expect(encontrarFaixa(FAIXAS_SHOPEE_PADRAO, 79.9925).tarifaFixa).toBe(4);
+    expect(encontrarFaixa(FAIXAS_SHOPEE_PADRAO, 99.995).tarifaFixa).toBe(16);
+    expect(encontrarFaixa(FAIXAS_SHOPEE_PADRAO, 80).tarifaFixa).toBe(16);
+    expect(encontrarFaixa(FAIXAS_SHOPEE_PADRAO, 250).tarifaFixa).toBe(26);
+  });
+
+  it("independe da ordem em que as faixas chegam", () => {
+    const [a, b, c, d, e] = FAIXAS_SHOPEE_PADRAO;
+    const embaralhadas = [d, a, e, c, b];
+    expect(encontrarFaixa(embaralhadas, 150).tarifaFixa).toBe(20);
+    expect(encontrarFaixa(embaralhadas, 79.995).tarifaFixa).toBe(4);
+  });
+
+  it("Shopee, custo 44,44, markup 35%: R$ 79,99 na faixa de 20% + R$ 4 (antes R$ 99,99 na faixa de 200+)", () => {
+    const { resultado, faixa } = resolverComFaixas(44.44, "markup", 0.35, SEM_IMPOSTO, FAIXAS_SHOPEE_PADRAO);
+    expect(faixa.comissaoPct).toBe(20);
+    expect(faixa.tarifaFixa).toBe(4);
+    expect(resultado.precoVenda).toBeCloseTo((44.44 * 1.35 + 4) / 0.8, 9);
+    expect(precoEmCentavos(resultado.precoVenda, true, FAIXAS_SHOPEE_PADRAO)).toBe(79.99);
+  });
+});
+
+describe("resolverComFaixas: menor preço válido", () => {
+  it("sem ponto fixo (tarifa só abaixo de R$ 79): devolve o piso da faixa, com rótulo e números batendo", () => {
+    const ml: FaixaComissao[] = [
+      { min: 0, max: 78.99, comissaoPct: 12, tarifaFixa: 6.75 },
+      { min: 79, max: null, comissaoPct: 12, tarifaFixa: 0 },
+    ];
+    const { resultado, faixa } = resolverComFaixas(50, "margem", 0.2, SEM_IMPOSTO, ml);
+    expect(resultado.precoVenda).toBe(79);
+    expect(faixa.min).toBe(79);
+    // Lucro de verdade em R$ 79 com 12% e sem tarifa.
+    expect(resultado.lucroLiquido).toBeCloseTo(79 - 50 - 79 * 0.12, 9);
+    expect(resultado.margemEfetivaPct).toBeGreaterThanOrEqual(0.2);
+  });
+
+  it("não para na primeira faixa inviável: margem 75% com imposto 6% sai a R$ 720", () => {
+    const { resultado, faixa } = resolverComFaixas(10, "margem", 0.75, { impostoPct: 0.06, taxaAdicionalPct: 0 }, FAIXAS_SHOPEE_PADRAO);
+    expect(resultado.viavel).toBe(true);
+    expect(resultado.precoVenda).toBeCloseTo(720, 9);
+    expect(faixa.tarifaFixa).toBe(26);
+    expect(resultado.margemEfetivaPct).toBeCloseTo(0.75, 9);
+  });
+
+  it("bate com a força bruta (margem, lucro e markup)", () => {
+    const casos: [number, "margem" | "lucro" | "markup", number, number][] = [
+      [10, "margem", 0.2, 0],
+      [30, "margem", 0.2, 0.06],
+      [44, "margem", 0.2, 0],
+      [50, "margem", 0.25, 0.06],
+      [60, "margem", 0.2, 0.06],
+      [100, "margem", 0.3, 0.06],
+      [40, "lucro", 15, 0.06],
+      [62, "lucro", 0, 0.06],
+      [44.44, "markup", 0.35, 0],
+      [70, "markup", 0.5, 0.04],
+    ];
+    for (const [custo, modo, par, imp] of casos) {
+      const { resultado: r, faixa } = resolverComFaixas(custo, modo, par, { impostoPct: imp, taxaAdicionalPct: 0 }, FAIXAS_SHOPEE_PADRAO);
+      const atinge = (lucro: number, p: number) =>
+        (modo === "margem" ? lucro / p : modo === "markup" ? lucro / custo : lucro) >= par - 1e-9;
+      const bruta = menorPrecoForcaBruta(FAIXAS_SHOPEE_PADRAO, custo, imp, atinge);
+      expect(bruta).not.toBeNull();
+      // O preço exato atinge a meta e fica a menos de um milésimo abaixo do menor da grade…
+      expect(atinge(r.lucroLiquido, r.precoVenda)).toBe(true);
+      expect(r.precoVenda).toBeLessThanOrEqual(bruta! + 1e-9);
+      expect(r.precoVenda).toBeGreaterThan(bruta! - 0.001 - 1e-9);
+      // …e a faixa devolvida é a do próprio preço, com a comissão dela nos números.
+      expect(encontrarFaixa(FAIXAS_SHOPEE_PADRAO, r.precoVenda)).toBe(faixa);
+      expect(r.taxaVariavelValor).toBeCloseTo(r.precoVenda * (faixa.comissaoPct / 100), 9);
+    }
+  });
+
+  it("inviável em todas as faixas continua inviável", () => {
+    const { resultado } = resolverComFaixas(10, "margem", 0.9, SEM_IMPOSTO, FAIXAS_SHOPEE_PADRAO);
+    expect(resultado.viavel).toBe(false);
+  });
+});
+
+describe("precoEmCentavos", () => {
+  it("para cima no centavo, sem ruído de ponto flutuante", () => {
+    expect(precoEmCentavos(56.6666, true)).toBe(56.67);
+    expect(precoEmCentavos(19.98, true)).toBe(19.98);
+    expect(precoEmCentavos(0.1 + 0.2, true)).toBe(0.3);
+  });
+
+  it("não atravessa o piso de uma faixa", () => {
+    expect(precoEmCentavos(79.9925, true, FAIXAS_SHOPEE_PADRAO)).toBe(79.99);
+    expect(precoEmCentavos(79.9925, true)).toBe(80);
+  });
+
+  it("sem `paraCima`, arredonda normal", () => {
+    expect(precoEmCentavos(99.904, false)).toBe(99.9);
+    expect(precoEmCentavos(99.906, false)).toBe(99.91);
+  });
+});
+
+describe("preço zero ou negativo é inviável", () => {
+  it("resultadoParaPreco", () => {
+    expect(resultadoParaPreco(0, 40, SHOPEE).viavel).toBe(false);
+    expect(resultadoParaPreco(-10, 40, SHOPEE).viavel).toBe(false);
+  });
+
+  it("modo preço fixo com faixas", () => {
+    expect(resolverComFaixas(40, "preco", 0, SEM_IMPOSTO, FAIXAS_SHOPEE_PADRAO).resultado.viavel).toBe(false);
+  });
+
+  it("lucro negativo que levaria o preço a zero ou menos", () => {
+    expect(resolverPorLucro(10, -20, SEM_TAXAS).viavel).toBe(false);
+  });
+});
+
+describe("zonaMortaDeFaixa com imposto e taxas da loja", () => {
+  it("custo 40, imposto 6%: R$ 88,50 ainda rende menos que R$ 79,99", () => {
+    const imposto = { impostoPct: 0.06, taxaAdicionalPct: 0 };
+    const lucro = (p: number) => resultadoParaPrecoComFaixas(p, 40, imposto, FAIXAS_SHOPEE_PADRAO).lucroLiquido;
+    expect(lucro(88.5)).toBeLessThan(lucro(79.99));
+
+    const z = zonaMortaDeFaixa(FAIXAS_SHOPEE_PADRAO, 88.5, imposto);
+    expect(z).not.toBeNull();
+    expect(z!.precoMelhor).toBe(79.99);
+    expect(z!.ganhoLiquido).toBeCloseTo(lucro(79.99) - lucro(88.5), 2);
+    // `fim` é o último centavo que ainda perde para R$ 79,99.
+    const depois = Math.round((z!.fim + 0.01) * 100) / 100;
+    expect(lucro(z!.fim)).toBeLessThan(lucro(79.99));
+    expect(lucro(depois)).toBeGreaterThanOrEqual(lucro(79.99));
+    expect(zonaMortaDeFaixa(FAIXAS_SHOPEE_PADRAO, depois, imposto)).toBeNull();
+  });
+
+  it("taxa adicional e taxa extra percentual também contam", () => {
+    const taxas = { impostoPct: 0, taxaAdicionalPct: 0.03, taxaExtraTipo: "percentual" as const, taxaExtraValor: 3 };
+    const lucro = (p: number) => resultadoParaPrecoComFaixas(p, 40, taxas, FAIXAS_SHOPEE_PADRAO).lucroLiquido;
+    expect(lucro(88.5)).toBeLessThan(lucro(79.99));
+    expect(zonaMortaDeFaixa(FAIXAS_SHOPEE_PADRAO, 88.5, taxas)).not.toBeNull();
+  });
+});
+
+describe("analisarConcorrencia com loja de faixas", () => {
+  it("calcula o lucro no preço médio com a faixa DESSE preço, não com as taxas manuais", () => {
+    const base = { impostoPct: 0.06, taxaAdicionalPct: 0 };
+    const { resultado } = resolverComFaixas(60, "margem", 0.2, base, FAIXAS_SHOPEE_PADRAO);
+    const a = analisarConcorrencia(
+      resultado,
+      [{ id: "1", nome: "A", preco: 150, link: null }],
+      (p) => resultadoParaPrecoComFaixas(p, 60, base, FAIXAS_SHOPEE_PADRAO),
+    )!;
+    // 150 − 60 − 21 (14%) − 20 − 9 (6%) = 40
+    expect(a.resultadoNoPrecoMedio.lucroLiquido).toBeCloseTo(40, 9);
+    expect(a.resultadoNoPrecoMedio.margemEfetivaPct).toBeCloseTo(40 / 150, 9);
   });
 });

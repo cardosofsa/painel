@@ -29,6 +29,15 @@ export interface Venda {
   total: number;
   custo_total: number;
   lucro: number;
+  /** Imposto e taxa da maquininha gravados (0029/0030); devolvido (0059); frete da etiqueta (0055). */
+  imposto_valor?: number | null;
+  taxa_maquineta_valor?: number | null;
+  valor_devolvido?: number | null;
+  frete_custo?: number | null;
+  /** 0083: parte paga com crédito de troca, dinheiro recebido e troco. */
+  credito_troca?: number | null;
+  valor_recebido?: number | null;
+  troco?: number | null;
   observacao: string | null;
   venda_itens: VendaItem[];
 }

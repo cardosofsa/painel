@@ -4,22 +4,39 @@ import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 import type { Metadata } from "next";
 import { carregarCrediario } from "@/lib/crediario-servidor";
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 export const metadata: Metadata = { title: "PDV" };
 
-export default async function PdvPage({ searchParams }: { searchParams: Promise<{ troca?: string; credito?: string }> }) {
-  const { troca, credito } = await searchParams;
-  // Troca (11.3): a devolução gerou crédito; ele entra como desconto da nova venda.
-  const valorCredito = Number(credito);
-  const creditoTroca = troca && /^D-\d{1,8}$/.test(troca) && Number.isFinite(valorCredito) && valorCredito > 0 ? { numero: troca, valor: Math.round(valorCredito * 100) / 100 } : null;
+type Cliente = Awaited<ReturnType<typeof createClient>>;
+
+/** Crédito ainda livre de uma troca: valor da devolução menos o que vendas não canceladas já usaram. */
+async function creditoDaTroca(supabase: Cliente, numero: string) {
+  const { data: dev } = await supabase.from("devolucoes").select("id, numero, valor_estorno").eq("numero", numero).eq("forma", "troca").maybeSingle();
+  if (!dev) return null;
+  const { data: usadas, error } = await supabase.from("vendas").select("credito_troca").eq("troca_devolucao_id", dev.id).neq("status", "cancelada");
+  if (error) return null;
+  const usado = (usadas ?? []).reduce((s, v) => s + Number(v.credito_troca ?? 0), 0);
+  const valor = Math.round((Number(dev.valor_estorno) - usado) * 100) / 100;
+  return valor > 0 ? { id: dev.id as string, numero: dev.numero as string, valor } : null;
+}
+
+export default async function PdvPage({ searchParams }: { searchParams: Promise<{ troca?: string }> }) {
+  const { troca } = await searchParams;
   const supabase = await createClient();
+  // Troca (11.3): a devolução gerou crédito, que paga a nova venda como forma de pagamento
+  // (0083), não como desconto. O valor vem do banco (o que sobra do crédito), não da URL.
+  const creditoTroca = troca && /^D-\d{1,8}$/.test(troca) ? await creditoDaTroca(supabase, troca) : null;
 
   const [produtosRes, gruposRes, categoriasRes, clientesRes, formasRes, contasRes, reservasRes] = await Promise.all([
-    supabase
-      .from("produtos")
-      .select("id, sku, nome, grupo_id, variante_nome, preco_venda, custo, estoque, imagem_url, categoria_id, codigo_barras, garantia_dias")
-      .eq("ativo", true)
-      .order("nome"),
+    // Variação filha (0084) não é vendida no balcão: serve para anúncio e baixa do pai.
+    semVariacoesFilhas((filtrar) => {
+      const q = supabase
+        .from("produtos")
+        .select("id, sku, nome, grupo_id, variante_nome, preco_venda, custo, estoque, imagem_url, categoria_id, codigo_barras, garantia_dias")
+        .eq("ativo", true);
+      return (filtrar ? q.is("produto_pai_id", null) : q).order("nome");
+    }),
     supabase.from("produto_grupos").select("id, nome, imagem_url, categoria_id"),
     supabase.from("categorias").select("id, nome"),
     supabase.from("clientes").select("id, nome, whatsapp, permite_fiado, limite_fiado").eq("status", "ativo").order("nome"),

@@ -21,6 +21,7 @@ import {
   SENHA_MAX,
   dividaAntigaSchema,
   paginaHistoricoSchema,
+  precificacaoSchema,
 } from "./validacao";
 
 describe("senhaSchema", () => {
@@ -209,6 +210,36 @@ describe("precoProdutoSchema", () => {
   });
 });
 
+describe("precificacaoSchema", () => {
+  const base = {
+    produto_id: null,
+    produto_nome: "Caneca",
+    canal: null,
+    titulo_anuncio: null,
+    loja_id: null,
+    componentes: null,
+    taxa_extra_valor: null,
+    taxa_extra_tipo: null,
+    custo: 20,
+    taxa_variavel_pct: 0.2,
+    taxa_fixa: 4,
+    taxa_adicional_pct: 0,
+    imposto_pct: 0.06,
+    margem_pct: 0.2,
+    preco_calculado: 49.9,
+    lucro: 10,
+    origem: "individual" as const,
+  };
+
+  it("aceita uma precificação normal", () => {
+    expect(validar(precificacaoSchema, base).preco_calculado).toBe(49.9);
+  });
+
+  it("recusa preço calculado zero — resultado inviável não vai para o histórico", () => {
+    expect(() => validar(precificacaoSchema, { ...base, preco_calculado: 0 })).toThrow(/maior que zero/);
+  });
+});
+
 describe("urlPublica (imagem de produto e link de concorrente)", () => {
   const id = "11111111-1111-4111-8111-111111111111";
 
@@ -310,6 +341,39 @@ describe("vendaSchema — garantia por item", () => {
     for (const ruim of [0, -5, 1.5, 3651]) {
       expect(vendaSchema.safeParse(comGarantia(ruim)).success).toBe(false);
     }
+  });
+});
+
+describe("vendaSchema — crédito de troca e troco (0083)", () => {
+  const base = {
+    itens: [{ produto_id: "8f1b7a52-3d4e-4c1a-9b7e-1a2b3c4d5e6f", quantidade: 1, preco_unitario: 10 }],
+    status: "paga" as const,
+    cliente_id: null,
+    conta_id: null,
+    forma_pagamento: "Dinheiro",
+    desconto: 0,
+    valor_entrega: 0,
+    observacao: null,
+    data_vencimento: null,
+    entrada_valor: 0,
+    entrada_forma: null,
+    forma_pagamento_2: null,
+    parcelas_cartao: null,
+    taxa_maquineta_pct: 0,
+    parcelas_fiado: 1,
+    dias_entre_parcelas: 30,
+  };
+
+  it("campos novos são opcionais", () => {
+    expect(vendaSchema.safeParse(base).success).toBe(true);
+    expect(vendaSchema.safeParse({ ...base, credito_troca: 5, troca_devolucao_id: "8f1b7a52-3d4e-4c1a-9b7e-1a2b3c4d5e6f", valor_recebido: 20 }).success).toBe(true);
+    expect(vendaSchema.safeParse({ ...base, valor_recebido: null }).success).toBe(true);
+  });
+
+  it("recusa valores negativos e id inválido", () => {
+    expect(vendaSchema.safeParse({ ...base, credito_troca: -1 }).success).toBe(false);
+    expect(vendaSchema.safeParse({ ...base, valor_recebido: -1 }).success).toBe(false);
+    expect(vendaSchema.safeParse({ ...base, troca_devolucao_id: "D-0001" }).success).toBe(false);
   });
 });
 

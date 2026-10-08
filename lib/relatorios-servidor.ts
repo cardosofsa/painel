@@ -1,6 +1,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { VendaRelatorio } from "@/lib/relatorios-vendas";
 import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
+import { buscarEmLotes } from "@/lib/lotes";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -12,13 +13,18 @@ export async function carregarVendasRelatorio(supabase: Supabase, dias: number):
   const agora = new Date();
   const inicio = new Date(agora.getTime() - dias * 86_400_000);
   const [vendasRes, pedidosRes, marketplace, lojasRes] = await Promise.all([
-    supabase
-      .from("vendas")
-      .select("id, data_venda, status, total, custo_total, lucro, observacao, clientes(uf), venda_itens(produto_id, produto_nome, quantidade, preco_unitario, custo_unitario)")
-      .neq("status", "cancelada")
-      .gte("data_venda", inicio.toISOString())
-      .order("data_venda")
-      .limit(20000),
+    // O PostgREST corta em 1000 linhas sem avisar: lê em lotes (ordem estável: data + id).
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("vendas")
+        .select("id, data_venda, status, total, custo_total, lucro, observacao, clientes(uf), venda_itens(produto_id, produto_nome, quantidade, preco_unitario, custo_unitario)", { count: "exact" })
+        .neq("status", "cancelada")
+        .gte("data_venda", inicio.toISOString())
+        .order("data_venda")
+        .order("id")
+        .range(de, ate),
+      { maximo: 20000 },
+    ),
     supabase.from("pedidos_vitrine").select("venda_id, entrega_uf").not("venda_id", "is", null),
     carregarPedidosMarketplace(supabase, dias),
     supabase.from("lojas_canal").select("id, nome, canais(nome)"),

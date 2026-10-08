@@ -165,14 +165,93 @@ export interface PedidoApi {
   ship_by_date?: number;
 }
 
+/**
+ * `get_escrow_detail` v2 → `response.order_income`. Só os campos que a conta usa; a Shopee
+ * manda mais (itens, impostos de outros países...). Valores de taxa vêm positivos; os de frete
+ * e reembolso podem vir negativos (o que sai do vendedor).
+ */
 export interface EscrowApi {
+  /** Renda do pedido: o que a Shopee repassa (estimada até a conclusão, final depois). */
   escrow_amount?: number;
+  /** Depois de ajustes posteriores (disputa, compensação). Quando vem, é o valor final. */
+  escrow_amount_after_adjustment?: number;
   commission_fee?: number;
   service_fee?: number;
   seller_transaction_fee?: number;
   voucher_from_seller?: number;
   /** Frete que o comprador pagou (informativo: a Shopee repassa à transportadora). */
   buyer_paid_shipping_fee?: number;
+  /** Frete que fica com o vendedor no fim (negativo = o vendedor pagou). */
+  final_shipping_fee?: number;
+  actual_shipping_fee?: number;
+  shopee_shipping_rebate?: number;
+  reverse_shipping_fee?: number;
+  /** Comissão do programa de afiliados. */
+  order_ams_commission_fee?: number;
+  /** "Taxa da Recarga Automática (Pedido)": recarga de Ads descontada da renda do pedido. */
+  ads_escrow_top_up_fee_or_technical_support_fee?: number;
+  campaign_fee?: number;
+  /** Devolução/reembolso: quanto saiu do vendedor (vem negativo). */
+  seller_return_refund?: number;
+  drc_adjustable_refund?: number;
+  escrow_tax?: number;
+}
+
+/** Taxas e encargos REAIS de um pedido, a partir do escrow. */
+export interface TaxasReais {
+  comissao: number;
+  taxaServico: number;
+  /** 0 quando a Shopee já conta a transação dentro da taxa de serviço. */
+  taxaTransacao: number;
+  cupomVendedor: number;
+  /** Tudo o mais (recarga automática, afiliados, frete líquido, reembolso, ajustes). */
+  outras: number;
+  /** Venda − renda: tudo o que a plataforma descontou, cupom do vendedor incluso. */
+  total: number;
+  /** Linhas para a tela (sem o cupom, que aparece à parte). */
+  detalhe: { rotulo: string; valor: number }[];
+  repasse: number;
+}
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/**
+ * Escrow → taxas reais. null quando a Shopee ainda não calculou a renda (sem `escrow_amount`):
+ * aí quem chama cai na estimativa por faixas. PURO.
+ *
+ * A renda manda: o total de encargos é sempre `subtotal − renda`, e o que os campos conhecidos
+ * não explicam vira "Outros ajustes da plataforma" — assim a soma bate com a Shopee mesmo
+ * quando ela cria uma taxa nova.
+ */
+export function taxasDoEscrow(e: EscrowApi | null | undefined, subtotal: number): TaxasReais | null {
+  const renda = num(e?.escrow_amount_after_adjustment) ?? num(e?.escrow_amount);
+  if (!e || renda == null) return null;
+  const abs = (v: unknown) => r2(Math.abs(num(v) ?? 0));
+  const repasse = r2(renda);
+  const total = r2(subtotal - repasse);
+  const cupomVendedor = abs(e.voucher_from_seller);
+  const comissao = abs(e.commission_fee);
+  const taxaServico = abs(e.service_fee);
+  let taxaTransacao = abs(e.seller_transaction_fee);
+  const freteFinal = num(e.final_shipping_fee);
+  const extras: [string, number][] = [
+    ["Taxa da recarga automática", abs(e.ads_escrow_top_up_fee_or_technical_support_fee)],
+    ["Comissão de afiliados", abs(e.order_ams_commission_fee)],
+    ["Taxa de campanha", abs(e.campaign_fee)],
+    ["Frete pago pelo vendedor", freteFinal != null ? r2(-freteFinal) : 0],
+    ["Frete da devolução", abs(e.reverse_shipping_fee)],
+    ["Reembolso ao comprador", abs(e.seller_return_refund)],
+    ["Imposto retido", abs(e.escrow_tax)],
+  ];
+  const somaExtras = extras.reduce((s, [, v]) => s + v, 0);
+  // No Brasil a "taxa de serviço líquida" já inclui a de transação: se somar as duas passa da
+  // renda exatamente pelo valor da transação, ela estava contada duas vezes.
+  const soma = (t: number) => cupomVendedor + comissao + taxaServico + t + somaExtras;
+  if (taxaTransacao > 0 && Math.abs(soma(taxaTransacao) - total - taxaTransacao) < 0.02) taxaTransacao = 0;
+  const residuo = r2(total - soma(taxaTransacao));
+  const linhas: [string, number][] = [["Comissão", comissao], ["Taxa de serviço", taxaServico], ["Taxa de transação", taxaTransacao], ...extras, ["Outros ajustes da plataforma", residuo]];
+  const detalhe = linhas.filter(([, v]) => Math.abs(v) >= 0.01).map(([rotulo, valor]) => ({ rotulo, valor: r2(valor) }));
+  return { comissao, taxaServico, taxaTransacao, cupomVendedor, outras: r2(total - cupomVendedor - comissao - taxaServico - taxaTransacao), total, detalhe, repasse };
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -192,8 +271,12 @@ export function ufDoEstado(estado: string | undefined): string | null {
   return UFS[s] ?? null;
 }
 
-/** Pedido + escrow da API → o mesmo formato da planilha. */
-export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null): PedidoMarketplace {
+/**
+ * Pedido + escrow da API → o mesmo formato da planilha. Com a renda calculada pela Shopee, as
+ * taxas são as REAIS; sem ela (pedido novo demais ou chamada que falhou), ficam zeradas e o
+ * pedido sai marcado "estimado" — `montarPedidosParaGravar` estima pelas faixas do canal.
+ */
+export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null, liberadoEm: string | null = null): PedidoMarketplace {
   const itens = (p.item_list ?? []).map((i) => ({
     sku: i.model_sku?.trim() || null,
     skuPrincipal: i.item_sku?.trim() || null,
@@ -205,11 +288,8 @@ export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null): PedidoMarketplac
   }));
   const subtotal = r2(itens.reduce((s, i) => s + i.precoUnitario * i.quantidade, 0));
   const status = statusDaApi(p.order_status);
-  const comissao = r2(Math.abs(e?.commission_fee ?? 0));
-  const taxaServico = r2(Math.abs(e?.service_fee ?? 0));
-  const taxaTransacao = r2(Math.abs(e?.seller_transaction_fee ?? 0));
-  const cupomVendedor = r2(Math.abs(e?.voucher_from_seller ?? 0));
-  const calculado = r2(subtotal - cupomVendedor - comissao - taxaServico - taxaTransacao);
+  const reais = taxasDoEscrow(e, subtotal);
+  const cupomVendedor = reais?.cupomVendedor ?? r2(Math.abs(e?.voucher_from_seller ?? 0));
   // Promoção do vendedor: quanto o preço cheio do anúncio caiu até o preço pago. Só informativo
   // (o subtotal já é o preço com desconto), mas é o que explica a diferença para o "Vendas" da Shopee.
   const descontoVendedor = r2(itens.reduce((s, i) => s + Math.max(0, (i.precoOriginal ?? i.precoUnitario) - i.precoUnitario) * i.quantidade, 0));
@@ -229,17 +309,55 @@ export function pedidoDaApi(p: PedidoApi, e: EscrowApi | null): PedidoMarketplac
     subtotal,
     descontoVendedor,
     cupomVendedor,
-    comissao,
-    taxaServico,
-    taxaTransacao,
+    comissao: reais?.comissao ?? 0,
+    taxaServico: reais?.taxaServico ?? 0,
+    taxaTransacao: reais?.taxaTransacao ?? 0,
     fretePagoComprador: r2(Math.abs(e?.buyer_paid_shipping_fee ?? 0)),
-    // O escrow é o valor que a Shopee de fato repassa; sem ele, a mesma conta da planilha.
-    repasse: status === "cancelado" ? 0 : e?.escrow_amount != null ? r2(e.escrow_amount) : calculado,
+    // A renda é o valor que a Shopee de fato repassa; sem ela, venda − cupom (as taxas
+    // estimadas saem depois, em `montarPedidosParaGravar`).
+    repasse: status === "cancelado" ? 0 : reais ? reais.repasse : r2(subtotal - cupomVendedor),
+    taxasOrigem: reais ? "real" : "estimado",
+    taxaOutras: reais?.outras ?? 0,
+    taxasDetalhe: reais?.detalhe ?? [],
+    escrowLiberadoEm: liberadoEm,
   };
 }
 
-/** Pedidos criados desde `desde` (no máximo 15 dias por chamada, regra da API), com escrow. */
-export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId: number, desde: Date): Promise<PedidoMarketplace[]> {
+/**
+ * Repasses LIBERADOS no período (`get_escrow_list`): nº do pedido → quando caiu. É uma chamada
+ * paginada para a janela inteira, em vez de uma por pedido. Falha = mapa vazio (o repasse
+ * continua aguardando, sem alarme).
+ */
+export async function buscarLiberacoes(c: CredenciaisShopee, token: string, shopId: number, desde: Date): Promise<Map<string, string>> {
+  const fim = agora();
+  const inicio = Math.max(Math.floor(desde.getTime() / 1000), fim - 15 * 86400);
+  const mapa = new Map<string, string>();
+  try {
+    for (let pagina = 1; pagina <= 20; pagina++) {
+      const r = await getLoja(c, "/api/v2/payment/get_escrow_list", token, shopId, {
+        release_time_from: String(inicio),
+        release_time_to: String(fim),
+        page_size: "100",
+        page_no: String(pagina),
+      });
+      for (const x of (r.escrow_list as { order_sn?: string; escrow_release_time?: number }[] | undefined) ?? []) {
+        const quando = iso(x.escrow_release_time);
+        if (x.order_sn && quando) mapa.set(x.order_sn, quando);
+      }
+      if (!r.more) break;
+    }
+  } catch {
+    // Sem a lista, nada é dado como liberado.
+  }
+  return mapa;
+}
+
+/**
+ * Pedidos atualizados desde `desde` (no máximo 15 dias por chamada, regra da API), com escrow.
+ * `reprocessar`: pedidos já gravados que ainda não têm a taxa real ou o repasse liberado —
+ * a listagem por `update_time` não os traria de novo depois que param de mudar.
+ */
+export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId: number, desde: Date, reprocessar: string[] = []): Promise<PedidoMarketplace[]> {
   const fim = agora();
   const inicio = Math.max(Math.floor(desde.getTime() / 1000), fim - 15 * 86400);
   const numeros: string[] = [];
@@ -256,6 +374,16 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
     if (!r.more) break;
     cursor = String(r.next_cursor ?? "");
   }
+  const vistos = new Set(numeros);
+  for (const n of reprocessar) {
+    if (n && !vistos.has(n)) {
+      vistos.add(n);
+      numeros.push(n);
+    }
+  }
+
+  // Liberações dos últimos 15 dias (o máximo da API), numa listagem paginada só.
+  const liberados = numeros.length ? await buscarLiberacoes(c, token, shopId, new Date((fim - 15 * 86400) * 1000)) : new Map<string, string>();
 
   const pedidos: PedidoMarketplace[] = [];
   for (let i = 0; i < numeros.length; i += 50) {
@@ -265,8 +393,8 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
       response_optional_fields: "buyer_username,item_list,recipient_address,pay_time,shipping_carrier",
     });
     const lista = (d.order_list as PedidoApi[] | undefined) ?? [];
-    // Escrow é um GET por pedido: de 5 em 5 em vez de um por vez. Escrow que falha segue
-    // como antes (null: o repasse sai da conta da planilha), sem derrubar os outros.
+    // Escrow é um GET por pedido: de 5 em 5 em vez de um por vez. Escrow que falha não
+    // derruba os outros: o pedido segue com taxas estimadas e tenta de novo no próximo sync.
     const escrows = await mapComLimite(lista, ESCROW_EM_PARALELO, async (p) => {
       if (p.order_status === "UNPAID" || p.order_status === "CANCELLED") return null;
       const e = await getLoja(c, "/api/v2/payment/get_escrow_detail", token, shopId, { order_sn: p.order_sn }).catch(() => null);
@@ -274,7 +402,7 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
     });
     lista.forEach((p, i) => {
       const r = escrows[i];
-      pedidos.push(pedidoDaApi(p, r.status === "fulfilled" ? r.value : null));
+      pedidos.push(pedidoDaApi(p, r.status === "fulfilled" ? r.value : null, liberados.get(p.order_sn) ?? null));
     });
   }
   return pedidos;
@@ -299,6 +427,10 @@ export interface AnuncioShopee {
   /** SKU do item pai (para casar quando a variação não tem SKU próprio). */
   skuPrincipal: string | null;
   nome: string;
+  /** Nome do anúncio sem a variação e o rótulo da variação ("Kit 2"), para casar com a
+   * variação filha pela chave "SKU principal · variação" quando o model não tem SKU. */
+  nomeItem?: string;
+  variacao?: string | null;
   estoque: number;
   /** Preço atual do anúncio na plataforma (Raio-X da precificação). Ausente se a API não mandou. */
   preco?: number | null;
@@ -344,7 +476,7 @@ export async function buscarAnuncios(c: CredenciaisShopee, token: string, shopId
       const variacoes = (m.tier_variation as { option_list?: { option?: string }[] }[] | undefined) ?? [];
       for (const model of (m.model as (EstoqueApi & { model_id: number; model_sku?: string; tier_index?: number[]; price_info?: { current_price?: number }[] })[] | undefined) ?? []) {
         const rotulo = (model.tier_index ?? []).map((t, n) => variacoes[n]?.option_list?.[t]?.option).filter(Boolean).join(" · ");
-        anuncios.push({ itemId: item.item_id, modelId: model.model_id, sku: model.model_sku?.trim() || null, skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, estoque: estoqueDe(model), preco: precoDe(model) });
+        anuncios.push({ itemId: item.item_id, modelId: model.model_id, sku: model.model_sku?.trim() || null, skuPrincipal: skuPai, nome: rotulo ? `${nome} · ${rotulo}` : nome, nomeItem: nome, variacao: rotulo || null, estoque: estoqueDe(model), preco: precoDe(model) });
       }
     }
   }

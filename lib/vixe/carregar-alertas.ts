@@ -13,7 +13,7 @@ import type { AbaId } from "@/lib/acesso";
 import { hojeIsoBrasil } from "@/lib/format";
 import { calcularErosaoMargem, calcularPrecoDefasado, calcularPrevisaoRuptura, quantidadeSugeridaCompra, ultimaPrecificacaoPorProduto } from "@/lib/alertas";
 import { situacaoRepasse } from "@/lib/marketplace/relatorios-financeiros";
-import { zonaMortaDeFaixa, type FaixaComissao } from "@/lib/pricing";
+import { zonaMortaDeFaixa, type ComponenteKit, type FaixaComissao } from "@/lib/pricing";
 import {
   alertasContasVencidas,
   DIAS_AVISO_PAGAR,
@@ -143,17 +143,24 @@ async function margem(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     supabase.rpc("custos_recentes_por_produto"),
     supabase.from("produtos").select("id, nome, custo").eq("ativo", true),
     // Só o necessário para achar a última de cada produto (a mais recente vem primeiro).
-    supabase.from("precificacoes").select("produto_id, custo, criado_em").not("produto_id", "is", null).order("criado_em", { ascending: false }).limit(3000),
+    supabase.from("precificacoes").select("produto_id, custo, criado_em, componentes").not("produto_id", "is", null).order("criado_em", { ascending: false }).limit(3000),
   ]);
   const linhas = ok<{ produto_id: string; produto_nome: string; custo_compra: number; custo_precificacao: number }[]>(custosRes);
   const compras = new Map(linhas.map((c) => [c.produto_id, { custo_unitario: c.custo_compra, produto_nome: c.produto_nome }]));
-  const precificacoes = new Map(linhas.map((c) => [c.produto_id, { custo: c.custo_precificacao }]));
+  const ultimas = ok<{ produto_id: string | null; custo: number; criado_em: string; componentes: ComponenteKit[] | null }[]>(precRes);
+  // Componentes da última precificação de cada produto (a lista vem da mais recente para a
+  // mais antiga): a erosão compara a compra com o valor do produto SEM insumos.
+  const componentesPorProduto = new Map<string, ComponenteKit[] | null>();
+  for (const l of ultimas) if (l.produto_id && !componentesPorProduto.has(l.produto_id)) componentesPorProduto.set(l.produto_id, l.componentes);
+  const precificacoes = new Map(
+    linhas.map((c) => [c.produto_id, { custo: c.custo_precificacao, componentes: componentesPorProduto.get(c.produto_id) ?? null }]),
+  );
   const erosao = calcularErosaoMargem(precificacoes, compras);
   // Preço defasado (Fase 5): custo de HOJE contra o da última precificação. Quem já tem o
   // aviso de erosão (última compra) não recebe outro cartão sobre o mesmo produto.
   const defasado = calcularPrecoDefasado(
     ok<{ id: string; nome: string; custo: number }[]>(produtosRes).map((p) => ({ ...p, custo: Number(p.custo) })),
-    ultimaPrecificacaoPorProduto(ok<{ produto_id: string | null; custo: number; criado_em: string }[]>(precRes)),
+    ultimaPrecificacaoPorProduto(ultimas),
     new Date(),
     new Set(erosao.map((e) => e.produtoId)),
   );
@@ -209,11 +216,17 @@ async function contas(supabase: SupabaseClient, hoje: string): Promise<AlertaVix
       .eq("status", "pendente")
       .lte("data_vencimento", diasDepois(hoje, DIAS_AVISO_PAGAR))
       .order("data_vencimento")
-      .limit(150),
+      // Folga para o filtro de repasse aguardando conclusão (feito aqui: sem a 0085 a coluna não existe).
+      .limit(500),
     supabase.from("perfil_negocio").select("nome_negocio").maybeSingle(),
   ]);
   const parcelas = ok<ParcelaBruta[]>(parcelasRes as never);
-  const cpr = ok<{ id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null }[]>(cprRes);
+  // Repasse de pedido de marketplace ainda não concluído (0085) não está vencido.
+  const cpr = ok<
+    { id: string; tipo: "pagar" | "receber"; descricao: string; valor: number; valor_pago?: number | null; data_vencimento: string; referencia_venda_id: string | null; aguardando_liberacao?: boolean | null }[]
+  >(cprRes)
+    .filter((c) => !c.aguardando_liberacao)
+    .slice(0, 150);
 
   // Venda parcelada no fiado tem as parcelas em `venda_parcelas`; a conta a receber ligada a
   // ela (se houver) seria o mesmo dinheiro contado duas vezes — mesma regra da 0030.
@@ -244,16 +257,25 @@ async function contas(supabase: SupabaseClient, hoje: string): Promise<AlertaVix
 }
 
 async function precos(supabase: SupabaseClient): Promise<AlertaVixe[]> {
-  const [produtosRes, vinculosRes, lojasRes, canaisRes, faixasRes] = await Promise.all([
+  const [produtosRes, vinculosRes, lojasRes, canaisRes, faixasRes, perfilRes] = await Promise.all([
     supabase.from("produtos").select("id, nome, preco_venda").eq("ativo", true),
     supabase.from("produto_lojas").select("produto_id, loja_id"),
-    supabase.from("lojas_canal").select("id, canal_id"),
-    supabase.from("canais").select("id, nome").eq("tipo_taxa", "faixas"),
+    supabase.from("lojas_canal").select("id, canal_id, taxa_extra_valor, taxa_extra_tipo"),
+    supabase.from("canais").select("id, nome, taxa_extra_valor_padrao, taxa_extra_tipo_padrao").eq("tipo_taxa", "faixas"),
     supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
+    supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
   ]);
+  if (perfilRes.error) throw new Error(perfilRes.error.message);
+  // Mesmo padrão da Precificação e da Vixe Preço: sem perfil, 6% (Simples Nacional).
+  const impostoPct = Number(perfilRes.data?.aliquota_das ?? 6) / 100;
+  type TipoExtra = "percentual" | "fixo" | null;
   const produtos = new Map(ok<{ id: string; nome: string; preco_venda: number }[]>(produtosRes).map((p) => [p.id, p]));
-  const lojaParaCanal = new Map(ok<{ id: string; canal_id: string }[]>(lojasRes).map((l) => [l.id, l.canal_id]));
-  const canais = new Map(ok<{ id: string; nome: string }[]>(canaisRes).map((c) => [c.id, c.nome]));
+  const lojas = new Map(
+    ok<{ id: string; canal_id: string; taxa_extra_valor: number | null; taxa_extra_tipo: TipoExtra }[]>(lojasRes).map((l) => [l.id, l]),
+  );
+  const canais = new Map(
+    ok<{ id: string; nome: string; taxa_extra_valor_padrao: number | null; taxa_extra_tipo_padrao: TipoExtra }[]>(canaisRes).map((c) => [c.id, c]),
+  );
   const faixas = new Map<string, FaixaComissao[]>();
   for (const f of ok<{ canal_id: string; preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[]>(faixasRes)) {
     const lista = faixas.get(f.canal_id) ?? [];
@@ -265,14 +287,24 @@ async function precos(supabase: SupabaseClient): Promise<AlertaVixe[]> {
   const vistos = new Set<string>();
   for (const v of ok<{ produto_id: string; loja_id: string }[]>(vinculosRes)) {
     const produto = produtos.get(v.produto_id);
-    const canalId = lojaParaCanal.get(v.loja_id);
-    if (!produto || !canalId || !canais.has(canalId)) continue;
-    // Duas lojas do mesmo canal têm a mesma tabela: um alerta por produto e canal.
-    const chave = `${produto.id}:${canalId}`;
+    const loja = lojas.get(v.loja_id);
+    const canal = loja ? canais.get(loja.canal_id) : undefined;
+    if (!produto || !loja || !canal) continue;
+    // Duas lojas do mesmo canal têm a mesma tabela: um alerta por produto e canal. A taxa
+    // extra pode variar por loja, então a chave só é marcada quando uma delas acusa a zona.
+    const chave = `${produto.id}:${canal.id}`;
     if (vistos.has(chave)) continue;
+    // Imposto e taxa extra incidem sobre o preço e alargam a zona morta: sem eles o alerta
+    // deixava passar preços que rendem menos que o último centavo da faixa anterior.
+    const zona = zonaMortaDeFaixa(faixas.get(canal.id) ?? [], produto.preco_venda, {
+      impostoPct,
+      taxaAdicionalPct: 0,
+      taxaExtraValor: loja.taxa_extra_valor ?? canal.taxa_extra_valor_padrao ?? undefined,
+      taxaExtraTipo: loja.taxa_extra_tipo ?? canal.taxa_extra_tipo_padrao ?? null,
+    });
+    if (!zona) continue;
     vistos.add(chave);
-    const zona = zonaMortaDeFaixa(faixas.get(canalId) ?? [], produto.preco_venda);
-    if (zona) itens.push({ produtoId: produto.id, produtoNome: produto.nome, preco: produto.preco_venda, canalNome: canais.get(canalId)!, zona });
+    itens.push({ produtoId: produto.id, produtoNome: produto.nome, preco: produto.preco_venda, canalNome: canal.nome, zona });
   }
   return alertasZonaMorta(itens);
 }

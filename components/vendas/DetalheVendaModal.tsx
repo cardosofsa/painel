@@ -69,10 +69,16 @@ export function DetalheVendaModal({
             <span className="font-mono">− {formatBRL(venda.desconto)}</span>
           </div>
         )}
-        {venda.valor_entrega > 0 && (
+        {d.entrega > 0 && (
           <div className="flex justify-between text-text-secondary">
             <span>Entrega</span>
-            <span className="font-mono">{formatBRL(venda.valor_entrega)}</span>
+            <span className="font-mono">+ {formatBRL(d.entrega)}</span>
+          </div>
+        )}
+        {d.devolvido > 0 && (
+          <div className="flex justify-between text-negative">
+            <span>Devolvido</span>
+            <span className="font-mono">− {formatBRL(d.devolvido)}</span>
           </div>
         )}
         <div className="flex justify-between text-text-primary font-semibold pt-1">
@@ -87,6 +93,12 @@ export function DetalheVendaModal({
           <div className="flex justify-between text-text-secondary">
             <span>Impostos e taxas</span>
             <span className="font-mono">− {formatBRL(d.impostosTaxas)}</span>
+          </div>
+        )}
+        {d.fretePago > 0 && (
+          <div className="flex justify-between text-text-secondary">
+            <span>Frete pago</span>
+            <span className="font-mono">− {formatBRL(d.fretePago)}</span>
           </div>
         )}
         <div className={`flex justify-between font-medium ${d.lucro >= 0 ? "text-positive" : "text-negative"}`}>
