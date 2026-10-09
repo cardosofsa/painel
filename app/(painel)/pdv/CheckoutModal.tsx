@@ -1,8 +1,9 @@
 "use client";
 import { CampoNumero } from "@/components/ui/CampoNumero";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Banknote, ChevronLeft, CreditCard, Link2, MoreHorizontal, Smartphone, UserPlus, Wallet } from "lucide-react";
+import { Combobox } from "@/components/ui/Combobox";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
@@ -119,6 +120,10 @@ export function CheckoutModal({
   const [fiadoEmUso, setFiadoEmUso] = useState<number | null>(null);
 
   const cliente = clientesLocais.find((c) => c.id === clienteId) ?? null;
+  const itensCliente = useMemo(
+    () => clientesLocais.map((c) => ({ id: c.id, rotulo: c.nome, detalhe: c.permite_fiado ? "crediário liberado" : undefined, busca: (c.whatsapp ?? "").replace(/\D/g, "") })),
+    [clientesLocais],
+  );
   const podeFiado = !!cliente?.permite_fiado;
   const creditoUsado = Math.min(Math.max(credito, 0), total);
   // O que o cliente ainda paga depois do crédito de troca.
@@ -251,19 +256,20 @@ export function CheckoutModal({
 
       <FormField label="Cliente (opcional, obrigatório no crediário)">
         <div className="flex gap-2">
-          <select
-            className={inputClass}
-            value={clienteId ?? ""}
-            onChange={(e) => setClienteId(e.target.value || null)}
-          >
-            <option value="">Sem cliente identificado</option>
-            {clientesLocais.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-                {c.permite_fiado ? " (crediário liberado)" : ""}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            key={clienteId ?? "sem-cliente"}
+            className="flex-1"
+            itens={itensCliente}
+            valor={clienteId}
+            onChange={setClienteId}
+            placeholder="Buscar cliente por nome ou WhatsApp"
+            vazio="Nenhum cliente encontrado. Use o + para cadastrar."
+          />
+          {clienteId && (
+            <Button variant="secondary" onClick={() => setClienteId(null)} aria-label="Tirar cliente">
+              Limpar
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => setCadastroAberto((v) => !v)}>
             <UserPlus size={14} />
           </Button>
