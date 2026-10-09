@@ -73,3 +73,14 @@ describe("diferencas", () => {
     ]);
   });
 });
+
+describe("casarAnuncios — dados para o mapeamento (0093)", () => {
+  it("grava foto, link, SKU da variação, SKU do pai, variação e título sem a variação", () => {
+    const [l] = casarAnuncios([{ itemId: 7, modelId: 70, sku: null, skuPrincipal: "BCOP", nome: "Bainha · preta", nomeItem: "Bainha", variacao: "preta", estoque: 1, imagem: "https://i/x.jpg", link: "https://s/7" }], produtos, []);
+    expect(l).toMatchObject({ imagem_url: "https://i/x.jpg", link: "https://s/7", sku_modelo: null, sku_principal: "BCOP", variacao: "preta", nome_item: "Bainha" });
+  });
+  it("sem nomeItem usa o nome do anúncio", () => {
+    const [l] = casarAnuncios([{ itemId: 8, modelId: 0, sku: "LUVA", skuPrincipal: "LUVA", nome: "Luva", estoque: 1 }], produtos, []);
+    expect(l).toMatchObject({ nome_item: "Luva", imagem_url: null, link: null, variacao: null });
+  });
+});

@@ -13,6 +13,9 @@
 import { captchaAtivo, ORIGEM_TURNSTILE } from "./captcha";
 import { ORIGEM_VIDEO_EMBED, ORIGEM_VIDEO_MINIATURA, videoDemoAtivo } from "./landing";
 
+/** CDNs das fotos dos anúncios (Shopee: susercontent/shopee; Mercado Livre: mlstatic). */
+const ORIGENS_IMAGEM_MARKETPLACE = ["https://*.susercontent.com", "https://*.shopee.com.br", "https://*.mlstatic.com"];
+
 /**
  * Este `new URL(...)` roda no `import` do módulo, e o módulo é importado pelo `proxy.ts` —
  * ou seja, roda em TODA requisição, antes mesmo do middleware começar a executar. Uma env
@@ -88,7 +91,8 @@ export function montarCsp(
 
     // blob:/data: cobrem o preview local de imagem e o download de CSV/backup.
     // Vídeo da landing (só com `NEXT_PUBLIC_VIDEO_DEMO_URL`): a miniatura da fachada.
-    "img-src": ["'self'", "blob:", "data:", origemSupabase, video && ORIGEM_VIDEO_MINIATURA],
+    // Fotos dos anúncios (Mapeamento de Anúncio): CDN da Shopee e do Mercado Livre. Só imagem.
+    "img-src": ["'self'", "blob:", "data:", origemSupabase, video && ORIGEM_VIDEO_MINIATURA, ...ORIGENS_IMAGEM_MARKETPLACE],
 
     // next/font baixa a fonte no build e serve de /_next/static — nada de Google Fonts em
     // tempo de execução.

@@ -29,6 +29,13 @@ export function casarAnuncios(anuncios: AnuncioShopee[], produtos: ProdutoVincul
     nome: a.nome.slice(0, 300),
     produto_id: produtoDoItem({ sku: a.sku, skuPrincipal: a.skuPrincipal, nome: a.nomeItem ?? a.nome, variacao: a.variacao ?? null }, produtos, vinculos),
     estoque_shopee: a.estoque,
+    // 0093: dados do anúncio para a tela de mapeamento (chave do vínculo = a dos pedidos).
+    imagem_url: a.imagem ?? null,
+    link: a.link ?? null,
+    sku_modelo: a.sku,
+    sku_principal: a.skuPrincipal,
+    variacao: a.variacao ?? null,
+    nome_item: (a.nomeItem ?? a.nome).slice(0, 300),
   }));
 }
 

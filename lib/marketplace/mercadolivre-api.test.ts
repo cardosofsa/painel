@@ -58,11 +58,11 @@ describe("Mercado Livre", () => {
   });
 
   it("anúncios: item simples e variações com SKU", () => {
-    expect(anunciosDoItemML({ id: "MLB123", title: "Caneca", available_quantity: 4, price: 39.9, attributes: [{ id: "SELLER_SKU", value_name: "CAN" }] })).toEqual([
-      { itemId: 123, modelId: 0, sku: "CAN", skuPrincipal: "CAN", nome: "Caneca", estoque: 4, preco: 39.9 },
+    expect(anunciosDoItemML({ id: "MLB123", title: "Caneca", available_quantity: 4, price: 39.9, thumbnail: "http://http2.mlstatic.com/a.jpg", permalink: "https://produto.mercadolivre.com.br/MLB-123", attributes: [{ id: "SELLER_SKU", value_name: "CAN" }] })).toEqual([
+      { itemId: 123, modelId: 0, sku: "CAN", skuPrincipal: "CAN", nome: "Caneca", estoque: 4, preco: 39.9, imagem: "https://http2.mlstatic.com/a.jpg", link: "https://produto.mercadolivre.com.br/MLB-123" },
     ]);
     const v = anunciosDoItemML({ id: "MLB9", title: "Camiseta", price: 50, variations: [{ id: 55, available_quantity: 2, seller_custom_field: "CAM-P", attribute_combinations: [{ value_name: "P" }] }, { id: 56, price: 55, attribute_combinations: [{ value_name: "G" }] }] });
-    expect(v[0]).toMatchObject({ itemId: 9, modelId: 55, sku: "CAM-P", nome: "Camiseta · P", estoque: 2, preco: 50 });
+    expect(v[0]).toMatchObject({ itemId: 9, modelId: 55, sku: "CAM-P", nome: "Camiseta · P", nomeItem: "Camiseta", variacao: "P", estoque: 2, preco: 50 });
     // Variação com preço próprio usa o dela; sem preço, o do item.
     expect(v[1].preco).toBe(55);
     expect(idDoAnuncioML(idNumericoML("MLB4455667788"))).toBe("MLB4455667788");

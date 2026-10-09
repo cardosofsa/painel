@@ -2,7 +2,8 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
+import { Button, classesBotao } from "@/components/ui/Button";
+import Link from "next/link";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
@@ -478,6 +479,9 @@ export function ProdutosClient({
         actions={
           <>
             <Button variant="secondary" onClick={() => setExportando(true)}>Exportar</Button>
+            <Link href="/produtos/mapeamento" className={classesBotao({ variant: "secondary" })}>
+              Mapeamento de Anúncio
+            </Link>
             <Button variant="primary" onClick={abrirNovo}>+ Cadastrar Produto</Button>
           </>
         }

@@ -102,6 +102,14 @@ describe("vídeo da landing (YouTube sem cookie)", () => {
   const EMBED = "https://www.youtube-nocookie.com";
   const MINIATURA = "https://i.ytimg.com";
 
+  it("img-src libera só as CDNs das fotos de anúncio, e nada em script-src", () => {
+    const csp = montarCsp("n", { dev: false, origemSupabase: SUPABASE, captcha: false, video: false });
+    expect(diretiva(csp, "img-src")).toContain("https://*.susercontent.com");
+    expect(diretiva(csp, "img-src")).toContain("https://*.mlstatic.com");
+    expect(diretiva(csp, "script-src")).not.toContain("susercontent");
+    expect(diretiva(csp, "connect-src")).not.toContain("mlstatic");
+  });
+
   it("desligado, nada do YouTube entra", () => {
     const csp = montarCsp("n", { dev: false, origemSupabase: SUPABASE, captcha: false, video: false });
     expect(csp).not.toContain(EMBED);
