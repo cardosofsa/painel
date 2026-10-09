@@ -7,6 +7,7 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 import { filtrosDeBusca, lerTermo } from "@/lib/listas";
+import { semColuna } from "@/lib/variacoes-consulta";
 import { chaveVinculoAnuncio } from "@/lib/marketplace/anuncios-mapeamento";
 import { atualizarAnuncios } from "@/lib/marketplace/estoque-servidor";
 import type { ConexaoShopee } from "@/lib/marketplace/tokens";
@@ -34,6 +35,17 @@ async function lerAnuncio(supabase: Awaited<ReturnType<typeof createClient>>, id
   return { anuncio: l, chave };
 }
 
+/** Dos ids dados, quais são produto pai com variações (0084: outros produtos apontam para eles em `produto_pai_id`). Sem a migração, nenhum. */
+async function idsComVariacoes(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { data, error } = await supabase.from("produtos").select("produto_pai_id").in("produto_pai_id", ids);
+  if (error) {
+    if (semColuna(error)) return new Set();
+    lancarErroSupabase(error);
+  }
+  return new Set(((data ?? []) as { produto_pai_id: string }[]).map((r) => r.produto_pai_id));
+}
+
 function revalidar() {
   revalidatePath("/produtos");
   revalidatePath("/produtos/mapeamento");
@@ -52,6 +64,9 @@ export async function mapearAnuncio(anuncioId: string, produtoId: string) {
     const v = validar(z.object({ anuncioId: z.string().uuid(), produtoId: z.string().uuid() }), { anuncioId, produtoId });
     const supabase = await createClient();
     const { anuncio, chave } = await lerAnuncio(supabase, v.anuncioId);
+    if ((await idsComVariacoes(supabase, [v.produtoId])).size > 0) {
+      throw new Error("Esse produto tem variações. Mapeie o anúncio para a variação certa, não para o produto pai.");
+    }
     const { data: perfil } = await supabase.from("perfil_negocio").select("aliquota_das").maybeSingle();
     const { data, error } = await supabase.rpc("revincular_itens_marketplace", {
       p_loja_id: anuncio.loja_id,
@@ -140,11 +155,14 @@ export async function buscarProdutosParaMapa(termo: string) {
   return comResultado(async (): Promise<ProdutoParaMapa[]> => {
     const t = lerTermo(validar(z.string().max(200), termo ?? ""));
     const supabase = await createClient();
-    let q = supabase.from("produtos").select("id, nome, sku, produto_imagens(url, ordem)").eq("ativo", true).order("nome").order("id").limit(20);
+    let q = supabase.from("produtos").select("id, nome, sku, produto_imagens(url, ordem)").eq("ativo", true).order("nome").order("id").limit(60);
     for (const f of filtrosDeBusca(t, ["nome", "sku"])) q = q.or(f);
     const { data, error } = await q;
     if (error) lancarErroSupabase(error);
-    return ((data ?? []) as unknown as { id: string; nome: string; sku: string | null; produto_imagens: { url: string; ordem: number | null }[] | null }[]).map((p) => ({
+    const linhas = (data ?? []) as unknown as { id: string; nome: string; sku: string | null; produto_imagens: { url: string; ordem: number | null }[] | null }[];
+    // Produto pai com variações não entra: o anúncio vai para a variação. Busca 60 para sobrar 20 depois do filtro.
+    const pais = await idsComVariacoes(supabase, linhas.map((p) => p.id));
+    return linhas.filter((p) => !pais.has(p.id)).slice(0, 20).map((p) => ({
       id: p.id,
       nome: p.nome,
       sku: p.sku,

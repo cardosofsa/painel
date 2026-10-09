@@ -88,7 +88,7 @@ export function MapearAnuncioModal({ anuncio, onClose }: { anuncio: AnuncioLinha
         ))}
       </div>
 
-      <p className="mt-3 text-xs text-text-tertiary">Um anúncio aponta para um produto. Para vender combo (2 un., 3 un.), mapeie para o Kit cadastrado em Produtos.</p>
+      <p className="mt-3 text-xs text-text-tertiary">Um anúncio aponta para um produto. Produto com variações não aparece aqui: escolha a variação. Para combo (2 un., 3 un.), mapeie para o Kit cadastrado.</p>
       <div className="flex gap-2 mt-4">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
