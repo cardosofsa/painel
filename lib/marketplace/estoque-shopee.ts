@@ -20,6 +20,14 @@ export interface AnuncioSalvo {
   estoque_enviado: number | null;
 }
 
+/**
+ * Produto pai com variações (0084) não casa por SKU: o anúncio tem que ir para a variação,
+ * que é quem baixa N do estoque do pai. Vínculo manual antigo para o pai não é tocado.
+ */
+export function semProdutosPai<T extends { id: string }>(produtos: T[], idsPai: ReadonlySet<string>): T[] {
+  return idsPai.size === 0 ? produtos : produtos.filter((p) => !idsPai.has(p.id));
+}
+
 /** Linhas para gravar em `marketplace_anuncios` a partir da listagem da API. */
 export function casarAnuncios(anuncios: AnuncioShopee[], produtos: ProdutoVinculavel[], vinculos: VinculoSku[]) {
   return anuncios.map((a) => ({

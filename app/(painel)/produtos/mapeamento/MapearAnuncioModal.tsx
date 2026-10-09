@@ -76,19 +76,27 @@ export function MapearAnuncioModal({ anuncio, onClose }: { anuncio: AnuncioLinha
             type="button"
             role="option"
             aria-selected={escolhido?.id === p.id}
+            aria-disabled={p.temVariacoes}
+            disabled={p.temVariacoes}
             onClick={() => setEscolhido(p)}
-            className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm ${escolhido?.id === p.id ? "bg-accent-soft" : "hover:bg-surface-2"}`}
+            className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm ${p.temVariacoes ? "cursor-not-allowed bg-surface-2/60" : escolhido?.id === p.id ? "bg-accent-soft" : "hover:bg-surface-2"}`}
           >
-            {p.imagem ? <Image src={p.imagem} alt="" width={32} height={32} unoptimized className="h-8 w-8 shrink-0 rounded object-cover" /> : <div className="h-8 w-8 shrink-0 rounded border border-border bg-surface-2" aria-hidden />}
-            <span className="min-w-0">
-              <span className="block truncate text-text-primary">{p.nome}</span>
-              {p.sku && <span className="block text-xs text-text-tertiary font-mono">{p.sku}</span>}
+            {p.imagem ? <Image src={p.imagem} alt="" width={32} height={32} unoptimized className={`h-8 w-8 shrink-0 rounded object-cover ${p.temVariacoes ? "opacity-60" : ""}`} /> : <div className="h-8 w-8 shrink-0 rounded border border-border bg-surface-2" aria-hidden />}
+            <span className={`min-w-0 ${p.temVariacoes ? "text-text-tertiary" : ""}`}>
+              <span className={`block truncate ${p.temVariacoes ? "" : "text-text-primary"}`}>
+                {p.nome}
+                {p.variante && <span className="ml-1.5 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-text-secondary">{p.variante}</span>}
+              </span>
+              <span className="block text-xs font-mono">
+                {p.sku}
+                {p.temVariacoes && <span className="ml-2 font-sans">Produto principal com variações — escolha uma variação abaixo</span>}
+              </span>
             </span>
           </button>
         ))}
       </div>
 
-      <p className="mt-3 text-xs text-text-tertiary">Um anúncio aponta para um produto. Produto com variações não aparece aqui: escolha a variação. Para combo (2 un., 3 un.), mapeie para o Kit cadastrado.</p>
+      <p className="mt-3 text-xs text-text-tertiary">Um anúncio aponta para um produto. Produto principal com variações aparece só como referência: escolha a variação. Para combo (2 un., 3 un.), mapeie para o Kit cadastrado.</p>
       <div className="flex gap-2 mt-4">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar

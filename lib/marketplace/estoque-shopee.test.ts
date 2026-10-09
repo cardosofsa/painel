@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agruparPorItem, casarAnuncios, diferencasEstoque, saldoParaEnviar, type AnuncioSalvo } from "./estoque-shopee";
+import { agruparPorItem, casarAnuncios, diferencasEstoque, saldoParaEnviar, semProdutosPai, type AnuncioSalvo } from "./estoque-shopee";
 
 const produtos = [
   { id: "p1", sku: "FITA-PRETA", custo: 10 },
@@ -82,5 +82,15 @@ describe("casarAnuncios — dados para o mapeamento (0093)", () => {
   it("sem nomeItem usa o nome do anúncio", () => {
     const [l] = casarAnuncios([{ itemId: 8, modelId: 0, sku: "LUVA", skuPrincipal: "LUVA", nome: "Luva", estoque: 1 }], produtos, []);
     expect(l).toMatchObject({ nome_item: "Luva", imagem_url: null, link: null, variacao: null });
+  });
+});
+
+describe("semProdutosPai", () => {
+  it("tira o produto pai com variações do casamento por SKU", () => {
+    const lista = [{ id: "pai", sku: "BCO", custo: 5 }, { id: "k2", sku: "BCO-K2", custo: 10 }];
+    expect(semProdutosPai(lista, new Set(["pai"])).map((p) => p.id)).toEqual(["k2"]);
+    expect(semProdutosPai(lista, new Set()).length).toBe(2);
+    const [l] = casarAnuncios([{ itemId: 1, modelId: 0, sku: "BCO", skuPrincipal: "BCO", nome: "Bainha", estoque: 1 }], semProdutosPai(lista, new Set(["pai"])), []);
+    expect(l.produto_id).toBeNull();
   });
 });

@@ -148,6 +148,10 @@ export interface ProdutoParaMapa {
   nome: string;
   sku: string | null;
   imagem: string | null;
+  /** Nome da variação (ex.: "Kit 2"); nulo no produto pai e no produto comum. */
+  variante: string | null;
+  /** Produto pai com variações: aparece só como referência, não dá para vincular. */
+  temVariacoes: boolean;
 }
 
 /** Até 20 produtos ativos por nome ou SKU: o catálogo todo não vai para o navegador. */
@@ -155,17 +159,19 @@ export async function buscarProdutosParaMapa(termo: string) {
   return comResultado(async (): Promise<ProdutoParaMapa[]> => {
     const t = lerTermo(validar(z.string().max(200), termo ?? ""));
     const supabase = await createClient();
-    let q = supabase.from("produtos").select("id, nome, sku, produto_imagens(url, ordem)").eq("ativo", true).order("nome").order("id").limit(60);
-    for (const f of filtrosDeBusca(t, ["nome", "sku"])) q = q.or(f);
+    let q = supabase.from("produtos").select("id, nome, sku, variante_nome, produto_imagens(url, ordem)").eq("ativo", true).order("nome").order("variante_nome", { nullsFirst: true }).order("id").limit(20);
+    for (const f of filtrosDeBusca(t, ["nome", "sku", "variante_nome"])) q = q.or(f);
     const { data, error } = await q;
     if (error) lancarErroSupabase(error);
-    const linhas = (data ?? []) as unknown as { id: string; nome: string; sku: string | null; produto_imagens: { url: string; ordem: number | null }[] | null }[];
-    // Produto pai com variações não entra: o anúncio vai para a variação. Busca 60 para sobrar 20 depois do filtro.
+    const linhas = (data ?? []) as unknown as { id: string; nome: string; sku: string | null; variante_nome: string | null; produto_imagens: { url: string; ordem: number | null }[] | null }[];
+    // Produto pai com variações vem só como referência (`temVariacoes`); quem se vincula é a variação.
     const pais = await idsComVariacoes(supabase, linhas.map((p) => p.id));
-    return linhas.filter((p) => !pais.has(p.id)).slice(0, 20).map((p) => ({
+    return linhas.map((p) => ({
       id: p.id,
       nome: p.nome,
       sku: p.sku,
+      variante: p.variante_nome,
+      temVariacoes: pais.has(p.id),
       imagem: [...(p.produto_imagens ?? [])].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0]?.url ?? null,
     }));
   });
