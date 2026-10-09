@@ -4,6 +4,7 @@ import { CampoNumero } from "@/components/ui/CampoNumero";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
+import { formatBRL } from "@/lib/format";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import type { ContaInput, ArmazemInput, FormaPagamentoInput, TipoFormaPagamento } from "@/app/(painel)/configuracoes/actions";
 import type { Conta, Armazem, FormaPagamento } from "@/app/(painel)/configuracoes/ConfiguracoesClient";
@@ -20,21 +21,65 @@ export function ContaModal({
   onSave: (dados: ContaInput) => void;
   salvando: boolean;
 }) {
-  const base = conta && conta !== "novo" ? conta : { nome: "", saldo: 0, detalhe: "" };
+  const editando = !!conta && conta !== "novo";
+  const base = conta && conta !== "novo" ? conta : { nome: "", saldo: 0, detalhe: "", tipo: "conta" as const, limite_total: null, dia_fechamento: null, dia_vencimento: null };
   const [nome, setNome] = useState(base.nome);
-  const [saldo, setSaldo] = useState(base.saldo);
+  const [tipo, setTipo] = useState<"conta" | "cartao_credito">(base.tipo ?? "conta");
+  // No cartão o saldo é a dívida em negativo; a tela mostra "quanto já usou" em positivo.
+  const [saldo, setSaldo] = useState(base.tipo === "cartao_credito" ? Math.max(0, -base.saldo) : base.saldo);
   const [detalhe, setDetalhe] = useState(base.detalhe);
-  const [inicial] = useState({ nome: base.nome, saldo: base.saldo, detalhe: base.detalhe });
-  const sujo = useFormularioSujo({ nome, saldo, detalhe }, inicial);
+  const [limite, setLimite] = useState(base.limite_total ?? 0);
+  const [fechamento, setFechamento] = useState(base.dia_fechamento ?? 0);
+  const [vencimento, setVencimento] = useState(base.dia_vencimento ?? 0);
+  const [inicial] = useState({ nome: base.nome, tipo: base.tipo ?? "conta", saldo: base.tipo === "cartao_credito" ? Math.max(0, -base.saldo) : base.saldo, detalhe: base.detalhe, limite: base.limite_total ?? 0, fechamento: base.dia_fechamento ?? 0, vencimento: base.dia_vencimento ?? 0 });
+  const sujo = useFormularioSujo({ nome, tipo, saldo, detalhe, limite, fechamento, vencimento }, inicial);
+  const cartao = tipo === "cartao_credito";
+  const disponivel = Math.max(0, limite - saldo);
+
+  function salvar() {
+    if (!cartao) return onSave({ nome, saldo, detalhe });
+    onSave({ nome, saldo: -saldo, detalhe, tipo, limite_total: limite || null, dia_fechamento: fechamento || null, dia_vencimento: vencimento || null });
+  }
 
   return (
     <Modal open={!!conta} onClose={onClose} title={conta === "novo" ? "Adicionar Conta" : "Editar Conta"} sujo={sujo}>
       <FormField label="Nome da Conta">
-        <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} />
+        <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder={cartao ? "Ex: Cartão Nubank" : undefined} />
       </FormField>
-      <FormField label="Saldo Atual (R$)">
-        <CampoNumero className={inputClass} value={saldo} onChange={(n) => setSaldo(n)} />
+      <FormField
+        label="Tipo"
+        dica={editando ? "O tipo não muda depois de criada. Para trocar, cadastre outra conta." : "Cartão de crédito tem limite e fatura: o gasto não sai do saldo das contas, só quando você paga a fatura."}
+      >
+        <select className={inputClass} value={tipo} disabled={editando} onChange={(e) => setTipo(e.target.value as "conta" | "cartao_credito")}>
+          <option value="conta">Conta (caixa, banco, Pix)</option>
+          <option value="cartao_credito">Cartão de crédito</option>
+        </select>
       </FormField>
+      {cartao ? (
+        <>
+          <FormField label="Limite total (R$)">
+            <CampoNumero className={inputClass} value={limite} onChange={(n) => setLimite(n)} />
+          </FormField>
+          <FormField label="Quanto já usou do limite (R$)" dica="É a fatura em aberto hoje. O limite disponível é o limite menos o que já usou.">
+            <CampoNumero className={inputClass} value={saldo} onChange={(n) => setSaldo(n)} />
+          </FormField>
+          <p className="text-xs text-text-secondary -mt-2 mb-3">
+            Limite disponível: <span className="font-mono text-text-primary">{formatBRL(disponivel)}</span>
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Fecha no dia">
+              <CampoNumero className={inputClass} value={fechamento} onChange={(n) => setFechamento(Math.round(n))} />
+            </FormField>
+            <FormField label="Vence no dia">
+              <CampoNumero className={inputClass} value={vencimento} onChange={(n) => setVencimento(Math.round(n))} />
+            </FormField>
+          </div>
+        </>
+      ) : (
+        <FormField label="Saldo Atual (R$)">
+          <CampoNumero className={inputClass} value={saldo} onChange={(n) => setSaldo(n)} />
+        </FormField>
+      )}
       <FormField label="Detalhe">
         <input className={inputClass} value={detalhe} onChange={(e) => setDetalhe(e.target.value)} placeholder="Ex: Conta corrente PJ" />
       </FormField>
@@ -42,7 +87,7 @@ export function ContaModal({
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
         </Button>
-        <Button variant="primary" className="flex-1" onClick={() => onSave({ nome, saldo, detalhe })} loading={salvando}>
+        <Button variant="primary" className="flex-1" onClick={salvar} loading={salvando}>
           Salvar
         </Button>
       </div>

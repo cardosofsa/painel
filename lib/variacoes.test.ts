@@ -87,3 +87,17 @@ it("agrupa por pai em ordem de N", () => {
   expect(m.get("a")?.map((v) => v.quantidade)).toEqual([1, 3]);
   expect(m.get("b")?.length).toBe(1);
 });
+
+describe("custo da variação com composição extra (0094)", () => {
+  const emb = [{ id: "e", nome: "Caixa", quantidade: 3, custoUnitario: 1.5 }];
+  it("pai × N + extras", () => {
+    expect(custoVariacao(10, { quantidade: 12, custo_manual: null, insumos_variacao: emb })).toBe(124.5);
+  });
+  it("sem extras é o custo padrão de sempre", () => {
+    expect(custoVariacao(10, { quantidade: 12, custo_manual: null })).toBe(120);
+    expect(custoVariacao(10, { quantidade: 2, custo_manual: null, insumos_variacao: [] })).toBe(20);
+  });
+  it("custo próprio vale como total e ignora a composição", () => {
+    expect(custoVariacao(10, { quantidade: 12, custo_manual: 99, insumos_variacao: emb })).toBe(99);
+  });
+});

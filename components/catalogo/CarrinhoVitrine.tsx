@@ -20,7 +20,17 @@ import {
   type ItemCarrinhoVitrine,
 } from "@/lib/vitrine-pedido";
 
+import { CHAVE_DADOS_COMPRADOR, lerDadosComprador, serializarDadosComprador } from "@/lib/dados-comprador";
+
 type Etapa = "carrinho" | "dados";
+
+function lerSalvos() {
+  try {
+    return lerDadosComprador(localStorage.getItem(CHAVE_DADOS_COMPRADOR));
+  } catch {
+    return null;
+  }
+}
 
 const ENDERECO_VAZIO: EnderecoForm = { cep: null, endereco: null, numero: null, bairro: null, cidade: null, uf: null };
 
@@ -68,6 +78,8 @@ export function CarrinhoVitrine({
   const [email, setEmail] = useState("");
   const [endereco, setEndereco] = useState<EnderecoForm>(ENDERECO_VAZIO);
   const [observacao, setObservacao] = useState("");
+  // "Pedido rápido": dados de um pedido anterior, guardados só neste aparelho.
+  const [usouSalvos, setUsouSalvos] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState<string | null>(null);
   const [frete, setFrete] = useState<OpcaoFrete | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -84,6 +96,33 @@ export function CarrinhoVitrine({
   const [enviado, setEnviado] = useState<{ numero: string; total: number; itens: ItemCarrinhoVitrine[]; frete: { servico: string; valor: number; prazoDias: number | null } | null } | null>(null);
 
   const total = totalCarrinho(itens);
+
+  /** Vai para "Seus dados", preenchendo o que ainda está vazio com o último pedido deste aparelho. */
+  function irParaDados() {
+    const salvos = lerSalvos();
+    if (salvos && !nome.trim() && !whatsapp.trim()) {
+      setNome(salvos.nome);
+      setWhatsapp(salvos.whatsapp);
+      setEmail(salvos.email);
+      setEndereco({ cep: salvos.cep, endereco: salvos.endereco, numero: salvos.numero, bairro: salvos.bairro, cidade: salvos.cidade, uf: salvos.uf });
+      setUsouSalvos(true);
+    }
+    setEtapa("dados");
+  }
+
+  function esquecerSalvos() {
+    try {
+      localStorage.removeItem(CHAVE_DADOS_COMPRADOR);
+    } catch {
+      /* sem armazenamento: nada a apagar */
+    }
+    setNome("");
+    setWhatsapp("");
+    setEmail("");
+    setEndereco(ENDERECO_VAZIO);
+    setFrete(null);
+    setUsouSalvos(false);
+  }
 
   async function enviar() {
     setEnviando(true);
@@ -120,6 +159,14 @@ export function CarrinhoVitrine({
       }
 
       setEnviado({ numero: corpo.numero, total: corpo.total, itens, frete: corpo.frete ?? null });
+      try {
+        localStorage.setItem(
+          CHAVE_DADOS_COMPRADOR,
+          serializarDadosComprador({ nome, whatsapp, email: email.trim(), cep: endereco.cep, endereco: endereco.endereco, numero: endereco.numero, bairro: endereco.bairro, cidade: endereco.cidade, uf: endereco.uf }),
+        );
+      } catch {
+        /* sem armazenamento: o pedido já foi enviado, só não lembra na próxima */
+      }
       onEnviado();
     } catch {
       toast.error("Sem conexão. Tente de novo.");
@@ -259,7 +306,7 @@ export function CarrinhoVitrine({
                 <Button variant="secondary" className="flex-1 h-11" onClick={onFechar}>
                   Adicionar mais produtos
                 </Button>
-                <Button variant="primary" className="flex-1 h-11" onClick={() => setEtapa("dados")}>
+                <Button variant="primary" className="flex-1 h-11" onClick={irParaDados}>
                   Finalizar compra
                 </Button>
               </div>
@@ -268,6 +315,14 @@ export function CarrinhoVitrine({
         </>
       ) : (
         <>
+          {usouSalvos && (
+            <p className="mb-3 rounded-md bg-surface-2 px-3 py-2 text-xs text-text-secondary">
+              Usamos os dados do seu último pedido neste aparelho.{" "}
+              <button type="button" onClick={esquecerSalvos} className="text-accent hover:underline">
+                Não é você? Limpar
+              </button>
+            </p>
+          )}
           <FormField label="Seu nome">
             <input className={inputClass} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Como devemos te chamar" />
           </FormField>

@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { agruparPorItem, casarAnuncios, diferencasEstoque, type AnuncioSalvo, type DiferencaEstoque } from "./estoque-shopee";
+import { agruparPorItem, casarAnuncios, diferencasEstoque, semProdutosPai, type AnuncioSalvo, type DiferencaEstoque } from "./estoque-shopee";
 import type { ConexaoShopee } from "./tokens";
 import { apiDaConexao } from "./conexao-api";
 
@@ -14,26 +14,46 @@ const LISTAGEM_VALE_MS = 6 * 60 * 60 * 1000;
 
 export async function atualizarAnuncios(supabase: SupabaseClient, conexao: ConexaoShopee): Promise<number> {
   const anuncios = await (await apiDaConexao(supabase, conexao)).buscarAnuncios();
-  const [produtosRes, vinculosRes] = await Promise.all([
+  const [produtosRes, vinculosRes, paisRes] = await Promise.all([
     supabase.from("produtos").select("id, sku, custo").eq("user_id", conexao.user_id),
     supabase.from("marketplace_vinculos").select("sku_externo, produto_id").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id),
+    // Pais com variações (0084). Sem a migração a coluna não existe e nenhum produto é pai.
+    supabase.from("produtos").select("produto_pai_id").eq("user_id", conexao.user_id).not("produto_pai_id", "is", null),
   ]);
-  const produtos = (produtosRes.data ?? []).map((p) => ({ id: p.id as string, sku: p.sku as string | null, custo: Number(p.custo ?? 0) }));
+  const idsPai = new Set(paisRes.error ? [] : ((paisRes.data ?? []) as { produto_pai_id: string }[]).map((r) => r.produto_pai_id));
+  const produtos = semProdutosPai(
+    (produtosRes.data ?? []).map((p) => ({ id: p.id as string, sku: p.sku as string | null, custo: Number(p.custo ?? 0) })),
+    idsPai,
+  );
   const agoraIso = new Date().toISOString();
   const precos = new Map(anuncios.map((a) => [`${a.itemId}:${a.modelId}`, a.preco ?? null]));
   const base = casarAnuncios(anuncios, produtos, vinculosRes.data ?? []).map((l) => ({ ...l, user_id: conexao.user_id, loja_id: conexao.loja_id, atualizado_em: agoraIso }));
-  // Preço atual do anúncio (0071, Raio-X). Sem a migração a coluna não existe: grava sem
-  // o preço em vez de parar a sincronização do estoque.
-  let comPreco = true;
+  // Colunas que dependem de migração (mapeamento 0093, preço 0071): sem elas a coluna não
+  // existe, e a gravação recua para o conjunto anterior em vez de parar a sincronização.
+  const sem0093 = (l: (typeof base)[number]): Record<string, unknown> => {
+    const copia: Record<string, unknown> = { ...l };
+    for (const c of ["imagem_url", "link", "sku_modelo", "sku_principal", "variacao", "nome_item"]) delete copia[c];
+    return copia;
+  };
+  const comPreco = (l: Record<string, unknown>, k: string) => ({ ...l, preco_atual: precos.get(k) ?? null, preco_lido_em: agoraIso });
+  const chave = (l: (typeof base)[number]) => `${l.item_id}:${l.model_id}`;
+  const variantes: ((l: (typeof base)[number]) => Record<string, unknown>)[] = [
+    (l) => comPreco(l, chave(l)),
+    (l) => comPreco(sem0093(l), chave(l)),
+    (l) => sem0093(l),
+  ];
+  let nivel = 0;
   for (let i = 0; i < base.length; i += 500) {
     const fatia = base.slice(i, i + 500);
-    const linhas = comPreco ? fatia.map((l) => ({ ...l, preco_atual: precos.get(`${l.item_id}:${l.model_id}`) ?? null, preco_lido_em: agoraIso })) : fatia;
-    let { error } = await supabase.from("marketplace_anuncios").upsert(linhas, { onConflict: "loja_id,item_id,model_id" });
-    if (error && comPreco && (error.code === "PGRST204" || error.code === "42703")) {
-      comPreco = false;
-      ({ error } = await supabase.from("marketplace_anuncios").upsert(fatia, { onConflict: "loja_id,item_id,model_id" }));
+    for (;;) {
+      const { error } = await supabase.from("marketplace_anuncios").upsert(fatia.map(variantes[nivel]), { onConflict: "loja_id,item_id,model_id" });
+      if (!error) break;
+      if (nivel < variantes.length - 1 && (error.code === "PGRST204" || error.code === "42703")) {
+        nivel++;
+        continue;
+      }
+      throw new Error(error.message);
     }
-    if (error) throw new Error(error.message);
   }
   const linhas = base;
   await supabase.from("marketplace_conexoes").update({ anuncios_atualizados_em: new Date().toISOString() }).eq("id", conexao.id);

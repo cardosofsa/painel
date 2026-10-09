@@ -38,6 +38,8 @@ export interface DadosProjecao {
   pedidos: Map<string, PedidoMkt>;
   /** Prazo de liberação por loja (0089); sem entrada, vale o padrão. */
   diasPorLoja?: Record<string, number>;
+  /** Fatura em aberto dos cartões (0092), como saída no vencimento. `saldoAtual` já vem sem o cartão. */
+  faturas?: { valor: number; data_vencimento: string }[];
 }
 
 /** Repasse concluído (não aguardando) ainda por receber, com a data prevista. */
@@ -68,7 +70,10 @@ export function montarEntradaProjecao(d: DadosProjecao): EntradaProjecao {
   return {
     saldoAtual: d.saldoAtual,
     hoje: d.hoje,
-    contas: d.contas,
+    contas: [
+      ...d.contas,
+      ...(d.faturas ?? []).map((f) => ({ tipo: "pagar" as const, status: "pendente", valor: f.valor, valor_pago: 0, data_vencimento: f.data_vencimento, descricao: "Fatura do cartão" })),
+    ],
     parcelas: d.parcelas.filter((p) => p.vendas?.status !== "cancelada" && p.status !== "cancelada").map((p) => ({ status: p.status, valor: p.valor, valor_pago: p.valor_pago, data_vencimento: p.data_vencimento })),
     fixas,
     repasses: repassesConcluidos(d.contas, d.pedidos, d.diasPorLoja).map((r) => ({ valor: r.valor, previsto: r.previsto })),

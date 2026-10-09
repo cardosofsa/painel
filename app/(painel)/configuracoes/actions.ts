@@ -211,12 +211,24 @@ export interface ContaInput {
   nome: string;
   saldo: number;
   detalhe: string;
+  /** 0092: cartão de crédito. Conta comum não manda estes campos (a tela segue funcionando sem a migração). */
+  tipo?: "conta" | "cartao_credito";
+  limite_total?: number | null;
+  dia_fechamento?: number | null;
+  dia_vencimento?: number | null;
+}
+
+/** Valida e tira os campos de cartão da conta comum, que não exigem a 0092. */
+function dadosDaConta(dados: ContaInput) {
+  const v = validar(contaSchema, dados);
+  if (v.tipo === "cartao_credito") return v;
+  return { nome: v.nome, saldo: v.saldo, detalhe: v.detalhe };
 }
 
 export async function criarConta(dados: ContaInput) {
   return comResultado(async () => {
     const supabase = await createClient();
-    const { error } = await supabase.from("contas").insert(validar(contaSchema, dados));
+    const { error } = await supabase.from("contas").insert(dadosDaConta(dados));
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
     revalidatePath("/dashboard");
@@ -227,7 +239,7 @@ export async function criarConta(dados: ContaInput) {
 export async function atualizarConta(id: string, dados: ContaInput) {
   return comResultado(async () => {
     const supabase = await createClient();
-    const { error } = await supabase.from("contas").update(validar(contaSchema, dados)).eq("id", id);
+    const { error } = await supabase.from("contas").update(dadosDaConta(dados)).eq("id", id);
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);
     revalidatePath("/dashboard");
@@ -238,6 +250,11 @@ export async function atualizarConta(id: string, dados: ContaInput) {
 export async function removerConta(id: string) {
   return comResultado(async () => {
     const supabase = await createClient();
+    // Cartão com fatura em aberto: remover apagaria a dívida do sistema sem ela ser paga.
+    const { data: conta } = await supabase.from("contas").select("*").eq("id", id).maybeSingle();
+    if (conta?.tipo === "cartao_credito" && Number(conta.saldo) < -0.004) {
+      throw new Error("Esse cartão tem fatura em aberto. Pague a fatura (Financeiro > Pagar fatura) antes de remover.");
+    }
     const { error } = await supabase.from("contas").delete().eq("id", id);
     if (error) lancarErroSupabase(error);
     revalidatePath(PATH);

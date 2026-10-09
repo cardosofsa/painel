@@ -2,7 +2,8 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
+import { Button, classesBotao } from "@/components/ui/Button";
+import Link from "next/link";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
@@ -16,7 +17,7 @@ import { Paginacao } from "@/components/ui/Paginacao";
 import type { TabelaExport } from "@/lib/exportar";
 import type { DimensoesEnvio } from "@/components/produtos/CamposEnvio";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PackageSearch } from "lucide-react";
+import { ChevronDown, ChevronRight, PackageSearch } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { useListaNaUrl } from "@/lib/hooks/useListaNaUrl";
@@ -42,6 +43,7 @@ import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { ProdutoResumo } from "@/components/produtos/ProdutoResumo";
 import { ProdutoFormModal } from "@/components/produtos/ProdutoFormModal";
 import { VariacoesProdutoModal } from "@/components/produtos/VariacoesProdutoModal";
+import { VariacaoDetalheModal } from "@/components/produtos/VariacaoDetalheModal";
 import { variacoesPorPai, type VariacaoSalva } from "@/lib/variacoes";
 
 export interface ImagemProduto {
@@ -193,6 +195,9 @@ export function ProdutosClient({
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [novoGrupoAberto, setNovoGrupoAberto] = useState(false);
   const [variacoesDe, setVariacoesDe] = useState<string | null>(null);
+  // Ver/editar UMA variação (0094), e quais pais estão com as variações recolhidas.
+  const [variacaoAberta, setVariacaoAberta] = useState<{ id: string; modo: "ver" | "editar" } | null>(null);
+  const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const filhasPorPai = useMemo(() => variacoesPorPai(variacoes), [variacoes]);
   const [novoGrupoNome, setNovoGrupoNome] = useState("");
   const { enviar: enviarImagemArquivo, enviando: enviandoImagem } = useSupabaseUpload("produtos");
@@ -403,6 +408,25 @@ export function ProdutosClient({
     });
   }
 
+  function abrirVariacao(id: string, modo: "ver" | "editar") {
+    carregarOpcoesForm();
+    setVariacaoAberta({ id, modo });
+  }
+
+  function alternarRecolhido(paiId: string) {
+    setRecolhidos((atual) => {
+      const novo = new Set(atual);
+      if (!novo.delete(paiId)) novo.add(paiId);
+      return novo;
+    });
+  }
+
+  function alternarAtivoVariacao(id: string, ativo: boolean) {
+    startTransition(async () => {
+      await executarComToast(alternarAtivoProduto(id, ativo), { erro: "Erro ao atualizar a variação" });
+    });
+  }
+
   function alternarAtivo(p: Produto) {
     startTransition(async () => {
       await executarComToast(alternarAtivoProduto(p.id, p.ativo), { erro: "Erro ao atualizar produto" });
@@ -478,6 +502,9 @@ export function ProdutosClient({
         actions={
           <>
             <Button variant="secondary" onClick={() => setExportando(true)}>Exportar</Button>
+            <Link href="/produtos/mapeamento" className={classesBotao({ variant: "secondary" })}>
+              Mapeamento de Anúncio
+            </Link>
             <Button variant="primary" onClick={abrirNovo}>+ Cadastrar Produto</Button>
           </>
         }
@@ -606,6 +633,20 @@ export function ProdutosClient({
                           {p.variante_nome}
                         </span>
                       ) : null}
+                      {(filhasPorPai.get(p.id)?.length ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            alternarRecolhido(p.id);
+                          }}
+                          aria-expanded={!recolhidos.has(p.id)}
+                          className="ml-1.5 inline-flex items-center gap-0.5 rounded bg-surface-2 px-1.5 py-0.5 text-xs font-normal text-text-secondary hover:bg-surface-3 align-middle"
+                        >
+                          {recolhidos.has(p.id) ? <ChevronRight size={12} aria-hidden /> : <ChevronDown size={12} aria-hidden />}
+                          {filhasPorPai.get(p.id)?.length} {(filhasPorPai.get(p.id)?.length ?? 0) === 1 ? "variação" : "variações"}
+                        </button>
+                      )}
                     </div>
                     <div className="text-xs text-text-tertiary">
                       {p.categoria_nome ?? "Sem categoria"} · {p.fornecedor_nome ?? "Sem fornecedor"}
@@ -647,7 +688,7 @@ export function ProdutosClient({
                     />
                   </Td>
                 </Tr>
-                {(filhasPorPai.get(p.id) ?? []).map((v) => (
+                {(recolhidos.has(p.id) ? [] : (filhasPorPai.get(p.id) ?? [])).map((v) => (
                   <Tr key={v.id}>
                     <Td>
                       <span className="sr-only">Variação de {p.nome}</span>
@@ -655,16 +696,16 @@ export function ProdutosClient({
                     <Td className="w-14 pr-0">
                       <span aria-hidden="true" className="block ml-5 h-4 w-3 border-l border-b border-border-forte rounded-bl" />
                     </Td>
-                    <Td className="cursor-pointer" onClick={() => setVariacoesDe(p.id)}>
+                    <Td className="cursor-pointer" onClick={() => abrirVariacao(v.id, "ver")}>
                       <span className="font-mono text-xs text-text-secondary whitespace-nowrap truncate block max-w-[10rem]" title={v.sku}>
                         {v.sku}
                       </span>
                     </Td>
-                    <Td className="cursor-pointer" onClick={() => setVariacoesDe(p.id)}>
+                    <Td className="cursor-pointer" onClick={() => abrirVariacao(v.id, "ver")}>
                       <div className={v.ativo ? "text-text-primary" : "text-text-tertiary line-through"}>
                         <span className="text-xs font-normal px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary">{v.variante_nome}</span>
                         <span className="ml-1.5 text-xs text-text-tertiary">
-                          {v.quantidade} un. do principal{v.custo_manual != null ? " · custo próprio" : ""}
+                          {v.quantidade} un. do principal{v.custo_manual != null ? " · custo próprio" : ""}{(v.insumos_variacao?.length ?? 0) > 0 ? ` · +${v.insumos_variacao?.length} insumo(s)` : ""}
                         </span>
                       </div>
                     </Td>
@@ -679,10 +720,17 @@ export function ProdutosClient({
                       <span title={`Estoque do principal ÷ ${v.quantidade}`}>{v.estoque}</span>
                     </Td>
                     <Td>
-                      <StatusChip label="Variação" tone="neutral" />
+                      <StatusChip label={v.ativo ? "Variação" : "Inativa"} tone="neutral" />
                     </Td>
                     <Td align="right">
-                      <RowMenu actions={[{ label: "Editar variações", onClick: () => setVariacoesDe(p.id) }]} />
+                      <RowMenu
+                        actions={[
+                          { label: "Ver", onClick: () => abrirVariacao(v.id, "ver") },
+                          { label: "Editar", onClick: () => abrirVariacao(v.id, "editar") },
+                          { label: "Editar todas as variações", onClick: () => setVariacoesDe(p.id) },
+                          { label: v.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivoVariacao(v.id, v.ativo) },
+                        ]}
+                      />
                     </Td>
                   </Tr>
                 ))}
@@ -729,6 +777,22 @@ export function ProdutosClient({
             pai={{ id: pai.id, nome: rotuloProduto(pai), sku: pai.sku, custo: pai.custo, preco_venda: pai.preco_venda, estoque: pai.estoque }}
             variacoes={filhasPorPai.get(pai.id) ?? []}
             onClose={() => setVariacoesDe(null)}
+          />
+        );
+      })()}
+
+      {variacaoAberta && (() => {
+        const v = variacoes.find((x) => x.id === variacaoAberta.id);
+        const pai = v ? produtos.find((x) => x.id === v.produto_pai_id) : undefined;
+        if (!v || !pai) return null;
+        return (
+          <VariacaoDetalheModal
+            key={`variacao-${v.id}-${variacaoAberta.modo}`}
+            pai={{ id: pai.id, nome: rotuloProduto(pai), sku: pai.sku, custo: pai.custo, estoque: pai.estoque, dimensoes: { peso_g: pai.peso_g ?? null, altura_cm: pai.altura_cm ?? null, largura_cm: pai.largura_cm ?? null, comprimento_cm: pai.comprimento_cm ?? null } }}
+            variacao={v}
+            produtosParaInsumo={produtosParaInsumo}
+            modoInicial={variacaoAberta.modo}
+            onClose={() => setVariacaoAberta(null)}
           />
         );
       })()}

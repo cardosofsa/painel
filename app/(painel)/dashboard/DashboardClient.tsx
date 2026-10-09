@@ -1,6 +1,9 @@
 "use client";
 
+import { dividaCartao, dividaTotalCartoes, ehCartao, limiteDisponivel, saldoDeCaixa } from "@/lib/cartao";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
+import { useSaldoOculto } from "@/lib/hooks/useSaldoOculto";
 import { PrimeirosPassos, type PassoInicial } from "@/components/dashboard/PrimeirosPassos";
 import { AvisoTeste } from "@/components/dashboard/AvisoTeste";
 import type { AvisoAtivacao } from "@/lib/ativacao-teste";
@@ -19,6 +22,9 @@ export interface Conta {
   nome: string;
   saldo: number;
   detalhe: string | null;
+  /** 0092: cartão de crédito. `saldo` é a dívida em negativo. */
+  tipo?: "conta" | "cartao_credito";
+  limite_total?: number | null;
 }
 
 export interface ProdutoBaixoEstoque {
@@ -70,7 +76,11 @@ export function DashboardClient({
   vendas: { hoje: number; semana: number; mes: number; lucroMes: number };
   calendario: Parameters<typeof CalendarioDashboard>[0];
 }) {
-  const saldoTotal = contas.reduce((acc, c) => acc + c.saldo, 0);
+  const [oculto, alternarOculto] = useSaldoOculto();
+  // Saldo escondido: o valor some, o espaço e o formato continuam (a tela não pula).
+  const moeda = (n: number) => (oculto ? "R$ ••••••" : formatBRL(n));
+  const saldoTotal = saldoDeCaixa(contas);
+  const faturasAbertas = dividaTotalCartoes(contas);
   const capitalComprometido = pedidosPendentes.reduce((acc, p) => acc + p.valor_total, 0);
 
   return (
@@ -95,27 +105,49 @@ export function DashboardClient({
       {avisoTeste && <AvisoTeste aviso={avisoTeste} />}
       {primeirosPassos && <PrimeirosPassos passos={primeirosPassos} />}
 
-          <Card className="mb-5">
-            <CardEyebrow>Saldo Total Disponível</CardEyebrow>
-            <HeroMetric value={formatBRL(saldoTotal)} accent />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-border">
-              {contas.map((c) => (
-                <div key={c.id}>
-                  <div className="text-xs text-text-secondary mb-1">{c.nome}</div>
-                  <div className="font-mono text-lg text-text-primary">{formatBRL(c.saldo)}</div>
-                  <div className="text-xs text-text-tertiary">{c.detalhe}</div>
-                </div>
-              ))}
-              {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
-            </div>
-          </Card>
-
           <PainelVendas vendas={vendasRelatorio} />
 
           {/* Calendário logo depois das vendas: feriado e vencimento do dia não podem ficar no fim da página. */}
           <div className="mb-5">
             <CalendarioDashboard {...calendario} />
           </div>
+
+          <Card className="mb-5">
+            <div className="flex items-start justify-between gap-2">
+              <CardEyebrow>Saldo Total Disponível</CardEyebrow>
+              <button
+                type="button"
+                onClick={alternarOculto}
+                aria-pressed={oculto}
+                aria-label={oculto ? "Mostrar saldo" : "Esconder saldo"}
+                title={oculto ? "Mostrar saldo" : "Esconder saldo"}
+                className="-mt-1 -mr-1 rounded-md p-1.5 text-text-tertiary hover:bg-surface-2 hover:text-text-primary"
+              >
+                {oculto ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+              </button>
+            </div>
+            <HeroMetric value={moeda(saldoTotal)} accent />
+            {faturasAbertas > 0 && <p className="mt-1 text-xs text-text-tertiary">Fora deste saldo: {moeda(faturasAbertas)} em faturas de cartão a pagar.</p>}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-border">
+              {contas.map((c) => (
+                <div key={c.id}>
+                  <div className="text-xs text-text-secondary mb-1">{c.nome}</div>
+                  {ehCartao(c) ? (
+                    <>
+                      <div className="font-mono text-lg text-text-primary">{moeda(limiteDisponivel(c))}</div>
+                      <div className="text-xs text-text-tertiary">limite disponível · fatura {moeda(dividaCartao(c))}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-mono text-lg text-text-primary">{moeda(c.saldo)}</div>
+                      <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+                    </>
+                  )}
+                </div>
+              ))}
+              {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
+            </div>
+          </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
             <Card className="lg:col-span-2">

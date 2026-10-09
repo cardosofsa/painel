@@ -1,3 +1,4 @@
+import { carregarCamposCartao, semCartoes } from "@/lib/contas-cartao-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { carregarPedidosVitrine } from "@/lib/pedidos-vitrine-servidor";
 import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
@@ -22,6 +23,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - DIAS_JANELA);
 
+  const camposCartaoPromessa = carregarCamposCartao(supabase);
   const [vendasRes, formasRes, pedidos, clientesPdvRes, contasRes, formasPdvRes, marketplace, lojasRes, produtosRes, perfilRes, disponivelRes] = await Promise.all([
     // O PostgREST corta em 1000 linhas sem avisar: lê a janela inteira em lotes.
     buscarEmLotes((de, ate) =>
@@ -92,7 +94,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       formasPagamento={(formasRes.data ?? []).map((f) => f.nome)}
       pedidos={pedidos}
       clientesPdv={clientesPdvRes.data ?? []}
-      contas={contasRes.data ?? []}
+      contas={semCartoes(contasRes.data ?? [], await camposCartaoPromessa)}
       formasPagamentoPdv={formasPdvRes.data ?? []}
       pedidoInicial={pedido && /^P-\d{1,8}$/.test(pedido) ? pedido : null}
       buscaInicial={busca?.slice(0, 80) ?? ""}

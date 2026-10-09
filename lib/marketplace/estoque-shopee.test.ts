@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agruparPorItem, casarAnuncios, diferencasEstoque, saldoParaEnviar, type AnuncioSalvo } from "./estoque-shopee";
+import { agruparPorItem, casarAnuncios, diferencasEstoque, saldoParaEnviar, semProdutosPai, type AnuncioSalvo } from "./estoque-shopee";
 
 const produtos = [
   { id: "p1", sku: "FITA-PRETA", custo: 10 },
@@ -71,5 +71,26 @@ describe("diferencas", () => {
       { itemId: 1, estoques: [{ modelId: 11, quantidade: 1 }, { modelId: 12, quantidade: 2 }] },
       { itemId: 2, estoques: [{ modelId: 0, quantidade: 7 }] },
     ]);
+  });
+});
+
+describe("casarAnuncios — dados para o mapeamento (0093)", () => {
+  it("grava foto, link, SKU da variação, SKU do pai, variação e título sem a variação", () => {
+    const [l] = casarAnuncios([{ itemId: 7, modelId: 70, sku: null, skuPrincipal: "BCOP", nome: "Bainha · preta", nomeItem: "Bainha", variacao: "preta", estoque: 1, imagem: "https://i/x.jpg", link: "https://s/7" }], produtos, []);
+    expect(l).toMatchObject({ imagem_url: "https://i/x.jpg", link: "https://s/7", sku_modelo: null, sku_principal: "BCOP", variacao: "preta", nome_item: "Bainha" });
+  });
+  it("sem nomeItem usa o nome do anúncio", () => {
+    const [l] = casarAnuncios([{ itemId: 8, modelId: 0, sku: "LUVA", skuPrincipal: "LUVA", nome: "Luva", estoque: 1 }], produtos, []);
+    expect(l).toMatchObject({ nome_item: "Luva", imagem_url: null, link: null, variacao: null });
+  });
+});
+
+describe("semProdutosPai", () => {
+  it("tira o produto pai com variações do casamento por SKU", () => {
+    const lista = [{ id: "pai", sku: "BCO", custo: 5 }, { id: "k2", sku: "BCO-K2", custo: 10 }];
+    expect(semProdutosPai(lista, new Set(["pai"])).map((p) => p.id)).toEqual(["k2"]);
+    expect(semProdutosPai(lista, new Set()).length).toBe(2);
+    const [l] = casarAnuncios([{ itemId: 1, modelId: 0, sku: "BCO", skuPrincipal: "BCO", nome: "Bainha", estoque: 1 }], semProdutosPai(lista, new Set(["pai"])), []);
+    expect(l.produto_id).toBeNull();
   });
 });
