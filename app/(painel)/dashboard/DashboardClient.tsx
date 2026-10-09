@@ -1,5 +1,6 @@
 "use client";
 
+import { dividaCartao, dividaTotalCartoes, ehCartao, limiteDisponivel, saldoDeCaixa } from "@/lib/cartao";
 import Link from "next/link";
 import { PrimeirosPassos, type PassoInicial } from "@/components/dashboard/PrimeirosPassos";
 import { AvisoTeste } from "@/components/dashboard/AvisoTeste";
@@ -19,6 +20,9 @@ export interface Conta {
   nome: string;
   saldo: number;
   detalhe: string | null;
+  /** 0092: cartão de crédito. `saldo` é a dívida em negativo. */
+  tipo?: "conta" | "cartao_credito";
+  limite_total?: number | null;
 }
 
 export interface ProdutoBaixoEstoque {
@@ -70,7 +74,8 @@ export function DashboardClient({
   vendas: { hoje: number; semana: number; mes: number; lucroMes: number };
   calendario: Parameters<typeof CalendarioDashboard>[0];
 }) {
-  const saldoTotal = contas.reduce((acc, c) => acc + c.saldo, 0);
+  const saldoTotal = saldoDeCaixa(contas);
+  const faturasAbertas = dividaTotalCartoes(contas);
   const capitalComprometido = pedidosPendentes.reduce((acc, p) => acc + p.valor_total, 0);
 
   return (
@@ -98,12 +103,22 @@ export function DashboardClient({
           <Card className="mb-5">
             <CardEyebrow>Saldo Total Disponível</CardEyebrow>
             <HeroMetric value={formatBRL(saldoTotal)} accent />
+            {faturasAbertas > 0 && <p className="mt-1 text-xs text-text-tertiary">Fora deste saldo: {formatBRL(faturasAbertas)} em faturas de cartão a pagar.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-border">
               {contas.map((c) => (
                 <div key={c.id}>
                   <div className="text-xs text-text-secondary mb-1">{c.nome}</div>
-                  <div className="font-mono text-lg text-text-primary">{formatBRL(c.saldo)}</div>
-                  <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+                  {ehCartao(c) ? (
+                    <>
+                      <div className="font-mono text-lg text-text-primary">{formatBRL(limiteDisponivel(c))}</div>
+                      <div className="text-xs text-text-tertiary">limite disponível · fatura {formatBRL(dividaCartao(c))}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-mono text-lg text-text-primary">{formatBRL(c.saldo)}</div>
+                      <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+                    </>
+                  )}
                 </div>
               ))}
               {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}

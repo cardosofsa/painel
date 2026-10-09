@@ -174,11 +174,23 @@ export const faixaComissaoSchema = z.object({
   tarifa_fixa: dinheiro,
 });
 
-export const contaSchema = z.object({
-  nome: textoCurto,
-  saldo: z.number().finite("Valor inválido").min(-10_000_000).max(10_000_000),
-  detalhe: z.string().trim().max(500),
-});
+export const contaSchema = z
+  .object({
+    nome: textoCurto,
+    saldo: z.number().finite("Valor inválido").min(-10_000_000).max(10_000_000),
+    detalhe: z.string().trim().max(500),
+    // 0092: cartão de crédito. `saldo` guarda a dívida em negativo.
+    tipo: z.enum(["conta", "cartao_credito"]).optional(),
+    limite_total: z.number().finite("Valor inválido").positive("Informe o limite do cartão").max(10_000_000).nullish(),
+    dia_fechamento: z.number().int().min(1, "Dia de 1 a 31").max(31, "Dia de 1 a 31").nullish(),
+    dia_vencimento: z.number().int().min(1, "Dia de 1 a 31").max(31, "Dia de 1 a 31").nullish(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.tipo !== "cartao_credito") return;
+    if (!v.limite_total) ctx.addIssue({ code: "custom", path: ["limite_total"], message: "Informe o limite do cartão" });
+    else if (v.saldo > 0) ctx.addIssue({ code: "custom", path: ["saldo"], message: "O valor usado do cartão não pode ser negativo" });
+    else if (v.saldo < -v.limite_total) ctx.addIssue({ code: "custom", path: ["saldo"], message: "O valor usado passa do limite do cartão" });
+  });
 
 export const armazemSchema = z.object({
   nome: textoCurto,
@@ -722,6 +734,14 @@ export const saqueMarketplaceSchema = z.object({
   loja_id: uuid,
   valor: z.number().finite().positive("Informe o valor que caiu na conta").max(10_000_000, "Valor alto demais"),
   conta_id: uuid,
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+});
+
+/** Pagar a fatura de um cartão a partir de uma conta (0092). */
+export const pagarFaturaSchema = z.object({
+  cartao_id: uuid,
+  conta_id: uuid,
+  valor: z.number().finite().positive("Informe o valor da fatura").max(10_000_000, "Valor alto demais"),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
 });
 

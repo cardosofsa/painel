@@ -15,6 +15,7 @@ import { MasterDashboardClient } from "./MasterDashboardClient";
 import type { ContaAdmin } from "../admin/AdminClient";
 import type { LinhaHistorico } from "../admin/HistoricoAdmin";
 import type { Metadata } from "next";
+import { carregarCamposCartao, comCamposCartao } from "@/lib/contas-cartao-servidor";
 
 export const metadata: Metadata = { title: "Home" };
 
@@ -76,6 +77,9 @@ export default async function DashboardPage() {
   const inicioSemana = inicioDiaBrasil(somarDiasIso(hojeBr, -6));
   const inicioMesData = inicioDiaBrasil(inicioMesIso);
   const inicioVendas = inicioSemana < inicioMesData ? inicioSemana : inicioMesData;
+
+  // 0092: campos de cartão em consulta à parte (sem a migração, tudo segue como conta comum).
+  const camposCartaoPromessa = carregarCamposCartao(supabase);
 
   const [
     contasRes,
@@ -230,7 +234,7 @@ export default async function DashboardPage() {
 
   return (
     <DashboardClient
-      contas={contasRes.data ?? []}
+      contas={comCamposCartao(contasRes.data ?? [], await camposCartaoPromessa)}
       produtosBaixoEstoque={produtosBaixoEstoque}
       pedidosPendentes={pedidosPendentes}
       vencimentos={vencimentos}

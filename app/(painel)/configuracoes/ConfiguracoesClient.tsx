@@ -13,6 +13,7 @@ import { RowMenu } from "@/components/ui/RowMenu";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { formatBRL } from "@/lib/format";
+import { dividaCartao, ehCartao, limiteDisponivel } from "@/lib/cartao";
 import {
   criarCategoria,
   removerCategoria,
@@ -414,7 +415,16 @@ export function ConfiguracoesClient({
                     <div className="text-xs text-text-tertiary">{c.detalhe}</div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-sm text-text-primary">{formatBRL(c.saldo)}</span>
+                    {ehCartao(c) ? (
+                      <div className="text-right">
+                        <div className="font-mono text-sm text-text-primary">{formatBRL(limiteDisponivel(c))} <span className="text-xs text-text-tertiary">disponível</span></div>
+                        <div className="text-xs text-text-tertiary">
+                          Usado {formatBRL(dividaCartao(c))} de {formatBRL(c.limite_total ?? 0)}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="font-mono text-sm text-text-primary">{formatBRL(c.saldo)}</span>
+                    )}
                     <RowMenu
                       actions={[
                         { label: "Editar", onClick: () => setModalConta(c) },

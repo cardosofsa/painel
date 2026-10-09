@@ -42,6 +42,8 @@ import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
 import { AnaliseMesModal } from "@/components/financeiro/AnaliseMesModal";
+import { PagarFaturaModal } from "@/components/financeiro/PagarFaturaModal";
+import { dividaCartao, ehCartao, limiteDisponivel, percentualUsado, saldoDeCaixa } from "@/lib/cartao";
 import { SaqueMarketplaceModal } from "@/components/financeiro/SaqueMarketplaceModal";
 import { inicioDoMes, type Projecao } from "@/lib/saldo-projetado";
 import { agruparRepassesPorLoja } from "@/lib/repasse-marketplace";
@@ -53,6 +55,10 @@ export interface Conta {
   nome: string;
   saldo: number;
   detalhe: string | null;
+  /** 0092: cartão de crédito. `saldo` é a dívida em negativo. */
+  tipo?: "conta" | "cartao_credito";
+  limite_total?: number | null;
+  dia_vencimento?: number | null;
 }
 
 export interface Movimentacao {
@@ -219,6 +225,7 @@ export function FinanceiroClient({
   const [modalMovimentacao, setModalMovimentacao] = useState(false);
   const [analiseAberta, setAnaliseAberta] = useState(false);
   const [saque, setSaque] = useState<{ loja: string | null } | null>(null);
+  const [pagandoFatura, setPagandoFatura] = useState<string | null>(null);
   const [modalDespesa, setModalDespesa] = useState(false);
   // Abre já do lado certo: o "+ Novo" de A receber abria em "A Pagar".
   const [modalCpr, setModalCpr] = useState<"pagar" | "receber" | null>(null);
@@ -324,7 +331,10 @@ export function FinanceiroClient({
     (c) => c.status === "pendente" && !c.aguardando_liberacao && !c.repasse_marketplace && c.data_vencimento <= em7DiasIso,
   );
 
-  const saldoAtual = contas.reduce((a, c) => a + c.saldo, 0);
+  const saldoAtual = saldoDeCaixa(contas);
+  // Onde se RECEBE, cartão não entra; onde se PAGA, ele aparece com o limite disponível.
+  const contasCaixa = contas.filter((c) => !ehCartao(c));
+  const contasSaida = contas.map((c) => (ehCartao(c) ? { ...c, nome: `${c.nome} (cartão · disponível ${formatBRL(limiteDisponivel(c))})` } : c));
 
   const periodoH = PERIODOS_HISTORICO.find((p) => p.id === periodoHistorico)!;
   const desdeHistorico = periodoH.dias ? diasAntes(hojeIso, periodoH.dias) : "";
@@ -543,7 +553,7 @@ export function FinanceiroClient({
         <details className="mt-4 text-sm group">
           <summary className="cursor-pointer text-text-secondary hover:text-text-primary">Como calculamos</summary>
           <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-6 gap-y-1 max-w-md">
-            <dt className="text-text-secondary">Saldo atual das contas</dt>
+            <dt className="text-text-secondary">Saldo atual das contas (sem cartões)</dt>
             <dd className="font-mono text-right">{formatBRL(projecaoMes.saldoAtual)}</dd>
             <dt className="text-text-secondary">+ Contas a receber com data</dt>
             <dd className="font-mono text-right text-positive">{formatBRL(projecaoMes.aReceber)}</dd>
@@ -570,20 +580,55 @@ export function FinanceiroClient({
         <h2 className="text-base font-semibold text-text-primary mb-1">Saldos em Conta</h2>
         <p className="text-xs text-text-tertiary mb-4">Tempo real</p>
         <div className="space-y-4">
-          {contas.map((c) => (
-            <div key={c.id} className="flex items-center justify-between text-sm border-b border-border pb-3 last:border-0 last:pb-0">
-              <div>
-                <div className="text-text-primary">{c.nome}</div>
-                <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+          {contas.map((c) =>
+            ehCartao(c) ? (
+              <div key={c.id} className="text-sm border-b border-border pb-3 last:border-0 last:pb-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-text-primary">{c.nome}</div>
+                    <div className="text-xs text-text-tertiary">
+                      Cartão de crédito{c.dia_vencimento ? ` · vence dia ${c.dia_vencimento}` : ""}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-text-primary">{formatBRL(limiteDisponivel(c))}</div>
+                    <div className="text-xs text-text-tertiary">disponível</div>
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-surface-3 overflow-hidden" role="img" aria-label={`${Math.round(percentualUsado(c))}% do limite usado`}>
+                  <div className={percentualUsado(c) >= 85 ? "h-full bg-negative" : "h-full bg-accent"} style={{ width: `${percentualUsado(c)}%` }} />
+                </div>
+                <div className="mt-1.5 flex items-center justify-between text-xs text-text-tertiary">
+                  <span>
+                    Fatura {formatBRL(dividaCartao(c))} de {formatBRL(c.limite_total ?? 0)}
+                  </span>
+                  <span className="flex gap-3">
+                    {dividaCartao(c) > 0 && (
+                      <button onClick={() => setPagandoFatura(c.id)} className="text-accent hover:underline">
+                        Pagar fatura
+                      </button>
+                    )}
+                    <button onClick={() => verMovimentacoesDaConta(c.id)} className="text-accent hover:underline">
+                      Ver mais
+                    </button>
+                  </span>
+                </div>
               </div>
-              <div className="text-right">
-                <div className="font-mono text-text-primary">{formatBRL(c.saldo)}</div>
-                <button onClick={() => verMovimentacoesDaConta(c.id)} className="text-xs text-accent hover:underline">
-                  Ver mais
-                </button>
+            ) : (
+              <div key={c.id} className="flex items-center justify-between text-sm border-b border-border pb-3 last:border-0 last:pb-0">
+                <div>
+                  <div className="text-text-primary">{c.nome}</div>
+                  <div className="text-xs text-text-tertiary">{c.detalhe}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-text-primary">{formatBRL(c.saldo)}</div>
+                  <button onClick={() => verMovimentacoesDaConta(c.id)} className="text-xs text-accent hover:underline">
+                    Ver mais
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ),
+          )}
           {contas.length === 0 && <p className="text-sm text-text-tertiary">Nenhuma conta cadastrada ainda.</p>}
         </div>
       </Card>
@@ -1021,27 +1066,33 @@ export function FinanceiroClient({
       {saque && (
         <SaqueMarketplaceModal
           lojas={lojasMarketplace}
-          contas={contas.map((c) => ({ id: c.id, nome: c.nome }))}
+          contas={contasCaixa.map((c) => ({ id: c.id, nome: c.nome }))}
           liberadoPorLoja={Object.fromEntries(gruposRepasses.map((g) => [g.loja, g.total]))}
           lojaInicial={saque.loja}
           onClose={() => setSaque(null)}
         />
       )}
+      {pagandoFatura && (() => {
+        const cartao = contas.find((c) => c.id === pagandoFatura);
+        return cartao ? (
+          <PagarFaturaModal cartao={{ id: cartao.id, nome: cartao.nome, divida: dividaCartao(cartao) }} contas={contasCaixa} onClose={() => setPagandoFatura(null)} />
+        ) : null;
+      })()}
       {analiseAberta && <AnaliseMesModal onClose={() => setAnaliseAberta(false)} fechamentos={fechamentos} mesAtual={inicioDoMes(hojeServidor ?? hojeIsoLocal())} iaDisponivel={iaDisponivel} />}
-      <NovaMovimentacaoModal key={`mov-${modalMovimentacao}`} open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contas} onSave={adicionarMovimentacao} salvando={pending} />
-      <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contas} onSave={adicionarDespesaFixa} salvando={pending} />
-      <NovaCprModal key={`cpr-${modalCpr}`} open={!!modalCpr} tipoInicial={modalCpr ?? "pagar"} onClose={() => setModalCpr(null)} contas={contas} onSave={adicionarCpr} salvando={pending} />
+      <NovaMovimentacaoModal key={`mov-${modalMovimentacao}`} open={modalMovimentacao} onClose={() => setModalMovimentacao(false)} contas={contasSaida} onSave={adicionarMovimentacao} salvando={pending} />
+      <NovaDespesaFixaModal key={`desp-${modalDespesa}`} open={modalDespesa} onClose={() => setModalDespesa(false)} contas={contasSaida} onSave={adicionarDespesaFixa} salvando={pending} />
+      <NovaCprModal key={`cpr-${modalCpr}`} open={!!modalCpr} tipoInicial={modalCpr ?? "pagar"} onClose={() => setModalCpr(null)} contas={contasSaida} onSave={adicionarCpr} salvando={pending} />
       <DividaAntigaModal key={`divida-${dividaAntiga?.tipo ?? "fechado"}`} inicio={dividaAntiga} fornecedores={fornecedores} clientes={clientes} onClose={() => setDividaAntiga(null)} />
       <LimparDadosModal open={modalLimpar} onClose={() => setModalLimpar(false)} confirm={confirm} />
       <ParcelasVendaModal
         key={`parcelas-${parcelasAbertas?.vendaId ?? "fechado"}`}
         vendaId={parcelasAbertas?.vendaId ?? null}
         vendaNumero={parcelasAbertas?.numero ?? null}
-        contas={contas}
+        contas={contasCaixa}
         regra={regraCrediario}
         onClose={() => setParcelasAbertas(null)}
       />
-      <ReceberContaModal key={`receber-${recebendo?.id ?? "fechado"}`} conta={recebendo} contas={contas} regra={regraCrediario} onClose={() => setRecebendo(null)} />
+      <ReceberContaModal key={`receber-${recebendo?.id ?? "fechado"}`} conta={recebendo} contas={contasCaixa} regra={regraCrediario} onClose={() => setRecebendo(null)} />
       <HistoricoPagamentosModal aberto={pagamentosAbertos} contas={contas} onClose={() => setPagamentosAbertos(null)} />
       {ConfirmDialog}
     </>

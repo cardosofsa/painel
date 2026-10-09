@@ -1,3 +1,4 @@
+import { carregarCamposCartao, semCartoes } from "@/lib/contas-cartao-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { PdvClient } from "./PdvClient";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
@@ -28,6 +29,7 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
   // (0083), não como desconto. O valor vem do banco (o que sobra do crédito), não da URL.
   const creditoTroca = troca && /^D-\d{1,8}$/.test(troca) ? await creditoDaTroca(supabase, troca) : null;
 
+  const camposCartaoPromessa = carregarCamposCartao(supabase);
   const [produtosRes, gruposRes, categoriasRes, clientesRes, formasRes, contasRes, reservasRes] = await Promise.all([
     // Variação filha (0084) não é vendida no balcão: serve para anúncio e baixa do pai.
     semVariacoesFilhas((filtrar) => {
@@ -86,7 +88,7 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
       produtos={produtos}
       clientes={(clientesRes.data ?? []) as ClientePdv[]}
       formasPagamento={(formasRes.data ?? []) as FormaPagamentoPdv[]}
-      contas={(contasRes.data ?? []) as ContaPdv[]}
+      contas={semCartoes((contasRes.data ?? []) as ContaPdv[], await camposCartaoPromessa)}
       freteConectado={!!freteRes.data?.token_cifrado}
       pix={crediario.pix}
       creditoTroca={creditoTroca}

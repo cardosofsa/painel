@@ -1,3 +1,4 @@
+import { carregarCamposCartao, comCamposCartao } from "@/lib/contas-cartao-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { temPinAdmin } from "@/lib/supabase/pin-admin";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
@@ -49,7 +50,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     return <MasterConfiguracoesClient email={user?.email ?? ""} planos={planosRes.error ? null : ((planosRes.data ?? []) as Plano[])} />;
   }
 
-  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes, conexoesRes, pinAdmin, diasRes] =
+  const [categoriasRes, canaisRes, lojasRes, faixasRes, contasRes, armazensRes, formasPagamentoRes, contagemRes, perfilRes, conexoesRes, pinAdmin, diasRes, camposCartao] =
     await Promise.all([
       // `*`: `tipo` só existe a partir da 0042.
       supabase.from("categorias").select("*").order("nome"),
@@ -81,6 +82,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       temPinAdmin(supabase),
       // 0089: prazo de liberação do repasse por loja. Sem a migração a consulta falha e o campo some.
       supabase.from("lojas_canal").select("id, dias_liberacao_repasse"),
+      // 0092: campos de cartão das contas. Sem a migração, tudo segue como conta comum.
+      carregarCamposCartao(supabase),
     ]);
 
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
@@ -244,7 +247,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       categorias={categorias}
       canais={canais}
       lojas={lojas}
-      contas={(contasRes.data ?? []) as Conta[]}
+      contas={comCamposCartao((contasRes.data ?? []) as { id: string; nome: string; saldo: number; detalhe: string }[], camposCartao) as Conta[]}
       armazens={(armazensRes.data ?? []) as Armazem[]}
       formasPagamento={(formasPagamentoRes.data ?? []) as FormaPagamento[]}
       perfil={perfil}

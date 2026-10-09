@@ -6,6 +6,7 @@
  * `user_id` explícito — no cron é a única trava; na action é redundante e inofensivo.
  */
 
+import { faturasParaProjecao, saldoDeCaixa } from "./cartao";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fimDoMes, inicioDoMes, projetarSaldo } from "./saldo-projetado";
@@ -56,10 +57,12 @@ async function movimentosDoMes(supabase: SupabaseClient, userId: string, mes: st
   );
 }
 
-async function saldoAtualDasContas(supabase: SupabaseClient, userId: string): Promise<number> {
-  const { data, error } = await supabase.from("contas").select("saldo").eq("user_id", userId);
+/** Caixa (sem cartão) e fatura em aberto dos cartões (0092). `*`: sem a migração não há `tipo` e tudo é conta comum. */
+async function caixaEFaturas(supabase: SupabaseClient, userId: string, hoje: string): Promise<{ saldoAtual: number; faturas: { valor: number; data_vencimento: string }[] }> {
+  const { data, error } = await supabase.from("contas").select("*").eq("user_id", userId);
   if (error) throw new Error(error.message);
-  return Math.round(((data ?? []) as { saldo: number }[]).reduce((s, c) => s + Number(c.saldo), 0) * 100) / 100;
+  const contas = ((data ?? []) as { saldo: number; tipo?: string | null; limite_total?: number | null; dia_vencimento?: number | null }[]).map((c) => ({ ...c, saldo: Number(c.saldo), limite_total: c.limite_total == null ? null : Number(c.limite_total) }));
+  return { saldoAtual: saldoDeCaixa(contas), faturas: faturasParaProjecao(contas, hoje) };
 }
 
 /**
@@ -67,7 +70,7 @@ async function saldoAtualDasContas(supabase: SupabaseClient, userId: string): Pr
  * mesma `EntradaProjecao` pelos mesmos dados (`projecao-dados.ts`), então o número do histórico
  * é o da tela.
  */
-async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: string, saldoAtual: number): Promise<DadosProjecao> {
+async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: string, saldoAtual: number, faturas: { valor: number; data_vencimento: string }[]): Promise<DadosProjecao> {
   const inicioMes = inicioDoMes(hoje);
   const desde120 = new Date(Date.now() - 120 * 86_400_000).toISOString();
   const [contas, parcelas, despesasFixas, pagas, pedidosRes, diasRes, existentes] = await Promise.all([
@@ -103,6 +106,7 @@ async function dadosDaProjecao(supabase: SupabaseClient, userId: string, hoje: s
   );
   return {
     saldoAtual,
+    faturas,
     hoje,
     contas: contas.map((c) => ({ ...c, valor: Number(c.valor), total_parcelas_fiado: c.vendas?.total_parcelas_fiado ?? null })),
     parcelas: parcelas.map((p) => ({ ...p, valor: Number(p.valor) })),
@@ -139,8 +143,8 @@ export async function atualizarFechamentos(supabase: SupabaseClient, userId: str
   if (erroLeitura) throw new Error(erroLeitura.message);
   const plano = planejarFechamentos(hoje, ((existentesBrutos ?? []) as { mes: string; fechado_em: string | null }[]));
 
-  const saldoAtual = await saldoAtualDasContas(supabase, userId);
-  const [dados, movimentosAtual] = await Promise.all([dadosDaProjecao(supabase, userId, hoje, saldoAtual), movimentosDoMes(supabase, userId, plano.mesAtual)]);
+  const { saldoAtual, faturas } = await caixaEFaturas(supabase, userId, hoje);
+  const [dados, movimentosAtual] = await Promise.all([dadosDaProjecao(supabase, userId, hoje, saldoAtual, faturas), movimentosDoMes(supabase, userId, plano.mesAtual)]);
   const projecao = projetarSaldo(montarEntradaProjecao(dados), fimDoMes(plano.mesAtual)).saldoProjetado;
   const detalhesAtual = agregarMes(movimentosAtual);
   const agora = new Date().toISOString();

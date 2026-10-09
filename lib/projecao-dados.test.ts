@@ -69,3 +69,12 @@ describe("entrada completa", () => {
     expect(projetarSaldo(entrada, "2026-10-31").despesasFixas).toBe(0);
   });
 });
+
+describe("fatura de cartão", () => {
+  it("entra como saída no vencimento e reduz o projetado", () => {
+    const e = montarEntradaProjecao(base({ saldoAtual: 1000, faturas: [{ valor: 300, data_vencimento: "2026-10-20" }] }));
+    const r = projetarSaldo(e, fimDoMes("2026-10-09"));
+    expect(r.aPagar).toBe(300);
+    expect(r.saldoProjetado).toBe(700);
+  });
+});

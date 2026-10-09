@@ -1,3 +1,5 @@
+import { carregarCamposCartao, comCamposCartao } from "@/lib/contas-cartao-servidor";
+import { faturasParaProjecao, saldoDeCaixa } from "@/lib/cartao";
 import { createClient } from "@/lib/supabase/server";
 import { eRepasseMarketplace, lerRepasse } from "@/lib/repasse-marketplace";
 import { montarEntradaProjecao, repassesConcluidos, type PedidoMkt } from "@/lib/projecao-dados";
@@ -120,6 +122,9 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   inicio30Dias.setDate(inicio30Dias.getDate() - 29);
   const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
 
+  // 0092: campos de cartão em consulta à parte (sem a migração, tudo segue como conta comum).
+  const camposCartaoPromessa = carregarCamposCartao(supabase);
+
   const [
     contasRes,
     movimentacoesRes,
@@ -232,6 +237,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   // `precificacoes` — que alimenta apenas o card de erosão de margem — apagava saldo, fluxo
   // de caixa, contas a pagar e lançamentos junto.
   if (contasRes.error) lancarErroSupabase(contasRes.error);
+  const contasTipadas = comCamposCartao(contasRes.data ?? [], await camposCartaoPromessa);
   if (movimentacoesRes.error) lancarErroSupabase(movimentacoesRes.error);
   if (despesasRes.error) lancarErroSupabase(despesasRes.error);
   if (cprRes.error) lancarErroSupabase(cprRes.error);
@@ -306,7 +312,9 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     total_parcelas_fiado: c.vendas?.total_parcelas_fiado ?? null,
   }));
   const dadosProjecao = {
-    saldoAtual: (contasRes.data ?? []).reduce((s, c) => s + Number(c.saldo), 0),
+    // Cartão fica fora do caixa; a fatura em aberto entra como saída no vencimento.
+    saldoAtual: saldoDeCaixa(contasTipadas.map((c) => ({ ...c, saldo: Number(c.saldo) }))),
+    faturas: faturasParaProjecao(contasTipadas.map((c) => ({ ...c, saldo: Number(c.saldo) })), hojeBr),
     hoje: hojeBr,
     contas: linhasCpr,
     parcelas: ((parcelasPendRes.error ? [] : parcelasPendRes.data) as unknown as { status: string; valor: number; valor_pago: number | null; data_vencimento: string; vendas: { status: string } | null }[]).map((p) => ({ ...p, valor: Number(p.valor) })),
@@ -439,7 +447,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     <FinanceiroClient
       // Remonta ao trocar de `?aba=` (link da Vixe estando já no Financeiro).
       key={aba ?? "visao"}
-      contas={contasRes.data ?? []}
+      contas={contasTipadas}
       movimentacoes={movimentacoes}
       despesasFixas={despesasRes.data ?? []}
       contasPagarReceber={contasPagarReceber}

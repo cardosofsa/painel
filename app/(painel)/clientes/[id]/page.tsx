@@ -1,3 +1,4 @@
+import { carregarCamposCartao, semCartoes } from "@/lib/contas-cartao-servidor";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { carregarCrediario } from "@/lib/crediario-servidor";
@@ -42,6 +43,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
   const { id } = await params;
   const supabase = await createClient();
 
+  const camposCartaoPromessa = carregarCamposCartao(supabase);
   const [clienteRes, vendasRes, contasRes, fiadoEmUsoRes, perfilRes] = await Promise.all([
     supabase
       .from("clientes")
@@ -139,7 +141,7 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
     <ClienteDetalheClient
       cliente={cliente}
       vendas={vendas}
-      contas={contasRes.data ?? []}
+      contas={semCartoes(contasRes.data ?? [], await camposCartaoPromessa)}
       regraCrediario={crediario.regra}
       fiadoEmUso={Number(fiadoEmUsoRes.data ?? 0)}
       crediarioAntigo={antigoRes.error ? [] : ((antigoRes.data ?? []) as ContaAntigaCliente[]).map((c) => ({ ...c, valor: Number(c.valor), valor_pago: Number(c.valor_pago ?? 0) }))}

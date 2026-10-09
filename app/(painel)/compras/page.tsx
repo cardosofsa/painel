@@ -1,3 +1,4 @@
+import { carregarCamposCartao, contasParaSaida } from "@/lib/contas-cartao-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
@@ -20,6 +21,7 @@ export const maxDuration = 60;
 export default async function ComprasPage({ searchParams }: { searchParams: Promise<{ novo?: string; busca?: string }> }) {
   const { novo, busca } = await searchParams;
   const supabase = await createClient();
+  const camposCartaoPromessa = carregarCamposCartao(supabase);
 
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - DIAS_JANELA);
@@ -54,7 +56,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
         .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo, codigo_barras")
         .order("nome"),
       supabase.from("armazens").select("id, nome").order("nome"),
-      supabase.from("contas").select("id, nome").order("nome"),
+      supabase.from("contas").select("id, nome, saldo").order("nome"),
       supabase.from("formas_pagamento").select("id, nome").order("nome"),
       // `*`: valor_pago só existe a partir da 0064 (antes, conta 0 até quitar).
       supabase.from("contas_a_pagar_receber").select("*").not("referencia_pedido_compra_id", "is", null),
@@ -67,6 +69,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
   if (produtosRes.error) throw new Error(produtosRes.error.message);
   if (armazensRes.error) throw new Error(armazensRes.error.message);
   if (contasRes.error) throw new Error(contasRes.error.message);
+  const camposCartao = await camposCartaoPromessa;
   if (formasPagamentoRes.error) throw new Error(formasPagamentoRes.error.message);
   if (titulosRes.error) throw new Error(titulosRes.error.message);
   if (gruposRes.error) throw new Error(gruposRes.error.message);
@@ -220,7 +223,7 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
       cnpjFornecedores={(fornecedoresTodosRes.data ?? []).filter((f) => f.cnpj).map((f) => ({ id: f.id, nome: f.nome, cnpj: f.cnpj as string }))}
       produtos={produtos}
       armazens={armazensRes.data ?? []}
-      contas={contasRes.data ?? []}
+      contas={contasParaSaida((contasRes.data ?? []).map((c) => ({ id: c.id, nome: c.nome })), camposCartao, new Map((contasRes.data ?? []).map((c) => [c.id, Number(c.saldo)])))}
       formasPagamento={formasPagamentoRes.data ?? []}
     />
   );
