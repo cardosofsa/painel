@@ -97,6 +97,24 @@ export const produtoSchema = z.object({
   origem_fiscal: z.number().int().min(0).max(8).optional(),
 });
 
+/**
+ * Edição de UMA variação por quantidade (0084/0094): nome, SKU, preço, custo próprio,
+ * composição extra (embalagem etc.) e medidas de envio. Estoque e custo calculado são do banco.
+ */
+export const variacaoEdicaoSchema = z.object({
+  id: uuid,
+  variante_nome: textoCurto,
+  sku: textoCurto,
+  preco_venda: dinheiro,
+  /** null = custo calculado (pai × N + composição extra). */
+  custo_manual: dinheiro.nullable(),
+  insumos_variacao: z.array(componenteKitSchema).max(30, "No máximo 30 itens na composição"),
+  peso_g: z.number().int().min(1).max(1_000_000).nullable(),
+  altura_cm: z.number().positive().max(1000).nullable(),
+  largura_cm: z.number().positive().max(1000).nullable(),
+  comprimento_cm: z.number().positive().max(1000).nullable(),
+});
+
 export const precificacaoSchema = z.object({
   produto_id: uuidOpcional,
   produto_nome: textoCurto,

@@ -5,6 +5,8 @@
  * montar o formulário. PURO, coberto por `variacoes.test.ts`.
  */
 
+import { custoDeInsumos, type ComponenteKit } from "./pricing";
+
 export const MAX_VARIACOES = 50;
 export const MAX_QUANTIDADE_VARIACAO = 100000;
 
@@ -28,6 +30,13 @@ export interface VariacaoSalva extends VariacaoForm {
   custo: number;
   estoque: number;
   ativo: boolean;
+  /** 0094: embalagem/insumos próprios da variação. Ausente antes da migração. */
+  insumos_variacao?: ComponenteKit[];
+  /** Medidas de envio da própria variação. */
+  peso_g?: number | null;
+  altura_cm?: number | null;
+  largura_cm?: number | null;
+  comprimento_cm?: number | null;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -43,9 +52,13 @@ export function custoPadrao(custoPai: number, n: number): number {
   return r2((Number.isFinite(custoPai) ? custoPai : 0) * Math.max(1, Math.floor(n)));
 }
 
-/** O custo que vale para a variação: o override, ou o padrão. */
-export function custoVariacao(custoPai: number, v: Pick<VariacaoForm, "quantidade" | "custo_manual">): number {
-  return v.custo_manual != null && Number.isFinite(v.custo_manual) ? r2(v.custo_manual) : custoPadrao(custoPai, v.quantidade);
+/**
+ * O custo que vale para a variação (igual ao trigger `variacao_custo`, 0094): o custo próprio
+ * como total, ou custo do pai × N + a composição extra (embalagem etc.).
+ */
+export function custoVariacao(custoPai: number, v: Pick<VariacaoForm, "quantidade" | "custo_manual"> & { insumos_variacao?: readonly ComponenteKit[] }): number {
+  if (v.custo_manual != null && Number.isFinite(v.custo_manual)) return r2(v.custo_manual);
+  return r2(custoPadrao(custoPai, v.quantidade) + custoDeInsumos([...(v.insumos_variacao ?? [])]));
 }
 
 /** Nome padrão: "1 un." para N = 1, "Kit N" para o resto (o mesmo do banco). */

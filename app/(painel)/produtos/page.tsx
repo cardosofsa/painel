@@ -5,6 +5,7 @@ import { lerFiltroProdutos, palavrasDaBusca, resumoDeEstoque, type ParamsUrl } f
 import { gruposPorPalavra, paginaDeProdutos } from "./consulta";
 import { semColuna } from "@/lib/variacoes-consulta";
 import type { VariacaoSalva } from "@/lib/variacoes";
+import type { ComponenteKit } from "@/lib/pricing";
 import { ProdutosClient, type Produto, type PrecoCanal } from "./ProdutosClient";
 import type { Metadata } from "next";
 
@@ -87,7 +88,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     ids.length
       ? supabase
           .from("produtos")
-          .select("id, produto_pai_id, variante_nome, quantidade_por_unidade, sku, custo, custo_manual, preco_venda, estoque, ativo")
+          .select("id, produto_pai_id, variante_nome, quantidade_por_unidade, sku, custo, custo_manual, preco_venda, estoque, ativo, insumos_variacao, peso_g, altura_cm, largura_cm, comprimento_cm")
           .in("produto_pai_id", ids)
           .order("quantidade_por_unidade")
       : vazio,
@@ -99,8 +100,17 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   // Produtos normalmente, só sem margem/markup por canal na lista e no resumo.
   if (precosCanalRes.error) console.error("[produtos] precos_canal_por_produto:", precosCanalRes.error.message);
 
-  if (variacoesRes.error && !semColuna(variacoesRes.error)) console.error("[produtos] variações:", variacoesRes.error.message);
-  const variacoes: VariacaoSalva[] = (variacoesRes.error ? [] : ((variacoesRes.data ?? []) as Record<string, unknown>[])).map((v) => ({
+  // Sem a 0094 as colunas novas não existem: recua para as da 0084 (a lista de sempre).
+  let variacoesLinhas: { data: unknown; error: { code?: string; message: string } | null } = variacoesRes;
+  if (variacoesRes.error && semColuna(variacoesRes.error) && ids.length) {
+    variacoesLinhas = await supabase
+      .from("produtos")
+      .select("id, produto_pai_id, variante_nome, quantidade_por_unidade, sku, custo, custo_manual, preco_venda, estoque, ativo, peso_g, altura_cm, largura_cm, comprimento_cm")
+      .in("produto_pai_id", ids)
+      .order("quantidade_por_unidade");
+  }
+  if (variacoesLinhas.error && !semColuna(variacoesLinhas.error)) console.error("[produtos] variações:", variacoesLinhas.error.message);
+  const variacoes: VariacaoSalva[] = (variacoesLinhas.error ? [] : ((variacoesLinhas.data ?? []) as Record<string, unknown>[])).map((v) => ({
     id: String(v.id),
     produto_pai_id: String(v.produto_pai_id),
     variante_nome: String(v.variante_nome ?? ""),
@@ -111,6 +121,11 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     preco_venda: Number(v.preco_venda ?? 0),
     estoque: Number(v.estoque ?? 0),
     ativo: v.ativo !== false,
+    insumos_variacao: Array.isArray(v.insumos_variacao) ? (v.insumos_variacao as ComponenteKit[]) : [],
+    peso_g: v.peso_g == null ? null : Number(v.peso_g),
+    altura_cm: v.altura_cm == null ? null : Number(v.altura_cm),
+    largura_cm: v.largura_cm == null ? null : Number(v.largura_cm),
+    comprimento_cm: v.comprimento_cm == null ? null : Number(v.comprimento_cm),
   }));
 
   const categoriasPorId = new Map((categoriasRes.data ?? []).map((c) => [c.id, c.nome]));
