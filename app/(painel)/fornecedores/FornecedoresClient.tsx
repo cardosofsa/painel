@@ -15,6 +15,7 @@ import Link from "next/link";
 import { formatBRL, formatarDataIso } from "@/lib/format";
 import { criarFornecedor, atualizarFornecedor, removerFornecedor, alternarStatusFornecedor, type FornecedorInput } from "./actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { ContaAbertaModal } from "@/components/fornecedores/ContaAbertaModal";
 import { DividaAntigaModal, type InicioDividaAntiga } from "@/components/financeiro/DividaAntigaModal";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 
@@ -36,7 +37,10 @@ export function FornecedoresClient({
   fornecedores,
   comprasNoTrimestre,
   emAberto,
+  contas,
 }: {
+  /** Contas de onde sai o pagamento da conta em aberto (0095). */
+  contas: { id: string; nome: string }[];
   fornecedores: Fornecedor[];
   comprasNoTrimestre: number;
   /** Quanto falta pagar por fornecedor (0064); null = migração ausente. */
@@ -47,6 +51,7 @@ export function FornecedoresClient({
   const totalAtrasado = Object.values(emAberto ?? {}).reduce((s, a) => s + a.atrasado, 0);
   const { confirm, ConfirmDialog } = useConfirm();
   const [modalAberto, setModalAberto] = useState(false);
+  const [contaAbertaDe, setContaAbertaDe] = useState<Fornecedor | null>(null);
   // Dívida de antes do sistema com um fornecedor (0067).
   const [divida, setDivida] = useState<InicioDividaAntiga | null>(null);
   const [editando, setEditando] = useState<Fornecedor | null>(null);
@@ -193,6 +198,7 @@ export function FornecedoresClient({
                     <RowMenu
                       actions={[
                         { label: "Editar", onClick: () => abrirEdicao(f) },
+                        { label: "Conta em aberto", onClick: () => setContaAbertaDe(f) },
                         { label: "Lançar dívida antiga", onClick: () => setDivida({ tipo: "pagar", fornecedorId: f.id }) },
                         { label: f.status === "ativo" ? "Desativar" : "Ativar", onClick: () => alternarStatus(f) },
                         { label: "Remover", onClick: () => remover(f), destructive: true },
@@ -241,6 +247,7 @@ export function FornecedoresClient({
         </div>
       </Modal>
       {ConfirmDialog}
+      {contaAbertaDe && <ContaAbertaModal key={`aberta-${contaAbertaDe.id}`} fornecedor={{ id: contaAbertaDe.id, nome: contaAbertaDe.nome }} contas={contas} onClose={() => setContaAbertaDe(null)} />}
       <DividaAntigaModal
         key={`divida-${divida?.fornecedorId ?? divida?.tipo ?? "fechado"}`}
         inicio={divida}

@@ -57,6 +57,8 @@ export function NovoPedidoModal({
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>(formasPagamento[0]?.nome ?? "");
   const [contaId, setContaId] = useState(contas[0]?.id ?? "");
   const [parcelado, setParcelado] = useState(false);
+  // 0095: deixa o valor em aberto na conta do fornecedor (sem parcelas), pago quando quiser.
+  const [emAberto, setEmAberto] = useState(false);
   const [parcelas, setParcelas] = useState(2);
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(() => hojeIsoLocal());
   const [intervaloDias, setIntervaloDias] = useState(30);
@@ -65,7 +67,7 @@ export function NovoPedidoModal({
   // basta comparar contra os valores de abertura pra saber se há algo pra perder — não
   // precisa de um `formOriginal` capturado por efeito.
   const sujo = useFormularioSujo(
-    { fornecedorId, armazemId, nf, temNfArquivo: !!nfArquivo, dataEntregaPrevista, formaPagamento, contaId, parcelado, parcelas, itens },
+    { fornecedorId, armazemId, nf, temNfArquivo: !!nfArquivo, dataEntregaPrevista, formaPagamento, contaId, parcelado, emAberto, parcelas, itens },
     {
       fornecedorId: fornecedorPadrao,
       armazemId: armazens[0]?.id ?? "",
@@ -75,6 +77,7 @@ export function NovoPedidoModal({
       formaPagamento: formasPagamento[0]?.nome ?? "",
       contaId: contas[0]?.id ?? "",
       parcelado: false,
+      emAberto: false,
       parcelas: 2,
       itens: itensIniciais(pedidoInicial),
     },
@@ -158,6 +161,7 @@ export function NovoPedidoModal({
           forma_pagamento: formaPagamento,
           conta_id: contaId,
           parcelado,
+          em_aberto: emAberto,
           parcelas: parcelado ? parcelas : null,
           intervalo_dias: intervaloDias,
           data_primeiro_vencimento: parcelado ? dataPrimeiraParcela : dataPedido,
@@ -249,23 +253,33 @@ export function NovoPedidoModal({
       </div>
       <FormField label="Pagamento">
         <div className="flex h-9 rounded-md border border-border overflow-hidden text-sm">
-          <button
-            type="button"
-            onClick={() => setParcelado(false)}
-            className={`flex-1 ${!parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
-          >
-            À vista (já paguei)
-          </button>
-          <button
-            type="button"
-            onClick={() => setParcelado(true)}
-            className={`flex-1 border-l border-border ${parcelado ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
-          >
-            A prazo
-          </button>
+          {(
+            [
+              ["vista", "À vista (já paguei)", !parcelado && !emAberto],
+              ["prazo", "A prazo", parcelado],
+              ["aberto", "Deixar em aberto", emAberto],
+            ] as const
+          ).map(([modo, rotulo, ativo], i) => (
+            <button
+              key={modo}
+              type="button"
+              onClick={() => {
+                setParcelado(modo === "prazo");
+                setEmAberto(modo === "aberto");
+              }}
+              className={`flex-1 px-1 ${i > 0 ? "border-l border-border" : ""} ${ativo ? "bg-accent text-accent-on" : "bg-surface-1 text-text-secondary hover:bg-surface-2"}`}
+            >
+              {rotulo}
+            </button>
+          ))}
         </div>
       </FormField>
-      {!parcelado && <p className="-mt-2 mb-4 text-xs text-text-tertiary">Sai da conta escolhida na data do pedido e já fica quitado.</p>}
+      {!parcelado && !emAberto && <p className="-mt-2 mb-4 text-xs text-text-tertiary">Sai da conta escolhida na data do pedido e já fica quitado.</p>}
+      {emAberto && (
+        <p className="-mt-2 mb-4 text-xs text-text-tertiary">
+          O valor soma ao que você deve a este fornecedor, sem parcelas nem vencimento. Você abate quando quiser, em Fornecedores → Conta em aberto (a conta escolhida só é usada nos pagamentos).
+        </p>
+      )}
       {parcelado && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -39,6 +39,7 @@ export function DetalhePedidoModal({ pedido, contas, onClose }: { pedido: Pedido
           </Campo>
           <Campo rotulo="Forma de pagamento">
             {pedido.forma_pagamento ?? "—"}
+            {pedido.em_aberto_fornecedor ? " · em aberto no fornecedor (sem parcelas)" : ""}
             {pedido.pagamento && pedido.pagamento.total > 0 && (pedido.pagamento.total > 1 || pedido.pagamento.quitadas === 0) ? ` · a prazo${pedido.pagamento.total > 1 ? ` em ${pedido.pagamento.total}x` : ""}` : pedido.parcelas && pedido.parcelas > 1 ? ` em ${pedido.parcelas}x` : ""}
           </Campo>
           <Campo rotulo="Conta">{pedido.conta_nome ?? "—"}</Campo>

@@ -29,6 +29,7 @@ export const TABELAS_BACKUP = [
   "venda_itens",
   "venda_parcelas",
   "contas_a_pagar_receber",
+  "fornecedor_lancamentos",
   "movimentacoes_financeiras",
   "estoque_movimentacoes",
   "catalogos",

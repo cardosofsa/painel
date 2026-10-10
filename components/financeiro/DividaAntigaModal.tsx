@@ -9,6 +9,7 @@ import { formatBRL, formatarDataIso, hojeIsoLocal, numeroOuNulo } from "@/lib/fo
 import { parcelasDividaAntiga } from "@/lib/pagamentos";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { lancarDividaAntiga } from "@/app/(painel)/financeiro/pagamentos-actions";
+import { lancarDividaAberta } from "@/app/(painel)/fornecedores/conta-aberta-actions";
 
 export interface Pessoa {
   id: string;
@@ -53,6 +54,8 @@ export function DividaAntigaModal({
   // Dívida que não é de fornecedor (o computador da empresa, um empréstimo, o cartão): o banco
   // aceita conta a pagar sem fornecedor; "com quem" vai na descrição.
   const [credor, setCredor] = useState("");
+  // 0095: sem parcelas — vira saldo na conta em aberto do fornecedor, pago quando quiser.
+  const [semParcelas, setSemParcelas] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [inicial] = useState({ total: "", jaPago: "", parcelas: "1" });
   const sujo = useFormularioSujo({ total, jaPago, parcelas }, inicial);
@@ -61,6 +64,8 @@ export function DividaAntigaModal({
   const jaPagoN = numeroOuNulo(jaPago) ?? 0;
   const nParcelas = Math.min(48, Math.max(1, Math.trunc(numeroOuNulo(parcelas) ?? 1)));
   const semFornecedor = tipo === "pagar" && fornecedorId === "SEM_FORNECEDOR";
+  const podeSemParcelas = tipo === "pagar" && !!fornecedorId && !semFornecedor;
+  const emContaAberta = podeSemParcelas && semParcelas;
   const quem = tipo === "pagar" ? fornecedorId : clienteId;
   const previa = useMemo(
     () => (totalN > 0 && primeiro && jaPagoN <= totalN ? parcelasDividaAntiga(totalN, jaPagoN, nParcelas, primeiro, intervalo) : []),
@@ -76,11 +81,28 @@ export function DividaAntigaModal({
         ? "Informe o valor total."
         : jaPagoN > totalN
           ? "O já pago passa do total."
-          : null;
+          : emContaAberta && totalN - jaPagoN <= 0
+            ? "Não sobra nada em aberto. Use um valor maior que o já pago."
+            : null;
 
   async function salvar() {
     if (erro) return;
     setSalvando(true);
+    if (emContaAberta) {
+      // Só o que ainda se deve entra na conta em aberto; o já pago ficou no passado, fora do caixa.
+      const aberto = Math.round((totalN - jaPagoN) * 100) / 100;
+      if (aberto <= 0) {
+        setSalvando(false);
+        return;
+      }
+      const r = await executarComToast(lancarDividaAberta({ fornecedor_id: fornecedorId, valor: aberto, data: null, descricao: descricao.trim() || null }), {
+        sucesso: "Dívida lançada na conta em aberto do fornecedor",
+        erro: "Erro ao lançar",
+      });
+      setSalvando(false);
+      if (r.ok) onClose();
+      return;
+    }
     const r = await executarComToast(
       lancarDividaAntiga({
         tipo,
@@ -151,6 +173,17 @@ export function DividaAntigaModal({
       <FormField label="Descrição">
         <input className={inputClass} value={descricao} maxLength={150} onChange={(e) => setDescricao(e.target.value)} />
       </FormField>
+      {podeSemParcelas && (
+        <label className="mb-3 flex items-start gap-2 rounded-md border border-border p-3 text-sm cursor-pointer">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-accent" checked={semParcelas} onChange={(e) => setSemParcelas(e.target.checked)} />
+          <span>
+            <span className="font-medium text-text-primary">Sem parcelas — eu pago quando puder</span>
+            <span className="block text-xs text-text-tertiary">
+              Fica como saldo em aberto com este fornecedor (sem vencimento, sem alerta de atraso). Você abate com Pix quando quiser, em Fornecedores → Conta em aberto.
+            </span>
+          </span>
+        </label>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <FormField label="Valor total da dívida (R$)">
           <input className={inputClass} inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0,00" />
@@ -158,14 +191,24 @@ export function DividaAntigaModal({
         <FormField label="Já pago (R$)" dica="Se já pagou uma parte antes.">
           <input className={inputClass} inputMode="decimal" value={jaPago} onChange={(e) => setJaPago(e.target.value)} placeholder="0,00" />
         </FormField>
-        <FormField label="Parcelas">
-          <input className={inputClass} inputMode="numeric" value={parcelas} onChange={(e) => setParcelas(e.target.value)} />
-        </FormField>
-        <FormField label="1º vencimento">
-          <input type="date" className={inputClass} value={primeiro} onChange={(e) => setPrimeiro(e.target.value)} />
-        </FormField>
+        {!emContaAberta && (
+          <FormField label="Parcelas">
+            <input className={inputClass} inputMode="numeric" value={parcelas} onChange={(e) => setParcelas(e.target.value)} />
+          </FormField>
+        )}
+        {!emContaAberta && (
+          <FormField label="1º vencimento">
+            <input type="date" className={inputClass} value={primeiro} onChange={(e) => setPrimeiro(e.target.value)} />
+          </FormField>
+        )}
       </div>
-      {nParcelas > 1 && (
+      {emContaAberta && totalN > 0 && jaPagoN <= totalN && (
+        <p className="mb-4 rounded-md bg-surface-2 px-3 py-2 text-xs text-text-secondary">
+          Entra na conta em aberto: <span className="font-mono text-text-primary">{formatBRL(emAberto)}</span>
+          {jaPagoN > 0 ? ` (os ${formatBRL(jaPagoN)} já pagos ficam de fora)` : ""}.
+        </p>
+      )}
+      {!emContaAberta && nParcelas > 1 && (
         <FormField label="Intervalo">
           <select className={inputClass} value={intervalo} onChange={(e) => setIntervalo(Number(e.target.value))}>
             <option value={7}>Toda semana</option>
@@ -180,7 +223,7 @@ export function DividaAntigaModal({
           {formatBRL(jaPagoN)} já pagos ficam registrados como quitados; as parcelas dividem só o que fica em aberto.
         </p>
       )}
-      {previa.length > 0 && (
+      {!emContaAberta && previa.length > 0 && (
         <div className="rounded-md border border-border mb-4">
           <div className="flex justify-between px-3 py-2 text-sm border-b border-border bg-surface-2">
             <span className="text-text-secondary">Fica em aberto</span>

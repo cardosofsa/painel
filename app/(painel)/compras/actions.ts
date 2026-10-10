@@ -29,6 +29,8 @@ export interface PedidoCompraInput {
   forma_pagamento: FormaPagamento;
   conta_id: string;
   parcelado: boolean;
+  /** 0095: o valor fica em aberto na conta do fornecedor, sem parcelas (paga quando quiser). */
+  em_aberto?: boolean;
   parcelas: number | null;
   intervalo_dias?: number;
   data_primeiro_vencimento: string;
@@ -89,6 +91,24 @@ async function gravarPedido(
   const itensParaInserir = v.itens.map((it) => ({ ...it, pedido_compra_id: pedido.id }));
   const { error: erroItens } = await supabase.from("pedidos_compra_itens").insert(itensParaInserir);
   if (erroItens) lancarErroSupabase(erroItens);
+
+  // Conta em aberto (0095): soma ao saldo do fornecedor, sem parcelas. Se falhar, o pedido não fica pela metade.
+  if (v.em_aberto) {
+    const { error } = await supabase.rpc("lancar_em_aberto_fornecedor", {
+      p_fornecedor: v.fornecedor_id,
+      p_valor: valorTotal,
+      p_descricao: `Pedido ${pedido.numero}`,
+      p_data: v.data_pedido,
+      p_tipo: "compra",
+      p_pedido: pedido.id,
+    });
+    if (error) {
+      await supabase.from("pedidos_compra").delete().eq("id", pedido.id);
+      if (error.code === "PGRST202") throw new Error("Deixar em aberto precisa da migração 0095. Aplique no Supabase e tente de novo.");
+      lancarErroSupabase(error);
+    }
+    return pedido;
+  }
 
   // Duplicatas da nota (0065): cada parcela com o valor e o vencimento que vieram no XML.
   if (extra.parcelasNota?.length) {

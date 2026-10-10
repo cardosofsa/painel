@@ -124,6 +124,8 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
 
   // 0092: campos de cartão em consulta à parte (sem a migração, tudo segue como conta comum).
   const camposCartaoPromessa = carregarCamposCartao(supabase);
+  // 0095: extrato das contas em aberto com fornecedores (só soma por fornecedor). Sem a migração, nenhum.
+  const contaAbertaPromessa = supabase.from("fornecedor_lancamentos").select("fornecedor_id, tipo, valor").limit(20000);
 
   const [
     contasRes,
@@ -238,6 +240,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   // de caixa, contas a pagar e lançamentos junto.
   if (contasRes.error) lancarErroSupabase(contasRes.error);
   const contasTipadas = comCamposCartao(contasRes.data ?? [], await camposCartaoPromessa);
+  const contaAbertaRes = await contaAbertaPromessa;
   if (movimentacoesRes.error) lancarErroSupabase(movimentacoesRes.error);
   if (despesasRes.error) lancarErroSupabase(despesasRes.error);
   if (cprRes.error) lancarErroSupabase(cprRes.error);
@@ -443,8 +446,19 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   ].sort((a, b) => b.data.localeCompare(a.data));
 
 
+  // Saldo por fornecedor da conta em aberto (sem data: fica fora de vencidas, calendário e projeção).
+  const saldoAberto = new Map<string, number>();
+  for (const l of contaAbertaRes.error ? [] : ((contaAbertaRes.data ?? []) as { fornecedor_id: string; tipo: string; valor: number | string }[])) {
+    saldoAberto.set(l.fornecedor_id, (saldoAberto.get(l.fornecedor_id) ?? 0) + (l.tipo === "pagamento" ? -Number(l.valor) : Number(l.valor)));
+  }
+  const contaAberta = [...saldoAberto.entries()]
+    .map(([id, saldo]) => ({ fornecedor_id: id, fornecedor_nome: nomeFornecedor.get(id) ?? "Fornecedor", saldo: Math.round(saldo * 100) / 100 }))
+    .filter((c) => c.saldo > 0.004)
+    .sort((a, b) => b.saldo - a.saldo);
+
   return (
     <FinanceiroClient
+      contaAberta={contaAberta}
       // Remonta ao trocar de `?aba=` (link da Vixe estando já no Financeiro).
       key={aba ?? "visao"}
       contas={contasTipadas}

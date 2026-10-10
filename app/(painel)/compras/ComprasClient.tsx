@@ -57,6 +57,8 @@ export interface Pedido {
   conta_nome: string | null;
   /** Parcelas a pagar do pedido (0064): pagas, em aberto, atraso. null = sem parcelas. */
   pagamento?: ResumoPagamento | null;
+  /** 0095: o valor foi deixado em aberto na conta do fornecedor (sem parcelas). */
+  em_aberto_fornecedor?: boolean;
   itens: ItemPedido[];
 }
 
@@ -365,7 +367,7 @@ export function ComprasClient({
                               {formatBRL(p.valor_total)}
                             </Td>
                             <Td className="cursor-pointer" onClick={() => setDetalhe(p)}>
-                              <CelulaPagamento pagamento={p.pagamento ?? null} />
+                              <CelulaPagamento pagamento={p.pagamento ?? null} emAbertoFornecedor={!!p.em_aberto_fornecedor} />
                             </Td>
                             <Td>
                               <StatusChip label={st.rotulo} tone={st.tom} />
@@ -449,7 +451,8 @@ export function ComprasClient({
 }
 
 /** "2/5 pagas · R$ 300 em aberto" (vermelho com parcela atrasada). */
-function CelulaPagamento({ pagamento }: { pagamento: ResumoPagamento | null }) {
+function CelulaPagamento({ pagamento, emAbertoFornecedor }: { pagamento: ResumoPagamento | null; emAbertoFornecedor: boolean }) {
+  if (emAbertoFornecedor && (!pagamento || pagamento.total === 0)) return <StatusChip label="Em aberto no fornecedor" tone="neutral" />;
   if (!pagamento || pagamento.total === 0) return <span className="text-text-tertiary">—</span>;
   if (pagamento.emAberto <= 0) return <StatusChip label="Quitado" tone="positive" />;
   return (
