@@ -1,3 +1,4 @@
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { curvaAbc, giroEstoque, valorPorArmazem, valorPorCategoria, type ProdutoValor } from "@/lib/estoque-valor";
@@ -15,7 +16,11 @@ export default async function ValorEstoquePage() {
   const desde = new Date(agora.getTime() - JANELA * 86_400_000).toISOString();
 
   const [produtosRes, gruposRes, categoriasRes, armazensRes, saldosRes, saidasRes, movsRes] = await Promise.all([
-    supabase.from("produtos").select("id, sku, nome, custo, estoque, categoria_id, armazem_id, grupo_id, variante_nome").eq("ativo", true),
+    // Só produtos principais: o estoque da variação (0084) é o do pai, derivado.
+    semVariacoesFilhas((filtrar) => {
+      const q = supabase.from("produtos").select("id, sku, nome, custo, estoque, categoria_id, armazem_id, grupo_id, variante_nome").eq("ativo", true);
+      return filtrar ? q.is("produto_pai_id", null) : q;
+    }),
     supabase.from("produto_grupos").select("id, nome"),
     supabase.from("categorias").select("id, nome"),
     supabase.from("armazens").select("id, nome").order("criado_em"),

@@ -1,3 +1,4 @@
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 import { carregarCamposCartao, contasParaSaida } from "@/lib/contas-cartao-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
@@ -53,10 +54,11 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
         .limit(500),
       supabase.from("fornecedores").select("id, nome").eq("status", "ativo").order("nome"),
       supabase.from("fornecedores").select("id, nome, cnpj, prazo"),
-      supabase
-        .from("produtos")
-        .select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo, codigo_barras")
-        .order("nome"),
+      // A compra entra no produto principal: a variação (0084) não é item de pedido.
+      semVariacoesFilhas((filtrar) => {
+        const q = supabase.from("produtos").select("id, sku, nome, custo, grupo_id, variante_nome, fornecedor_id, estoque, estoque_minimo, saida_media_semanal, ativo, codigo_barras");
+        return (filtrar ? q.is("produto_pai_id", null) : q).order("nome");
+      }),
       supabase.from("armazens").select("id, nome").order("nome"),
       supabase.from("contas").select("id, nome, saldo").order("nome"),
       supabase.from("formas_pagamento").select("id, nome").order("nome"),
