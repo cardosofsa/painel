@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { calcularKit, nomeDoKit, type EntradaKit } from "./kit";
 
 const itens = [
-  { produtoId: "a", nome: "Caneca", quantidade: 2, custo: 10, preco: 30 },
-  { produtoId: "b", nome: "Pires", quantidade: 1, custo: 5, preco: 15 },
+  { id: "a", produtoId: "a", nome: "Caneca", quantidade: 2, custo: 10, preco: 30 },
+  { id: "b", produtoId: "b", nome: "Pires", quantidade: 1, custo: 5, preco: 15 },
 ];
 const base: EntradaKit = { itens, extra: 3, loja: null, impostoPct: 0, modo: "preco", parametro: 60 };
 
@@ -37,5 +37,21 @@ describe("kit", () => {
 
   it("nome sugerido", () => {
     expect(nomeDoKit(itens)).toBe("Kit 2 Caneca + 1 Pires");
+  });
+});
+
+describe("kit com item que ainda não está cadastrado", () => {
+  const livre = { id: "livre-1", produtoId: null, nome: "Caneca nova", quantidade: 2, custo: 10, preco: 30 };
+  const entrada = { extra: 0, loja: null, impostoPct: 6, modo: "desconto" as const, parametro: 10 };
+  it("tem o mesmo custo e preço que o item cadastrado igual", () => {
+    const cadastrado = calcularKit({ ...entrada, itens: [{ ...livre, id: "a", produtoId: "a" }] });
+    const semCadastro = calcularKit({ ...entrada, itens: [livre] });
+    expect(semCadastro.custoKit).toBe(cadastrado.custoKit);
+    expect(semCadastro.resultado.precoVenda).toBe(cadastrado.resultado.precoVenda);
+  });
+  it("mistura item cadastrado e sem cadastro", () => {
+    const r = calcularKit({ ...entrada, itens: [{ id: "b", produtoId: "b", nome: "Pires", quantidade: 1, custo: 5, preco: 15 }, livre] });
+    expect(r.custoKit).toBe(25);
+    expect(r.precoAvulso).toBe(75);
   });
 });

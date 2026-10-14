@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "sonner";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, classesBotao } from "@/components/ui/Button";
@@ -45,6 +46,7 @@ import { ProdutoFormModal } from "@/components/produtos/ProdutoFormModal";
 import { VariacoesProdutoModal } from "@/components/produtos/VariacoesProdutoModal";
 import { SubAbas } from "@/components/vendas/central/SubAbas";
 import { InsumoFormModal } from "@/components/produtos/InsumoFormModal";
+import { skuMudou, textoConfirmacaoSku } from "@/lib/sku-troca";
 import { dadosDaCopia } from "@/lib/produto-copia";
 import { VariacaoDetalheModal } from "@/components/produtos/VariacaoDetalheModal";
 import { variacoesPorPai, type VariacaoSalva } from "@/lib/variacoes";
@@ -422,8 +424,14 @@ export function ProdutosClient({
     });
   }
 
-  function salvar() {
+  async function salvar() {
     if (!form.nome.trim() || !form.sku.trim()) return;
+    // Trocar o SKU muda a "chave" do produto (NF-e, planilhas, ERP): pede confirmação antes.
+    if (editando && skuMudou(editando.sku, form.sku)) {
+      const t = textoConfirmacaoSku(editando.sku, form.sku);
+      const ok = await confirm({ title: t.titulo, message: t.mensagem, confirmLabel: "Alterar SKU" });
+      if (!ok) return;
+    }
     startTransition(async () => {
       const r = editando
         ? await executarComToast(atualizarProduto(editando.id, form), {
@@ -434,7 +442,11 @@ export function ProdutosClient({
             sucesso: "Produto cadastrado",
             erro: "Erro ao salvar produto",
           });
-      if (r.ok) setModalAberto(false);
+      if (r.ok) {
+        setModalAberto(false);
+        const preservados = editando && r.dado ? ((r.dado as { vinculosPreservados?: number }).vinculosPreservados ?? 0) : 0;
+        if (preservados > 0) toast.info(`${preservados} ${preservados === 1 ? "anúncio continua ligado" : "anúncios continuam ligados"} a este produto, mesmo com o SKU novo.`);
+      }
     });
   }
 

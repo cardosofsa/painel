@@ -47,13 +47,25 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
   const nomeFinal = nome.trim() || nomeDoKit(itens);
 
   function adicionar(p: ProdutoOpcao) {
-    setItens((x) => [...x, { produtoId: p.id, nome: p.nome, quantidade: 1, custo: Number(p.custo), preco: Number(p.preco_venda) }]);
+    setItens((x) => [...x, { id: p.id, produtoId: p.id, nome: p.nome, quantidade: 1, custo: Number(p.custo), preco: Number(p.preco_venda) }]);
     setBusca("");
   }
 
+  /** Item que ainda não existe no cadastro: o dono digita nome, custo e preço avulso. */
+  function adicionarSemCadastro() {
+    setItens((x) => [...x, { id: `livre-${crypto.randomUUID()}`, produtoId: null, nome: "", quantidade: 1, custo: 0, preco: 0 }]);
+  }
+
+  function mudarItem(id: string, parcial: Partial<ItemKit>) {
+    setItens((x) => x.map((y) => (y.id === id ? { ...y, ...parcial } : y)));
+  }
+
+  const semCadastro = itens.filter((i) => i.produtoId === null);
+  const semNome = semCadastro.some((i) => !i.nome.trim());
+
   function salvar(criarProduto: boolean) {
     const res = r.resultado;
-    if (!res.viavel || !itens.length) return;
+    if (!res.viavel || !itens.length || semNome) return;
     const taxaFixa = Math.max(0, res.precoVenda - res.custoTotal - res.lucroLiquido - res.taxaVariavelValor - res.taxaAdicionalValor - res.impostoValor - res.taxaExtraCalculada);
     startTransition(async () => {
       const s = await executarComToast(
@@ -64,7 +76,8 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           titulo_anuncio: null,
           loja_id: loja?.id ?? null,
           componentes: [
-            ...itens.map((i) => ({ id: i.produtoId, nome: i.nome, quantidade: i.quantidade, custoUnitario: i.custo, produtoId: i.produtoId })),
+            // Item sem cadastro entra só como custo (sem `produtoId`): não há estoque para baixar.
+            ...itens.map((i) => ({ id: i.id, nome: i.nome.trim() || "Item", quantidade: i.quantidade, custoUnitario: i.custo, ...(i.produtoId ? { produtoId: i.produtoId } : {}) })),
             ...(extra > 0 ? [{ id: "embalagem-kit", nome: "Embalagem do kit", quantidade: 1, custoUnitario: extra }] : []),
           ],
           taxa_extra_valor: loja?.taxaExtraValor ?? null,
@@ -83,6 +96,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
       );
       if (!s.ok) return;
       if (!criarProduto || !s.dado.id) return void toast.success("Kit salvo em Precificações salvas.");
+      // (o botão de criar produto só fica ativo sem item "sem cadastro")
       const p = await executarComToast(criarProdutoDePrecificacao(s.dado.id, { kit: true }), { erro: "Kit salvo, mas não deu para criar o produto" });
       if (p.ok) toast.success(`Kit "${nomeFinal}" criado: vender o kit baixa cada item, e o estoque dele é quantos dá para montar.`);
     });
@@ -93,8 +107,11 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
       <div className="lg:col-span-2 space-y-5">
         <Card>
           <h3 className="text-sm font-medium text-text-primary mb-3">Itens do kit</h3>
-          <div className="relative mb-3">
+          <div className="relative mb-3 flex gap-2">
             <input className={inputClass} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto pelo nome ou SKU para adicionar…" aria-label="Adicionar produto ao kit" />
+            <Button type="button" variant="secondary" className="shrink-0" onClick={adicionarSemCadastro}>
+              + Item sem cadastro
+            </Button>
             {sugestoes.length > 0 && (
               <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface-1 border border-border rounded-md shadow-elev-2 max-h-60 overflow-auto">
                 {sugestoes.map((p) => (
@@ -111,28 +128,44 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
             )}
           </div>
           {itens.length === 0 ? (
-            <p className="text-sm text-text-tertiary text-center py-6">Adicione os produtos que vão no kit (ex.: 2 canecas + 1 pires).</p>
+            <p className="text-sm text-text-tertiary text-center py-6">Adicione os produtos que vão no kit (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use &quot;+ Item sem cadastro&quot; e informe nome, custo e preço.</p>
           ) : (
             <div className="divide-y divide-border border border-border rounded-md">
-              {itens.map((i) => (
-                <div key={i.produtoId} className="grid grid-cols-[minmax(0,1fr)_5rem_auto] sm:grid-cols-[minmax(0,1fr)_5rem_7rem_7rem_auto] items-center gap-2 px-3 py-2 text-sm">
-                  <span className="truncate text-text-primary" title={i.nome}>
-                    {i.nome}
-                  </span>
-                  <CampoNumero padrao={1}
-                    min={1}
-                    className={`${inputClass} h-8 text-right`}
-                    value={i.quantidade}
-                    aria-label={`Quantidade de ${i.nome}`}
-                    onChange={(n) => setItens((x) => x.map((y) => (y.produtoId === i.produtoId ? { ...y, quantidade: Math.max(1, Math.floor(n)) } : y)))}
-                  />
-                  <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">custo {formatBRL(i.custo * i.quantidade)}</span>
-                  <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">avulso {formatBRL(i.preco * i.quantidade)}</span>
-                  <IconButton aria-label={`Tirar ${i.nome}`} onClick={() => setItens((x) => x.filter((y) => y.produtoId !== i.produtoId))}>
-                    <Trash2 size={14} />
-                  </IconButton>
-                </div>
-              ))}
+              {itens.map((i) =>
+                i.produtoId === null ? (
+                  <div key={i.id} className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_5rem_7rem_7rem_auto] items-center gap-2 px-3 py-2 text-sm bg-surface-2/40">
+                    <div className="col-span-2 sm:col-span-1 flex items-center gap-2 min-w-0">
+                      <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary">sem cadastro</span>
+                      <input className={`${inputClass} h-8`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item" onChange={(e) => mudarItem(i.id, { nome: e.target.value })} />
+                    </div>
+                    <CampoNumero padrao={1} min={1} className={`${inputClass} h-8 text-right`} value={i.quantidade} aria-label={`Quantidade de ${i.nome || "item"}`} onChange={(n) => mudarItem(i.id, { quantidade: Math.max(1, Math.floor(n)) })} />
+                    <CampoNumero className={`${inputClass} h-8 text-right`} value={i.custo} aria-label={`Custo unitário de ${i.nome || "item"}`} placeholder="custo un." onChange={(n) => mudarItem(i.id, { custo: Math.max(0, n) })} />
+                    <CampoNumero className={`${inputClass} h-8 text-right`} value={i.preco} aria-label={`Preço avulso de ${i.nome || "item"}`} placeholder="preço avulso" onChange={(n) => mudarItem(i.id, { preco: Math.max(0, n) })} />
+                    <IconButton aria-label={`Tirar ${i.nome || "item"}`} onClick={() => setItens((x) => x.filter((y) => y.id !== i.id))}>
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </div>
+                ) : (
+                  <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_5rem_auto] sm:grid-cols-[minmax(0,1fr)_5rem_7rem_7rem_auto] items-center gap-2 px-3 py-2 text-sm">
+                    <span className="truncate text-text-primary" title={i.nome}>
+                      {i.nome}
+                    </span>
+                    <CampoNumero
+                      padrao={1}
+                      min={1}
+                      className={`${inputClass} h-8 text-right`}
+                      value={i.quantidade}
+                      aria-label={`Quantidade de ${i.nome}`}
+                      onChange={(n) => mudarItem(i.id, { quantidade: Math.max(1, Math.floor(n)) })}
+                    />
+                    <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">custo {formatBRL(i.custo * i.quantidade)}</span>
+                    <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">avulso {formatBRL(i.preco * i.quantidade)}</span>
+                    <IconButton aria-label={`Tirar ${i.nome}`} onClick={() => setItens((x) => x.filter((y) => y.id !== i.id))}>
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </div>
+                ),
+              )}
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -198,12 +231,18 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           )}
         </Card>
         <Card className="space-y-2">
-          <Button variant="primary" className="w-full" disabled={!r.resultado.viavel || !itens.length} loading={pending} onClick={() => salvar(true)}>
+          <Button variant="primary" className="w-full" disabled={!r.resultado.viavel || !itens.length || semCadastro.length > 0} loading={pending} onClick={() => salvar(true)}>
             <PackagePlus size={14} /> Salvar e criar produto
           </Button>
-          <Button variant="secondary" className="w-full" disabled={!r.resultado.viavel || !itens.length || pending} onClick={() => salvar(false)}>
+          <Button variant="secondary" className="w-full" disabled={!r.resultado.viavel || !itens.length || pending || semNome} onClick={() => salvar(false)}>
             Só salvar a precificação
           </Button>
+          {semCadastro.length > 0 && (
+            <p className="text-[11px] text-text-tertiary">
+              {semNome ? "Dê um nome a cada item sem cadastro para salvar. " : ""}
+              Para criar o produto kit, cadastre {semCadastro.length === 1 ? "o item sem cadastro" : "os itens sem cadastro"}: o kit baixa o estoque de cada item. Você pode salvar só a precificação agora.
+            </p>
+          )}
           <p className="text-[11px] text-text-tertiary">O kit nasce com os itens na composição: o custo é a soma deles e o estoque é quantos kits dá para montar. Vender o kit baixa cada item.</p>
         </Card>
       </div>
