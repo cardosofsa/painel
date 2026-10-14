@@ -281,6 +281,7 @@ export function VariacoesView({
         </div>
         <div className="mb-4">
           <label className="text-xs text-text-secondary mb-1.5 block">Vincular Produto (opcional)</label>
+          <p className="text-[11px] text-text-tertiary mb-1.5">Produto ainda não cadastrado? Deixe em &quot;Nenhum&quot; e informe o custo unitário base abaixo: dá para precificar e salvar do mesmo jeito.</p>
           <select value={produtoId ?? ""} onChange={(e) => setProdutoId(e.target.value || null)} className={inputClass}>
             <option value="">Nenhum</option>
             {produtos.map((p) => (

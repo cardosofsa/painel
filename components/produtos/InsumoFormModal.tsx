@@ -7,6 +7,8 @@ import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { Modal, FormField, inputClass } from "@/components/ui/Modal";
 import { ProductThumb } from "@/components/ui/ProductThumb";
 import { CamposEnvio, type DimensoesEnvio } from "@/components/produtos/CamposEnvio";
+import { useConfirm } from "@/components/ui/ConfirmModal";
+import { skuMudou, textoConfirmacaoSku } from "@/lib/sku-troca";
 import { executarComToast } from "@/lib/acao-cliente";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
@@ -87,6 +89,7 @@ export function InsumoFormModal({
 }) {
   const editando = !!produto && !copia;
   const [pending, startTransition] = useTransition();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [inicial] = useState(() => camposDe(produto, copia, armazens[0]?.id ?? "", tipoInicial));
   const [c, setC] = useState<Campos>(inicial);
   const sujo = useFormularioSujo(c, inicial) || copia;
@@ -100,8 +103,12 @@ export function InsumoFormModal({
     if (r) atualiza({ imagemUrl: r.publicUrl });
   }
 
-  function salvar() {
+  async function salvar() {
     if (!valido) return;
+    if (editando && produto && skuMudou(produto.sku, c.sku)) {
+      const t = textoConfirmacaoSku(produto.sku, c.sku);
+      if (!(await confirm({ title: t.titulo, message: t.mensagem, confirmLabel: "Alterar SKU" }))) return;
+    }
     const dados: ProdutoInput = {
       sku: c.sku.trim(),
       nome: c.nome.trim(),
@@ -168,7 +175,8 @@ export function InsumoFormModal({
       </FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <FormField label="SKU / código">
-          <input className={`${inputClass} font-mono`} value={c.sku} disabled={editando} onChange={(e) => atualiza({ sku: e.target.value })} />
+          <input className={`${inputClass} font-mono`} value={c.sku} onChange={(e) => atualiza({ sku: e.target.value })} />
+          {editando && produto && skuMudou(produto.sku, c.sku) && <p className="mt-1 text-xs text-text-tertiary">Você está mudando o SKU. Vai pedir confirmação ao salvar.</p>}
         </FormField>
         <FormField label="Custo unitário (R$)" dica="Quanto custa cada unidade. Entra na composição de custo dos produtos que usam este item.">
           <CampoNumero className={inputClass} value={c.custo} onChange={(n) => atualiza({ custo: n })} />
@@ -248,6 +256,7 @@ export function InsumoFormModal({
           Salvar
         </Button>
       </div>
+      {ConfirmDialog}
     </Modal>
   );
 }

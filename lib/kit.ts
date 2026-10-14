@@ -10,7 +10,10 @@ import { resolverComFaixas, resultadoParaPrecoComFaixas, type FaixaComissao, typ
 import type { LojaOpcao } from "./precificacao-tipos";
 
 export interface ItemKit {
-  produtoId: string;
+  /** Chave da linha na tela: o id do produto, ou um id próprio do item sem cadastro. */
+  id: string;
+  /** null = item que ainda não existe no cadastro (precifica pelo nome, custo e preço digitados). */
+  produtoId: string | null;
   nome: string;
   quantidade: number;
   custo: number;

@@ -16,6 +16,7 @@ import { CamposEnvio, type DimensoesEnvio } from "@/components/produtos/CamposEn
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { formatBRL } from "@/lib/format";
+import { skuMudou } from "@/lib/sku-troca";
 import { custoComposto, type ComponenteKit } from "@/lib/pricing";
 import { gerarDescricaoProdutoIA, type ProdutoInput } from "@/app/(painel)/produtos/actions";
 import type { Produto } from "@/app/(painel)/produtos/ProdutosClient";
@@ -125,9 +126,11 @@ export function ProdutoFormModal({
           <input
             className={inputClass}
             value={form.sku}
-            disabled={!!editando}
             onChange={(e) => setForm({ ...form, sku: e.target.value })}
           />
+          {editando && skuMudou(editando.sku, form.sku) && (
+            <p className="mt-1 text-xs text-text-tertiary">Você está mudando o SKU de &quot;{editando.sku}&quot;. Vai pedir confirmação ao salvar.</p>
+          )}
         </FormField>
         <FormField label="Nome do Produto">
           <input className={inputClass} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />

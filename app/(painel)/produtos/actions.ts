@@ -22,6 +22,8 @@ import { buscarEmLotes } from "@/lib/lotes";
 import { lerFiltroProdutos, palavrasDaBusca } from "@/lib/listas";
 import { gruposPorPalavra, todosOsProdutos } from "./consulta";
 import type { VariacaoForm } from "@/lib/variacoes";
+import { skuMudou } from "@/lib/sku-troca";
+import { vinculosParaPreservar } from "@/lib/marketplace/anuncios-mapeamento";
 import { semColuna, semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 const PATH = "/produtos";
@@ -160,10 +162,39 @@ export async function criarProduto(dados: ProdutoInput) {
   });
 }
 
+/**
+ * Trocar o SKU desligaria, na próxima detecção, os anúncios que casavam com o produto pelo SKU
+ * igual (e o envio de estoque pararia sem aviso). Antes do update, garante um vínculo manual
+ * para cada anúncio hoje ligado ao produto. Tolerante: sem as tabelas, não faz nada.
+ */
+async function preservarVinculosDeAnuncios(supabase: Awaited<ReturnType<typeof createClient>>, produtoId: string): Promise<number> {
+  const { data: anuncios, error } = await supabase.from("marketplace_anuncios").select("*").eq("produto_id", produtoId);
+  if (error || !anuncios?.length) return 0;
+  const lojas = [...new Set((anuncios as { loja_id: string }[]).map((a) => a.loja_id))];
+  const { data: existentes, error: e2 } = await supabase.from("marketplace_vinculos").select("loja_id, sku_externo").in("loja_id", lojas);
+  if (e2) return 0;
+  const lista = (anuncios as Record<string, unknown>[]).map((a) => ({
+    loja_id: String(a.loja_id),
+    sku: (a.sku as string | null) ?? null,
+    sku_modelo: (a.sku_modelo as string | null | undefined) ?? null,
+    sku_principal: (a.sku_principal as string | null | undefined) ?? null,
+    nome: (a.nome as string | null) ?? null,
+    nome_item: (a.nome_item as string | null | undefined) ?? null,
+    variacao: (a.variacao as string | null | undefined) ?? null,
+  }));
+  const novos = vinculosParaPreservar(lista, (existentes ?? []) as { loja_id: string; sku_externo: string }[]);
+  if (novos.length === 0) return 0;
+  const { error: e3 } = await supabase.from("marketplace_vinculos").insert(novos.map((v) => ({ ...v, produto_id: produtoId })));
+  return e3 ? 0 : novos.length;
+}
+
 export async function atualizarProduto(id: string, dados: ProdutoInput) {
-  return comResultado(async () => {
+  return comResultado(async (): Promise<{ vinculosPreservados: number }> => {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
+    let vinculosPreservados = 0;
+    const { data: atual } = await supabase.from("produtos").select("sku").eq("id", id).maybeSingle();
+    if (atual && skuMudou(String(atual.sku), produto.sku)) vinculosPreservados = await preservarVinculosDeAnuncios(supabase, id);
     let { error } = await supabase.from("produtos").update(semEnvioVazio(paraGravar(produto, true))).eq("id", id);
     if (error?.code === "PGRST204") {
       exigirTipoGravavel(produto);
@@ -172,6 +203,7 @@ export async function atualizarProduto(id: string, dados: ProdutoInput) {
     if (error) lancarErroSupabase(error);
     await sincronizarLojasProduto(supabase, id, loja_ids);
     revalidateTudo();
+    return { vinculosPreservados };
   });
 }
 

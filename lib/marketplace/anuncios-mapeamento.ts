@@ -38,3 +38,30 @@ export function rotuloVariacao(a: Pick<AnuncioParaChave, "variacao" | "nome" | "
 export function lerAba(v: string | undefined): AbaMapeamento {
   return v === "nao_mapeado" || v === "mapeado" ? v : "todos";
 }
+
+/** Anúncio (linha de `marketplace_anuncios`) com o que a troca de SKU precisa. */
+export interface AnuncioLigado extends AnuncioParaChave {
+  loja_id: string;
+}
+
+/**
+ * Trocar o SKU de um produto desligaria os anúncios que casavam com ele pelo SKU igual (a próxima
+ * detecção recalcula o vínculo). Devolve os vínculos manuais a criar para o produto continuar
+ * ligado: um por (loja, chave) que ainda não tenha vínculo — nunca sobrescreve um existente.
+ */
+export function vinculosParaPreservar(
+  anuncios: readonly AnuncioLigado[],
+  existentes: readonly { loja_id: string; sku_externo: string }[],
+): { loja_id: string; sku_externo: string }[] {
+  const ja = new Set(existentes.map((v) => `${v.loja_id}|${v.sku_externo.trim().toLowerCase()}`));
+  const novos: { loja_id: string; sku_externo: string }[] = [];
+  for (const a of anuncios) {
+    const chave = chaveVinculoAnuncio(a);
+    if (!chave) continue;
+    const k = `${a.loja_id}|${chave.trim().toLowerCase()}`;
+    if (ja.has(k)) continue;
+    ja.add(k);
+    novos.push({ loja_id: a.loja_id, sku_externo: chave });
+  }
+  return novos;
+}
