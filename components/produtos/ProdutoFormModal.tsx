@@ -118,7 +118,7 @@ export function ProdutoFormModal({
         {!editando && duplicandoDe && (
           <p className="mb-4 rounded-md bg-surface-2 px-3 py-2 text-xs text-text-secondary">
             Cópia de <span className="font-medium text-text-primary">{duplicandoDe.nome}</span>. Estoque e código de barras começam vazios; confira o SKU e o nome antes de salvar. Fotos extras você adiciona depois de salvar.
-            {duplicandoDe.temVariacoes ? " As variações (kits) do original não vão na cópia." : ""}
+            {duplicandoDe.temVariacoes ? " As variações do original não vão na cópia." : ""}
           </p>
         )}
         <FormField label="SKU">

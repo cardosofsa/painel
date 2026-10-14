@@ -704,7 +704,7 @@ export function ProdutosClient({
                         { label: "Ver resumo", onClick: () => setDetalheId(p.id) },
                         { label: "Editar", onClick: () => abrirEdicao(p) },
                         { label: "Duplicar", onClick: () => abrirDuplicacao(p) },
-                        ...(p.e_kit ? [] : [{ label: (filhasPorPai.get(p.id)?.length ?? 0) > 0 ? "Variações (kits)" : "Criar variações (kits)", onClick: () => setVariacoesDe(p.id) }]),
+                        ...(p.e_kit ? [] : [{ label: (filhasPorPai.get(p.id)?.length ?? 0) > 0 ? "Variações" : "Criar variações", onClick: () => setVariacoesDe(p.id) }]),
                         { label: p.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivo(p) },
                         { label: "Remover", onClick: () => remover(p), destructive: true },
                       ]}
