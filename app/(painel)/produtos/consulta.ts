@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import { buscarEmLotes, emPedacos } from "@/lib/lotes";
+import { semColuna } from "@/lib/variacoes-consulta";
 import { contemPalavra, faixaDaPagina, filtrosDeBusca, SITUACAO_POR_SLUG, situacaoEstoque, totalDePaginas, type FiltroProdutos } from "@/lib/listas";
 
 /**
@@ -41,10 +42,12 @@ export function gruposPorPalavra(grupos: readonly { id: string; nome: string }[]
  * "Estoque baixo" e "Em estoque" comparam duas colunas (`estoque <= estoque_minimo`), o
  * que o PostgREST não faz — esses dois saem de uma leitura enxuta (ver `paginaDeProdutos`).
  */
-function consulta(supabase: Supabase, colunas: string, filtro: FiltroProdutos, grupos: Map<string, string[]>, contar: boolean, semFilhas = false) {
+function consulta(supabase: Supabase, colunas: string, filtro: FiltroProdutos, grupos: Map<string, string[]>, contar: boolean, semFilhas = false, filtrarTipo = true) {
   let q = supabase.from("produtos").select(colunas as "*", contar ? { count: "exact" } : undefined);
   // Variações por quantidade (0084) aparecem embaixo do pai, não como linhas soltas.
   if (semFilhas) q = q.is("produto_pai_id", null);
+  // Aba (0096): Mercadorias = tipo 'produto'; Insumos e Embalagens = os outros dois. Antes da migração a coluna não existe.
+  if (filtrarTipo) q = filtro.tipo === "insumos" ? q.in("tipo", ["insumo", "embalagem"]) : q.eq("tipo", "produto");
   if (filtro.categoria) q = q.eq("categoria_id", filtro.categoria);
   if (filtro.armazem) q = q.eq("armazem_id", filtro.armazem);
   if (filtro.ativo) q = q.eq("ativo", filtro.ativo === "ativos");
@@ -64,9 +67,9 @@ function filtraNoServidor(filtro: FiltroProdutos) {
 }
 
 /** Ids, na ordem da lista, de todos os produtos que passam no filtro. */
-async function idsFiltrados(supabase: Supabase, filtro: FiltroProdutos, grupos: Map<string, string[]>, semFilhas = false) {
+async function idsFiltrados(supabase: Supabase, filtro: FiltroProdutos, grupos: Map<string, string[]>, semFilhas = false, filtrarTipo = true) {
   const r = await buscarEmLotes<{ id: string; estoque: number; estoque_minimo: number }>((de, ate) =>
-    consulta(supabase, "id, estoque, estoque_minimo", filtro, grupos, true, semFilhas).range(de, ate),
+    consulta(supabase, "id, estoque, estoque_minimo", filtro, grupos, true, semFilhas, filtrarTipo).range(de, ate),
   );
   if (r.error) return { ids: [] as string[], error: r.error };
   const alvo = filtro.estoque ? SITUACAO_POR_SLUG[filtro.estoque] : null;
@@ -102,9 +105,11 @@ export async function paginaDeProdutos<T extends { id: string }>(
   tamanho?: number,
   /** Sem as variações filhas (0084): a tela as mostra embaixo do pai. */
   semFilhas = false,
+  /** Filtra pela aba (`tipo`, 0096). Falso só no banco que ainda não tem a coluna. */
+  filtrarTipo = true,
 ): Promise<PaginaProdutos<T>> {
   if (filtraNoServidor(filtro)) {
-    const { ids, error } = await idsFiltrados(supabase, filtro, grupos, semFilhas);
+    const { ids, error } = await idsFiltrados(supabase, filtro, grupos, semFilhas, filtrarTipo);
     if (error) return { linhas: [], total: 0, pagina: 1, error };
     const pagina = Math.min(filtro.pagina, totalDePaginas(ids.length, tamanho));
     const { de, ate } = faixaDaPagina(pagina, tamanho);
@@ -114,13 +119,13 @@ export async function paginaDeProdutos<T extends { id: string }>(
 
   const buscar = (pagina: number) => {
     const { de, ate } = faixaDaPagina(pagina, tamanho);
-    return consulta(supabase, COLUNAS_LINHA, filtro, grupos, true, semFilhas).range(de, ate);
+    return consulta(supabase, COLUNAS_LINHA, filtro, grupos, true, semFilhas, filtrarTipo).range(de, ate);
   };
   let pagina = filtro.pagina;
   let r = await buscar(pagina);
   // PGRST103: `?pagina=` além do fim (a lista encolheu, ou a URL foi editada). Vai para a última.
   if (r.error?.code === "PGRST103") {
-    const contagem = await consulta(supabase, "id", filtro, grupos, true, semFilhas).range(0, 0);
+    const contagem = await consulta(supabase, "id", filtro, grupos, true, semFilhas, filtrarTipo).range(0, 0);
     pagina = totalDePaginas(contagem.count ?? 0, tamanho);
     r = await buscar(pagina);
   }
@@ -138,19 +143,22 @@ export async function todosOsProdutos<T extends { id: string }>(
   supabase: Supabase,
   colunas: string,
   alvo: { filtro: FiltroProdutos; grupos: Map<string, string[]> } | { ids: readonly string[] } | null,
-) {
+  filtrarTipo = true,
+): Promise<{ data: T[]; error: { message: string; code?: string } | null }> {
   if (alvo && "ids" in alvo) return linhasPorIds<T>(supabase, colunas, alvo.ids);
   if (alvo && filtraNoServidor(alvo.filtro)) {
-    const { ids, error } = await idsFiltrados(supabase, alvo.filtro, alvo.grupos);
+    const { ids, error } = await idsFiltrados(supabase, alvo.filtro, alvo.grupos, false, filtrarTipo);
     if (error) return { data: [] as T[], error };
     return linhasPorIds<T>(supabase, colunas, ids);
   }
   const r = await buscarEmLotes<T>(async (de, ate) => {
     const q = alvo
-      ? consulta(supabase, colunas, alvo.filtro, alvo.grupos, true)
+      ? consulta(supabase, colunas, alvo.filtro, alvo.grupos, true, false, filtrarTipo)
       : supabase.from("produtos").select(colunas as "*", { count: "exact" }).order("nome").order("variante_nome", { nullsFirst: true }).order("id");
     const res = await q.range(de, ate);
     return { data: (res.data ?? null) as unknown as T[] | null, error: res.error, count: res.count };
   });
+  // Sem a 0096 a coluna `tipo` não existe: exporta de novo sem o filtro da aba.
+  if (filtrarTipo && alvo && semColuna(r.error)) return todosOsProdutos<T>(supabase, colunas, alvo, false);
   return r;
 }

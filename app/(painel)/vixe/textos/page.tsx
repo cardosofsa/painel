@@ -1,3 +1,4 @@
+import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
@@ -20,7 +21,13 @@ export default async function VixeTextosPage() {
 
   const [produtosRes, gruposRes, categoriasRes, parcelasRes, perfilRes, catalogoRes, unicasRes] = await Promise.all([
     verProdutos
-      ? supabase.from("produtos").select("id, nome, descricao, preco_venda, garantia_dias, estoque, categoria_id, grupo_id, variante_nome").eq("ativo", true).order("nome")
+      ? soMercadorias(
+          (f) => {
+            const q = supabase.from("produtos").select("id, nome, descricao, preco_venda, garantia_dias, estoque, categoria_id, grupo_id, variante_nome").eq("ativo", true);
+            return filtrarMercadorias(q, f).order("nome");
+          },
+          { incluirFilhas: true },
+        )
       : Promise.resolve({ data: [], error: null }),
     supabase.from("produto_grupos").select("id, nome"),
     supabase.from("categorias").select("id, nome"),

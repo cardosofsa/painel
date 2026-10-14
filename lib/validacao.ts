@@ -92,6 +92,8 @@ export const produtoSchema = z.object({
   loja_ids: z.array(uuid).max(50),
   /** 0058: kit — o estoque vem dos componentes da composição. */
   e_kit: z.boolean().optional(),
+  /** 0096: mercadoria, insumo ou embalagem. */
+  tipo: z.enum(["produto", "insumo", "embalagem"]).optional(),
   /** 0062: fiscal (NF-e). */
   ncm: z.string().regex(/^\d{8}$/, "NCM com 8 dígitos").nullable().optional(),
   origem_fiscal: z.number().int().min(0).max(8).optional(),

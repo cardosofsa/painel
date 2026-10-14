@@ -8,6 +8,7 @@ import { validar } from "@/lib/validacao";
 import { comResultado } from "@/lib/acao";
 import { filtrosDeBusca, lerTermo } from "@/lib/listas";
 import { semColuna } from "@/lib/variacoes-consulta";
+import { soMercadorias } from "@/lib/mercadorias-consulta";
 import { chaveVinculoAnuncio } from "@/lib/marketplace/anuncios-mapeamento";
 import { atualizarAnuncios } from "@/lib/marketplace/estoque-servidor";
 import type { ConexaoShopee } from "@/lib/marketplace/tokens";
@@ -159,9 +160,16 @@ export async function buscarProdutosParaMapa(termo: string) {
   return comResultado(async (): Promise<ProdutoParaMapa[]> => {
     const t = lerTermo(validar(z.string().max(200), termo ?? ""));
     const supabase = await createClient();
-    let q = supabase.from("produtos").select("id, nome, sku, variante_nome, produto_imagens(url, ordem)").eq("ativo", true).order("nome").order("variante_nome", { nullsFirst: true }).order("id").limit(20);
-    for (const f of filtrosDeBusca(t, ["nome", "sku", "variante_nome"])) q = q.or(f);
-    const { data, error } = await q;
+    // Insumo e embalagem (0096) não se vendem: não entram no vínculo do anúncio.
+    const { data, error } = await soMercadorias(
+      (f) => {
+        let q = supabase.from("produtos").select("id, nome, sku, variante_nome, produto_imagens(url, ordem)").eq("ativo", true);
+        if (f.soMercadorias) q = q.eq("tipo", "produto");
+        for (const filtro of filtrosDeBusca(t, ["nome", "sku", "variante_nome"])) q = q.or(filtro);
+        return q.order("nome").order("variante_nome", { nullsFirst: true }).order("id").limit(20);
+      },
+      { incluirFilhas: true },
+    );
     if (error) lancarErroSupabase(error);
     const linhas = (data ?? []) as unknown as { id: string; nome: string; sku: string | null; variante_nome: string | null; produto_imagens: { url: string; ordem: number | null }[] | null }[];
     // Produto pai com variações vem só como referência (`temVariacoes`); quem se vincula é a variação.

@@ -29,13 +29,20 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   const gruposP = supabase.from("produto_grupos").select("id, nome").order("nome");
   // Variações por quantidade (0084) não são linhas soltas: vêm embaixo do pai. Sem a
   // migração a coluna não existe e a lista volta a ser a de sempre.
+  // Aba (0096): sem a coluna `tipo`, a lista segue como sempre e a aba Insumos explica a migração.
   const paginaP = gruposP.then(async (g) => {
     const grupos = gruposPorPalavra(g.data ?? [], filtro.q, palavrasDaBusca(filtro.q));
-    const r = await paginaDeProdutos<LinhaProduto>(supabase, filtro, grupos, undefined, true);
-    return semColuna(r.error) ? paginaDeProdutos<LinhaProduto>(supabase, filtro, grupos) : r;
+    let tipoAplicado = true;
+    let r = await paginaDeProdutos<LinhaProduto>(supabase, filtro, grupos, undefined, true, true);
+    if (semColuna(r.error)) {
+      tipoAplicado = false;
+      r = await paginaDeProdutos<LinhaProduto>(supabase, filtro, grupos, undefined, true, false);
+    }
+    if (semColuna(r.error)) r = await paginaDeProdutos<LinhaProduto>(supabase, filtro, grupos, undefined, false, false);
+    return { r, tipoAplicado };
   });
 
-  const [pagina, gruposRes, categoriasRes, fornecedoresRes, armazensRes, lojasRes, resumoRes, iaDisponivel] = await Promise.all([
+  const [paginaBruta, gruposRes, categoriasRes, fornecedoresRes, armazensRes, lojasRes, resumoRes, contagemAbas, iaDisponivel] = await Promise.all([
     paginaP,
     gruposP,
     // `*`: `tipo` (insumo/embalagem) só existe a partir da 0042.
@@ -45,14 +52,30 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     supabase.from("lojas_canal").select("id, nome").order("nome"),
     // Cards e chips são da conta inteira, não da página: leitura enxuta só das três colunas.
     // Sem as variações filhas: o estoque delas é o do pai (contaria duas vezes).
+    // Da aba escolhida (0096). Sem a coluna `tipo`, é a de sempre (a aba Insumos fica vazia e explica).
     buscarEmLotes<{ custo: number; estoque: number; estoque_minimo: number }>(async (de, ate) => {
-      let r = await supabase.from("produtos").select("custo, estoque, estoque_minimo", { count: "exact" }).is("produto_pai_id", null).order("id").range(de, ate);
-      if (semColuna(r.error)) r = await supabase.from("produtos").select("custo, estoque, estoque_minimo", { count: "exact" }).order("id").range(de, ate);
-      return { data: r.data, error: r.error, count: r.count };
+      const base = () => supabase.from("produtos").select("custo, estoque, estoque_minimo", { count: "exact" });
+      const insumos = filtro.tipo === "insumos";
+      const r = await (insumos ? base().in("tipo", ["insumo", "embalagem"]) : base().is("produto_pai_id", null).eq("tipo", "produto")).order("id").range(de, ate);
+      if (!semColuna(r.error)) return { data: r.data, error: r.error, count: r.count };
+      // Sem `tipo` (0096) ou sem `produto_pai_id` (0084): recua um filtro de cada vez. A aba Insumos fica vazia.
+      if (insumos) return { data: [], error: null, count: 0 };
+      const r2 = await base().is("produto_pai_id", null).order("id").range(de, ate);
+      if (!semColuna(r2.error)) return { data: r2.data, error: r2.error, count: r2.count };
+      const r3 = await base().order("id").range(de, ate);
+      return { data: r3.data, error: r3.error, count: r3.count };
     }),
+    // Quantos há em cada aba (os selos). Sem a 0096 ficam nulos e a aba Insumos mostra "—".
+    Promise.all([
+      supabase.from("produtos").select("id", { count: "exact", head: true }).is("produto_pai_id", null).eq("tipo", "produto"),
+      supabase.from("produtos").select("id", { count: "exact", head: true }).in("tipo", ["insumo", "embalagem"]),
+    ]).then(([m, i]) => (m.error || i.error ? null : { mercadorias: m.count ?? 0, insumos: i.count ?? 0 })),
     iaDisponivelParaConta(supabase),
   ]);
 
+  const pagina = paginaBruta.r;
+  // Aba Insumos num banco sem a coluna `tipo`: a consulta caiu para "tudo", então esvazia a lista.
+  const semTipo = !paginaBruta.tipoAplicado;
   if (pagina.error) throw new Error(pagina.error.message);
   if (categoriasRes.error) throw new Error(categoriasRes.error.message);
   if (fornecedoresRes.error) throw new Error(fornecedoresRes.error.message);
@@ -134,7 +157,8 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   const gruposPorId = new Map((gruposRes.data ?? []).map((g) => [g.id, g.nome]));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `*`: o formato depende das migrações aplicadas
-  const produtos: Produto[] = pagina.linhas.map((p: any) => ({
+  const produtos: Produto[] = (semTipo && filtro.tipo === "insumos" ? [] : pagina.linhas).map((p: any) => ({
+    tipo: (p.tipo as "produto" | "insumo" | "embalagem" | undefined) ?? "produto",
     e_kit: !!p.e_kit,
     ncm: (p.ncm as string | null) ?? null,
     origem_fiscal: Number(p.origem_fiscal ?? 0),
@@ -187,7 +211,9 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   return (
     <ProdutosClient
       filtro={{ ...filtro, pagina: pagina.pagina }}
-      total={pagina.total}
+      total={semTipo && filtro.tipo === "insumos" ? 0 : pagina.total}
+      semTipo={semTipo}
+      contagemAbas={contagemAbas}
       resumo={resumoDeEstoque(resumoRes.data)}
       produtos={produtos}
       categorias={categoriasRes.data ?? []}

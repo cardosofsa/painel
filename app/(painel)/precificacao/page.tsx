@@ -1,3 +1,4 @@
+import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
@@ -20,7 +21,14 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       .select("*")
       .order("criado_em", { ascending: false })
       .limit(50),
-    supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id").order("nome"),
+    // Precifica o que se vende: insumo/embalagem (0096) fora; a variação continua (preço próprio).
+    soMercadorias(
+      (f) => {
+        const q = supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id");
+        return filtrarMercadorias(q, f).order("nome");
+      },
+      { incluirFilhas: true },
+    ),
     supabase.from("perfil_negocio").select("aliquota_das, nome_negocio, logo_url").maybeSingle(),
     supabase
       .from("canais")

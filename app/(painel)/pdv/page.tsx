@@ -1,3 +1,4 @@
+import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { carregarCamposCartao, semCartoes } from "@/lib/contas-cartao-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { PdvClient } from "./PdvClient";
@@ -5,7 +6,6 @@ import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import type { ProdutoPdv, ClientePdv, ContaPdv, FormaPagamentoPdv } from "./tipos";
 import type { Metadata } from "next";
 import { carregarCrediario } from "@/lib/crediario-servidor";
-import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 export const metadata: Metadata = { title: "PDV" };
 
@@ -31,13 +31,13 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
 
   const camposCartaoPromessa = carregarCamposCartao(supabase);
   const [produtosRes, gruposRes, categoriasRes, clientesRes, formasRes, contasRes, reservasRes] = await Promise.all([
-    // Variação filha (0084) não é vendida no balcão: serve para anúncio e baixa do pai.
-    semVariacoesFilhas((filtrar) => {
+    // Variação filha (0084) não é vendida no balcão (serve para anúncio e baixa do pai) e insumo/embalagem (0096) não se vende.
+    soMercadorias((f) => {
       const q = supabase
         .from("produtos")
         .select("id, sku, nome, grupo_id, variante_nome, preco_venda, custo, estoque, imagem_url, categoria_id, codigo_barras, garantia_dias")
         .eq("ativo", true);
-      return (filtrar ? q.is("produto_pai_id", null) : q).order("nome");
+      return filtrarMercadorias(q, f).order("nome");
     }),
     supabase.from("produto_grupos").select("id, nome, imagem_url, categoria_id"),
     supabase.from("categorias").select("id, nome"),

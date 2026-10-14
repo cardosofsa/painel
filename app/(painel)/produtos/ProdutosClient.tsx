@@ -43,6 +43,8 @@ import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { ProdutoResumo } from "@/components/produtos/ProdutoResumo";
 import { ProdutoFormModal } from "@/components/produtos/ProdutoFormModal";
 import { VariacoesProdutoModal } from "@/components/produtos/VariacoesProdutoModal";
+import { SubAbas } from "@/components/vendas/central/SubAbas";
+import { InsumoFormModal } from "@/components/produtos/InsumoFormModal";
 import { dadosDaCopia } from "@/lib/produto-copia";
 import { VariacaoDetalheModal } from "@/components/produtos/VariacaoDetalheModal";
 import { variacoesPorPai, type VariacaoSalva } from "@/lib/variacoes";
@@ -157,6 +159,8 @@ export function ProdutosClient({
   lojas,
   grupos,
   iaDisponivel,
+  semTipo = false,
+  contagemAbas = null,
 }: {
   /** Filtros, busca e página que o servidor usou (vêm da URL). */
   filtro: FiltroProdutos;
@@ -178,11 +182,17 @@ export function ProdutosClient({
   grupos: Opcao[];
   /** Vem do servidor: `GEMINI_API_KEY` não pode ser lida no cliente. */
   iaDisponivel: boolean;
+  /** Banco sem a coluna `tipo` (0096): a aba Insumos e Embalagens explica a migração. */
+  semTipo?: boolean;
+  /** Quantos há em cada aba (selos); null = não deu para contar (sem a 0096). */
+  contagemAbas?: { mercadorias: number; insumos: number } | null;
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const lista = useListaNaUrl(filtro);
   const { categoria: categoriaFiltro, armazem: armazemFiltro, ativo: ativoFiltro, estoque: statusFiltro } = lista.atuais;
+  // Aba (0096): Mercadorias (o que se vende) ou Insumos e Embalagens (o que se compra e se conta).
+  const emInsumos = lista.atuais.tipo === "insumos";
   const [exportando, setExportando] = useState(false);
   // O formulário precisa da lista inteira (insumos do kit, medidas padrão do grupo), que
   // a página não traz mais: lida quando o formulário abre.
@@ -199,6 +209,8 @@ export function ProdutosClient({
   const [novoGrupoAberto, setNovoGrupoAberto] = useState(false);
   const [variacoesDe, setVariacoesDe] = useState<string | null>(null);
   // Ver/editar UMA variação (0094), e quais pais estão com as variações recolhidas.
+  // Cadastro simples de insumo/embalagem (0096): novo, edição ou cópia.
+  const [insumoAberto, setInsumoAberto] = useState<{ produto: Produto | null; copia: boolean; chave: number } | null>(null);
   const [variacaoAberta, setVariacaoAberta] = useState<{ id: string; modo: "ver" | "editar" } | null>(null);
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const filhasPorPai = useMemo(() => variacoesPorPai(variacoes), [variacoes]);
@@ -222,7 +234,14 @@ export function ProdutosClient({
       const tipoCategoria = new Map(categorias.map((c) => [c.id, (c as { tipo?: "produto" | "insumo" | "embalagem" }).tipo ?? null]));
       return (opcoesForm?.insumos ?? [])
         .filter((p) => p.id !== editando?.id)
-        .map((p) => ({ id: p.id, nome: p.nome, custo: p.custo, sku: p.sku, tipo: p.categoria_id ? (tipoCategoria.get(p.categoria_id) ?? null) : null }));
+        .map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          custo: p.custo,
+          sku: p.sku,
+          // O tipo do próprio produto (0096) manda; sem ele, o da categoria (0042).
+          tipo: p.tipo && p.tipo !== "produto" ? p.tipo : p.categoria_id ? (tipoCategoria.get(p.categoria_id) ?? null) : null,
+        }));
     },
     [opcoesForm, editando, categorias],
   );
@@ -276,6 +295,10 @@ export function ProdutosClient({
     void executarComToast(opcoesFormularioProduto(), { erro: "Não foi possível carregar os produtos para insumo" }).then((r) => {
       if (r.ok) setOpcoesForm(r.dado);
     });
+  }
+
+  function abrirInsumo(produto: Produto | null, copia = false) {
+    setInsumoAberto({ produto, copia, chave: Date.now() });
   }
 
   function abrirNovo() {
@@ -489,7 +512,7 @@ export function ProdutosClient({
     const r = await executarComToast(
       listarProdutosParaExportar({
         escopo: escopo === "selecionados" ? "selecionados" : escopo === "filtrados" ? "filtrados" : "todos",
-        filtro: { q: filtro.q, categoria: filtro.categoria, armazem: filtro.armazem, ativo: filtro.ativo, estoque: filtro.estoque },
+        filtro: { q: filtro.q, categoria: filtro.categoria, armazem: filtro.armazem, ativo: filtro.ativo, estoque: filtro.estoque, tipo: filtro.tipo },
         ids: escopo === "selecionados" ? selecionados : [],
       }),
       { erro: "Não foi possível carregar a lista para exportar" },
@@ -524,17 +547,40 @@ export function ProdutosClient({
         actions={
           <>
             <Button variant="secondary" onClick={() => setExportando(true)}>Exportar</Button>
-            <Link href="/produtos/mapeamento" className={classesBotao({ variant: "secondary" })}>
-              Mapeamento de Anúncio
-            </Link>
-            <Button variant="primary" onClick={abrirNovo}>+ Cadastrar Produto</Button>
+            {!emInsumos && (
+              <Link href="/produtos/mapeamento" className={classesBotao({ variant: "secondary" })}>
+                Mapeamento de Anúncio
+              </Link>
+            )}
+            {emInsumos ? (
+              <Button variant="primary" onClick={() => abrirInsumo(null)} disabled={semTipo}>+ Cadastrar Insumo / Embalagem</Button>
+            ) : (
+              <Button variant="primary" onClick={abrirNovo}>+ Cadastrar Produto</Button>
+            )}
           </>
         }
       />
 
+      <div className="mb-4">
+        <SubAbas
+          valor={emInsumos ? "insumos" : "mercadorias"}
+          onChange={(aba) => lista.navegar({ tipo: aba === "insumos" ? "insumos" : null })}
+          itens={[
+            { id: "mercadorias", rotulo: "Mercadorias", n: contagemAbas?.mercadorias },
+            { id: "insumos", rotulo: "Insumos e Embalagens", n: contagemAbas?.insumos },
+          ]}
+        />
+      </div>
+
+      {emInsumos && semTipo && (
+        <Card className="mb-5">
+          <EmptyState icon={PackageSearch} title="Falta aplicar uma migração" description="Insumos e embalagens precisam da migração 0096 no Supabase. Aplique e recarregue a página." />
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
         <Card>
-          <CardEyebrow>Total de Produtos</CardEyebrow>
+          <CardEyebrow>{emInsumos ? "Total de Insumos e Embalagens" : "Total de Produtos"}</CardEyebrow>
           <HeroMetric value={String(resumo.total)} accent />
         </Card>
         <Card>
@@ -543,14 +589,14 @@ export function ProdutosClient({
         </Card>
         <Card>
           <CardEyebrow>Reposição Necessária</CardEyebrow>
-          <HeroMetric value={String(reposicaoNecessaria)} caption="produtos no mínimo ou abaixo" />
+          <HeroMetric value={String(reposicaoNecessaria)} caption={emInsumos ? "itens no mínimo ou abaixo" : "produtos no mínimo ou abaixo"} />
         </Card>
       </div>
 
       <BarraFiltros
         busca={lista.texto}
         onBusca={lista.setTexto}
-        placeholder="Buscar por nome, SKU ou código de barras…"
+        placeholder={emInsumos ? "Buscar por nome ou SKU…" : "Buscar por nome, SKU ou código de barras…"}
         ativos={filtrosAtivos}
         onLimpar={limparFiltros}
         situacao={
@@ -599,7 +645,11 @@ export function ProdutosClient({
 
       <Card padding="nenhum" className={`overflow-hidden transition-opacity ${lista.pendente ? "opacity-60" : ""}`}>
         {filtrados.length === 0 ? (
-          <EmptyState icon={PackageSearch} title="Nenhum produto encontrado" description="Ajuste a busca ou os filtros para ver resultados." />
+          emInsumos && !semTipo && filtrosAtivos === 0 && !lista.texto ? (
+            <EmptyState icon={PackageSearch} title="Nenhum insumo ou embalagem ainda" description="Cadastre caixas, fitas, etiquetas e outros itens que você compra e usa, mas não vende. Eles não aparecem no PDV nem na vitrine." action={<Button variant="primary" onClick={() => abrirInsumo(null)}>+ Cadastrar Insumo / Embalagem</Button>} />
+          ) : (
+            <EmptyState icon={PackageSearch} title={emInsumos ? "Nenhum item encontrado" : "Nenhum produto encontrado"} description="Ajuste a busca ou os filtros para ver resultados." />
+          )
         ) : (
           <Table>
             <Thead>
@@ -620,7 +670,8 @@ export function ProdutosClient({
                 <Th>Produto</Th>
                 <Th>Armazém</Th>
                 <Th align="right">Custo</Th>
-                <Th align="right">Venda</Th>
+                {!emInsumos && <Th align="right">Venda</Th>}
+                {emInsumos && <Th align="right">Mínimo</Th>}
                 <Th align="right">Estoque</Th>
                 <Th>Status</Th>
                 <Th align="right"></Th>
@@ -649,6 +700,7 @@ export function ProdutosClient({
                   <Td className="cursor-pointer" onClick={() => setDetalheId(p.id)}>
                     <div className={p.ativo ? "text-text-primary font-medium" : "text-text-tertiary line-through"}>
                       {p.grupo_nome ?? p.nome}
+                      {emInsumos ? <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary align-middle">{p.tipo === "embalagem" ? "Embalagem" : "Insumo"}</span> : null}
                       {p.e_kit ? <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent-soft text-accent align-middle">Kit</span> : null}
                       {p.variante_nome ? (
                         <span className="ml-1.5 text-xs font-normal px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary">
@@ -678,6 +730,12 @@ export function ProdutosClient({
                   <Td align="right" mono>
                     {formatBRL(p.custo)}
                   </Td>
+                  {emInsumos && (
+                    <Td align="right" mono>
+                      {p.estoque_minimo}
+                    </Td>
+                  )}
+                  {!emInsumos && (
                   <Td align="right">
                     {(canaisPorProduto.get(p.id)?.length ?? 0) > 1 && (
                       <div className="text-[10px] text-accent">Valor de Outros Canais Disponíveis</div>
@@ -692,6 +750,7 @@ export function ProdutosClient({
                       </span>
                     </div>
                   </Td>
+                  )}
                   <Td align="right" mono>
                     {p.estoque}
                   </Td>
@@ -700,14 +759,24 @@ export function ProdutosClient({
                   </Td>
                   <Td align="right">
                     <RowMenu
-                      actions={[
+                      actions={
+                        emInsumos
+                          ? [
+                              { label: "Ver resumo", onClick: () => setDetalheId(p.id) },
+                              { label: "Editar", onClick: () => abrirInsumo(p) },
+                              { label: "Duplicar", onClick: () => abrirInsumo(p, true) },
+                              { label: p.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivo(p) },
+                              { label: "Remover", onClick: () => remover(p), destructive: true },
+                            ]
+                          : [
                         { label: "Ver resumo", onClick: () => setDetalheId(p.id) },
                         { label: "Editar", onClick: () => abrirEdicao(p) },
                         { label: "Duplicar", onClick: () => abrirDuplicacao(p) },
                         ...(p.e_kit ? [] : [{ label: (filhasPorPai.get(p.id)?.length ?? 0) > 0 ? "Variações" : "Criar variações", onClick: () => setVariacoesDe(p.id) }]),
                         { label: p.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivo(p) },
                         { label: "Remover", onClick: () => remover(p), destructive: true },
-                      ]}
+                            ]
+                      }
                     />
                   </Td>
                 </Tr>
@@ -805,6 +874,18 @@ export function ProdutosClient({
         );
       })()}
 
+      {insumoAberto && (
+        <InsumoFormModal
+          key={`insumo-${insumoAberto.chave}`}
+          produto={insumoAberto.produto}
+          copia={insumoAberto.copia}
+          tipoInicial="insumo"
+          armazens={armazens}
+          fornecedores={fornecedores}
+          categorias={categorias as { id: string; nome: string; tipo?: "produto" | "insumo" | "embalagem" }[]}
+          onClose={() => setInsumoAberto(null)}
+        />
+      )}
       {variacaoAberta && (() => {
         const v = variacoes.find((x) => x.id === variacaoAberta.id);
         const pai = v ? produtos.find((x) => x.id === v.produto_pai_id) : undefined;

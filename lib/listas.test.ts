@@ -154,7 +154,7 @@ describe("filtros de cada tela", () => {
   const id = "8bd03d19-5553-474a-a14c-fd2a453e0a80";
 
   it("Produtos: lê da URL e descarta o que não conhece", () => {
-    expect(lerFiltroProdutos({})).toEqual({ q: "", pagina: 1, categoria: "", armazem: "", ativo: "", estoque: "" });
+    expect(lerFiltroProdutos({})).toEqual({ q: "", pagina: 1, categoria: "", armazem: "", ativo: "", estoque: "", tipo: "" });
     expect(lerFiltroProdutos({ q: " caneca ", pagina: "2", categoria: id, armazem: "x", ativo: "inativos", estoque: "baixo" })).toEqual({
       q: "caneca",
       pagina: 2,
@@ -162,8 +162,13 @@ describe("filtros de cada tela", () => {
       armazem: "",
       ativo: "inativos",
       estoque: "baixo",
+      tipo: "",
     });
     expect(lerFiltroProdutos({ estoque: "Estoque baixo", ativo: "todos" })).toMatchObject({ estoque: "", ativo: "" });
+    // Aba (0096): só "insumos" é conhecido; qualquer outra coisa é a aba Mercadorias.
+    expect(lerFiltroProdutos({ tipo: "insumos" }).tipo).toBe("insumos");
+    expect(lerFiltroProdutos({ tipo: "mercadorias" }).tipo).toBe("");
+    expect(lerFiltroProdutos({ tipo: "xyz" }).tipo).toBe("");
   });
 
   it("Produtos e Clientes aceitam o ?busca= da busca global; ?q= tem prioridade", () => {
