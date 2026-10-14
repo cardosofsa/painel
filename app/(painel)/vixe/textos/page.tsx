@@ -21,7 +21,13 @@ export default async function VixeTextosPage() {
 
   const [produtosRes, gruposRes, categoriasRes, parcelasRes, perfilRes, catalogoRes, unicasRes] = await Promise.all([
     verProdutos
-      ? soMercadorias((f) => filtrarMercadorias(supabase.from("produtos").select("id, nome, descricao, preco_venda, garantia_dias, estoque, categoria_id, grupo_id, variante_nome").eq("ativo", true), f).order("nome"), { incluirFilhas: true })
+      ? soMercadorias(
+          (f) => {
+            const q = supabase.from("produtos").select("id, nome, descricao, preco_venda, garantia_dias, estoque, categoria_id, grupo_id, variante_nome").eq("ativo", true);
+            return filtrarMercadorias(q, f).order("nome");
+          },
+          { incluirFilhas: true },
+        )
       : Promise.resolve({ data: [], error: null }),
     supabase.from("produto_grupos").select("id, nome"),
     supabase.from("categorias").select("id, nome"),

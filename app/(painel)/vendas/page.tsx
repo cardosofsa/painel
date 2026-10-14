@@ -51,7 +51,13 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     carregarPedidosMarketplace(supabase, DIAS_JANELA),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
     // Vincula item de pedido a produto: a variação serve (anúncio por variação); insumo/embalagem (0096) não.
-    soMercadorias((f) => filtrarMercadorias(supabase.from("produtos").select("id, sku, nome, custo, estoque, variante_nome"), f).order("nome"), { incluirFilhas: true }),
+    soMercadorias(
+      (f) => {
+        const q = supabase.from("produtos").select("id, sku, nome, custo, estoque, variante_nome");
+        return filtrarMercadorias(q, f).order("nome");
+      },
+      { incluirFilhas: true },
+    ),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     // Disponível = físico − reservado (0052). Sem a migração, cai para o físico.
     supabase.from("estoque_disponivel").select("produto_id, disponivel"),

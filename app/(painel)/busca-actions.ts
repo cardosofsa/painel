@@ -37,7 +37,13 @@ export async function buscarGlobal(q: string) {
 
     const [produtos, clientes, vendas, pedidos, compras] = await Promise.all([
       pode("produtos", "estoque", "precificacao", "pdv")
-        ? soMercadorias((f) => filtrarMercadorias(supabase.from("produtos").select("id, nome, sku, estoque, preco_venda").or(`nome.ilike.${like},sku.ilike.${like}${digitos.length >= 8 ? `,codigo_barras.eq.${digitos}` : ""}`), f).order("nome").limit(5), { incluirFilhas: true })
+        ? soMercadorias(
+            (f) => {
+              const q = supabase.from("produtos").select("id, nome, sku, estoque, preco_venda").or(`nome.ilike.${like},sku.ilike.${like}${digitos.length >= 8 ? `,codigo_barras.eq.${digitos}` : ""}`);
+              return filtrarMercadorias(q, f).order("nome").limit(5);
+            },
+            { incluirFilhas: true },
+          )
         : vazio,
       pode("clientes")
         ? supabase.from("clientes").select("id, nome, whatsapp, cidade").or(`nome.ilike.${like}${digitos.length >= 4 ? `,whatsapp.ilike.*${digitos}*` : ""}`).order("nome").limit(5)
