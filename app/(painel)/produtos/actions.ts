@@ -22,7 +22,7 @@ import { buscarEmLotes } from "@/lib/lotes";
 import { lerFiltroProdutos, palavrasDaBusca } from "@/lib/listas";
 import { gruposPorPalavra, todosOsProdutos } from "./consulta";
 import type { VariacaoForm } from "@/lib/variacoes";
-import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
+import { semColuna, semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 const PATH = "/produtos";
 
@@ -57,6 +57,8 @@ export interface ProdutoInput {
   ativo: boolean;
   /** 0058: vende como kit (estoque calculado pelos componentes). */
   e_kit?: boolean;
+  /** 0096: mercadoria ('produto', o que se vende), insumo ou embalagem. Ausente = não mexe na coluna. */
+  tipo?: "produto" | "insumo" | "embalagem";
   /** 0062: NCM (8 dígitos) e origem da mercadoria, para a NF-e. */
   ncm?: string | null;
   origem_fiscal?: number;
@@ -89,11 +91,16 @@ function paraGravar<T extends { e_kit?: boolean; estoque?: number }>(p: T, edica
   return copia;
 }
 
-/** Colunas das migrações 0058/0062: fora do payload quando o banco ainda não as tem. */
+/** Colunas das migrações 0058/0062/0096: fora do payload quando o banco ainda não as tem. */
 function semColunasNovas<T extends Record<string, unknown>>(p: T): T {
   const copia = { ...p };
-  for (const k of ["e_kit", "ncm", "origem_fiscal"]) delete copia[k];
+  for (const k of ["e_kit", "ncm", "origem_fiscal", "tipo"]) delete copia[k];
   return copia;
+}
+
+/** Insumo/embalagem sem a coluna `tipo` (0096) viraria mercadoria em silêncio: recusa com mensagem clara. */
+function exigirTipoGravavel(p: { tipo?: string }) {
+  if (p.tipo && p.tipo !== "produto") throw new Error("Cadastrar insumo e embalagem precisa da migração 0096. Aplique no Supabase e tente de novo.");
 }
 
 function revalidateTudo() {
@@ -142,7 +149,10 @@ export async function criarProduto(dados: ProdutoInput) {
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
     let { data, error } = await supabase.from("produtos").insert(semEnvioVazio(paraGravar(produto, false))).select("id").single();
     // Sem a 0058/0062 as colunas novas não existem: grava sem elas.
-    if (error?.code === "PGRST204") ({ data, error } = await supabase.from("produtos").insert(semEnvioVazio(semColunasNovas(paraGravar(produto, false)))).select("id").single());
+    if (error?.code === "PGRST204") {
+      exigirTipoGravavel(produto);
+      ({ data, error } = await supabase.from("produtos").insert(semEnvioVazio(semColunasNovas(paraGravar(produto, false)))).select("id").single());
+    }
     if (error) lancarErroSupabase(error);
     if (!data) throw new Error("Erro ao criar produto.");
     await sincronizarLojasProduto(supabase, data.id, loja_ids);
@@ -155,7 +165,10 @@ export async function atualizarProduto(id: string, dados: ProdutoInput) {
     const supabase = await createClient();
     const { loja_ids, ...produto } = validar(produtoSchema, dados);
     let { error } = await supabase.from("produtos").update(semEnvioVazio(paraGravar(produto, true))).eq("id", id);
-    if (error?.code === "PGRST204") ({ error } = await supabase.from("produtos").update(semEnvioVazio(semColunasNovas(paraGravar(produto, true)))).eq("id", id));
+    if (error?.code === "PGRST204") {
+      exigirTipoGravavel(produto);
+      ({ error } = await supabase.from("produtos").update(semEnvioVazio(semColunasNovas(paraGravar(produto, true)))).eq("id", id));
+    }
     if (error) lancarErroSupabase(error);
     await sincronizarLojasProduto(supabase, id, loja_ids);
     revalidateTudo();
@@ -378,6 +391,8 @@ export interface ProdutoParaInsumo {
   custo: number;
   sku: string;
   categoria_id: string | null;
+  /** 0096: insumo/embalagem. Ausente = ainda não existe a coluna (vale o tipo da categoria). */
+  tipo?: "produto" | "insumo" | "embalagem" | null;
 }
 
 export interface DimensoesPadrao {
@@ -398,11 +413,15 @@ export async function opcoesFormularioProduto() {
     const [insumosRes, envioRes] = await Promise.all([
       buscarEmLotes<ProdutoParaInsumo>(async (de, ate) => {
         // Variação filha (0084) é kit do pai: não serve de componente de outro kit.
-        const r = await semVariacoesFilhas((filtrar) => {
-          const q = supabase.from("produtos").select("id, nome, custo, sku, categoria_id", { count: "exact" });
-          return (filtrar ? q.is("produto_pai_id", null) : q).order("nome").order("id").range(de, ate);
-        });
-        return { data: r.data as ProdutoParaInsumo[] | null, error: r.error, count: r.count };
+        // `tipo` (0096) marca insumo e embalagem; sem a coluna, a categoria (0042) continua dizendo.
+        const buscar = (colunas: string) =>
+          semVariacoesFilhas((filtrar) => {
+            const q = supabase.from("produtos").select(colunas, { count: "exact" });
+            return (filtrar ? q.is("produto_pai_id", null) : q).order("nome").order("id").range(de, ate);
+          });
+        let r = await buscar("id, nome, custo, sku, categoria_id, tipo");
+        if (semColuna(r.error)) r = await buscar("id, nome, custo, sku, categoria_id");
+        return { data: r.data as unknown as ProdutoParaInsumo[] | null, error: r.error, count: r.count };
       }),
       // Envio (0041): sem a migração as colunas não existem e o padrão fica vazio.
       buscarEmLotes<DimensoesPadrao & { grupo_id: string }>(async (de, ate) => {

@@ -1,5 +1,6 @@
 "use server";
 
+import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
@@ -36,7 +37,7 @@ export async function buscarGlobal(q: string) {
 
     const [produtos, clientes, vendas, pedidos, compras] = await Promise.all([
       pode("produtos", "estoque", "precificacao", "pdv")
-        ? supabase.from("produtos").select("id, nome, sku, estoque, preco_venda").or(`nome.ilike.${like},sku.ilike.${like}${digitos.length >= 8 ? `,codigo_barras.eq.${digitos}` : ""}`).order("nome").limit(5)
+        ? soMercadorias((f) => filtrarMercadorias(supabase.from("produtos").select("id, nome, sku, estoque, preco_venda").or(`nome.ilike.${like},sku.ilike.${like}${digitos.length >= 8 ? `,codigo_barras.eq.${digitos}` : ""}`), f).order("nome").limit(5), { incluirFilhas: true })
         : vazio,
       pode("clientes")
         ? supabase.from("clientes").select("id, nome, whatsapp, cidade").or(`nome.ilike.${like}${digitos.length >= 4 ? `,whatsapp.ilike.*${digitos}*` : ""}`).order("nome").limit(5)

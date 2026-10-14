@@ -197,6 +197,8 @@ export type FiltroProdutos = {
   armazem: string;
   ativo: "" | "ativos" | "inativos";
   estoque: "" | SlugSituacao;
+  /** Aba de Produtos (0096): "" = Mercadorias (o que se vende); "insumos" = Insumos e Embalagens. */
+  tipo: "" | "insumos";
 };
 
 export function lerFiltroProdutos(sp: ParamsUrl): FiltroProdutos {
@@ -208,6 +210,7 @@ export function lerFiltroProdutos(sp: ParamsUrl): FiltroProdutos {
     armazem: lerId(sp.armazem),
     ativo: lerOpcao(sp.ativo, ["ativos", "inativos"] as const),
     estoque: lerOpcao(sp.estoque, SLUGS_SITUACAO),
+    tipo: lerOpcao(sp.tipo, ["insumos"] as const),
   };
 }
 

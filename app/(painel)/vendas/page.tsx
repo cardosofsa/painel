@@ -1,3 +1,4 @@
+import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { carregarCamposCartao, semCartoes } from "@/lib/contas-cartao-servidor";
 import { createClient } from "@/lib/supabase/server";
 import { carregarPedidosVitrine } from "@/lib/pedidos-vitrine-servidor";
@@ -49,7 +50,8 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     // Shopee (8.9): sem a 0046 volta `disponivel: false` e a aba explica.
     carregarPedidosMarketplace(supabase, DIAS_JANELA),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
-    supabase.from("produtos").select("id, sku, nome, custo, estoque, variante_nome").order("nome"),
+    // Vincula item de pedido a produto: a variação serve (anúncio por variação); insumo/embalagem (0096) não.
+    soMercadorias((f) => filtrarMercadorias(supabase.from("produtos").select("id, sku, nome, custo, estoque, variante_nome"), f).order("nome"), { incluirFilhas: true }),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     // Disponível = físico − reservado (0052). Sem a migração, cai para o físico.
     supabase.from("estoque_disponivel").select("produto_id, disponivel"),

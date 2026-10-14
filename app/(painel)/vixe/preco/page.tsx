@@ -1,3 +1,4 @@
+import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
 import { normalizarAbas } from "@/lib/acesso";
@@ -31,7 +32,7 @@ export default async function VixePrecoPage({ searchParams }: { searchParams: Pr
   }
 
   const [produtosRes, gruposRes, perfilRes, canaisRes, lojasRes, faixasRes, concorrentesRes] = await Promise.all([
-    supabase.from("produtos").select("id, nome, custo, preco_venda, grupo_id, variante_nome").eq("ativo", true).order("nome"),
+    soMercadorias((f) => filtrarMercadorias(supabase.from("produtos").select("id, nome, custo, preco_venda, grupo_id, variante_nome").eq("ativo", true), f).order("nome"), { incluirFilhas: true }),
     supabase.from("produto_grupos").select("id, nome"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     supabase.from("canais").select("id, nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao"),

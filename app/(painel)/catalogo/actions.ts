@@ -1,5 +1,6 @@
 "use server";
 
+import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -7,7 +8,6 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar, catalogoSchema, precoOverrideSchema } from "@/lib/validacao";
 import { mapaGrupos, rotuloProduto } from "@/lib/produtos";
 import { comResultado } from "@/lib/acao";
-import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 
 const PATH = "/catalogo";
 
@@ -93,10 +93,10 @@ export async function listarPrecosCatalogo(catalogoId: string) {
     const supabase = await createClient();
 
     const [produtosRes, overridesRes, gruposRes, catalogoRes] = await Promise.all([
-      // Variação filha (0084) não vai para a vitrine.
-      semVariacoesFilhas((filtrar) => {
+      // Variação filha (0084) e insumo/embalagem (0096) não vão para a vitrine.
+      soMercadorias((f) => {
         const q = supabase.from("produtos").select("id, nome, preco_venda, preco_atacado, grupo_id, variante_nome").eq("ativo", true).gt("estoque", 0);
-        return (filtrar ? q.is("produto_pai_id", null) : q).order("nome");
+        return filtrarMercadorias(q, f).order("nome");
       }),
       supabase.from("catalogo_precos").select("produto_id, preco").eq("catalogo_id", catalogoId),
       supabase.from("produto_grupos").select("id, nome"),
