@@ -43,6 +43,7 @@ import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import { ProdutoResumo } from "@/components/produtos/ProdutoResumo";
 import { ProdutoFormModal } from "@/components/produtos/ProdutoFormModal";
 import { VariacoesProdutoModal } from "@/components/produtos/VariacoesProdutoModal";
+import { dadosDaCopia } from "@/lib/produto-copia";
 import { VariacaoDetalheModal } from "@/components/produtos/VariacaoDetalheModal";
 import { variacoesPorPai, type VariacaoSalva } from "@/lib/variacoes";
 
@@ -188,6 +189,8 @@ export function ProdutosClient({
   const [opcoesForm, setOpcoesForm] = useState<{ insumos: ProdutoParaInsumo[]; padroesEnvio: Record<string, DimensoesEnvio> } | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Produto | null>(null);
+  // Duplicar: nome do original (para a faixa do formulário) e se ele tem variações (que não vão na cópia).
+  const [duplicandoDe, setDuplicandoDe] = useState<{ nome: string; temVariacoes: boolean } | null>(null);
   const [form, setForm] = useState<ProdutoInput>(formVazio(armazens[0]?.id ?? null));
   const [formOriginal, setFormOriginal] = useState<ProdutoInput>(formVazio(armazens[0]?.id ?? null));
   const sujo = useFormularioSujo(form, formOriginal);
@@ -277,6 +280,7 @@ export function ProdutosClient({
 
   function abrirNovo() {
     setEditando(null);
+    setDuplicandoDe(null);
     const vazio = formVazio(armazens[0]?.id ?? null);
     setForm(vazio);
     setFormOriginal(vazio);
@@ -284,10 +288,9 @@ export function ProdutosClient({
     carregarOpcoesForm();
   }
 
-  function abrirEdicao(p: Produto) {
-    carregarOpcoesForm();
-    setEditando(p);
-    const dados: ProdutoInput = {
+  /** Os campos do formulário a partir de um produto já cadastrado (editar e duplicar). */
+  function formDoProduto(p: Produto): ProdutoInput {
+    return {
       sku: p.sku,
       nome: p.nome,
       categoria_id: p.categoria_id,
@@ -317,10 +320,29 @@ export function ProdutosClient({
       ncm: p.ncm ?? null,
       origem_fiscal: p.origem_fiscal ?? 0,
     };
+  }
+
+  function abrirEdicao(p: Produto) {
+    carregarOpcoesForm();
+    setEditando(p);
+    setDuplicandoDe(null);
+    const dados = formDoProduto(p);
     setForm(dados);
     setFormOriginal(dados);
     setModalAberto(true);
   }
+
+  /** Duplicar: o formulário de cadastro já preenchido com a cópia; nada é gravado até salvar. */
+  function abrirDuplicacao(p: Produto) {
+    carregarOpcoesForm();
+    setEditando(null);
+    setDuplicandoDe({ nome: p.grupo_nome ?? p.nome, temVariacoes: (filhasPorPai.get(p.id)?.length ?? 0) > 0 });
+    setForm(dadosDaCopia(formDoProduto(p)));
+    // Original vazio: fechar sem salvar pede confirmação, e salvar cria um produto NOVO.
+    setFormOriginal(formVazio(armazens[0]?.id ?? null));
+    setModalAberto(true);
+  }
+
 
   function criarGrupo() {
     setNovoGrupoNome("");
@@ -681,6 +703,7 @@ export function ProdutosClient({
                       actions={[
                         { label: "Ver resumo", onClick: () => setDetalheId(p.id) },
                         { label: "Editar", onClick: () => abrirEdicao(p) },
+                        { label: "Duplicar", onClick: () => abrirDuplicacao(p) },
                         ...(p.e_kit ? [] : [{ label: (filhasPorPai.get(p.id)?.length ?? 0) > 0 ? "Variações (kits)" : "Criar variações (kits)", onClick: () => setVariacoesDe(p.id) }]),
                         { label: p.ativo ? "Desativar" : "Ativar", onClick: () => alternarAtivo(p) },
                         { label: "Remover", onClick: () => remover(p), destructive: true },
@@ -749,6 +772,7 @@ export function ProdutosClient({
         sujo={sujo}
         editando={editando}
         editandoAtual={editandoAtual}
+        duplicandoDe={duplicandoDe}
         form={form}
         setForm={setForm}
         categorias={categorias}
