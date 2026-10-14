@@ -80,4 +80,17 @@ describe("kit com item que ainda não está cadastrado", () => {
     expect(textoQuantidade({ quantidade: 2 })).toBe("2");
     expect(nomeDoKit([{ nome: "Farinha", quantidade: 250, unidade: "g" }, { nome: "Pote", quantidade: 1 }])).toBe("Kit 250 g Farinha + 1 Pote");
   });
+
+  it("faixa de venda: lucro no menor e no maior preço", () => {
+    const r = calcularKit({ ...base, precoMinimo: 50, precoMaximo: 80 });
+    // custo 28, sem taxas nem imposto
+    expect(r.faixaVenda.minimo?.lucroLiquido).toBe(22);
+    expect(r.faixaVenda.maximo?.lucroLiquido).toBe(52);
+    expect(r.faixaVenda.maximo?.margemEfetivaPct).toBeCloseTo(52 / 80);
+  });
+
+  it("faixa de venda vazia ou zerada não calcula", () => {
+    expect(calcularKit(base).faixaVenda).toEqual({ minimo: null, maximo: null });
+    expect(calcularKit({ ...base, precoMinimo: 0, precoMaximo: null }).faixaVenda).toEqual({ minimo: null, maximo: null });
+  });
 });

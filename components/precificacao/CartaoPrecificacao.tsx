@@ -41,7 +41,10 @@ export function CartaoPrecificacao({ dados, formato, empresa }: { dados: ResumoE
 
       <div style={{ padding: "18px 20px 20px" }}>
         <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.25, textAlign: "center" }}>{dados.titulo}</div>
-        <div style={{ fontSize: 11, color: COR.suave, textAlign: "center", marginTop: 2 }}>{new Date().toLocaleDateString("pt-BR")}</div>
+        <div style={{ fontSize: 11, color: COR.suave, textAlign: "center", marginTop: 2 }}>
+          {completo && dados.canal ? `${dados.canal} · ` : ""}
+          {new Date().toLocaleDateString("pt-BR")}
+        </div>
 
         {dados.imagemUrl && (
           // eslint-disable-next-line @next/next/no-img-element -- captura por html-to-image; precisa ser <img> puro
@@ -79,6 +82,14 @@ export function CartaoPrecificacao({ dados, formato, empresa }: { dados: ResumoE
         <div style={{ marginTop: 10, borderRadius: 10, padding: "10px 12px", background: lucroPositivo ? "#f0fdf4" : "#fef2f2" }}>
           <Linha rotulo="Lucro líquido" valor={`${formatBRL(dados.lucroLiquido)} (${pct(dados.margemEfetivaPct)})`} forte cor={lucroPositivo ? COR.positivo : COR.negativo} />
         </div>
+
+        {completo && dados.kit && (
+          <div style={{ marginTop: 12 }}>
+            <Linha rotulo="Separado, o cliente pagaria" valor={formatBRL(dados.kit.precoAvulso)} />
+            <Linha rotulo="Economia do cliente" valor={`${formatBRL(dados.kit.economia)} (${pct(dados.kit.economiaPct)})`} />
+            <Linha rotulo="Seu lucro vendendo separado" valor={formatBRL(dados.kit.lucroAvulso)} />
+          </div>
+        )}
 
         {completo && dados.faixaVenda && (
           <div style={{ marginTop: 12 }}>

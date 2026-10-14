@@ -58,6 +58,9 @@ export interface EntradaKit {
   modo: ModoKit;
   /** margem: % alvo; desconto: % sobre o avulso; preco: R$. */
   parametro: number;
+  /** Faixa de venda (opcional): menor e maior preço que o vendedor aceitaria praticar no kit. */
+  precoMinimo?: number | null;
+  precoMaximo?: number | null;
 }
 
 export interface ResultadoKit {
@@ -71,6 +74,8 @@ export interface ResultadoKit {
   lucroAvulso: number;
   /** Lucro do kit − lucro avulso (positivo = o kit rende mais). */
   diferencaLucro: number;
+  /** Resultado no menor e no maior preço da faixa de venda (null = não informado). */
+  faixaVenda: { minimo: ResultadoPrecificacao | null; maximo: ResultadoPrecificacao | null };
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -120,6 +125,10 @@ export function calcularKit(e: EntradaKit): ResultadoKit {
     economiaPct: precoAvulso > 0 ? economia / precoAvulso : 0,
     lucroAvulso,
     diferencaLucro: r2((resultado.viavel ? resultado.lucroLiquido : 0) - lucroAvulso),
+    faixaVenda: {
+      minimo: e.precoMinimo && e.precoMinimo > 0 && custoKit > 0 ? resultadoParaPrecoComFaixas(r2(e.precoMinimo), custoKit, base, faixas) : null,
+      maximo: e.precoMaximo && e.precoMaximo > 0 && custoKit > 0 ? resultadoParaPrecoComFaixas(r2(e.precoMaximo), custoKit, base, faixas) : null,
+    },
   };
 }
 

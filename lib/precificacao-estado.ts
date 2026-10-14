@@ -363,6 +363,7 @@ export function usePrecificacao({
   function resumoAtual(): ResumoExport {
     return {
       titulo: nomeAnuncio.trim() || nomeProduto || "Produto",
+      canal: modoTaxas === "loja" && lojaSelecionada ? `${lojaSelecionada.canalNome} · ${lojaSelecionada.nome}` : null,
       imagemUrl: extras.imagemPropria ?? produtos.find((p) => p.id === produtoId)?.imagem_url ?? null,
       precoVenda: resultado.precoVenda,
       custoTotal: resultado.custoTotal,
@@ -408,6 +409,7 @@ export function usePrecificacao({
           : 0;
     return {
       titulo: h.titulo_anuncio || h.produto_nome,
+      canal: h.canal ?? null,
       imagemUrl: h.imagem_url ?? (h.produto_id ? (produtos.find((p) => p.id === h.produto_id)?.imagem_url ?? null) : null),
       precoVenda: h.preco_calculado,
       custoTotal: h.custo,

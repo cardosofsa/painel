@@ -125,6 +125,7 @@ export function VariacoesView({
     const { resultado, taxas } = calcular(v);
     return {
       titulo: `${nomeAnuncio.trim() || "Anúncio"} — ${v.nome}`,
+      canal: modoTaxas === "loja" && lojaSelecionada ? `${lojaSelecionada.canalNome} · ${lojaSelecionada.nome}` : null,
       imagemUrl: produtos.find((p) => p.id === produtoId)?.imagem_url ?? null,
       precoVenda: resultado.precoVenda,
       custoTotal: resultado.custoTotal,

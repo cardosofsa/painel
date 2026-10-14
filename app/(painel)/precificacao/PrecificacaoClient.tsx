@@ -130,7 +130,7 @@ export function PrecificacaoClient({
 
       {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} onVerHistorico={() => setHistoricoAberto(true)} empresa={empresa} />}
 
-      {visao === "kits" && <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} />}
+      {visao === "kits" && <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} empresa={empresa} />}
 
       {visao === "variacoes" && (
         <VariacoesView
