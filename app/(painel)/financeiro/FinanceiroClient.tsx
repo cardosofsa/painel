@@ -42,6 +42,7 @@ import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { AbaResultado, type LinhaDre, type GastoAnuncio } from "@/components/financeiro/AbaResultado";
 import { CalendarioContas } from "@/components/financeiro/CalendarioContas";
 import { AnaliseMesModal } from "@/components/financeiro/AnaliseMesModal";
+import { ContaAbertaModal } from "@/components/fornecedores/ContaAbertaModal";
 import { PagarFaturaModal } from "@/components/financeiro/PagarFaturaModal";
 import { dividaCartao, ehCartao, limiteDisponivel, percentualUsado, saldoDeCaixa } from "@/lib/cartao";
 import { SaqueMarketplaceModal } from "@/components/financeiro/SaqueMarketplaceModal";
@@ -161,6 +162,7 @@ export function FinanceiroClient({
   contas,
   movimentacoes,
   despesasFixas,
+  contaAberta = [],
   contasPagarReceber,
   fluxoCaixaDiario,
   despesasPorCategoria,
@@ -214,6 +216,8 @@ export function FinanceiroClient({
   movimentacoes: Movimentacao[];
   despesasFixas: DespesaFixa[];
   contasPagarReceber: ContaPagarReceber[];
+  /** 0095: o que se deve a cada fornecedor sem parcelas nem vencimento (saldo da conta em aberto). */
+  contaAberta?: { fornecedor_id: string; fornecedor_nome: string; saldo: number }[];
   fluxoCaixaDiario: { dia: string; entradas: number; saidas: number }[];
   despesasPorCategoria: { categoria: string; valor: number }[];
   resumo: ResumoFinanceiro;
@@ -226,6 +230,7 @@ export function FinanceiroClient({
   const [analiseAberta, setAnaliseAberta] = useState(false);
   const [saque, setSaque] = useState<{ loja: string | null } | null>(null);
   const [pagandoFatura, setPagandoFatura] = useState<string | null>(null);
+  const [contaAbertaDe, setContaAbertaDe] = useState<{ id: string; nome: string } | null>(null);
   const [modalDespesa, setModalDespesa] = useState(false);
   // Abre já do lado certo: o "+ Novo" de A receber abria em "A Pagar".
   const [modalCpr, setModalCpr] = useState<"pagar" | "receber" | null>(null);
@@ -571,6 +576,7 @@ export function FinanceiroClient({
           <p className="mt-2 text-xs text-text-tertiary max-w-xl">
             O cartão já cai no saldo na hora da venda, por isso não há o que projetar. Entradas vencidas há mais de 60 dias não entram na previsão
             {projecaoMes.naoProjetado > 0 ? ` (hoje: ${formatBRL(projecaoMes.naoProjetado)} fora)` : ""}; dívidas a pagar atrasadas continuam contando.
+            {contaAberta.length > 0 ? ` Dívida sem data com fornecedores (${formatBRL(contaAberta.reduce((t, c) => t + c.saldo, 0))}) não entra na projeção: você paga quando quiser, e cada pagamento reduz o saldo na hora.` : ""}
           </p>
         </details>
       </Card>
@@ -640,6 +646,28 @@ export function FinanceiroClient({
         </>
       )}
 
+      {aba === "a-pagar" && contaAberta.length > 0 && (
+        <Card className="mb-5">
+          <div className="flex items-baseline justify-between gap-2 flex-wrap mb-1">
+            <h2 className="text-base font-semibold text-text-primary">Em aberto com fornecedores</h2>
+            <span className="font-mono text-negative">{formatBRL(contaAberta.reduce((s, c) => s + c.saldo, 0))}</span>
+          </div>
+          <p className="text-xs text-text-tertiary mb-3">Sem parcelas nem vencimento: você abate quando quiser. Não entra em &quot;vencidas&quot;, no calendário nem no saldo projetado.</p>
+          <ul className="divide-y divide-border">
+            {contaAberta.map((c) => (
+              <li key={c.fornecedor_id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span className="truncate text-text-primary">{c.fornecedor_nome}</span>
+                <span className="flex items-center gap-3">
+                  <span className="font-mono text-text-primary">{formatBRL(c.saldo)}</span>
+                  <Button variant="secondary" size="sm" onClick={() => setContaAbertaDe({ id: c.fornecedor_id, nome: c.fornecedor_nome })}>
+                    Pagar / extrato
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       {aba === "a-pagar" && (
       <Card padding="nenhum" className="overflow-hidden">
         <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-wrap gap-3">
@@ -1072,6 +1100,7 @@ export function FinanceiroClient({
           onClose={() => setSaque(null)}
         />
       )}
+      {contaAbertaDe && <ContaAbertaModal key={`aberta-${contaAbertaDe.id}`} fornecedor={contaAbertaDe} contas={contas.map((c) => ({ id: c.id, nome: c.nome }))} onClose={() => setContaAbertaDe(null)} />}
       {pagandoFatura && (() => {
         const cartao = contas.find((c) => c.id === pagandoFatura);
         return cartao ? (

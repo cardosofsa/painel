@@ -1,3 +1,4 @@
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { podeVencer, type ContaTalvezRepasse } from "@/lib/repasse-marketplace";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
@@ -104,14 +105,11 @@ export default async function DashboardPage() {
       // `estoque <= estoque_minimo` é entre colunas, fica para depois), em lotes: antes era a
       // tabela inteira, cortada calada em 1000 linhas pelo PostgREST.
       buscarEmLotes<ProdutoBaixoEstoque>(async (de, ate) => {
-        const r = await supabase
-          .from("produtos")
-          .select("id, sku, nome, estoque, estoque_minimo", { count: "exact" })
-          .eq("ativo", true)
-          .gt("estoque_minimo", 0)
-          .order("estoque_minimo", { ascending: false })
-          .order("id")
-          .range(de, ate);
+        // Variação (0084) não entra: o estoque dela é derivado do pai.
+        const r = await semVariacoesFilhas((filtrar) => {
+          const q = supabase.from("produtos").select("id, sku, nome, estoque, estoque_minimo", { count: "exact" }).eq("ativo", true).gt("estoque_minimo", 0);
+          return (filtrar ? q.is("produto_pai_id", null) : q).order("estoque_minimo", { ascending: false }).order("id").range(de, ate);
+        });
         return { data: r.data, error: r.error, count: r.count };
       }),
       supabase

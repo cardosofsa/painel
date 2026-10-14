@@ -1,3 +1,4 @@
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { InventarioClient, type HistoricoInventario, type ProdutoContagem } from "./InventarioClient";
@@ -10,7 +11,11 @@ export default async function InventarioPage() {
 
   const [produtosRes, gruposRes, armazensRes, saldosRes, historicoRes] = await Promise.all([
     // `*`: `e_kit` só existe a partir da 0058.
-    supabase.from("produtos").select("*").eq("ativo", true).order("nome"),
+    // Variação (0084) não tem saldo próprio: conta-se o produto principal.
+    semVariacoesFilhas((filtrar) => {
+      const q = supabase.from("produtos").select("*").eq("ativo", true);
+      return (filtrar ? q.is("produto_pai_id", null) : q).order("nome");
+    }),
     supabase.from("produto_grupos").select("id, nome"),
     supabase.from("armazens").select("id, nome").order("criado_em"),
     supabase.from("estoque_armazem").select("produto_id, armazem_id, quantidade"),

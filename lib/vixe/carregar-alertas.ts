@@ -8,6 +8,7 @@
  *    o resto.
  */
 
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 import { podeVencer } from "@/lib/repasse-marketplace";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AbaId } from "@/lib/acesso";
@@ -108,7 +109,11 @@ async function estoque(supabase: SupabaseClient): Promise<AlertaVixe[]> {
   const [alertasRes, produtosRes, saidasRes] = await Promise.all([
     // Só os de estoque: pedido novo (0050) também mora em `alertas`, mas é aviso do sino.
     supabase.from("alertas").select("id, mensagem, produto_id").eq("status", "novo").eq("tipo", "estoque_minimo").order("criado_em", { ascending: false }).limit(100),
-    supabase.from("produtos").select("id, nome, estoque, estoque_minimo, saida_media_semanal, e_kit").eq("ativo", true),
+    // Variação (0084) não gera alerta de estoque: o saldo dela é derivado do pai, que já alerta.
+    semVariacoesFilhas((filtrar) => {
+      const q = supabase.from("produtos").select("id, nome, estoque, estoque_minimo, saida_media_semanal, e_kit").eq("ativo", true);
+      return filtrar ? q.is("produto_pai_id", null) : q;
+    }),
     supabase.from("estoque_movimentacoes").select("produto_id, quantidade").eq("tipo", "saida").gte("data_movimentacao", hojeIsoBrasil(inicio)),
   ]);
   const minimos = ok<{ id: string; mensagem: string; produto_id: string | null }[]>(alertasRes);

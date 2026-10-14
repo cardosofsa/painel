@@ -1,3 +1,4 @@
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 import { createClient } from "@/lib/supabase/server";
 import { podeVencer } from "@/lib/repasse-marketplace";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
@@ -46,7 +47,13 @@ export default async function VixeInsightsPage() {
           .neq("vendas.status", "cancelada")
           .limit(20000)
       : vazio,
-    verEstoque ? supabase.from("produtos").select("id, nome, estoque, custo, grupo_id, variante_nome").eq("ativo", true) : vazio,
+    // Valor e ruptura só do produto principal: o estoque da variação (0084) é derivado dele.
+    verEstoque
+      ? semVariacoesFilhas((filtrar) => {
+          const q = supabase.from("produtos").select("id, nome, estoque, custo, grupo_id, variante_nome").eq("ativo", true);
+          return filtrar ? q.is("produto_pai_id", null) : q;
+        })
+      : vazio,
     supabase.from("produto_grupos").select("id, nome"),
     verFinanceiro ? supabase.from("contas_a_pagar_receber").select("*").eq("status", "pendente") : vazio,
     verFinanceiro ? supabase.from("venda_parcelas").select("venda_id, valor, data_vencimento").eq("status", "pendente") : vazio,

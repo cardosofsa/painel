@@ -1,3 +1,4 @@
+import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
 import type { createClient } from "@/lib/supabase/server";
 import { buscarEmLotes } from "@/lib/lotes";
 import { contemPalavra, filtrosDeBusca, palavrasDaBusca } from "@/lib/listas";
@@ -31,13 +32,12 @@ export interface ProdutoEstoqueLinha {
 /** Todos os produtos, só com as colunas da tela, na ordem da lista. */
 export async function produtosDoEstoque(supabase: Supabase, grupos: { id: string; nome: string }[]) {
   const r = await buscarEmLotes<Omit<ProdutoEstoqueLinha, "nome"> & { nome: string }>(async (de, ate) => {
-    const res = await supabase
-      .from("produtos")
-      .select("id, sku, nome, custo, estoque, estoque_minimo, armazem_id, grupo_id, variante_nome, ativo", { count: "exact" })
-      .order("nome")
-      .order("variante_nome", { nullsFirst: true })
-      .order("id")
-      .range(de, ate);
+    // Variação por quantidade (0084) não tem saldo próprio: o estoque dela é o do pai, e somar as duas
+    // contaria a mesma unidade várias vezes.
+    const res = await semVariacoesFilhas((filtrar) => {
+      const q = supabase.from("produtos").select("id, sku, nome, custo, estoque, estoque_minimo, armazem_id, grupo_id, variante_nome, ativo", { count: "exact" });
+      return (filtrar ? q.is("produto_pai_id", null) : q).order("nome").order("variante_nome", { nullsFirst: true }).order("id").range(de, ate);
+    });
     return { data: res.data, error: res.error, count: res.count };
   });
   const mapa = mapaGrupos(grupos);

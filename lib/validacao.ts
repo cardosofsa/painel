@@ -584,6 +584,8 @@ export const pedidoCompraSchema = z.object({
   conta_id: uuid,
   /** true = a prazo (parcelas pendentes); false = à vista, já sai paga (0064). */
   parcelado: z.boolean(),
+  /** 0095: deixa o valor em aberto na conta do fornecedor (sem parcelas nem vencimento). */
+  em_aberto: z.boolean().optional(),
   /** Dias entre as parcelas a prazo (30 = mesmo dia de cada mês). */
   intervalo_dias: z.number().int("Intervalo inválido").min(1, "Intervalo mínimo de 1 dia").max(120, "Intervalo máximo de 120 dias").default(30),
   // Teto obrigatório: `Array.from({ length: parcelas })` com um número enorme vindo do
@@ -761,6 +763,22 @@ export const pagarFaturaSchema = z.object({
   conta_id: uuid,
   valor: z.number().finite().positive("Informe o valor da fatura").max(10_000_000, "Valor alto demais"),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+});
+
+/** Conta em aberto com o fornecedor (0095): pagamento avulso e lançamento de dívida antiga. */
+export const contaAbertaPagamentoSchema = z.object({
+  fornecedor_id: uuid,
+  conta_id: uuid,
+  valor: z.number().finite().positive("Informe o valor pago").max(100_000_000, "Valor alto demais"),
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+  descricao: z.string().trim().max(300).nullable(),
+});
+
+export const contaAbertaDebitoSchema = z.object({
+  fornecedor_id: uuid,
+  valor: z.number().finite().positive("Informe o valor que fica em aberto").max(100_000_000, "Valor alto demais"),
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida").nullable(),
+  descricao: z.string().trim().max(300).nullable(),
 });
 
 /** Mês do fechamento (sempre o primeiro dia): o relatório de IA do Financeiro (0088). */
