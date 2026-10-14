@@ -10,10 +10,11 @@ import { Chip } from "@/components/ui/Chip";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL } from "@/lib/format";
-import { calcularKit, nomeDoKit, type ItemKit, type ModoKit } from "@/lib/kit";
+import { calcularKit, nomeDoKit, quantidadeEmUnidadeDePreco, textoQuantidade, UNIDADES_KIT, type ItemKit, type ModoKit, type UnidadeKit } from "@/lib/kit";
 import type { LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-tipos";
 import { criarProdutoDePrecificacao, salvarPrecificacao } from "@/app/(painel)/precificacao/actions";
 
+const GRADE = "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_6rem_4.75rem_6.5rem_6.5rem_5.5rem_2rem]";
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const MODOS: { id: ModoKit; rotulo: string; ajuda: string }[] = [
   { id: "margem", rotulo: "Margem alvo", ajuda: "Margem líquida desejada (%)" },
@@ -50,8 +51,9 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
   }
 
   /** Item que ainda não existe no cadastro: o dono digita nome, custo e preço avulso. */
-  function adicionarSemCadastro() {
-    setItens((x) => [...x, { id: `livre-${crypto.randomUUID()}`, produtoId: null, nome: "", quantidade: 1, custo: 0, preco: 0 }]);
+  function adicionarSemCadastro(nomeInicial = "") {
+    setItens((x) => [...x, { id: `livre-${crypto.randomUUID()}`, produtoId: null, nome: nomeInicial.trim().slice(0, 120), quantidade: 1, unidade: "un", custo: 0, preco: 0 }]);
+    setBusca("");
   }
 
   function mudarItem(id: string, parcial: Partial<ItemKit>) {
@@ -75,7 +77,17 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           loja_id: loja?.id ?? null,
           componentes: [
             // Item sem cadastro entra só como custo (sem `produtoId`): não há estoque para baixar.
-            ...itens.map((i) => ({ id: i.id, nome: i.nome.trim() || "Item", quantidade: i.quantidade, custoUnitario: i.custo, ...(i.produtoId ? { produtoId: i.produtoId } : {}) })),
+            // Peso/volume vira uma linha só ("Farinha (250 g)") com o custo da porção.
+            ...itens.map((i) => {
+              if (i.produtoId) return { id: i.id, nome: i.nome, quantidade: i.quantidade, custoUnitario: i.custo, produtoId: i.produtoId };
+              const porUnidade = (i.unidade ?? "un") === "un";
+              return {
+                id: i.id,
+                nome: porUnidade ? i.nome.trim() || "Item" : `${i.nome.trim() || "Item"} (${textoQuantidade(i)})`,
+                quantidade: porUnidade ? i.quantidade : 1,
+                custoUnitario: porUnidade ? i.custo : Math.round(i.custo * quantidadeEmUnidadeDePreco(i) * 10000) / 10000,
+              };
+            }),
             ...(extra > 0 ? [{ id: "embalagem-kit", nome: "Embalagem do kit", quantidade: 1, custoUnitario: extra }] : []),
           ],
           taxa_extra_valor: loja?.taxaExtraValor ?? null,
@@ -106,11 +118,23 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
         <Card>
           <h3 className="text-sm font-medium text-text-primary mb-3">Itens do kit</h3>
           <div className="relative mb-3 flex gap-2">
-            <input className={inputClass} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto pelo nome ou SKU para adicionar…" aria-label="Adicionar produto ao kit" />
-            <Button type="button" variant="secondary" className="shrink-0" onClick={adicionarSemCadastro}>
+            <input
+              className={inputClass}
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || !busca.trim()) return;
+                e.preventDefault();
+                if (sugestoes[0]) adicionar(sugestoes[0]);
+                else adicionarSemCadastro(busca);
+              }}
+              placeholder="Buscar produto pelo nome ou SKU para adicionar…"
+              aria-label="Adicionar produto ao kit"
+            />
+            <Button type="button" variant="secondary" className="shrink-0" onClick={() => adicionarSemCadastro()}>
               + Item sem cadastro
             </Button>
-            {sugestoes.length > 0 && (
+            {busca.trim() && (
               <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface-1 border border-border rounded-md shadow-elev-2 max-h-60 overflow-auto">
                 {sugestoes.map((p) => (
                   <button key={p.id} type="button" onClick={() => adicionar(p)} className="w-full flex justify-between gap-3 text-left px-3 py-2 text-sm hover:bg-surface-2">
@@ -122,48 +146,33 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
                     </span>
                   </button>
                 ))}
+                <button type="button" onClick={() => adicionarSemCadastro(busca)} className="w-full text-left px-3 py-2 text-sm text-accent hover:bg-surface-2 border-t border-border">
+                  + Adicionar &quot;{busca.trim()}&quot; sem cadastro (informe quantidade, unidade, custo e preço)
+                </button>
               </div>
             )}
           </div>
           {itens.length === 0 ? (
             <p className="text-sm text-text-tertiary text-center py-6">Adicione os produtos que vão no kit (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use &quot;+ Item sem cadastro&quot; e informe nome, custo e preço.</p>
           ) : (
-            <div className="divide-y divide-border border border-border rounded-md">
-              {itens.map((i) =>
-                i.produtoId === null ? (
-                  <div key={i.id} className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_5rem_7rem_7rem_auto] items-center gap-2 px-3 py-2 text-sm bg-surface-2/40">
-                    <div className="col-span-2 sm:col-span-1 flex items-center gap-2 min-w-0">
-                      <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary">sem cadastro</span>
-                      <input className={`${inputClass} h-8`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item" onChange={(e) => mudarItem(i.id, { nome: e.target.value })} />
-                    </div>
-                    <CampoNumero padrao={1} min={1} className={`${inputClass} h-8 text-right`} value={i.quantidade} aria-label={`Quantidade de ${i.nome || "item"}`} onChange={(n) => mudarItem(i.id, { quantidade: Math.max(1, Math.floor(n)) })} />
-                    <CampoNumero className={`${inputClass} h-8 text-right`} value={i.custo} aria-label={`Custo unitário de ${i.nome || "item"}`} placeholder="custo un." onChange={(n) => mudarItem(i.id, { custo: Math.max(0, n) })} />
-                    <CampoNumero className={`${inputClass} h-8 text-right`} value={i.preco} aria-label={`Preço avulso de ${i.nome || "item"}`} placeholder="preço avulso" onChange={(n) => mudarItem(i.id, { preco: Math.max(0, n) })} />
-                    <IconButton aria-label={`Tirar ${i.nome || "item"}`} onClick={() => setItens((x) => x.filter((y) => y.id !== i.id))}>
-                      <Trash2 size={14} />
-                    </IconButton>
-                  </div>
-                ) : (
-                  <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_5rem_auto] sm:grid-cols-[minmax(0,1fr)_5rem_7rem_7rem_auto] items-center gap-2 px-3 py-2 text-sm">
-                    <span className="truncate text-text-primary" title={i.nome}>
-                      {i.nome}
-                    </span>
-                    <CampoNumero
-                      padrao={1}
-                      min={1}
-                      className={`${inputClass} h-8 text-right`}
-                      value={i.quantidade}
-                      aria-label={`Quantidade de ${i.nome}`}
-                      onChange={(n) => mudarItem(i.id, { quantidade: Math.max(1, Math.floor(n)) })}
-                    />
-                    <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">custo {formatBRL(i.custo * i.quantidade)}</span>
-                    <span className="hidden sm:block font-mono text-xs text-text-secondary text-right">avulso {formatBRL(i.preco * i.quantidade)}</span>
-                    <IconButton aria-label={`Tirar ${i.nome}`} onClick={() => setItens((x) => x.filter((y) => y.id !== i.id))}>
-                      <Trash2 size={14} />
-                    </IconButton>
-                  </div>
-                ),
-              )}
+            <div className="border border-border rounded-md">
+              <div className={`hidden sm:grid ${GRADE} gap-2 px-3 py-2 text-[11px] font-medium text-text-tertiary border-b border-border`}>
+                <span>Item</span>
+                <span className="text-right">Quantidade</span>
+                <span>Unidade</span>
+                <span className="text-right">Custo (R$)</span>
+                <span className="text-right">Preço avulso (R$)</span>
+                <span className="text-right">Custo no kit</span>
+                <span />
+              </div>
+              <div className="divide-y divide-border">
+                {itens.map((i) => (
+                  <LinhaItem key={i.id} item={i} onChange={(parcial) => mudarItem(i.id, parcial)} onRemover={() => setItens((x) => x.filter((y) => y.id !== i.id))} />
+                ))}
+              </div>
+              <p className="px-3 py-2 text-[11px] text-text-tertiary border-t border-border">
+                Em g e ml, informe o custo e o preço por kg e por litro (como você compra): 250 g a R$ 30/kg custa R$ 7,50. Em unidade, é o valor de cada uma.
+              </p>
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -244,6 +253,80 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           <p className="text-[11px] text-text-tertiary">O kit nasce com os itens na composição: o custo é a soma deles e o estoque é quantos kits dá para montar. Vender o kit baixa cada item.</p>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function Rotulo({ texto, children }: { texto: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-0.5 min-w-0">
+      <span className="sm:hidden text-[11px] text-text-tertiary">{texto}</span>
+      {children}
+    </label>
+  );
+}
+
+/** Uma linha do kit. Item cadastrado: só a quantidade muda. Sem cadastro: tudo é editável. */
+function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: (p: Partial<ItemKit>) => void; onRemover: () => void }) {
+  const livre = i.produtoId === null;
+  const unid = UNIDADES_KIT.find((u) => u.id === (i.unidade ?? "un")) ?? UNIDADES_KIT[0];
+  const totalCusto = i.custo * quantidadeEmUnidadeDePreco(i);
+  const campo = `${inputClass} h-8 text-right`;
+  return (
+    <div className={`grid ${GRADE} items-end sm:items-center gap-2 px-3 py-2 text-sm ${livre ? "bg-surface-2/40" : ""}`}>
+      <div className="flex items-center gap-2 min-w-0">
+        {livre ? (
+          <>
+            <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary">sem cadastro</span>
+            <input className={`${inputClass} h-8`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item" onChange={(e) => onChange({ nome: e.target.value })} />
+          </>
+        ) : (
+          <span className="truncate text-text-primary" title={i.nome}>
+            {i.nome}
+          </span>
+        )}
+      </div>
+      <Rotulo texto="Quantidade">
+        {livre ? (
+          <CampoNumero padrao={1} min={0.001} casas={3} className={campo} value={i.quantidade} aria-label={`Quantidade de ${i.nome || "item"}`} onChange={(n) => onChange({ quantidade: Math.max(0.001, n) })} />
+        ) : (
+          <CampoNumero padrao={1} min={1} casas={0} className={campo} value={i.quantidade} aria-label={`Quantidade de ${i.nome}`} onChange={(n) => onChange({ quantidade: Math.max(1, Math.floor(n)) })} />
+        )}
+      </Rotulo>
+      <Rotulo texto="Unidade">
+        {livre ? (
+          <select className={`${inputClass} h-8`} value={i.unidade ?? "un"} aria-label={`Unidade de ${i.nome || "item"}`} onChange={(e) => onChange({ unidade: e.target.value as UnidadeKit })}>
+            {UNIDADES_KIT.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.rotulo}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-text-secondary h-8 flex items-center">un</span>
+        )}
+      </Rotulo>
+      <Rotulo texto={`Custo (R$ por ${unid.base})`}>
+        {livre ? (
+          <CampoNumero min={0} casas={4} className={campo} value={i.custo} aria-label={`Custo por ${unid.base} de ${i.nome || "item"}`} placeholder={`R$ por ${unid.base}`} onChange={(n) => onChange({ custo: Math.max(0, n) })} />
+        ) : (
+          <span className="font-mono text-xs text-text-secondary text-right h-8 flex items-center justify-end">{formatBRL(i.custo)}</span>
+        )}
+      </Rotulo>
+      <Rotulo texto={`Preço avulso (R$ por ${unid.base})`}>
+        {livre ? (
+          <CampoNumero min={0} casas={4} className={campo} value={i.preco} aria-label={`Preço avulso por ${unid.base} de ${i.nome || "item"}`} placeholder={`R$ por ${unid.base}`} onChange={(n) => onChange({ preco: Math.max(0, n) })} />
+        ) : (
+          <span className="font-mono text-xs text-text-secondary text-right h-8 flex items-center justify-end">{formatBRL(i.preco)}</span>
+        )}
+      </Rotulo>
+      <div className="flex sm:block items-center justify-between font-mono text-xs text-text-primary sm:text-right">
+        <span className="sm:hidden text-[11px] text-text-tertiary font-sans">Custo no kit</span>
+        {formatBRL(totalCusto)}
+      </div>
+      <IconButton aria-label={`Tirar ${i.nome || "item"}`} onClick={onRemover}>
+        <Trash2 size={14} />
+      </IconButton>
     </div>
   );
 }

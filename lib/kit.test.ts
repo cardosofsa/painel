@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularKit, nomeDoKit, type EntradaKit } from "./kit";
+import { calcularKit, nomeDoKit, textoQuantidade, type EntradaKit } from "./kit";
 
 const itens = [
   { id: "a", produtoId: "a", nome: "Caneca", quantidade: 2, custo: 10, preco: 30 },
@@ -53,5 +53,31 @@ describe("kit com item que ainda não está cadastrado", () => {
     const r = calcularKit({ ...entrada, itens: [{ id: "b", produtoId: "b", nome: "Pires", quantidade: 1, custo: 5, preco: 15 }, livre] });
     expect(r.custoKit).toBe(25);
     expect(r.precoAvulso).toBe(75);
+  });
+
+  it("peso: 250 g com custo e preço por kg", () => {
+    const r = calcularKit({
+      itens: [{ id: "f", produtoId: null, nome: "Farinha", quantidade: 250, unidade: "g", custo: 30, preco: 60 }],
+      extra: 0,
+      loja: null,
+      impostoPct: 0,
+      modo: "desconto",
+      parametro: 0,
+    });
+    expect(r.custoKit).toBe(7.5);
+    expect(r.precoAvulso).toBe(15);
+    expect(r.lucroAvulso).toBe(7.5);
+  });
+
+  it("quantidade fracionada em kg e volume em ml", () => {
+    const e = { extra: 0, loja: null, impostoPct: 0, modo: "preco" as const, parametro: 100 };
+    expect(calcularKit({ ...e, itens: [{ id: "a", produtoId: null, nome: "A", quantidade: 1.5, unidade: "kg", custo: 10, preco: 20 }] }).custoKit).toBe(15);
+    expect(calcularKit({ ...e, itens: [{ id: "b", produtoId: null, nome: "B", quantidade: 500, unidade: "ml", custo: 8, preco: 16 }] }).custoKit).toBe(4);
+  });
+
+  it("texto da quantidade e nome do kit com unidade", () => {
+    expect(textoQuantidade({ quantidade: 250, unidade: "g" })).toBe("250 g");
+    expect(textoQuantidade({ quantidade: 2 })).toBe("2");
+    expect(nomeDoKit([{ nome: "Farinha", quantidade: 250, unidade: "g" }, { nome: "Pote", quantidade: 1 }])).toBe("Kit 250 g Farinha + 1 Pote");
   });
 });

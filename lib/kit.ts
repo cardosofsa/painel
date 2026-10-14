@@ -9,15 +9,39 @@
 import { resolverComFaixas, resultadoParaPrecoComFaixas, type FaixaComissao, type ResultadoPrecificacao, type TaxasPlataforma } from "./pricing";
 import type { LojaOpcao } from "./precificacao-tipos";
 
+/**
+ * Unidade em que o item entra no kit. Para peso e volume o custo e o preço são informados
+ * por kg / por litro (como se compra), e a quantidade em g / ml: 250 g a R$ 30/kg = R$ 7,50.
+ */
+export type UnidadeKit = "un" | "g" | "kg" | "ml" | "l";
+
+export const UNIDADES_KIT: { id: UnidadeKit; rotulo: string; /** em que se informa custo e preço */ base: string; fator: number }[] = [
+  { id: "un", rotulo: "un", base: "un", fator: 1 },
+  { id: "g", rotulo: "g", base: "kg", fator: 1000 },
+  { id: "kg", rotulo: "kg", base: "kg", fator: 1 },
+  { id: "ml", rotulo: "ml", base: "L", fator: 1000 },
+  { id: "l", rotulo: "L", base: "L", fator: 1 },
+];
+
+/** Quantas "unidades de preço" a quantidade representa (250 g → 0,25 kg). */
+export function quantidadeEmUnidadeDePreco(i: Pick<ItemKit, "quantidade" | "unidade">): number {
+  const f = UNIDADES_KIT.find((u) => u.id === (i.unidade ?? "un"))?.fator ?? 1;
+  return i.quantidade / f;
+}
+
 export interface ItemKit {
   /** Chave da linha na tela: o id do produto, ou um id próprio do item sem cadastro. */
   id: string;
   /** null = item que ainda não existe no cadastro (precifica pelo nome, custo e preço digitados). */
   produtoId: string | null;
   nome: string;
+  /** Em `unidade` (padrão "un"). Pode ser fracionada em g, kg, ml e L. */
   quantidade: number;
+  /** Unidade da quantidade; sem valor, "un". */
+  unidade?: UnidadeKit;
+  /** R$ por unidade (un) ou por kg / L quando a unidade é de peso ou volume. */
   custo: number;
-  /** Preço de venda do produto avulso. */
+  /** Preço de venda avulso, na mesma base do custo. */
   preco: number;
 }
 
@@ -66,8 +90,8 @@ export function taxasDoKit(e: Pick<EntradaKit, "loja" | "impostoPct">): { base: 
 
 export function calcularKit(e: EntradaKit): ResultadoKit {
   const itens = e.itens.filter((i) => i.quantidade > 0);
-  const custoKit = r2(itens.reduce((s, i) => s + i.custo * i.quantidade, 0) + Math.max(0, e.extra));
-  const precoAvulso = r2(itens.reduce((s, i) => s + i.preco * i.quantidade, 0));
+  const custoKit = r2(itens.reduce((s, i) => s + i.custo * quantidadeEmUnidadeDePreco(i), 0) + Math.max(0, e.extra));
+  const precoAvulso = r2(itens.reduce((s, i) => s + i.preco * quantidadeEmUnidadeDePreco(i), 0));
   const { base, faixas } = taxasDoKit(e);
 
   let resultado: ResultadoPrecificacao;
@@ -77,8 +101,14 @@ export function calcularKit(e: EntradaKit): ResultadoKit {
     resultado = resultadoParaPrecoComFaixas(r2(preco), custoKit, base, faixas);
   }
 
+  // Cada unidade vendida separada paga as taxas do canal; peso/volume vende a porção inteira.
   const lucroAvulso = r2(
-    itens.reduce((s, i) => (i.preco > 0 && i.custo > 0 ? s + resultadoParaPrecoComFaixas(i.preco, i.custo, base, faixas).lucroLiquido * i.quantidade : s), 0),
+    itens.reduce((s, i) => {
+      if (!(i.preco > 0 && i.custo > 0)) return s;
+      if ((i.unidade ?? "un") === "un") return s + resultadoParaPrecoComFaixas(i.preco, i.custo, base, faixas).lucroLiquido * i.quantidade;
+      const f = quantidadeEmUnidadeDePreco(i);
+      return s + resultadoParaPrecoComFaixas(r2(i.preco * f), r2(i.custo * f), base, faixas).lucroLiquido;
+    }, 0),
   );
   const precoKit = resultado.viavel ? resultado.precoVenda : 0;
   const economia = r2(Math.max(0, precoAvulso - precoKit));
@@ -94,7 +124,14 @@ export function calcularKit(e: EntradaKit): ResultadoKit {
 }
 
 /** Nome sugerido: "Kit 2 Caneca + 1 Pires". */
-export function nomeDoKit(itens: Pick<ItemKit, "nome" | "quantidade">[]): string {
-  const partes = itens.filter((i) => i.quantidade > 0).map((i) => `${i.quantidade} ${i.nome}`);
+export function nomeDoKit(itens: Pick<ItemKit, "nome" | "quantidade" | "unidade">[]): string {
+  const partes = itens.filter((i) => i.quantidade > 0).map((i) => `${textoQuantidade(i)} ${i.nome}`);
   return partes.length ? `Kit ${partes.join(" + ")}`.slice(0, 120) : "Kit";
+}
+
+/** "2" para unidade, "250 g" para peso/volume. */
+export function textoQuantidade(i: Pick<ItemKit, "quantidade" | "unidade">): string {
+  const n = String(Number(i.quantidade.toFixed(3))).replace(".", ",");
+  const u = UNIDADES_KIT.find((x) => x.id === (i.unidade ?? "un"));
+  return u && u.id !== "un" ? `${n} ${u.rotulo}` : n;
 }
