@@ -15,8 +15,6 @@ import type { LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-tipos";
 import { criarProdutoDePrecificacao, salvarPrecificacao } from "@/app/(painel)/precificacao/actions";
 
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
-const num = (v: string) => Math.max(0, Number(v.replace(",", ".")) || 0);
-
 const MODOS: { id: ModoKit; rotulo: string; ajuda: string }[] = [
   { id: "margem", rotulo: "Margem alvo", ajuda: "Margem líquida desejada (%)" },
   { id: "desconto", rotulo: "Desconto sobre o avulso", ajuda: "Desconto para o cliente (%) sobre a soma dos preços avulsos" },
@@ -170,7 +168,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <FormField label="Embalagem / brinde por kit (R$)">
-              <input className={inputClass} inputMode="decimal" value={extra || ""} onChange={(e) => setExtra(num(e.target.value))} placeholder="0,00" />
+              <CampoNumero value={extra} onChange={setExtra} min={0} casas={2} placeholder="0,00" />
             </FormField>
             <FormField label="Nome do kit">
               <input className={inputClass} maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder={nomeDoKit(itens)} />
@@ -192,7 +190,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
               </select>
             </FormField>
             <FormField label="Imposto (%)">
-              <input className={inputClass} inputMode="decimal" value={imposto} onChange={(e) => setImposto(num(e.target.value))} />
+              <CampoNumero value={imposto} onChange={setImposto} min={0} />
             </FormField>
           </div>
           <div className="flex flex-wrap gap-2 mb-3">
@@ -203,7 +201,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
             ))}
           </div>
           <FormField label={MODOS.find((m) => m.id === modo)!.ajuda}>
-            <input className={inputClass} inputMode="decimal" value={parametro} onChange={(e) => setParametro(num(e.target.value))} />
+            <CampoNumero value={parametro} onChange={setParametro} min={0} />
           </FormField>
         </Card>
       </div>
