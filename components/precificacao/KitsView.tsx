@@ -14,7 +14,7 @@ import { calcularKit, nomeDoKit, quantidadeEmUnidadeDePreco, textoQuantidade, UN
 import type { LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-tipos";
 import { criarProdutoDePrecificacao, salvarPrecificacao } from "@/app/(painel)/precificacao/actions";
 
-const GRADE = "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_6rem_4.75rem_6.5rem_6.5rem_5.5rem_2rem]";
+const CAMPOS = "grid-cols-2 sm:grid-cols-[6rem_5rem_minmax(0,1fr)_minmax(0,1fr)_6rem]";
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const MODOS: { id: ModoKit; rotulo: string; ajuda: string }[] = [
   { id: "margem", rotulo: "Margem alvo", ajuda: "Margem líquida desejada (%)" },
@@ -156,15 +156,6 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
             <p className="text-sm text-text-tertiary text-center py-6">Adicione os produtos que vão no kit (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use &quot;+ Item sem cadastro&quot; e informe nome, custo e preço.</p>
           ) : (
             <div className="border border-border rounded-md">
-              <div className={`hidden sm:grid ${GRADE} gap-2 px-3 py-2 text-[11px] font-medium text-text-tertiary border-b border-border`}>
-                <span>Item</span>
-                <span className="text-right">Quantidade</span>
-                <span>Unidade</span>
-                <span className="text-right">Custo (R$)</span>
-                <span className="text-right">Preço avulso (R$)</span>
-                <span className="text-right">Custo no kit</span>
-                <span />
-              </div>
               <div className="divide-y divide-border">
                 {itens.map((i) => (
                   <LinhaItem key={i.id} item={i} onChange={(parcial) => mudarItem(i.id, parcial)} onRemover={() => setItens((x) => x.filter((y) => y.id !== i.id))} />
@@ -260,7 +251,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
 function Rotulo({ texto, children }: { texto: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-0.5 min-w-0">
-      <span className="sm:hidden text-[11px] text-text-tertiary">{texto}</span>
+      <span className="text-[11px] text-text-tertiary">{texto}</span>
       {children}
     </label>
   );
@@ -273,19 +264,23 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
   const totalCusto = i.custo * quantidadeEmUnidadeDePreco(i);
   const campo = `${inputClass} h-8 text-right`;
   return (
-    <div className={`grid ${GRADE} items-end sm:items-center gap-2 px-3 py-2 text-sm ${livre ? "bg-surface-2/40" : ""}`}>
+    <div className={`space-y-2 px-3 py-3 text-sm ${livre ? "bg-surface-2/40" : ""}`}>
       <div className="flex items-center gap-2 min-w-0">
         {livre ? (
           <>
             <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary">sem cadastro</span>
-            <input className={`${inputClass} h-8`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item" onChange={(e) => onChange({ nome: e.target.value })} />
+            <input className={`${inputClass} h-9`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item (ex.: Farinha de maracujá)" onChange={(e) => onChange({ nome: e.target.value })} />
           </>
         ) : (
           <span className="truncate text-text-primary" title={i.nome}>
             {i.nome}
           </span>
         )}
+        <IconButton className="ml-auto shrink-0" aria-label={`Tirar ${i.nome || "item"}`} onClick={onRemover}>
+          <Trash2 size={14} />
+        </IconButton>
       </div>
+      <div className={`grid ${CAMPOS} items-end gap-2`}>
       <Rotulo texto="Quantidade">
         {livre ? (
           <CampoNumero padrao={1} min={0.001} casas={3} className={campo} value={i.quantidade} aria-label={`Quantidade de ${i.nome || "item"}`} onChange={(n) => onChange({ quantidade: Math.max(0.001, n) })} />
@@ -320,13 +315,11 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
           <span className="font-mono text-xs text-text-secondary text-right h-8 flex items-center justify-end">{formatBRL(i.preco)}</span>
         )}
       </Rotulo>
-      <div className="flex sm:block items-center justify-between font-mono text-xs text-text-primary sm:text-right">
-        <span className="sm:hidden text-[11px] text-text-tertiary font-sans">Custo no kit</span>
-        {formatBRL(totalCusto)}
+      <div className="flex flex-col gap-0.5 min-w-0 col-span-2 sm:col-span-1">
+        <span className="text-[11px] text-text-tertiary">Custo no kit</span>
+        <span className="font-mono text-xs text-text-primary h-8 flex items-center sm:justify-end">{formatBRL(totalCusto)}</span>
       </div>
-      <IconButton aria-label={`Tirar ${i.nome || "item"}`} onClick={onRemover}>
-        <Trash2 size={14} />
-      </IconButton>
+      </div>
     </div>
   );
 }
