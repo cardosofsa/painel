@@ -20,8 +20,20 @@ export interface FaixaVendaExport {
   margemMaximaPct: number;
 }
 
+/** Comparação do kit com vender os mesmos itens separados — só aparece no formato "completo". */
+export interface ComparativoKitExport {
+  precoAvulso: number;
+  economia: number;
+  economiaPct: number;
+  lucroAvulso: number;
+}
+
 export interface ResumoExport {
   titulo: string;
+  /** Onde vai vender ("Shopee · Loja Centro", "Venda direta"). Opcional. */
+  canal?: string | null;
+  /** Só para kits. */
+  kit?: ComparativoKitExport | null;
   precoVenda: number;
   custoTotal: number;
   taxaVariavelValor: number;
@@ -49,6 +61,7 @@ export function precoPsicologico(preco: number): number {
 
 export function montarTextoResumo(r: ResumoExport, formato: "simples" | "completo"): string {
   const linhas = [`*${r.titulo}*`];
+  if (formato === "completo" && r.canal) linhas.push(`Canal: ${r.canal}`);
   if (formato === "completo" && r.componentes && r.componentes.length > 0) {
     linhas.push("", "Custo:");
     for (const c of r.componentes) {
@@ -68,6 +81,14 @@ export function montarTextoResumo(r: ResumoExport, formato: "simples" | "complet
   }
   linhas.push("", `Preço de venda: ${formatBRL(r.precoVenda)}`);
   linhas.push(`Lucro líquido: ${formatBRL(r.lucroLiquido)} (${(r.margemEfetivaPct * 100).toFixed(1)}%)`);
+  if (formato === "completo" && r.kit) {
+    linhas.push(
+      "",
+      `Separado, o cliente pagaria: ${formatBRL(r.kit.precoAvulso)}`,
+      `Economia do cliente: ${formatBRL(r.kit.economia)} (${(r.kit.economiaPct * 100).toFixed(1)}%)`,
+      `Seu lucro vendendo separado: ${formatBRL(r.kit.lucroAvulso)}`,
+    );
+  }
   if (formato === "completo" && r.faixaVenda) {
     linhas.push(
       "",

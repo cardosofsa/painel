@@ -17,6 +17,7 @@ export function resumoDeResultadoEmMassa(r: ResultadoLinhaMassa): ResumoExport {
   const { taxaVariavelPct, taxaFixa } = taxasDaLinha(r);
   return {
     titulo: r.linha.nome || r.linha.sku || "Produto",
+    canal: r.loja ? `${r.loja.canalNome} · ${r.loja.nome}` : null,
     precoVenda: r.resultado.precoVenda,
     custoTotal: r.resultado.custoTotal,
     taxaVariavelValor: r.resultado.taxaVariavelValor,

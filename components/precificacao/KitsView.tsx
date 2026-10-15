@@ -3,18 +3,19 @@ import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { PackagePlus, Trash2 } from "lucide-react";
+import { Copy, ImageIcon, MessageCircle, PackagePlus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL } from "@/lib/format";
+import { useExportarPrecificacao, type ResumoExport } from "@/components/precificacao/resultado-compartilhado";
 import { calcularKit, nomeDoKit, quantidadeEmUnidadeDePreco, textoQuantidade, UNIDADES_KIT, type ItemKit, type ModoKit, type UnidadeKit } from "@/lib/kit";
 import type { LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-tipos";
 import { criarProdutoDePrecificacao, salvarPrecificacao } from "@/app/(painel)/precificacao/actions";
 
-const GRADE = "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_6rem_4.75rem_6.5rem_6.5rem_5.5rem_2rem]";
+const CAMPOS = "grid-cols-2 sm:grid-cols-[6rem_5rem_minmax(0,1fr)_minmax(0,1fr)_6rem]";
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const MODOS: { id: ModoKit; rotulo: string; ajuda: string }[] = [
   { id: "margem", rotulo: "Margem alvo", ajuda: "Margem líquida desejada (%)" },
@@ -27,7 +28,7 @@ const MODOS: { id: ModoKit; rotulo: string; ajuda: string }[] = [
  * pelo canal e compara com vender cada item separado. Salva como precificação (os itens
  * viram a composição) e pode virar produto na hora.
  */
-export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: ProdutoOpcao[]; lojas: LojaOpcao[]; aliquotaDasPadrao: number }) {
+export function KitsView({ produtos, lojas, aliquotaDasPadrao, empresa = null }: { produtos: ProdutoOpcao[]; lojas: LojaOpcao[]; aliquotaDasPadrao: number; empresa?: { nome: string | null; logoUrl: string | null } | null }) {
   const [pending, startTransition] = useTransition();
   const [itens, setItens] = useState<ItemKit[]>([]);
   const [busca, setBusca] = useState("");
@@ -37,9 +38,12 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
   const [modo, setModo] = useState<ModoKit>("desconto");
   const [parametro, setParametro] = useState(10);
   const [nome, setNome] = useState("");
+  const [precoMinimo, setPrecoMinimo] = useState(0);
+  const [precoMaximo, setPrecoMaximo] = useState(0);
+  const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
   const loja = lojas.find((l) => l.id === lojaId) ?? null;
-  const r = useMemo(() => calcularKit({ itens, extra, loja, impostoPct: imposto, modo, parametro }), [itens, extra, loja, imposto, modo, parametro]);
+  const r = useMemo(() => calcularKit({ itens, extra, loja, impostoPct: imposto, modo, parametro, precoMinimo, precoMaximo }), [itens, extra, loja, imposto, modo, parametro, precoMinimo, precoMaximo]);
   const sugestoes = busca.trim()
     ? produtos.filter((p) => !itens.some((i) => i.produtoId === p.id) && `${p.nome} ${p.sku}`.toLowerCase().includes(busca.trim().toLowerCase())).slice(0, 8)
     : [];
@@ -63,10 +67,47 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
   const semCadastro = itens.filter((i) => i.produtoId === null);
   const semNome = semCadastro.some((i) => !i.nome.trim());
 
+  /** O que a tarifa fixa do canal cobrou neste preço (o motor devolve só o lucro, então é o resto). */
+  const taxaFixaDoKit = Math.max(0, r.resultado.precoVenda - r.resultado.custoTotal - r.resultado.lucroLiquido - r.resultado.taxaVariavelValor - r.resultado.taxaAdicionalValor - r.resultado.impostoValor - r.resultado.taxaExtraCalculada);
+
+  /** Resumo para copiar / WhatsApp / imagem: itens, embalagem, taxas, faixa de venda e comparação com o avulso. */
+  function resumoDoKit(): ResumoExport {
+    const res = r.resultado;
+    const min = r.faixaVenda.minimo;
+    const max = r.faixaVenda.maximo;
+    const primeiroComFoto = itens.map((i) => produtos.find((p) => p.id === i.produtoId)?.imagem_url).find(Boolean) ?? null;
+    return {
+      titulo: nomeFinal,
+      canal: loja ? `${loja.canalNome} · ${loja.nome}` : "Venda direta",
+      imagemUrl: primeiroComFoto,
+      precoVenda: res.precoVenda,
+      custoTotal: r.custoKit,
+      taxaVariavelValor: res.taxaVariavelValor,
+      taxaVariavelPct: res.precoVenda > 0 ? res.taxaVariavelValor / res.precoVenda : 0,
+      taxaFixa: Math.round(taxaFixaDoKit * 100) / 100,
+      taxaAdicionalValor: res.taxaAdicionalValor,
+      taxaAdicionalPct: 0,
+      impostoValor: res.impostoValor,
+      impostoPct: imposto / 100,
+      taxaExtraCalculada: res.taxaExtraCalculada,
+      lucroLiquido: res.lucroLiquido,
+      margemEfetivaPct: res.margemEfetivaPct,
+      componentes: [
+        ...itens.map((i) => ({ id: i.id, nome: `${textoQuantidade(i)} ${i.nome.trim() || "Item"}`, quantidade: 1, custoUnitario: i.custo * quantidadeEmUnidadeDePreco(i) })),
+        ...(extra > 0 ? [{ id: "embalagem-kit", nome: "Embalagem / brinde", quantidade: 1, custoUnitario: extra }] : []),
+      ],
+      faixaVenda:
+        min && max
+          ? { precoMinimo: min.precoVenda, precoMaximo: max.precoVenda, lucroMinimo: min.lucroLiquido, margemMinimaPct: min.margemEfetivaPct, lucroMaximo: max.lucroLiquido, margemMaximaPct: max.margemEfetivaPct }
+          : null,
+      kit: { precoAvulso: r.precoAvulso, economia: r.economia, economiaPct: r.economiaPct, lucroAvulso: r.lucroAvulso },
+    };
+  }
+
   function salvar(criarProduto: boolean) {
     const res = r.resultado;
     if (!res.viavel || !itens.length || semNome) return;
-    const taxaFixa = Math.max(0, res.precoVenda - res.custoTotal - res.lucroLiquido - res.taxaVariavelValor - res.taxaAdicionalValor - res.impostoValor - res.taxaExtraCalculada);
+    const taxaFixa = taxaFixaDoKit;
     startTransition(async () => {
       const s = await executarComToast(
         salvarPrecificacao({
@@ -156,15 +197,6 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
             <p className="text-sm text-text-tertiary text-center py-6">Adicione os produtos que vão no kit (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use &quot;+ Item sem cadastro&quot; e informe nome, custo e preço.</p>
           ) : (
             <div className="border border-border rounded-md">
-              <div className={`hidden sm:grid ${GRADE} gap-2 px-3 py-2 text-[11px] font-medium text-text-tertiary border-b border-border`}>
-                <span>Item</span>
-                <span className="text-right">Quantidade</span>
-                <span>Unidade</span>
-                <span className="text-right">Custo (R$)</span>
-                <span className="text-right">Preço avulso (R$)</span>
-                <span className="text-right">Custo no kit</span>
-                <span />
-              </div>
               <div className="divide-y divide-border">
                 {itens.map((i) => (
                   <LinhaItem key={i.id} item={i} onChange={(parcial) => mudarItem(i.id, parcial)} onRemover={() => setItens((x) => x.filter((y) => y.id !== i.id))} />
@@ -213,6 +245,35 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
             <CampoNumero value={parametro} onChange={setParametro} min={0} />
           </FormField>
         </Card>
+
+        <Card>
+          <h3 className="text-sm font-medium text-text-primary mb-1">Faixa de venda (opcional)</h3>
+          <p className="text-xs text-text-tertiary mb-3">Informe o menor e o maior preço que você aceitaria vender o kit para ver o lucro mínimo e máximo — útil para negociar sem perder dinheiro.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Preço mínimo do kit (R$)">
+              <CampoNumero value={precoMinimo} onChange={setPrecoMinimo} min={0} casas={2} placeholder="Ex.: 79,90" />
+            </FormField>
+            <FormField label="Preço máximo do kit (R$)">
+              <CampoNumero value={precoMaximo} onChange={setPrecoMaximo} min={0} casas={2} placeholder="Ex.: 129,90" />
+            </FormField>
+          </div>
+          {(r.faixaVenda.minimo || r.faixaVenda.maximo) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm border-t border-border pt-3 mt-3">
+              {([["Lucro no mínimo", r.faixaVenda.minimo], ["Lucro no máximo", r.faixaVenda.maximo]] as const).map(([rotulo, f]) => (
+                <div key={rotulo}>
+                  <div className="text-xs text-text-tertiary mb-0.5">{rotulo}</div>
+                  {f ? (
+                    <span className={`font-mono ${f.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
+                      {formatBRL(f.lucroLiquido)} ({pct(f.margemEfetivaPct)})
+                    </span>
+                  ) : (
+                    <span className="text-text-tertiary">—</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
 
       <div className="space-y-5">
@@ -238,6 +299,20 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           )}
         </Card>
         <Card className="space-y-2">
+          <div className="text-xs font-medium text-text-tertiary uppercase">Compartilhar</div>
+          <div className="grid grid-cols-3 gap-2">
+            <Button variant="secondary" disabled={!r.resultado.viavel || !itens.length} onClick={() => setPendenteExport({ acao: "copiar", dados: resumoDoKit() })}>
+              <Copy size={14} /> Copiar
+            </Button>
+            <Button variant="secondary" disabled={!r.resultado.viavel || !itens.length} onClick={() => setPendenteExport({ acao: "whatsapp", dados: resumoDoKit() })}>
+              <MessageCircle size={14} /> WhatsApp
+            </Button>
+            <Button variant="secondary" disabled={!r.resultado.viavel || !itens.length} onClick={() => setPendenteImagem(resumoDoKit())}>
+              <ImageIcon size={14} /> Imagem
+            </Button>
+          </div>
+        </Card>
+        <Card className="space-y-2">
           <Button variant="primary" className="w-full" disabled={!r.resultado.viavel || !itens.length || semCadastro.length > 0} loading={pending} onClick={() => salvar(true)}>
             <PackagePlus size={14} /> Salvar e criar produto
           </Button>
@@ -253,6 +328,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
           <p className="text-[11px] text-text-tertiary">O kit nasce com os itens na composição: o custo é a soma deles e o estoque é quantos kits dá para montar. Vender o kit baixa cada item.</p>
         </Card>
       </div>
+      {modaisExportacao}
     </div>
   );
 }
@@ -260,7 +336,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao }: { produtos: Pro
 function Rotulo({ texto, children }: { texto: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-0.5 min-w-0">
-      <span className="sm:hidden text-[11px] text-text-tertiary">{texto}</span>
+      <span className="text-[11px] text-text-tertiary">{texto}</span>
       {children}
     </label>
   );
@@ -273,19 +349,23 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
   const totalCusto = i.custo * quantidadeEmUnidadeDePreco(i);
   const campo = `${inputClass} h-8 text-right`;
   return (
-    <div className={`grid ${GRADE} items-end sm:items-center gap-2 px-3 py-2 text-sm ${livre ? "bg-surface-2/40" : ""}`}>
+    <div className={`space-y-2 px-3 py-3 text-sm ${livre ? "bg-surface-2/40" : ""}`}>
       <div className="flex items-center gap-2 min-w-0">
         {livre ? (
           <>
             <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary">sem cadastro</span>
-            <input className={`${inputClass} h-8`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item" onChange={(e) => onChange({ nome: e.target.value })} />
+            <input className={`${inputClass} h-9`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item (ex.: Farinha de maracujá)" onChange={(e) => onChange({ nome: e.target.value })} />
           </>
         ) : (
           <span className="truncate text-text-primary" title={i.nome}>
             {i.nome}
           </span>
         )}
+        <IconButton className="ml-auto shrink-0" aria-label={`Tirar ${i.nome || "item"}`} onClick={onRemover}>
+          <Trash2 size={14} />
+        </IconButton>
       </div>
+      <div className={`grid ${CAMPOS} items-end gap-2`}>
       <Rotulo texto="Quantidade">
         {livre ? (
           <CampoNumero padrao={1} min={0.001} casas={3} className={campo} value={i.quantidade} aria-label={`Quantidade de ${i.nome || "item"}`} onChange={(n) => onChange({ quantidade: Math.max(0.001, n) })} />
@@ -320,13 +400,11 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
           <span className="font-mono text-xs text-text-secondary text-right h-8 flex items-center justify-end">{formatBRL(i.preco)}</span>
         )}
       </Rotulo>
-      <div className="flex sm:block items-center justify-between font-mono text-xs text-text-primary sm:text-right">
-        <span className="sm:hidden text-[11px] text-text-tertiary font-sans">Custo no kit</span>
-        {formatBRL(totalCusto)}
+      <div className="flex flex-col gap-0.5 min-w-0 col-span-2 sm:col-span-1">
+        <span className="text-[11px] text-text-tertiary">Custo no kit</span>
+        <span className="font-mono text-xs text-text-primary h-8 flex items-center sm:justify-end">{formatBRL(totalCusto)}</span>
       </div>
-      <IconButton aria-label={`Tirar ${i.nome || "item"}`} onClick={onRemover}>
-        <Trash2 size={14} />
-      </IconButton>
+      </div>
     </div>
   );
 }
