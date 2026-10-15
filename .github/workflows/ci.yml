@@ -13,8 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checagens:
-    name: Lint, tipos e testes
+  # As checagens rodam em jobs paralelos (antes eram um job só, em sequência: lint, tipos,
+  # testes 2×, e os testes de banco no PGlite, que sozinhos levam alguns minutos). O que é
+  # checado é o mesmo; o tempo total passa a ser o do job mais lento.
+  lint-tipos:
+    name: Lint e tipos
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -28,13 +31,53 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm run lint
       - run: npx tsc --noEmit
+
+  testes:
+    name: Testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm test
-      - name: Testes com fuso de Brasília
-        run: npm test
+
+  testes-fuso:
+    name: Testes com fuso de Brasília
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm test
         env:
           TZ: America/Sao_Paulo
-      - name: Testes de banco (PGlite)
-        run: npm run test:sql
+
+  testes-banco:
+    name: Testes de banco (PGlite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm run test:sql
 
   e2e:
     name: E2E (páginas públicas)
