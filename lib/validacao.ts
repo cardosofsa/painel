@@ -786,6 +786,74 @@ export const contaAbertaDebitoSchema = z.object({
 /** Mês do fechamento (sempre o primeiro dia): o relatório de IA do Financeiro (0088). */
 export const relatorioMesSchema = z.object({ mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/, "Mês inválido") });
 
+// ---------- Padrão da loja (0098) ----------
+
+export const PLATAFORMAS_MARCA_IDS = ["shopee", "mercadolivre", "amazon", "shein", "tiktok", "magalu", "outra"] as const;
+export const TIPOS_IMAGEM_MARCA = ["geral", "capa_1", "capa_2", "detalhe", "beneficios", "uso", "composicao", "faq"] as const;
+export const POSICOES_LOGO = ["inferior_direito", "inferior_esquerdo", "superior_direito", "superior_esquerdo", "nenhuma"] as const;
+
+const textoFicha = (max: number) => z.string().trim().max(max, `Use até ${max} caracteres`);
+
+/**
+ * Ficha de Direção de Arte: o visual que a loja quer, em campos que o sistema entende. Todos
+ * opcionais — a ficha cresce com o tempo. `normalizarFicha` (lib/marca/ficha.ts) reaproveita
+ * cada campo daqui para limpar a proposta da IA sem lançar.
+ */
+export const fichaSchema = z.object({
+  fundo: textoFicha(120).optional(),
+  luz: textoFicha(120).optional(),
+  enquadramento: textoFicha(160).optional(),
+  areaProdutoMinPct: z.number().finite().min(10).max(100).optional(),
+  paleta: z.array(z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, "Use cores no formato #RRGGBB")).max(6).optional(),
+  tipografia: textoFicha(120).optional(),
+  tituloMaxPalavras: z.number().int().min(1).max(12).optional(),
+  selos: z.array(textoFicha(40).min(1)).max(4).optional(),
+  faixaInferior: textoFicha(120).optional(),
+  logoPosicao: z.enum(POSICOES_LOGO).optional(),
+  logoLarguraPct: z.number().finite().min(3).max(25).optional(),
+  pessoas: z.enum(["nao", "opcional", "sim"]).optional(),
+  proibicoes: z.array(textoFicha(100).min(1)).max(15).optional(),
+  tom: textoFicha(120).optional(),
+  numeroImagens: z.number().int().min(1).max(12).optional(),
+  observacoes: textoFicha(400).optional(),
+});
+export type FichaMarca = z.infer<typeof fichaSchema>;
+
+const linkLoja = z
+  .string()
+  .trim()
+  .max(300, "Link longo demais")
+  .regex(/^https?:\/\//i, "O link precisa começar com http:// ou https://");
+
+/** Perfil de marca: plataforma primeiro, nicho livre (opcional), link da loja e termos que ele não quer ver. */
+export const perfilMarcaSchema = z.object({
+  id: z.string().uuid().nullable(),
+  nome: z.string().trim().min(1, "Dê um nome ao perfil").max(80, "Nome longo demais"),
+  plataforma: z.enum(PLATAFORMAS_MARCA_IDS),
+  loja_id: z.string().uuid().nullable(),
+  nicho: textoFicha(120).nullable(),
+  link_loja: linkLoja.nullable(),
+  logo_path: z.string().trim().max(300).nullable(),
+  referencias: z.array(z.string().trim().min(1).max(300)).max(8, "Até 8 imagens de referência"),
+  termos_proibidos: z.array(z.string().trim().min(2, "Termo curto demais").max(60, "Termo longo demais")).max(100, "Até 100 termos"),
+});
+export type PerfilMarcaInput = z.input<typeof perfilMarcaSchema>;
+
+export const memoriaMarcaSchema = z.object({
+  perfil_id: z.string().uuid().nullable(),
+  tipo: z.enum(["preferencia", "regra", "aprendizado"]),
+  texto: z.string().trim().min(3, "Escreva pelo menos 3 letras").max(240, "Até 240 caracteres"),
+  origem: z.enum(["usuario", "ia"]),
+});
+
+export const salvarFichaSchema = z.object({
+  perfil_id: z.string().uuid(),
+  tipo_imagem: z.enum(TIPOS_IMAGEM_MARCA),
+  dados: fichaSchema,
+  origem: z.enum(["usuario", "ia_capas", "ajuste_ia"]),
+  nota: textoFicha(240).nullable(),
+});
+
 /** Período (30, 60 ou 90 dias) e loja opcional da narração por IA dos Insights de anúncios. */
 export const iaConsultorSchema = z.object({
   dias: z.union([z.literal(30), z.literal(60), z.literal(90)]),
