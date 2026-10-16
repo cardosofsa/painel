@@ -1,17 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Sparkles, TrendingUp, Ban, PauseCircle, Info } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Sparkles, TrendingUp, Ban, PauseCircle, Info, Lightbulb } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { formatBRL, hojeIsoBrasil, inicioDiaBrasil, somarDiasIso } from "@/lib/format";
-import { analisarDesempenho, LIMIARES, type GastoAds, type LinhaConsultor, type Veredito } from "@/lib/consultor/insights";
+import { executarComToast } from "@/lib/acao-cliente";
+import { formatBRL } from "@/lib/format";
+import { analisarPorDias, LIMIARES, PERIODOS_INSIGHTS, type GastoAds, type LinhaConsultor, type Veredito } from "@/lib/consultor/insights";
+import { gerarNarracaoInsights, type NarracaoGerada } from "./actions";
 import type { AnuncioCadastrado, PedidoRanking } from "@/lib/marketplace/ranking-anuncios";
 
-const PERIODOS = [30, 60, 90] as const;
+const PERIODOS = PERIODOS_INSIGHTS;
 const pct = (f: number) => `${(f * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 const GRUPOS: { v: Veredito; titulo: string; dica: string; icone: typeof TrendingUp; cor: string }[] = [
@@ -45,6 +48,60 @@ function CartaoAnuncio({ l, mostrarLoja, loja }: { l: LinhaConsultor; mostrarLoj
   );
 }
 
+function ListaAcoes({ titulo, itens }: { titulo: string; itens: { anuncio: string; acao: string; motivo: string }[] }) {
+  if (itens.length === 0) return null;
+  return (
+    <section className="space-y-1.5">
+      <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary">{titulo}</h4>
+      <ul className="space-y-2 text-sm">
+        {itens.map((i) => (
+          <li key={`${i.anuncio}-${i.acao}`}>
+            <span className="font-medium text-text-primary">{i.anuncio}:</span> <span className="text-text-primary">{i.acao}</span>
+            {i.motivo && <span className="block text-text-secondary">{i.motivo}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** A IA só explica e prioriza o que o servidor já calculou; anúncio inventado por ela foi descartado. */
+function NarracaoCard({ n }: { n: NarracaoGerada }) {
+  const { narracao: x } = n;
+  return (
+    <Card className="mb-4 space-y-4">
+      <div>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-text-primary">
+          <Lightbulb size={16} aria-hidden /> Análise da IA
+        </h2>
+        <p className="text-xs text-text-tertiary mt-0.5">
+          {n.doCache ? "Resposta guardada (não gastou cota)" : `Geração ${n.usadas} de ${n.limite} de hoje`}
+          {n.provedorRotulo ? ` · ${n.provedorRotulo}` : ""} · baseada só nos números desta tela
+        </p>
+      </div>
+      {x.resumo && <p className="text-sm text-text-primary">{x.resumo}</p>}
+      <ListaAcoes titulo="Replicar" itens={x.replicar} />
+      <ListaAcoes titulo="Atenção" itens={x.atencao} />
+      <ListaAcoes titulo="Evitar ou rever" itens={x.evitar} />
+      {x.oportunidades.length > 0 && (
+        <section className="space-y-1.5">
+          <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary">Ideias de novos anúncios</h4>
+          <ul className="space-y-2 text-sm">
+            {x.oportunidades.map((o) => (
+              <li key={`${o.baseadoEm}-${o.ideia}`}>
+                <span className="text-text-primary">{o.ideia}</span> <span className="text-text-tertiary">(a partir de {o.baseadoEm})</span>
+                {o.motivo && <span className="block text-text-secondary">{o.motivo}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {x.precos && <p className="text-sm text-text-secondary">{x.precos}</p>}
+      <p className="text-xs text-text-tertiary">Sugestões, não garantias: confira os números nos cartões abaixo antes de mexer em preço, Ads ou estoque.</p>
+    </Card>
+  );
+}
+
 /**
  * Consultor de desempenho. Os números e as regras são do banco (sem IA); cada veredito mostra
  * a amostra. Abaixo de {LIMIARES.amostraMinima} pedidos o anúncio fica em "ainda cedo".
@@ -56,6 +113,7 @@ export function InsightsClient({
   lojas,
   agoraIso,
   semDados,
+  iaDisponivel,
 }: {
   pedidos: PedidoRanking[];
   anuncios: AnuncioCadastrado[];
@@ -63,16 +121,21 @@ export function InsightsClient({
   lojas: { id: string; nome: string }[];
   agoraIso: string;
   semDados: boolean;
+  iaDisponivel: boolean;
 }) {
   const [dias, setDias] = useState<(typeof PERIODOS)[number]>(30);
   const [loja, setLoja] = useState("");
 
-  const r = useMemo(() => {
-    const hoje = hojeIsoBrasil(new Date(agoraIso));
-    const inicioIso = somarDiasIso(hoje, -(dias - 1));
-    const daLoja = <T extends { loja_id: string | null }>(x: T[]) => (loja ? x.filter((i) => i.loja_id === loja || i.loja_id === null) : x);
-    return analisarDesempenho(daLoja(pedidos), daLoja(anuncios), daLoja(ads), dias, inicioDiaBrasil(inicioIso), new Date(agoraIso), inicioIso, hoje);
-  }, [pedidos, anuncios, ads, loja, dias, agoraIso]);
+  const r = useMemo(() => analisarPorDias({ pedidos, anuncios, ads }, dias, new Date(agoraIso), loja || null), [pedidos, anuncios, ads, loja, dias, agoraIso]);
+  const [narracao, setNarracao] = useState<NarracaoGerada | null>(null);
+  const [gerando, iniciar] = useTransition();
+
+  function pedirAnalise() {
+    iniciar(async () => {
+      const res = await executarComToast(gerarNarracaoInsights({ dias, loja_id: loja || null }), { erro: "Não foi possível gerar a análise. Tente de novo." });
+      if (res.ok) setNarracao(res.dado);
+    });
+  }
 
   const nomeLoja = (id: string) => lojas.find((l) => l.id === id)?.nome ?? "";
   const porVeredito = (v: Veredito) => r.linhas.filter((l) => l.veredito === v);
@@ -94,12 +157,17 @@ export function InsightsClient({
         <>
           <div className="flex flex-wrap items-center gap-2 mb-4">
             {PERIODOS.map((p) => (
-              <Chip key={p} ativo={dias === p} onClick={() => setDias(p)}>
+              <Chip key={p} ativo={dias === p} onClick={() => { setDias(p); setNarracao(null); }}>
                 {p} dias
               </Chip>
             ))}
+            {iaDisponivel && (
+              <Button variant="secondary" onClick={pedirAnalise} loading={gerando} disabled={gerando || r.linhas.every((l) => l.veredito === "ainda_cedo")} title="A IA explica os números abaixo e sugere o próximo passo; usa 1 geração da sua cota">
+                <Lightbulb size={14} /> {narracao ? "Analisar de novo" : "Analisar com IA"}
+              </Button>
+            )}
             {lojas.length > 1 && (
-              <select aria-label="Loja" className="ml-auto h-8 rounded-md border border-border bg-surface-1 px-2 text-sm text-text-primary" value={loja} onChange={(e) => setLoja(e.target.value)}>
+              <select aria-label="Loja" className="ml-auto h-8 rounded-md border border-border bg-surface-1 px-2 text-sm text-text-primary" value={loja} onChange={(e) => { setLoja(e.target.value); setNarracao(null); }}>
                 <option value="">Todas as lojas</option>
                 {lojas.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -133,6 +201,8 @@ export function InsightsClient({
               {r.adsSemAnuncio > 0 && <> — {formatBRL(r.adsSemAnuncio)} não puderam ser ligados a um anúncio (campanha sem produto vinculado) e não entram na conta de cada um.</>}
             </p>
           )}
+
+          {narracao && <NarracaoCard n={narracao} />}
 
           <div className="space-y-4">
             {GRUPOS.map((g) => {

@@ -6,6 +6,7 @@
  * e período) e abaixo do mínimo vira "ainda cedo" em vez de conclusão.
  */
 
+import { hojeIsoBrasil, inicioDiaBrasil, somarDiasIso } from "@/lib/format";
 import { rankearAnuncios, type AnuncioCadastrado, type LinhaRanking, type PedidoRanking } from "@/lib/marketplace/ranking-anuncios";
 
 /** Limiares em um lugar só, para ajustar sem caçar número solto. */
@@ -214,4 +215,24 @@ export function analisarDesempenho(
   const melhorFaixa = faixas ? ([...faixas].sort((a, b) => b.lucro - a.lucro)[0] ?? null) : null;
   const pedidosPeriodo = linhas.reduce((s, l) => s + l.pedidos, 0);
   return { dias, linhas, faixas, melhorFaixa, adsSemAnuncio: r2(adsSemAnuncio), adsTotal: r2(adsTotal), amostraFraca: pedidosPeriodo < LIMIARES.amostraSolida * 2, pedidosPeriodo };
+}
+
+export const PERIODOS_INSIGHTS = [30, 60, 90] as const;
+
+/**
+ * Janela dos últimos `dias` dias (contando hoje, no fuso de Brasília), opcionalmente de uma só
+ * loja. É a ÚNICA definição do período: a tela e a geração por IA chamam esta função, então o
+ * que a IA narra é exatamente o que o usuário vê.
+ */
+export function analisarPorDias(
+  dados: { pedidos: readonly PedidoRanking[]; anuncios: readonly AnuncioCadastrado[]; ads: readonly GastoAds[] },
+  dias: number,
+  agora: Date,
+  lojaId?: string | null,
+): ResultadoConsultor {
+  const hoje = hojeIsoBrasil(agora);
+  const inicioIso = somarDiasIso(hoje, -(dias - 1));
+  // Gasto sem loja (campanha geral) vale para qualquer filtro de loja.
+  const daLoja = <T extends { loja_id: string | null }>(x: readonly T[]) => (lojaId ? x.filter((i) => i.loja_id === lojaId || i.loja_id === null) : [...x]);
+  return analisarDesempenho(daLoja(dados.pedidos), daLoja(dados.anuncios), daLoja(dados.ads), dias, inicioDiaBrasil(inicioIso), agora, inicioIso, hoje);
 }
