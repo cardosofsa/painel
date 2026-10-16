@@ -153,3 +153,45 @@ export function fichaParaPrompt(ficha: FichaMarca, tipo: TipoImagemMarca): strin
   if (linhas.length === 0) return "";
   return [`Padrão visual da loja — ${ROTULO_TIPO_IMAGEM[tipo]}:`, ...linhas.map(([r, v]) => `- ${r}: ${v}`)].join("\n");
 }
+
+// ---------- Formulário ↔ ficha ----------
+
+/** Todos os campos como texto, do jeito que os inputs da tela guardam. */
+export type FichaForm = Record<keyof FichaMarca, string>;
+
+const CAMPOS_LISTA: (keyof FichaMarca)[] = ["paleta", "selos", "proibicoes"];
+const CAMPOS_NUMERO: (keyof FichaMarca)[] = ["areaProdutoMinPct", "tituloMaxPalavras", "logoLarguraPct", "numeroImagens"];
+
+export function fichaParaForm(ficha: FichaMarca): FichaForm {
+  const f = {} as FichaForm;
+  for (const campo of CAMPOS) {
+    const v = ficha[campo];
+    f[campo] = vazio(v) ? "" : Array.isArray(v) ? v.join(", ") : String(v);
+  }
+  return f;
+}
+
+/**
+ * O que o usuário digitou vira ficha. Número com vírgula ("45,5") é lido como número; lista é
+ * separada por vírgula ou quebra de linha; o que não for válido sai sozinho (e a tela mostra
+ * `camposDescartados` para o usuário saber).
+ */
+export function formParaFicha(form: Partial<FichaForm>): FichaMarca {
+  const bruto: Record<string, unknown> = {};
+  for (const campo of CAMPOS) {
+    const texto = (form[campo] ?? "").trim();
+    if (!texto) continue;
+    if (CAMPOS_LISTA.includes(campo)) bruto[campo] = texto.split(/[,\n;]+/).map((x) => x.trim()).filter(Boolean);
+    else if (CAMPOS_NUMERO.includes(campo)) {
+      const n = Number(texto.replace(",", "."));
+      if (Number.isFinite(n)) bruto[campo] = n;
+    } else bruto[campo] = texto;
+  }
+  return normalizarFicha(bruto);
+}
+
+/** Campos que o usuário preencheu e a validação descartou (cor fora do formato, número fora da faixa...). */
+export function camposDescartados(form: Partial<FichaForm>): (keyof FichaMarca)[] {
+  const ficha = formParaFicha(form);
+  return CAMPOS.filter((campo) => (form[campo] ?? "").trim() && vazio(ficha[campo]));
+}

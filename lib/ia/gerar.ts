@@ -41,6 +41,7 @@ import {
   type ContextoRelatorioIA,
   type RelatorioMes,
 } from "./prompts-relatorio";
+import { montarPromptMarca, esquemaMarca, interpretarMarca, hashMarca, propostaVazia, type ContextoMarca, type PropostaMarca } from "./prompts-marca";
 import {
   montarPromptConsultor,
   esquemaConsultor,
@@ -402,6 +403,36 @@ export async function gerarConsultorIA(supabase: SupabaseClient, contexto: Conte
   );
   if (narracaoVazia(valor)) throw new ErroIA("vazio", "narração vazia");
   return { narracao: valor, ...meta };
+}
+
+export interface SugestaoMarca extends MetaGeracao {
+  proposta: PropostaMarca;
+}
+
+/**
+ * "Aprender das minhas capas": a IA olha uma montagem das capas da loja e PROPÕE a ficha de
+ * direção de arte. Conta como geração de "descricao" (mesma cota e mesmo cache da foto de
+ * produto, sem migração); o cache é pelo hash dos bytes da montagem. Não grava nada.
+ */
+export async function gerarFichaPelasCapasIA(
+  supabase: SupabaseClient,
+  contexto: ContextoMarca,
+  imagem: { base64: string; mime: string; hash: string },
+): Promise<Resultado<SugestaoMarca>> {
+  return comResultado(async () => {
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "descricao",
+      hashMarca(imagem.hash, contexto),
+      montarPromptMarca(contexto),
+      esquemaMarca(),
+      interpretarMarca,
+      { maxTokens: 1400, temperatura: 0.3 },
+      { base64: imagem.base64, mime: imagem.mime },
+    );
+    if (propostaVazia(valor)) throw new Error("A IA não reconheceu um padrão nessas imagens. Envie capas de anúncio nítidas, de preferência de 3 a 6.");
+    return { proposta: valor, ...meta };
+  });
 }
 
 function rotuloIA(ia: ProvedorResolvido): string | null {

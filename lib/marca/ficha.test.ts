@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diferencasFicha, FICHA_PADRAO, fichaParaPrompt, mesclarFicha, normalizarFicha } from "./ficha";
+import { camposDescartados, diferencasFicha, FICHA_PADRAO, fichaParaForm, fichaParaPrompt, formParaFicha, mesclarFicha, normalizarFicha } from "./ficha";
 
 describe("normalizarFicha", () => {
   it("mantém o que é válido e descarta o resto, campo a campo, sem lançar", () => {
@@ -51,5 +51,23 @@ describe("fichaParaPrompt", () => {
   });
   it("ficha vazia não gera bloco", () => {
     expect(fichaParaPrompt({}, "geral")).toBe("");
+  });
+});
+
+describe("fichaParaForm e formParaFicha", () => {
+  it("ida e volta preserva a ficha", () => {
+    const f = { fundo: "creme", paleta: ["#112233", "#aabbcc"], areaProdutoMinPct: 45, pessoas: "nao" as const, selos: ["Prático"] };
+    expect(formParaFicha(fichaParaForm(f))).toEqual(f);
+  });
+  it("lê número com vírgula e lista separada por vírgula ou quebra de linha", () => {
+    const f = formParaFicha({ areaProdutoMinPct: "45,5", selos: "A, B\nC", paleta: "#112233; #445566" });
+    expect(f).toMatchObject({ areaProdutoMinPct: 45.5, selos: ["A", "B", "C"], paleta: ["#112233", "#445566"] });
+  });
+  it("campo vazio ou inválido sai da ficha", () => {
+    expect(formParaFicha({ fundo: "   ", areaProdutoMinPct: "abc", logoLarguraPct: "99" })).toEqual({});
+  });
+  it("avisa quais campos preenchidos foram descartados", () => {
+    expect(camposDescartados({ fundo: "ok", logoLarguraPct: "99", paleta: "azul" }).sort()).toEqual(["logoLarguraPct", "paleta"]);
+    expect(camposDescartados({ fundo: "ok" })).toEqual([]);
   });
 });

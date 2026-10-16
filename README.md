@@ -202,6 +202,18 @@ navegador. Título de anúncio citado pela IA que não esteja na lista fornecida
 Usa o mesmo cache e a mesma cota dos outros tipos; sem a 0097 o botão falha com "Tipo de geração
 inválido" e o resto da tela segue funcionando.
 
+### Padrão da loja (migração 0098)
+
+Produtos › Padrão da loja (`/produtos/marca`): um **perfil de marca** por loja (a primeira pergunta
+é a plataforma; o nicho é texto livre e opcional), a **memória** da loja e a **Ficha de Direção de
+Arte** (campos estruturados do visual, por tipo de imagem, versionada: cada salvamento é uma
+versão nova e dá para voltar atrás). Não há regra de nicho no código: o que for específico vem do
+perfil do usuário, e os conjuntos de termos de `lib/conformidade/termos.ts` são presets que ele
+liga. "Aprender das minhas capas" junta as capas numa montagem no navegador e a IA só **propõe** a
+ficha (conta como geração de `descricao`, mesmo cache e cota da foto de produto); nada é salvo sem
+o usuário aprovar. A IA não abre links de marketplace: o link da loja fica como referência. Logo e
+capas ficam no bucket `produtos`, na pasta do usuário, e a action confere o prefixo do caminho.
+
 ### Cota e custo
 
 A chave é uma só, do sistema, então cada conta tem uma **cota diária** (`perfis_acesso.
