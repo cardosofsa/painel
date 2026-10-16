@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowDownUp, BarChart3, Link2, RefreshCw, ScanBarcode, Search } from "lucide-react";
+import { ArrowDownUp, BarChart3, Link2, RefreshCw, ScanBarcode, Search, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -354,6 +354,11 @@ export function VendasClient({
             <Link href="/vendas/relatorios">
               <Button variant="secondary">
                 <BarChart3 size={14} /> Relatórios
+              </Button>
+            </Link>
+            <Link href="/vendas/anuncios">
+              <Button variant="secondary">
+                <Trophy size={14} /> Ranking de anúncios
               </Button>
             </Link>
             <Link href="/pdv">
