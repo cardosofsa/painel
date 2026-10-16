@@ -786,6 +786,12 @@ export const contaAbertaDebitoSchema = z.object({
 /** Mês do fechamento (sempre o primeiro dia): o relatório de IA do Financeiro (0088). */
 export const relatorioMesSchema = z.object({ mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/, "Mês inválido") });
 
+/** Período (30, 60 ou 90 dias) e loja opcional da narração por IA dos Insights de anúncios. */
+export const iaConsultorSchema = z.object({
+  dias: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+  loja_id: z.string().uuid().nullable(),
+});
+
 /** Pix e encargos do crediário (0065). Multa limitada a 2% pelo CDC; o banco também confere. */
 export const crediarioConfigSchema = z.object({
   pix_chave: z.string().trim().max(77, "Chave Pix longa demais").nullable(),

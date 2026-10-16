@@ -42,6 +42,16 @@ import {
   type RelatorioMes,
 } from "./prompts-relatorio";
 import {
+  montarPromptConsultor,
+  esquemaConsultor,
+  interpretarConsultor,
+  hashContextoConsultor,
+  narracaoVazia,
+  nomesDoContexto,
+  type ContextoConsultorIA,
+  type NarracaoConsultor,
+} from "./prompts-consultor";
+import {
   montarPromptPreco,
   esquemaPreco,
   interpretarPreco,
@@ -82,7 +92,7 @@ import {
 export type TipoGeracaoTexto = "titulo" | "descricao";
 
 /** Todo tipo de geração, incluindo "tema" (que não é texto — ver `gerarTemaVitrineIA`). */
-export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | "relatorio" | FerramentaTexto;
+export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | "relatorio" | "consultor" | FerramentaTexto;
 
 export interface SugestaoGerada {
   texto: string;
@@ -120,6 +130,8 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number }
   preco: { maxTokens: 1600, temperatura: 0.6 },
   // Relatório mensal: ~1.500 caracteres úteis (cerca de 600 tokens) mais o raciocínio.
   relatorio: { maxTokens: 3000, temperatura: 0.5 },
+  // Insights de anúncios: resumo + até 12 ações curtas + 3 ideias, mais o raciocínio.
+  consultor: { maxTokens: 3000, temperatura: 0.5 },
   // Ferramentas de texto da 7.7: respostas curtas.
   resposta: { maxTokens: 700, temperatura: 0.5 },
   cobranca: { maxTokens: 700, temperatura: 0.6 },
@@ -366,6 +378,30 @@ export async function gerarRelatorioIA(supabase: SupabaseClient, contexto: Conte
   );
   if (relatorioVazio(valor)) throw new ErroIA("vazio", "relatório vazio");
   return { relatorio: valor, ...meta };
+}
+
+export interface SugestaoConsultor extends MetaGeracao {
+  narracao: NarracaoConsultor;
+}
+
+/**
+ * Narração dos Insights de anúncios: a IA explica e prioriza vereditos que o servidor já
+ * calculou (`lib/consultor/insights.ts`). LANÇA em caso de erro — quem chama (a action de
+ * Insights) embrulha em `comResultado`. Anúncio citado fora da lista fornecida é descartado
+ * na leitura; resposta vazia conta como falha do modelo (a vaga não volta).
+ */
+export async function gerarConsultorIA(supabase: SupabaseClient, contexto: ContextoConsultorIA): Promise<SugestaoConsultor> {
+  const nomes = nomesDoContexto(contexto);
+  const { valor, ...meta } = await executarEstruturado(
+    supabase,
+    "consultor",
+    hashContextoConsultor(contexto),
+    montarPromptConsultor(contexto),
+    esquemaConsultor(),
+    (bruto) => interpretarConsultor(bruto, nomes),
+  );
+  if (narracaoVazia(valor)) throw new ErroIA("vazio", "narração vazia");
+  return { narracao: valor, ...meta };
 }
 
 function rotuloIA(ia: ProvedorResolvido): string | null {

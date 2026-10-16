@@ -192,6 +192,16 @@ porque `produtos.descricao` é exibida na vitrine pública: revise antes de publ
 `lib/pricing.ts`, determinístico e testado. O prompt proíbe explicitamente citar preço,
 desconto ou percentual.
 
+### Insights de anúncios (tipo `consultor`, migração 0097)
+
+Em Vendas › Insights o servidor calcula e classifica cada anúncio (replicar, atenção, não vale a
+pena, parado, ainda cedo) em `lib/consultor/insights.ts`, sem IA. O botão "Analisar com IA" só
+**narra e prioriza** esses vereditos (`lib/ia/prompts-consultor.ts`): a Server Action recebe
+apenas período e loja e recalcula tudo no servidor, então a IA nunca narra número vindo do
+navegador. Título de anúncio citado pela IA que não esteja na lista fornecida é descartado.
+Usa o mesmo cache e a mesma cota dos outros tipos; sem a 0097 o botão falha com "Tipo de geração
+inválido" e o resto da tela segue funcionando.
+
 ### Cota e custo
 
 A chave é uma só, do sistema, então cada conta tem uma **cota diária** (`perfis_acesso.

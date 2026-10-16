@@ -14,6 +14,8 @@ export const STATUS_VENDA: readonly StatusMarketplace[] = ["a_enviar", "enviado"
 const STATUS_PROBLEMA: readonly StatusMarketplace[] = ["cancelado", "devolvido"];
 
 export interface ItemRanking {
+  /** Produto vinculado ao item; liga o anúncio ao gasto com Ads (`gastos_anuncios.produto_id`). */
+  produto_id?: string | null;
   sku_principal?: string | null;
   nome: string;
   variacao: string | null;
@@ -57,6 +59,8 @@ export interface LinhaRanking {
   /** Fração de pedidos cancelados/devolvidos sobre todos os do período; null sem pedidos. */
   taxaProblema: number | null;
   variacoes: number;
+  /** Produtos vinculados aos itens vendidos/cadastrados (ordenados), para ligar ao gasto com Ads. */
+  produtoIds: string[];
   /** Fatia do faturamento total e acumulada (curva ABC), de 0 a 1. */
   participacao: number;
   acumulado: number;
@@ -85,6 +89,7 @@ interface Acc {
   pedidosTodos: Set<number>;
   pedidosProblema: Set<number>;
   variacoes: Set<string>;
+  produtos: Set<string>;
 }
 
 /**
@@ -119,6 +124,7 @@ export function rankearAnuncios(
           custoIncompleto: false,
           taxaProblema: null,
           variacoes: 0,
+          produtoIds: [],
           participacao: 0,
           acumulado: 0,
           classe: null,
@@ -128,6 +134,7 @@ export function rankearAnuncios(
         pedidosTodos: new Set(),
         pedidosProblema: new Set(),
         variacoes: new Set(),
+        produtos: new Set(),
       };
       mapa.set(chave, a);
     }
@@ -153,6 +160,7 @@ export function rankearAnuncios(
       const a = obter(p.loja_id, item.sku_principal, item.nome, null);
       if (!a) continue;
       a.pedidosTodos.add(idx);
+      if (item.produto_id) a.produtos.add(item.produto_id);
       if (problema) {
         a.pedidosProblema.add(idx);
         continue;
@@ -175,6 +183,7 @@ export function rankearAnuncios(
     l.margem = l.receita > 0 ? l.lucro / l.receita : null;
     l.taxaProblema = a.pedidosTodos.size > 0 ? a.pedidosProblema.size / a.pedidosTodos.size : null;
     l.variacoes = a.variacoes.size;
+    l.produtoIds = [...a.produtos].sort();
     return l;
   });
 
