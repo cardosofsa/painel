@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, Trophy } from "lucide-react";
+import { ArrowLeft, ExternalLink, Sparkles, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardEyebrow } from "@/components/ui/Card";
@@ -114,9 +114,16 @@ export function RankingAnunciosClient({
         title="Ranking de anúncios"
         descricao="Quais anúncios da Shopee mais vendem, mais dão lucro e quais estão parados, a partir dos pedidos sincronizados."
         actions={
-          <Button variant="secondary" onClick={() => setExportando(true)} disabled={visiveis.length === 0}>
-            Exportar
-          </Button>
+          <>
+            <Link href="/vendas/insights">
+              <Button variant="secondary">
+                <Sparkles size={14} /> Insights
+              </Button>
+            </Link>
+            <Button variant="secondary" onClick={() => setExportando(true)} disabled={visiveis.length === 0}>
+              Exportar
+            </Button>
+          </>
         }
       />
 
