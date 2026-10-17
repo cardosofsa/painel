@@ -16,6 +16,7 @@ import { PainelConcorrentes } from "@/components/estudio/PainelConcorrentes";
 import { PainelCapa } from "@/components/estudio/PainelCapa";
 import { PainelDescricao } from "@/components/estudio/PainelDescricao";
 import { PainelPacote } from "@/components/estudio/PainelPacote";
+import { PainelShopee } from "@/components/estudio/PainelShopee";
 import { ConversaAssistente } from "@/components/estudio/ConversaAssistente";
 import { executarComToast } from "@/lib/acao-cliente";
 import { mesclarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
@@ -288,6 +289,7 @@ export function EstudioClient({
                   onAjustar={setTexto}
                 />
                 <PainelPacote rascunho={rascunho} palavrasChave={[...rascunho.produto.palavrasChave, ...(titulos?.palavrasChave ?? []), ...(descGerada?.palavras ?? [])]} />
+                <PainelShopee key={`shopee-${rascunho.id}`} rascunho={rascunho} onMudou={() => void carregar()} />
               </div>
               <div className="space-y-4 lg:sticky lg:top-4">
                 <ConversaAssistente mensagens={rascunho.mensagens} texto={texto} onTexto={setTexto} enviando={qual === "conversa"} iaDisponivel={iaDisponivel} meta={meta} onEnviar={enviarMensagem} onAplicar={aplicar} />

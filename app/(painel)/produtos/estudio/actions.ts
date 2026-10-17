@@ -43,7 +43,7 @@ export interface RascunhoAberto {
   titulo: string | null;
   descricao: string | null;
   /** Dados do produto que a tela precisa (preço, palavras-chave, foto). */
-  produto: { nome: string; precoVenda: number | null; palavrasChave: string[]; imagemUrl: string | null };
+  produto: { nome: string; precoVenda: number | null; palavrasChave: string[]; imagemUrl: string | null; pesoG: number | null; temMedidas: boolean };
   status: string;
   estado: EstadoRascunho;
   mensagens: { id: string; papel: "usuario" | "ia"; texto: string; acoes: AcaoProposta[]; criado_em: string }[];
@@ -67,13 +67,13 @@ export async function abrirRascunho(entrada: unknown) {
       checar(erroNovo);
       r = data!;
     }
-    const { data: p } = await supabase.from("produtos").select("nome, preco_venda, palavras_chave, imagem_url").eq("id", v.produto_id).maybeSingle();
+    const { data: p } = await supabase.from("produtos").select("nome, preco_venda, palavras_chave, imagem_url, peso_g, altura_cm, largura_cm, comprimento_cm").eq("id", v.produto_id).maybeSingle();
     const { data: msgs } = await supabase.from("anuncio_rascunho_mensagens").select("id, papel, texto, acoes, criado_em").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60);
     return {
       id: r.id,
       titulo: r.titulo ?? null,
       descricao: r.descricao ?? null,
-      produto: { nome: (p?.nome as string | undefined) ?? "", precoVenda: p?.preco_venda != null ? Number(p.preco_venda) : null, palavrasChave: (p?.palavras_chave as string[] | null) ?? [], imagemUrl: (p?.imagem_url as string | null) ?? null },
+      produto: { nome: (p?.nome as string | undefined) ?? "", precoVenda: p?.preco_venda != null ? Number(p.preco_venda) : null, palavrasChave: (p?.palavras_chave as string[] | null) ?? [], imagemUrl: (p?.imagem_url as string | null) ?? null, pesoG: p?.peso_g != null ? Number(p.peso_g) : null, temMedidas: !!(p?.altura_cm && p?.largura_cm && p?.comprimento_cm) },
       status: r.status,
       estado: lerEstado(r.estado),
       mensagens: ((msgs ?? []) as RascunhoAberto["mensagens"]).map((m) => ({ ...m, acoes: Array.isArray(m.acoes) ? m.acoes : [] })),

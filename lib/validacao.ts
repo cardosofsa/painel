@@ -892,8 +892,33 @@ export const estadoRascunhoSchema = z.object({
     )
     .max(12)
     .optional(),
+  /** Escolhas feitas para criar o anúncio na Shopee (categoria, atributos, frete). */
+  shopee: z
+    .object({
+      categoryId: z.number().int().positive(),
+      categoriaNome: z.string().trim().max(200),
+      atributos: z.array(z.object({ id: z.number().int().positive(), valorId: z.number().int().nonnegative().optional(), texto: z.string().trim().max(200).optional() })).max(60),
+      obrigatorios: z.array(z.object({ id: z.number().int().positive(), nome: z.string().trim().max(120) })).max(60),
+      canais: z.array(z.number().int().positive()).max(30),
+    })
+    .optional(),
+  /** O item que o Painel criou na Shopee (para não criar duas vezes e para poder remover). */
+  itemShopee: z
+    .object({ itemId: z.number().int().positive(), status: z.string().trim().max(30), criadoEm: z.string().max(40), erro: z.string().trim().max(300).optional() })
+    .optional(),
 });
 export type EstadoRascunho = z.infer<typeof estadoRascunhoSchema>;
+
+export const escolhasShopeeSchema = z.object({
+  categoryId: z.number().int().positive(),
+  categoriaNome: z.string().trim().max(200),
+  atributos: z
+    .array(z.object({ id: z.number().int().positive(), valorId: z.number().int().nonnegative().optional(), texto: z.string().trim().max(200).optional() }))
+    .max(60),
+  obrigatorios: z.array(z.object({ id: z.number().int().positive(), nome: z.string().trim().max(120) })).max(60),
+  canais: z.array(z.number().int().positive()).max(30),
+});
+export type EscolhasShopee = z.infer<typeof escolhasShopeeSchema>;
 
 export const rascunhoIdSchema = z.object({ rascunho_id: z.string().uuid() });
 export const abrirRascunhoSchema = z.object({ produto_id: z.string().uuid(), perfil_id: z.string().uuid().nullable() });

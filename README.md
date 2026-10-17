@@ -249,6 +249,18 @@ roda a cada tecla na tela e de novo no servidor ao salvar (mínimo 100, teto 3.0
 anúncio" junta título, descrição, palavras-chave, hashtags, preço do cadastro, quantidade e capas
 aprovadas, cada um com copiar, mais "Copiar tudo" na ordem do Seller Centre.
 
+**Criar na Shopee como não listado (`PainelShopee`, `shopee-actions.ts`).** Só para usuário logado (a conexão
+e o token vêm da sessão, nunca da chave de serviço) e só se o perfil estiver vinculado a uma loja conectada.
+Fluxo: "Testar conexão" (somente leitura: categorias e canais de frete) → categoria e atributos
+obrigatórios → "Criar" com diálogo de confirmação. O corpo do `add_item` sempre leva `item_status: UNLIST`
+(`lib/marketplace/shopee-criar-puro.ts`, testado), mas o valor aceito NÃO foi confirmado na documentação
+oficial; por isso, depois de criar, o servidor LÊ o item (`get_item_base_info`) e, se não vier não listado,
+chama `unlist_item` na hora e avisa. O `item_id` é gravado no rascunho assim que existe e bloqueia uma
+segunda criação; "Apagar da Shopee" (`delete_item`) só atua no item que este rascunho criou. As rotas e os
+formatos de `get_category`, `get_attribute_tree`, `get_channel_list`, `upload_image`, `add_item`,
+`unlist_item` e `delete_item` vêm do conhecimento da API v2 e ainda não foram exercitados contra a loja
+real: a primeira execução deve ser a sonda de leitura.
+
 ### Cota e custo
 
 A chave é uma só, do sistema, então cada conta tem uma **cota diária** (`perfis_acesso.
