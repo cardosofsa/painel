@@ -214,6 +214,28 @@ ficha (conta como geração de `descricao`, mesmo cache e cota da foto de produt
 o usuário aprovar. A IA não abre links de marketplace: o link da loja fica como referência. Logo e
 capas ficam no bucket `produtos`, na pasta do usuário, e a action confere o prefixo do caminho.
 
+### Estúdio de anúncios (migração 0099)
+
+Produtos › Estúdio de anúncios (`/produtos/estudio`): título e capa 1 primeiro, depois concorrentes e um
+assistente de conversa. O estado fica no banco (`anuncio_rascunhos`), então recarregar a página não perde
+nada, e **tudo que vai à IA é recalculado no servidor** a partir de ids (nunca ficha, título ou
+concorrente vindos do navegador).
+- **Títulos:** 5 variantes por ângulo (`lib/ia/prompts-titulos.ts`), cada uma com nota local
+  (`avaliarTitulo`) e conferência de termos; o título escolhido passa pela mesma conferência no servidor.
+- **Capa 1:** modo A monta o prompt sem IA (custo zero); modo B gera SÓ a cena (sem texto) com a vaga
+  reservada no banco antes da chamada (`ia_reservar_imagem`, tipo `livre`, sem migração nova). Título,
+  selos, faixa e logo são desenhados no navegador (`lib/imagem/layout.ts` + `components/marca/compor.ts`):
+  ortografia sempre certa e a logo oficial nunca é redesenhada. Regras de custo no servidor: título
+  aprovado, textos da capa sem bloqueio, veredito da capa anterior antes de gerar outra, teto de 6.
+- **Concorrentes:** busca do Google embutida no Gemini (`lib/ia/pesquisa.ts`; só com IA Gemini). A
+  ferramenta de busca não combina com saída em JSON de esquema, então o prompt pede o JSON no texto e a
+  leitura é defensiva. Anúncio sem link não entra; "confirmado" = o endereço bate com uma fonte
+  realmente consultada. É lista para conferir, nunca para copiar. Páginas de marketplace com login quase
+  nunca aparecem. `executarEstruturado` ganhou um `executor` opcional que troca só a chamada ao provedor,
+  mantendo cache → cota → chamada → guardar.
+- **Assistente:** responde e PROPÕE ações de uma lista fechada (`lib/ia/prompts-assistente.ts`); cada uma
+  é um botão que o usuário aprova. Ação fora da lista ou com valor inválido é descartada na leitura.
+
 ### Cota e custo
 
 A chave é uma só, do sistema, então cada conta tem uma **cota diária** (`perfis_acesso.
