@@ -26,6 +26,7 @@ const ROTULOS: Record<AbaId, string> = {
   vendas: "Vendas",
   precificacao: "Precificação",
   produtos: "Produtos",
+  anuncio: "Anúncio",
   clientes: "Clientes",
   fornecedores: "Fornecedores",
   compras: "Compras",

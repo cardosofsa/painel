@@ -10,7 +10,7 @@ import { validar, perfilMarcaSchema, memoriaMarcaSchema, salvarFichaSchema, PLAT
 import { gerarFichaPelasCapasIA } from "@/lib/ia/gerar";
 import { regrasDaPlataforma } from "@/lib/marca/plataformas";
 
-const PATH = "/produtos/marca";
+const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O padrão da loja precisa da migração 0098. Aplique no Supabase e recarregue.";
 const faltaMigracao = (code?: string) => code === "PGRST205" || code === "42P01" || code === "PGRST202" || code === "42883";
 

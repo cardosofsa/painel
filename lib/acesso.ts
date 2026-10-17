@@ -16,6 +16,7 @@ export const ABAS = [
   { id: "vendas", label: "Vendas", href: "/vendas" },
   { id: "precificacao", label: "Precificação", href: "/precificacao" },
   { id: "produtos", label: "Produtos", href: "/produtos" },
+  { id: "anuncio", label: "Anúncio", href: "/anuncio" },
   { id: "clientes", label: "Clientes", href: "/clientes" },
   { id: "fornecedores", label: "Fornecedores", href: "/fornecedores" },
   { id: "compras", label: "Compras", href: "/compras" },
@@ -38,7 +39,7 @@ export const TODAS_AS_ABAS: AbaId[] = ABAS.map((a) => a.id);
 export const ABAS_OBRIGATORIAS: AbaId[] = ["dashboard", "configuracoes"];
 
 /** O que uma conta nova recebe ao ser aprovada — o mínimo pra operar, o resto o master libera. */
-export const ABAS_PADRAO: AbaId[] = ["dashboard", "pdv", "produtos", "estoque", "vixe", "configuracoes"];
+export const ABAS_PADRAO: AbaId[] = ["dashboard", "pdv", "produtos", "anuncio", "estoque", "vixe", "configuracoes"];
 
 /** Rotas de dentro do painel que não pertencem a nenhuma aba (o painel master tem regra própria). */
 const ROTAS_LIVRES = ["/admin"];
@@ -53,10 +54,20 @@ export function rotaEhLivre(pathname: string): boolean {
   return ROTAS_LIVRES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
 }
 
+/**
+ * Abas que uma conta ganha junto com outra, sem o master precisar liberar de novo: "Anúncio"
+ * nasceu depois das contas existentes (que não a têm gravada em `perfis_acesso.abas`) e usa
+ * as mesmas telas e dados de Produtos. Sem isso, ninguém a veria até uma migração de dados.
+ */
+const ABAS_HERDADAS: Partial<Record<AbaId, AbaId>> = { anuncio: "produtos" };
+
 /** Garante as obrigatórias e joga fora id inválido que por acaso tenha entrado no banco. */
 export function normalizarAbas(abas: string[]): AbaId[] {
   const validas = abas.filter((a): a is AbaId => TODAS_AS_ABAS.includes(a as AbaId));
-  return TODAS_AS_ABAS.filter((a) => validas.includes(a) || ABAS_OBRIGATORIAS.includes(a));
+  return TODAS_AS_ABAS.filter((a) => {
+    const base = ABAS_HERDADAS[a];
+    return validas.includes(a) || ABAS_OBRIGATORIAS.includes(a) || (base !== undefined && validas.includes(base));
+  });
 }
 
 export function podeAcessarRota(abas: string[], pathname: string): boolean {

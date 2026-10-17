@@ -202,9 +202,18 @@ navegador. Título de anúncio citado pela IA que não esteja na lista fornecida
 Usa o mesmo cache e a mesma cota dos outros tipos; sem a 0097 o botão falha com "Tipo de geração
 inválido" e o resto da tela segue funcionando.
 
+### Aba Anúncio e Anúncio Infinito
+
+A aba **Anúncio** (`/anuncio`) reúne o fluxo: o botão **Anúncio Infinito** abre uma tela guiada em seis
+etapas (Loja → Produto → Título → Capa → Descrição → Revisar e enviar), com as configurações (perfil,
+ficha de arte, memória, aprender das capas, conferir texto) numa gaveta e o assistente numa janela de
+conversa. A ordem e os bloqueios das etapas vivem em `lib/anuncio/etapas.ts` (puro, testado). A aba
+**acompanha Produtos** (`ABAS_HERDADAS` em `lib/acesso.ts`): contas que já têm Produtos a recebem sem
+migração de dados. Sem migração de banco.
+
 ### Padrão da loja (migração 0098)
 
-Produtos › Padrão da loja (`/produtos/marca`): um **perfil de marca** por loja (a primeira pergunta
+Anúncio › Anúncio Infinito › Configurações (`/anuncio/infinito?config=perfil`; `/produtos/marca` redireciona para lá): um **perfil de marca** por loja (a primeira pergunta
 é a plataforma; o nicho é texto livre e opcional), a **memória** da loja e a **Ficha de Direção de
 Arte** (campos estruturados do visual, por tipo de imagem, versionada: cada salvamento é uma
 versão nova e dá para voltar atrás). Não há regra de nicho no código: o que for específico vem do
@@ -216,7 +225,7 @@ capas ficam no bucket `produtos`, na pasta do usuário, e a action confere o pre
 
 ### Estúdio de anúncios (migração 0099)
 
-Produtos › Estúdio de anúncios (`/produtos/estudio`): título e capa 1 primeiro, depois concorrentes e um
+Anúncio › Anúncio Infinito (`/anuncio/infinito`; `/produtos/estudio` redireciona): título e capa 1 primeiro, depois concorrentes e um
 assistente de conversa. O estado fica no banco (`anuncio_rascunhos`), então recarregar a página não perde
 nada, e **tudo que vai à IA é recalculado no servidor** a partir de ids (nunca ficha, título ou
 concorrente vindos do navegador).

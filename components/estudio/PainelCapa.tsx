@@ -138,7 +138,7 @@ export function PainelCapa({
         <p className="text-sm text-text-secondary">Escolha o título primeiro: a capa leva o título aprovado.</p>
       ) : (
         <>
-          {fichaVazia && <p className="mb-3 rounded-md border border-border bg-surface-2 p-3 text-xs text-text-secondary">A ficha da Capa 1 está vazia: vou usar um padrão neutro. Preencha em “Padrão da loja” (ou peça no assistente) para a capa seguir o visual da sua loja.</p>}
+          {fichaVazia && <p className="mb-3 rounded-md border border-border bg-surface-2 p-3 text-xs text-text-secondary">A ficha da Capa 1 está vazia: vou usar um padrão neutro. Preencha em Configurações › Ficha de arte (ou peça no assistente) para a capa seguir o visual da sua loja.</p>}
           {plataforma.capaFundoBranco && <p className="mb-3 text-xs text-text-secondary">{plataforma.nome} costuma exigir fundo branco na primeira imagem: a cena será gerada com fundo branco.</p>}
 
           <FormField label="Texto da faixa inferior (opcional)" dica="Desenhado por código, sem erro de ortografia. A faixa só aparece se a ficha pedir ou se você escrever aqui.">

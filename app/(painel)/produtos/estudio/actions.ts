@@ -25,7 +25,7 @@ import { montarPromptCapaCena, montarPromptCapaCompleta, type ContextoCapa } fro
 import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, lerEstado, usuarioDaSessao, type ContextoRascunho } from "@/lib/estudio/servidor";
 import type { MensagemHistorico, AcaoProposta } from "@/lib/ia/prompts-assistente";
 
-const PATH = "/produtos/estudio";
+const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O estúdio precisa da migração 0099. Aplique no Supabase e recarregue.";
 const faltaMigracao = (code?: string) => code === "PGRST205" || code === "42P01" || code === "PGRST202" || code === "42883";
 const MAX_TENTATIVAS_CAPA = 6;
