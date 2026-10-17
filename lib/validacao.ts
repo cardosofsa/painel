@@ -854,6 +854,59 @@ export const salvarFichaSchema = z.object({
   nota: textoFicha(240).nullable(),
 });
 
+// ---------- Estúdio de anúncios (0099) ----------
+
+const caminhoImagem = z.string().trim().min(1).max(300);
+
+/**
+ * Estado de trabalho de um rascunho (coluna `anuncio_rascunhos.estado`). Tudo opcional: o
+ * rascunho cresce conforme o usuário avança. Os caminhos de imagem ainda são conferidos pela
+ * action contra a pasta do usuário.
+ */
+export const estadoRascunhoSchema = z.object({
+  variantes: z.array(z.object({ titulo: z.string().trim().max(200), angulo: z.string().trim().max(80) })).max(5).optional(),
+  numeroImagens: z.number().int().min(1).max(12).optional(),
+  textoFaixa: z.string().trim().max(60).optional(),
+  concorrentes: z
+    .array(
+      z.object({
+        titulo: z.string().trim().max(140),
+        precoTexto: z.string().trim().max(40).nullable(),
+        diferenciais: z.array(z.string().trim().max(80)).max(4),
+        url: z.string().trim().max(500).regex(/^https?:\/\//i),
+        confirmado: z.boolean(),
+      }),
+    )
+    .max(6)
+    .optional(),
+  capas: z
+    .array(
+      z.object({
+        cenaPath: caminhoImagem,
+        finalPath: caminhoImagem.optional(),
+        titulo: z.string().trim().max(200),
+        veredito: z.enum(["aprovada", "ajustar", "rejeitada"]).optional(),
+        motivo: z.string().trim().max(240).optional(),
+        criadoEm: z.string().max(40),
+      }),
+    )
+    .max(12)
+    .optional(),
+});
+export type EstadoRascunho = z.infer<typeof estadoRascunhoSchema>;
+
+export const rascunhoIdSchema = z.object({ rascunho_id: z.string().uuid() });
+export const abrirRascunhoSchema = z.object({ produto_id: z.string().uuid(), perfil_id: z.string().uuid().nullable() });
+export const conversaSchema = z.object({ rascunho_id: z.string().uuid(), mensagem: z.string().trim().min(1, "Escreva uma mensagem").max(500, "Mensagem longa demais (até 500 caracteres)") });
+export const titulosEstudioSchema = z.object({ rascunho_id: z.string().uuid(), pedido: z.string().trim().max(300).nullable() });
+export const escolherTituloSchema = z.object({ rascunho_id: z.string().uuid(), titulo: z.string().trim().min(3, "Título curto demais").max(200) });
+export const vereditoCapaSchema = z.object({
+  rascunho_id: z.string().uuid(),
+  indice: z.number().int().min(0).max(11),
+  veredito: z.enum(["aprovada", "ajustar", "rejeitada"]),
+  motivo: z.string().trim().max(240).nullable(),
+});
+
 /** Período (30, 60 ou 90 dias) e loja opcional da narração por IA dos Insights de anúncios. */
 export const iaConsultorSchema = z.object({
   dias: z.union([z.literal(30), z.literal(60), z.literal(90)]),
