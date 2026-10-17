@@ -564,6 +564,16 @@ export function ProdutosClient({
                 Mapeamento de Anúncio
               </Link>
             )}
+            {!emInsumos && (
+              <Link href="/produtos/marca" className={classesBotao({ variant: "secondary" })}>
+                Padrão da loja
+              </Link>
+            )}
+            {!emInsumos && (
+              <Link href="/produtos/estudio" className={classesBotao({ variant: "secondary" })}>
+                Estúdio de anúncios
+              </Link>
+            )}
             {emInsumos ? (
               <Button variant="primary" onClick={() => abrirInsumo(null)} disabled={semTipo}>+ Cadastrar Insumo / Embalagem</Button>
             ) : (

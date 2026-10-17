@@ -2,6 +2,7 @@
 
 import { Check, CircleAlert, CircleCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { avaliarTitulo } from "@/lib/ia/nota-titulo";
 
 function corDaNota(nota: number): string {
@@ -35,8 +36,11 @@ export function OpcaoSugestao({
     <div className="rounded-md border border-border bg-surface-1 p-3">
       <div className="flex items-start justify-between gap-3">
         <p className={`text-sm text-text-primary min-w-0 ${titulo ? "" : "whitespace-pre-wrap"}`}>{texto}</p>
-        <span className={`text-xs font-mono shrink-0 ${texto.length > limite ? "text-negative" : "text-text-tertiary"}`}>
-          {texto.length}/{limite}
+        <span className="flex items-center gap-1 shrink-0">
+          <span className={`text-xs font-mono ${texto.length > limite ? "text-negative" : "text-text-tertiary"}`}>
+            {texto.length}/{limite}
+          </span>
+          <BotaoCopiar texto={texto} rotulo={titulo ? "título" : "descrição"} compacto />
         </span>
       </div>
 
