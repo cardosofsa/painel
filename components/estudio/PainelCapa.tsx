@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Copy, ImageIcon, ThumbsDown, ThumbsUp, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
+import { AcoesImagem, BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { FormField, Modal, inputClass } from "@/components/ui/Modal";
@@ -71,15 +72,6 @@ export function PainelCapa({
       const r = await executarComToast(promptDaCapa({ rascunho_id: rascunho.id, textoFaixa: textoFaixa.trim() || null }), { erro: "Não foi possível montar o prompt." });
       if (r.ok) setPrompts(r.dado);
     });
-  }
-
-  async function copiar(texto: string) {
-    try {
-      await navigator.clipboard.writeText(texto);
-      toast.success("Prompt copiado");
-    } catch {
-      toast.error("Não consegui copiar. Selecione o texto e copie.");
-    }
   }
 
   async function comporDe(cenaUrl: string, indice: number, cenaPath: string) {
@@ -177,9 +169,7 @@ export function PainelCapa({
                 <div key={p.rotulo}>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs font-medium text-text-secondary">{p.rotulo}</span>
-                    <Button size="sm" variant="ghost" onClick={() => copiar(p.texto)}>
-                      <Copy size={12} /> Copiar
-                    </Button>
+                    <BotaoCopiar texto={p.texto} rotulo="prompt" />
                   </div>
                   <textarea readOnly className={`${inputClass} h-40 py-2 font-mono text-xs`} value={p.texto} aria-label={p.rotulo} />
                 </div>
@@ -193,6 +183,7 @@ export function PainelCapa({
                 <div>
                   <ImagemStorage src={previa.url} alt="Prévia da capa" className="w-[300px] max-w-full rounded-md border border-border" prioridade />
                   <p className="text-xs text-text-tertiary mt-1">300 px: o tamanho de uma miniatura na busca</p>
+                  <AcoesImagem url={previa.url} nomeArquivo="capa-1.png" rotulo="capa" />
                 </div>
                 <div>
                   <ImagemStorage src={previa.url} alt="Prévia reduzida da capa" className="w-[110px] rounded-md border border-border" />
@@ -229,6 +220,7 @@ export function PainelCapa({
                   <li key={c.cenaPath} className="w-[120px]">
                     <ImagemStorage src={urlPublicaImagem(c.finalPath ?? c.cenaPath)} alt={`Capa ${i + 1}`} className="w-[120px] h-[120px] rounded-md border border-border object-cover bg-surface-2" />
                     <p className="text-xs mt-1 text-text-secondary">{c.veredito ? ROTULO_VEREDITO[c.veredito] : "Sem veredito"}</p>
+                    {c.finalPath && <AcoesImagem url={urlPublicaImagem(c.finalPath)} nomeArquivo={`capa-${i + 1}.png`} rotulo={`capa ${i + 1}`} />}
                     {c.motivo && <p className="text-xs text-text-tertiary break-words">{c.motivo}</p>}
                     {!c.veredito && (
                       <Button size="sm" variant="ghost" onClick={() => reabrir(i, c.cenaPath)} disabled={pending}>

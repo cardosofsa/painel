@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, MessageCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
 import { ROTULO_CAMPO, ROTULO_TIPO_IMAGEM, valorLegivel, type FichaMarca } from "@/lib/marca/ficha";
@@ -80,7 +81,10 @@ export function ConversaAssistente({
         )}
         {mensagens.map((m) => (
           <div key={m.id} className={m.papel === "usuario" ? "text-right" : ""}>
-            <p className={`inline-block max-w-full rounded-lg px-3 py-2 text-sm text-left ${m.papel === "usuario" ? "bg-accent-soft text-text-primary" : "bg-surface-2 text-text-primary"}`}>{m.texto}</p>
+            <div className={`inline-flex max-w-full items-start gap-1 ${m.papel === "usuario" ? "flex-row-reverse" : ""}`}>
+              <p className={`rounded-lg px-3 py-2 text-sm text-left ${m.papel === "usuario" ? "bg-accent-soft text-text-primary" : "bg-surface-2 text-text-primary"}`}>{m.texto}</p>
+              <BotaoCopiar texto={m.texto} rotulo={m.papel === "usuario" ? "sua mensagem" : "resposta do assistente"} compacto />
+            </div>
             {m.papel === "ia" && m.acoes.length > 0 && (
               <ul className="mt-2 space-y-1.5">
                 {m.acoes.map((a, i) => {

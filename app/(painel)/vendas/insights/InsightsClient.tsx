@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Sparkles, TrendingUp, Ban, PauseCircle, Info, Lightbulb } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { Card, CardEyebrow } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -55,9 +56,12 @@ function ListaAcoes({ titulo, itens }: { titulo: string; itens: { anuncio: strin
       <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary">{titulo}</h4>
       <ul className="space-y-2 text-sm">
         {itens.map((i) => (
-          <li key={`${i.anuncio}-${i.acao}`}>
-            <span className="font-medium text-text-primary">{i.anuncio}:</span> <span className="text-text-primary">{i.acao}</span>
-            {i.motivo && <span className="block text-text-secondary">{i.motivo}</span>}
+          <li key={`${i.anuncio}-${i.acao}`} className="flex items-start justify-between gap-2">
+            <span className="min-w-0">
+              <span className="font-medium text-text-primary">{i.anuncio}:</span> <span className="text-text-primary">{i.acao}</span>
+              {i.motivo && <span className="block text-text-secondary">{i.motivo}</span>}
+            </span>
+            <BotaoCopiar texto={`${i.anuncio}: ${i.acao}${i.motivo ? `. ${i.motivo}` : ""}`} rotulo="sugestão" compacto />
           </li>
         ))}
       </ul>
@@ -79,7 +83,12 @@ function NarracaoCard({ n }: { n: NarracaoGerada }) {
           {n.provedorRotulo ? ` · ${n.provedorRotulo}` : ""} · baseada só nos números desta tela
         </p>
       </div>
-      {x.resumo && <p className="text-sm text-text-primary">{x.resumo}</p>}
+      {x.resumo && (
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm text-text-primary">{x.resumo}</p>
+          <BotaoCopiar texto={x.resumo} rotulo="resumo da análise" compacto />
+        </div>
+      )}
       <ListaAcoes titulo="Replicar" itens={x.replicar} />
       <ListaAcoes titulo="Atenção" itens={x.atencao} />
       <ListaAcoes titulo="Evitar ou rever" itens={x.evitar} />

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { AlertTriangle, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
+import { textoPalavrasChave } from "@/lib/copiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
 import type { TitulosDoEstudio } from "@/app/(painel)/produtos/estudio/actions";
@@ -42,10 +44,13 @@ export function PainelTitulos({
       </CardHeader>
 
       {titulo && (
-        <p className="mb-3 rounded-md border border-border bg-surface-2 p-3 text-sm text-text-primary" aria-live="polite">
-          <Check size={14} className="inline mr-1 text-positive" aria-hidden />
-          <strong>Título escolhido:</strong> {titulo} <span className="text-text-tertiary">({titulo.length}/{limite})</span>
-        </p>
+        <div className="mb-3 flex items-start justify-between gap-2 rounded-md border border-border bg-surface-2 p-3 text-sm text-text-primary" aria-live="polite">
+          <p className="min-w-0">
+            <Check size={14} className="inline mr-1 text-positive" aria-hidden />
+            <strong>Título escolhido:</strong> {titulo} <span className="text-text-tertiary">({titulo.length}/{limite})</span>
+          </p>
+          <BotaoCopiar texto={titulo} rotulo="título escolhido" />
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2 mb-3">
@@ -70,9 +75,12 @@ export function PainelTitulos({
                       {v.caracteres}/{limite} caracteres · nota {v.nota.nota}/100
                     </p>
                   </div>
-                  <Button size="sm" variant={v.utilizavel ? "primary" : "ghost"} disabled={!v.utilizavel || ocupado} onClick={() => onEscolher(v.titulo)}>
-                    Usar este
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <BotaoCopiar texto={v.titulo} rotulo="este título" />
+                    <Button size="sm" variant={v.utilizavel ? "primary" : "ghost"} disabled={!v.utilizavel || ocupado} onClick={() => onEscolher(v.titulo)}>
+                      Usar este
+                    </Button>
+                  </div>
                 </div>
                 {v.violacoes.length > 0 && (
                   <ul className="mt-2 space-y-1">
@@ -88,7 +96,12 @@ export function PainelTitulos({
               </li>
             ))}
           </ul>
-          {resultado.palavrasChave.length > 0 && <p className="text-xs text-text-secondary mb-3">Palavras-chave sugeridas: {resultado.palavrasChave.join(", ")}.</p>}
+          {resultado.palavrasChave.length > 0 && (
+            <div className="mb-3 flex items-center justify-between gap-2 text-xs text-text-secondary">
+              <p className="min-w-0">Palavras-chave sugeridas: {textoPalavrasChave(resultado.palavrasChave)}.</p>
+              <BotaoCopiar texto={textoPalavrasChave(resultado.palavrasChave)} rotulo="palavras-chave" />
+            </div>
+          )}
         </>
       )}
 

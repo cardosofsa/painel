@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { GeradorIA } from "@/components/ia/GeradorIA";
 import { numeroOuNulo } from "@/lib/format";
+import { copiarTexto, textoPreco } from "@/lib/copiar";
 import { checklistAnuncio, hashtags, LIMITE_DESCRICAO_SHOPEE, LIMITE_TITULO_SHOPEE, MAX_FOTOS_SHOPEE, textoAnuncio } from "@/lib/anuncio-shopee";
 import { gerarDescricaoAnuncioIA, gerarTituloAnuncioIA } from "@/app/(painel)/precificacao/actions";
 
@@ -40,18 +41,16 @@ export function AnuncioShopeeModal({ produto, iaDisponivel, onEstudio, onClose }
   const tags = hashtags(produto.palavrasChave);
   const contexto = { produtoNome: produto.nome, sku: produto.sku, canal: "Shopee", loja: null, palavrasChave: produto.palavrasChave, componentes: [] as { nome: string; quantidade: number }[] };
 
-  function copiar() {
-    navigator.clipboard
-      .writeText(textoAnuncio(rascunho))
-      .then(() => toast.success("Anúncio copiado. Cole no Seller Centre da Shopee."))
-      .catch(() => toast.error("Não deu para copiar."));
+  async function copiar() {
+    if (await copiarTexto(textoAnuncio(rascunho))) toast.success("Anúncio copiado. Cole no Seller Centre da Shopee.");
+    else toast.error("Não deu para copiar. Selecione o texto e copie com Ctrl+C.");
   }
 
   return (
     <Modal open onClose={onClose} title="Montar anúncio para a Shopee" width="max-w-4xl">
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-5">
         <div>
-          <FormField label={`Título (${titulo.length}/${LIMITE_TITULO_SHOPEE})`}>
+          <FormField label={`Título (${titulo.length}/${LIMITE_TITULO_SHOPEE})`} copiar={{ texto: titulo, rotulo: "título" }}>
             <input className={inputClass} value={titulo} maxLength={LIMITE_TITULO_SHOPEE} onChange={(e) => setTitulo(e.target.value)} />
           </FormField>
           <div className="mb-4 -mt-2">
@@ -66,7 +65,7 @@ export function AnuncioShopeeModal({ produto, iaDisponivel, onEstudio, onClose }
               onUsar={setTitulo}
             />
           </div>
-          <FormField label={`Descrição (${descricao.length}/${LIMITE_DESCRICAO_SHOPEE.toLocaleString("pt-BR")})`}>
+          <FormField label={`Descrição (${descricao.length}/${LIMITE_DESCRICAO_SHOPEE.toLocaleString("pt-BR")})`} copiar={{ texto: descricao, rotulo: "descrição" }}>
             <textarea className={`${inputClass} h-40 py-2 resize-y`} value={descricao} maxLength={LIMITE_DESCRICAO_SHOPEE} onChange={(e) => setDescricao(e.target.value)} />
           </FormField>
           <div className="mb-4 -mt-2">
@@ -80,11 +79,11 @@ export function AnuncioShopeeModal({ produto, iaDisponivel, onEstudio, onClose }
               onUsar={setDescricao}
             />
           </div>
-          <FormField label="Preço (R$)">
+          <FormField label="Preço (R$)" copiar={{ texto: textoPreco(precoNum), rotulo: "preço" }}>
             <input className={`${inputClass} max-w-40`} inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} placeholder="0,00" />
           </FormField>
           {tags.length > 0 && (
-            <FormField label="Hashtags (das palavras-chave do produto)">
+            <FormField label="Hashtags (das palavras-chave do produto)" copiar={{ texto: tags.join(" "), rotulo: "hashtags" }}>
               <p className="text-sm text-text-secondary break-words">{tags.join(" ")}</p>
             </FormField>
           )}
