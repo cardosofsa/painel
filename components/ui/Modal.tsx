@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { IconButton, Button } from "./Button";
+import { BotaoCopiar } from "./BotaoCopiar";
 
 /**
  * Diálogo modal.
@@ -186,18 +187,33 @@ export function FormField({
   label,
   children,
   dica,
+  copiar,
 }: {
   label: string;
   children: ReactNode;
   /** Explicação curta abaixo do campo, para o rótulo não virar uma frase. */
   dica?: string;
+  /**
+   * Põe o botão de copiar ao lado do rótulo. O botão fica FORA do `<label>`: um botão dentro
+   * dele viraria o "controle do rótulo" e clicar no texto acionaria o botão em vez de focar o campo.
+   */
+  copiar?: { texto: string; rotulo?: string };
 }) {
-  return (
-    <label className="block mb-4 last:mb-0">
-      <span className="block text-xs font-medium text-text-secondary mb-1.5">{label}</span>
+  const corpo = (
+    <label className="block">
+      <span className={`block text-xs font-medium text-text-secondary mb-1.5 ${copiar ? "pr-8" : ""}`}>{label}</span>
       {children}
       {dica && <span className="block text-xs text-text-tertiary mt-1.5">{dica}</span>}
     </label>
+  );
+  if (!copiar) return <div className="mb-4 last:mb-0">{corpo}</div>;
+  return (
+    <div className="relative mb-4 last:mb-0">
+      {corpo}
+      <span className="absolute right-0 top-[-2px]">
+        <BotaoCopiar texto={copiar.texto} rotulo={copiar.rotulo ?? label.toLowerCase()} compacto />
+      </span>
+    </div>
   );
 }
 

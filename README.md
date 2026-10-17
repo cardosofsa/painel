@@ -202,6 +202,65 @@ navegador. Título de anúncio citado pela IA que não esteja na lista fornecida
 Usa o mesmo cache e a mesma cota dos outros tipos; sem a 0097 o botão falha com "Tipo de geração
 inválido" e o resto da tela segue funcionando.
 
+### Padrão da loja (migração 0098)
+
+Produtos › Padrão da loja (`/produtos/marca`): um **perfil de marca** por loja (a primeira pergunta
+é a plataforma; o nicho é texto livre e opcional), a **memória** da loja e a **Ficha de Direção de
+Arte** (campos estruturados do visual, por tipo de imagem, versionada: cada salvamento é uma
+versão nova e dá para voltar atrás). Não há regra de nicho no código: o que for específico vem do
+perfil do usuário, e os conjuntos de termos de `lib/conformidade/termos.ts` são presets que ele
+liga. "Aprender das minhas capas" junta as capas numa montagem no navegador e a IA só **propõe** a
+ficha (conta como geração de `descricao`, mesmo cache e cota da foto de produto); nada é salvo sem
+o usuário aprovar. A IA não abre links de marketplace: o link da loja fica como referência. Logo e
+capas ficam no bucket `produtos`, na pasta do usuário, e a action confere o prefixo do caminho.
+
+### Estúdio de anúncios (migração 0099)
+
+Produtos › Estúdio de anúncios (`/produtos/estudio`): título e capa 1 primeiro, depois concorrentes e um
+assistente de conversa. O estado fica no banco (`anuncio_rascunhos`), então recarregar a página não perde
+nada, e **tudo que vai à IA é recalculado no servidor** a partir de ids (nunca ficha, título ou
+concorrente vindos do navegador).
+- **Títulos:** 5 variantes por ângulo (`lib/ia/prompts-titulos.ts`), cada uma com nota local
+  (`avaliarTitulo`) e conferência de termos; o título escolhido passa pela mesma conferência no servidor.
+- **Capa 1:** modo A monta o prompt sem IA (custo zero); modo B gera SÓ a cena (sem texto) com a vaga
+  reservada no banco antes da chamada (`ia_reservar_imagem`, tipo `livre`, sem migração nova). Título,
+  selos, faixa e logo são desenhados no navegador (`lib/imagem/layout.ts` + `components/marca/compor.ts`):
+  ortografia sempre certa e a logo oficial nunca é redesenhada. Regras de custo no servidor: título
+  aprovado, textos da capa sem bloqueio, veredito da capa anterior antes de gerar outra, teto de 6.
+- **Concorrentes:** busca do Google embutida no Gemini (`lib/ia/pesquisa.ts`; só com IA Gemini). A
+  ferramenta de busca não combina com saída em JSON de esquema, então o prompt pede o JSON no texto e a
+  leitura é defensiva. Anúncio sem link não entra; "confirmado" = o endereço bate com uma fonte
+  realmente consultada. É lista para conferir, nunca para copiar. Páginas de marketplace com login quase
+  nunca aparecem. `executarEstruturado` ganhou um `executor` opcional que troca só a chamada ao provedor,
+  mantendo cache → cota → chamada → guardar.
+- **Assistente:** responde e PROPÕE ações de uma lista fechada (`lib/ia/prompts-assistente.ts`); cada uma
+  é um botão que o usuário aprova. Ação fora da lista ou com valor inválido é descartada na leitura.
+
+**Botão de copiar (fluxo do anúncio).** `lib/copiar.ts` (formatadores puros + cópia com plano B por
+`execCommand` quando `navigator.clipboard` falha) e `components/ui/BotaoCopiar.tsx` (ícone que vira ✓,
+aviso para leitor de tela; `AcoesImagem` copia/baixa a capa). `FormField` aceita `copiar={{ texto }}` e
+põe o botão FORA do `<label>` (dentro dele, o botão viraria o controle do rótulo). Está no Estúdio, no
+modal "Montar anúncio para a Shopee", nas opções da precificação e na narração dos Insights; os outros
+usos soltos de `navigator.clipboard` (recibo, Pix, convite...) não foram trocados.
+
+**Descrição e Pacote do anúncio.** A descrição segue o molde dos títulos (`prompts-descricao-estudio.ts`):
+memória e termos proibidos entram no prompt, concorrentes só como referência, e a conferência de termos
+roda a cada tecla na tela e de novo no servidor ao salvar (mínimo 100, teto 3.000 caracteres). O "Pacote do
+anúncio" junta título, descrição, palavras-chave, hashtags, preço do cadastro, quantidade e capas
+aprovadas, cada um com copiar, mais "Copiar tudo" na ordem do Seller Centre.
+
+**Criar na Shopee como não listado (`PainelShopee`, `shopee-actions.ts`).** Só para usuário logado (a conexão
+e o token vêm da sessão, nunca da chave de serviço) e só se o perfil estiver vinculado a uma loja conectada.
+Fluxo: "Testar conexão" (somente leitura: categorias e canais de frete) → categoria e atributos
+obrigatórios → "Criar" com diálogo de confirmação. O corpo do `add_item` sempre leva `item_status: UNLIST`
+(`lib/marketplace/shopee-criar-puro.ts`, testado), mas o valor aceito NÃO foi confirmado na documentação
+oficial; por isso, depois de criar, o servidor LÊ o item (`get_item_base_info`) e, se não vier não listado,
+chama `unlist_item` na hora e avisa. O `item_id` é gravado no rascunho assim que existe e bloqueia uma
+segunda criação; "Apagar da Shopee" (`delete_item`) só atua no item que este rascunho criou. As rotas e os
+formatos de `get_category`, `get_attribute_tree`, `get_channel_list`, `upload_image`, `add_item`,
+`unlist_item` e `delete_item` vêm do conhecimento da API v2 e ainda não foram exercitados contra a loja
+real: a primeira execução deve ser a sonda de leitura.
+
 ### Cota e custo
 
 A chave é uma só, do sistema, então cada conta tem uma **cota diária** (`perfis_acesso.

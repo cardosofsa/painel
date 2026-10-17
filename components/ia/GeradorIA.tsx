@@ -8,6 +8,7 @@ import { inputClass } from "@/components/ui/Modal";
 import { executar, type Resultado } from "@/lib/acao";
 import { TONS, type Tom } from "@/lib/ia/prompts";
 import { OpcaoSugestao } from "@/components/ia/OpcaoSugestao";
+import { copiarTexto, textoPalavrasChave } from "@/lib/copiar";
 
 export interface SugestaoIAUI {
   texto: string;
@@ -120,11 +121,10 @@ export function GeradorIA({
 
   async function copiarPalavras() {
     if (!sugestao?.palavrasChave.length) return;
-    try {
-      await navigator.clipboard.writeText(sugestao.palavrasChave.join(", "));
+    if (await copiarTexto(textoPalavrasChave(sugestao.palavrasChave))) {
       setCopiado(true);
       toast.success("Palavras-chave copiadas");
-    } catch {
+    } else {
       toast.error("Seu navegador bloqueou a cópia. Selecione e copie à mão.");
     }
   }

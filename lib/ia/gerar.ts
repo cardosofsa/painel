@@ -41,6 +41,12 @@ import {
   type ContextoRelatorioIA,
   type RelatorioMes,
 } from "./prompts-relatorio";
+import { pesquisarComBusca } from "./pesquisa";
+import { montarPromptConcorrentes, interpretarConcorrentes, hashConcorrentes, pesquisaVazia, type ContextoConcorrentes, type PesquisaConcorrentes } from "./prompts-concorrentes";
+import { montarPromptDescricaoEstudio, esquemaDescricaoEstudio, interpretarDescricaoEstudio, hashDescricaoEstudio, descricaoVazia, type ContextoDescricaoEstudio, type DescricaoGerada } from "./prompts-descricao-estudio";
+import { montarPromptTitulos, esquemaTitulos, interpretarTitulos, hashTitulos, titulosVazios, type ContextoTitulosEstudio, type TitulosGerados } from "./prompts-titulos";
+import { montarPromptAssistente, esquemaAssistente, interpretarAssistente, hashAssistente, respostaVazia, type ContextoAssistente, type RespostaAssistente } from "./prompts-assistente";
+import { montarPromptMarca, esquemaMarca, interpretarMarca, hashMarca, propostaVazia, type ContextoMarca, type PropostaMarca } from "./prompts-marca";
 import {
   montarPromptConsultor,
   esquemaConsultor,
@@ -92,7 +98,7 @@ import {
 export type TipoGeracaoTexto = "titulo" | "descricao";
 
 /** Todo tipo de geração, incluindo "tema" (que não é texto — ver `gerarTemaVitrineIA`). */
-export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | "relatorio" | "consultor" | FerramentaTexto;
+export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | "relatorio" | "consultor" | "concorrentes" | "assistente" | FerramentaTexto;
 
 export interface SugestaoGerada {
   texto: string;
@@ -132,6 +138,10 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number }
   relatorio: { maxTokens: 3000, temperatura: 0.5 },
   // Insights de anúncios: resumo + até 12 ações curtas + 3 ideias, mais o raciocínio.
   consultor: { maxTokens: 3000, temperatura: 0.5 },
+  // Pesquisa de concorrentes: até 6 anúncios com destaques, mais o raciocínio da busca.
+  concorrentes: { maxTokens: 2500, temperatura: 0.2 },
+  // Conversa do estúdio: resposta curta + até 4 ações propostas.
+  assistente: { maxTokens: 1200, temperatura: 0.6 },
   // Ferramentas de texto da 7.7: respostas curtas.
   resposta: { maxTokens: 700, temperatura: 0.5 },
   cobranca: { maxTokens: 700, temperatura: 0.6 },
@@ -269,6 +279,11 @@ async function executarEstruturado<T>(
   interpretar: (bruto: string) => T,
   parametros: { maxTokens: number; temperatura: number } = PARAMETROS[tipo],
   imagem?: { base64: string; mime: string },
+  /**
+   * Troca SÓ a chamada ao provedor (ex.: a pesquisa com busca na web). Cache, cota, estorno e
+   * gravação do cache seguem exatamente a mesma ordem das outras gerações.
+   */
+  executor?: (ia: ProvedorResolvido) => Promise<string>,
 ): Promise<{ valor: T } & MetaGeracao> {
   const ia = await resolverProvedor(supabase);
   const { maxTokens, temperatura } = parametros;
@@ -288,7 +303,7 @@ async function executarEstruturado<T>(
 
   let bruto: string;
   try {
-    bruto = await chamarProvedor(ia, prompt, { maxTokens, temperatura, esquema, imagem, ...(imagem ? { timeoutMs: 40_000 } : {}) });
+    bruto = executor ? await executor(ia) : await chamarProvedor(ia, prompt, { maxTokens, temperatura, esquema, imagem, ...(imagem ? { timeoutMs: 40_000 } : {}) });
   } catch (e) {
     await estornarSePreciso(supabase, ia, e);
     throw e;
@@ -402,6 +417,134 @@ export async function gerarConsultorIA(supabase: SupabaseClient, contexto: Conte
   );
   if (narracaoVazia(valor)) throw new ErroIA("vazio", "narração vazia");
   return { narracao: valor, ...meta };
+}
+
+export interface SugestaoMarca extends MetaGeracao {
+  proposta: PropostaMarca;
+}
+
+/**
+ * "Aprender das minhas capas": a IA olha uma montagem das capas da loja e PROPÕE a ficha de
+ * direção de arte. Conta como geração de "descricao" (mesma cota e mesmo cache da foto de
+ * produto, sem migração); o cache é pelo hash dos bytes da montagem. Não grava nada.
+ */
+export async function gerarFichaPelasCapasIA(
+  supabase: SupabaseClient,
+  contexto: ContextoMarca,
+  imagem: { base64: string; mime: string; hash: string },
+): Promise<Resultado<SugestaoMarca>> {
+  return comResultado(async () => {
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "descricao",
+      hashMarca(imagem.hash, contexto),
+      montarPromptMarca(contexto),
+      esquemaMarca(),
+      interpretarMarca,
+      { maxTokens: 1400, temperatura: 0.3 },
+      { base64: imagem.base64, mime: imagem.mime },
+    );
+    if (propostaVazia(valor)) throw new Error("A IA não reconheceu um padrão nessas imagens. Envie capas de anúncio nítidas, de preferência de 3 a 6.");
+    return { proposta: valor, ...meta };
+  });
+}
+
+export interface SugestaoTitulos extends MetaGeracao {
+  titulos: TitulosGerados;
+}
+
+/**
+ * Cinco variantes de título por ângulo, para o estúdio. Usa o tipo "titulo" (mesma cota e
+ * mesmo cache dos outros títulos). A nota e a conferência de termos são feitas por quem chama,
+ * em código (`avaliarVariantes`), não pela IA.
+ */
+export async function gerarTitulosEstudioIA(supabase: SupabaseClient, contexto: ContextoTitulosEstudio): Promise<Resultado<SugestaoTitulos>> {
+  return comResultado(async () => {
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "titulo",
+      hashTitulos(contexto),
+      montarPromptTitulos(contexto),
+      esquemaTitulos(),
+      (bruto) => interpretarTitulos(bruto, contexto.limite),
+      { maxTokens: 1300, temperatura: 0.9 },
+    );
+    if (titulosVazios(valor)) throw new ErroIA("vazio", "títulos vazios");
+    return { titulos: valor, ...meta };
+  });
+}
+
+export interface SugestaoDescricaoEstudio extends MetaGeracao {
+  descricao: DescricaoGerada;
+}
+
+/** Descrição do estúdio. Usa o tipo "descricao" (mesma cota e mesmo cache); a conferência de termos é de quem chama. */
+export async function gerarDescricaoEstudioIA(supabase: SupabaseClient, contexto: ContextoDescricaoEstudio): Promise<Resultado<SugestaoDescricaoEstudio>> {
+  return comResultado(async () => {
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "descricao",
+      hashDescricaoEstudio(contexto),
+      montarPromptDescricaoEstudio(contexto),
+      esquemaDescricaoEstudio(),
+      (bruto) => interpretarDescricaoEstudio(bruto, contexto.limite),
+      PARAMETROS.descricao,
+    );
+    if (descricaoVazia(valor)) throw new ErroIA("vazio", "descrição vazia");
+    return { descricao: valor, ...meta };
+  });
+}
+
+export interface SugestaoConcorrentes extends MetaGeracao {
+  pesquisa: PesquisaConcorrentes;
+}
+
+/**
+ * Pesquisa de concorrentes na web (só com Gemini: a busca é do Google). Confere o provedor
+ * ANTES de reservar a cota, para não cobrar uma geração de quem usa uma IA sem busca.
+ */
+export async function pesquisarConcorrentesIA(supabase: SupabaseClient, contexto: ContextoConcorrentes): Promise<Resultado<SugestaoConcorrentes>> {
+  return comResultado(async () => {
+    const ia = await resolverProvedor(supabase);
+    if (ia.provedor !== "gemini") throw new Error("A pesquisa na web usa a busca do Google e só funciona com a IA Gemini. Troque a IA padrão em Configurações.");
+    const prompt = montarPromptConcorrentes(contexto);
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "concorrentes",
+      hashConcorrentes(contexto),
+      prompt,
+      {},
+      interpretarConcorrentes,
+      PARAMETROS.concorrentes,
+      undefined,
+      (r) => pesquisarComBusca(r.chave, r.modelo, prompt),
+    );
+    if (pesquisaVazia(valor)) throw new Error("A busca não trouxe anúncios que eu possa mostrar com segurança. Tente de novo ou cole o link de um concorrente.");
+    return { pesquisa: valor, ...meta };
+  });
+}
+
+export interface SugestaoConversa extends MetaGeracao {
+  conversa: RespostaAssistente;
+}
+
+/**
+ * Uma volta da conversa do estúdio. A IA responde e PROPÕE ações de uma lista fechada
+ * (`prompts-assistente.ts`); quem chama só mostra as propostas, nada é executado aqui.
+ */
+export async function conversarIA(supabase: SupabaseClient, contexto: ContextoAssistente): Promise<Resultado<SugestaoConversa>> {
+  return comResultado(async () => {
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "assistente",
+      hashAssistente(contexto),
+      montarPromptAssistente(contexto),
+      esquemaAssistente(),
+      (bruto) => interpretarAssistente(bruto, contexto.maxImagens),
+    );
+    if (respostaVazia(valor)) throw new ErroIA("vazio", "resposta vazia");
+    return { conversa: valor, ...meta };
+  });
 }
 
 function rotuloIA(ia: ProvedorResolvido): string | null {
