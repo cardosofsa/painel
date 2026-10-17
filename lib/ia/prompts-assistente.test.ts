@@ -64,6 +64,12 @@ describe("interpretarAssistente", () => {
     const a = r([{ tipo: "ajustar_ficha", tipo_imagem: "geral", campos: { fundo: "x", numeroImagens: 5 } }]).acoes[0];
     expect(a).toEqual({ tipo: "ajustar_ficha", tipoImagem: "geral", campos: { fundo: "x" } });
   });
+  it("aceita pedir a descrição, com ou sem pedido", () => {
+    expect(r([{ tipo: "gerar_descricao", pedido: "mais curta" }, { tipo: "gerar_descricao" }]).acoes).toEqual([
+      { tipo: "gerar_descricao", pedido: "mais curta" },
+      { tipo: "gerar_descricao", pedido: null },
+    ]);
+  });
   it("capa sem modo reconhecido cai no modo sem custo", () => {
     expect(r([{ tipo: "gerar_capa", modo: "qualquer" }]).acoes).toEqual([{ tipo: "gerar_capa", modo: "prompt" }]);
   });

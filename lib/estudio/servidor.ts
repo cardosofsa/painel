@@ -11,8 +11,8 @@ import { estadoRascunhoSchema, type EstadoRascunho } from "@/lib/validacao";
  */
 export interface ContextoRascunho {
   userId: string;
-  rascunho: { id: string; produto_id: string; perfil_id: string | null; titulo: string | null; estado: EstadoRascunho };
-  produto: { id: string; nome: string; variante: string | null; categoria: string | null; imagemUrl: string | null; palavrasChave: string[] };
+  rascunho: { id: string; produto_id: string; perfil_id: string | null; titulo: string | null; descricao: string | null; estado: EstadoRascunho };
+  produto: { id: string; nome: string; variante: string | null; categoria: string | null; imagemUrl: string | null; palavrasChave: string[]; precoVenda: number | null };
   perfil: { id: string; nome: string; plataforma: PlataformaMarcaId; nicho: string | null; termosProibidos: string[]; logoPath: string | null } | null;
   plataforma: RegrasPlataforma;
   memoria: string[];
@@ -42,15 +42,15 @@ export function lerEstado(bruto: unknown): EstadoRascunho {
 
 export async function carregarContextoRascunho(supabase: SupabaseClient, rascunhoId: string): Promise<ContextoRascunho> {
   const userId = await usuarioDaSessao(supabase);
-  const { data: r, error } = await supabase.from("anuncio_rascunhos").select("id, produto_id, perfil_id, titulo, estado").eq("id", rascunhoId).maybeSingle();
+  const { data: r, error } = await supabase.from("anuncio_rascunhos").select("id, produto_id, perfil_id, titulo, descricao, estado").eq("id", rascunhoId).maybeSingle();
   if (error) throw erro("Não foi possível abrir o rascunho.");
   if (!r) throw erro("Rascunho não encontrado.");
 
   const [produtoRes, perfilRes] = await Promise.all([
-    supabase.from("produtos").select("id, nome, variante_nome, imagem_url, palavras_chave, categorias(nome)").eq("id", r.produto_id).maybeSingle(),
+    supabase.from("produtos").select("id, nome, variante_nome, imagem_url, palavras_chave, preco_venda, categorias(nome)").eq("id", r.produto_id).maybeSingle(),
     r.perfil_id ? supabase.from("perfis_marca").select("id, nome, plataforma, nicho, termos_proibidos, logo_path").eq("id", r.perfil_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
-  const p = produtoRes.data as { id: string; nome: string; variante_nome: string | null; imagem_url: string | null; palavras_chave: string[] | null; categorias: { nome: string } | null } | null;
+  const p = produtoRes.data as { id: string; nome: string; variante_nome: string | null; imagem_url: string | null; palavras_chave: string[] | null; preco_venda: number | null; categorias: { nome: string } | null } | null;
   if (!p) throw erro("Produto não encontrado.");
   const perfil = perfilRes.data as { id: string; nome: string; plataforma: PlataformaMarcaId; nicho: string | null; termos_proibidos: string[] | null; logo_path: string | null } | null;
 
@@ -64,8 +64,8 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
 
   return {
     userId,
-    rascunho: { id: r.id, produto_id: r.produto_id, perfil_id: r.perfil_id, titulo: r.titulo ?? null, estado: lerEstado(r.estado) },
-    produto: { id: p.id, nome: p.nome, variante: p.variante_nome, categoria: p.categorias?.nome ?? null, imagemUrl: p.imagem_url, palavrasChave: p.palavras_chave ?? [] },
+    rascunho: { id: r.id, produto_id: r.produto_id, perfil_id: r.perfil_id, titulo: r.titulo ?? null, descricao: r.descricao ?? null, estado: lerEstado(r.estado) },
+    produto: { id: p.id, nome: p.nome, variante: p.variante_nome, categoria: p.categorias?.nome ?? null, imagemUrl: p.imagem_url, palavrasChave: p.palavras_chave ?? [], precoVenda: p.preco_venda != null ? Number(p.preco_venda) : null },
     perfil: perfil ? { id: perfil.id, nome: perfil.nome, plataforma: perfil.plataforma, nicho: perfil.nicho, termosProibidos: perfil.termos_proibidos ?? [], logoPath: perfil.logo_path } : null,
     plataforma: regrasDaPlataforma(perfil?.plataforma ?? "shopee"),
     memoria: ((memoriaRes.data ?? []) as { texto: string }[]).map((m) => m.texto),

@@ -14,6 +14,8 @@ import { FormField, inputClass } from "@/components/ui/Modal";
 import { PainelTitulos } from "@/components/estudio/PainelTitulos";
 import { PainelConcorrentes } from "@/components/estudio/PainelConcorrentes";
 import { PainelCapa } from "@/components/estudio/PainelCapa";
+import { PainelDescricao } from "@/components/estudio/PainelDescricao";
+import { PainelPacote } from "@/components/estudio/PainelPacote";
 import { ConversaAssistente } from "@/components/estudio/ConversaAssistente";
 import { executarComToast } from "@/lib/acao-cliente";
 import { mesclarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
@@ -21,9 +23,12 @@ import { regrasDaPlataforma } from "@/lib/marca/plataformas";
 import { urlPublicaImagem, type FichaSalva, type PerfilMarca } from "@/lib/marca/tipos";
 import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { adicionarMemoriaMarca, salvarFichaMarca } from "../marca/actions";
-import { abrirRascunho, conversar, definirNumeroImagens, escolherTitulo, gerarTitulosEstudio, pesquisarConcorrentesEstudio, type RascunhoAberto, type TitulosDoEstudio } from "./actions";
+import { abrirRascunho, conversar, definirNumeroImagens, escolherTitulo, gerarDescricaoEstudio, gerarTitulosEstudio, pesquisarConcorrentesEstudio, salvarDescricao, type RascunhoAberto, type TitulosDoEstudio } from "./actions";
 
-type Qual = "titulos" | "concorrentes" | "conversa" | null;
+type Qual = "titulos" | "concorrentes" | "conversa" | "descricao" | null;
+
+/** Teto da descrição no estúdio (o mesmo da Shopee no Painel). */
+const TETO_DESCRICAO = 3000;
 
 /**
  * Estúdio de anúncios: título e capa 1 em primeiro lugar, concorrentes da web e um assistente de
@@ -56,6 +61,8 @@ export function EstudioClient({
   // O par produto/perfil que de fato está aberto: trocar o seletor depois não muda o rascunho.
   const [aberto, setAberto] = useState<{ produto: string; perfil: string } | null>(null);
   const [titulos, setTitulos] = useState<TitulosDoEstudio | null>(null);
+  const [descGerada, setDescGerada] = useState<{ texto: string; palavras: string[]; versao: number; meta: string } | null>(null);
+  const [versaoDesc, setVersaoDesc] = useState(0);
   const [observacao, setObservacao] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
   const [meta, setMeta] = useState<string | null>(null);
@@ -63,6 +70,7 @@ export function EstudioClient({
   const perfil = perfis.find((p) => p.id === aberto?.perfil) ?? null;
   const plataforma = regrasDaPlataforma(perfil?.plataforma ?? "shopee");
   const limiteTitulo = plataforma.limiteTitulo ?? 120;
+  const limiteDescricao = Math.min(plataforma.limiteDescricao ?? TETO_DESCRICAO, TETO_DESCRICAO);
 
   const fichaAtiva = (tipo: TipoImagemMarca): FichaMarca => (perfil ? (fichas.find((f) => f.perfil_id === perfil.id && f.tipo_imagem === tipo && f.ativa)?.dados ?? {}) : {});
   const fichaCapa1 = useMemo(() => mesclarFicha(fichaAtiva("geral"), fichaAtiva("capa_1")), [perfil, fichas]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -80,6 +88,7 @@ export function EstudioClient({
   function abrir() {
     if (!produtoId) return;
     setTitulos(null);
+    setDescGerada(null);
     setObservacao(null);
     startTransition(async () => void (await carregar({ produto: produtoId, perfil: perfilId })));
   }
@@ -93,6 +102,30 @@ export function EstudioClient({
     setQual(null);
     if (r.ok) setTitulos(r.dado);
     return r.ok;
+  }
+
+  async function gerarDescricao(pedido: string | null) {
+    if (!rascunho) return false;
+    setQual("descricao");
+    const r = await executarComToast(gerarDescricaoEstudio({ rascunho_id: rascunho.id, pedido }), { erro: "Não foi possível gerar a descrição." });
+    setQual(null);
+    if (r.ok) {
+      setVersaoDesc((n) => n + 1);
+      setDescGerada({ texto: r.dado.descricao, palavras: r.dado.palavrasChave, versao: versaoDesc + 1, meta: r.dado.doCache ? "Resposta guardada (não gastou cota)." : `Geração ${r.dado.usadas} de ${r.dado.limite} de hoje. Edite à vontade e salve.` });
+    }
+    return r.ok;
+  }
+
+  async function guardarDescricao(texto: string) {
+    if (!rascunho) return;
+    setQual("descricao");
+    const r = await executarComToast(salvarDescricao({ rascunho_id: rascunho.id, descricao: texto }), { sucesso: "Descrição salva", erro: "Não foi possível salvar a descrição." });
+    setQual(null);
+    if (r.ok) {
+      setDescGerada(null);
+      setVersaoDesc((n) => n + 1);
+      await carregar();
+    }
   }
 
   async function escolher(titulo: string) {
@@ -153,6 +186,8 @@ export function EstudioClient({
       }
       case "gerar_titulos":
         return gerarTitulos(a.pedido);
+      case "gerar_descricao":
+        return gerarDescricao(a.pedido);
       case "gerar_capa":
         document.getElementById("painel-capa")?.scrollIntoView({ behavior: "smooth", block: "start" });
         toast.message(a.modo === "imagem" ? "Confirme o custo no painel da capa." : "Use “Ver o prompt (sem custo)” no painel da capa.");
@@ -169,6 +204,7 @@ export function EstudioClient({
   const checklist = rascunho
     ? [
         { ok: !!rascunho.titulo, texto: "Título escolhido e conferido" },
+        { ok: !!rascunho.descricao, texto: "Descrição salva" },
         { ok: !!estado?.numeroImagens, texto: estado?.numeroImagens ? `Quantidade de imagens combinada: ${estado.numeroImagens}` : "Quantidade de imagens (diga ao assistente)" },
         { ok: capaAprovada, texto: "Capa 1 aprovada" },
         { ok: (estado?.concorrentes ?? []).length > 0, texto: "Concorrentes pesquisados (opcional, ajuda no título)" },
@@ -227,6 +263,19 @@ export function EstudioClient({
               <div className="space-y-4">
                 <PainelTitulos titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher} />
                 <PainelConcorrentes concorrentes={estado?.concorrentes ?? []} observacao={observacao} iaDisponivel={iaDisponivel} ocupado={qual === "concorrentes"} onPesquisar={pesquisar} />
+                <PainelDescricao
+                  salva={rascunho.descricao}
+                  geradaTexto={descGerada?.texto ?? null}
+                  versao={versaoDesc}
+                  limite={limiteDescricao}
+                  termos={perfil?.termos_proibidos ?? []}
+                  titulo={rascunho.titulo}
+                  iaDisponivel={iaDisponivel}
+                  ocupado={qual === "descricao"}
+                  meta={descGerada?.meta ?? null}
+                  onGerar={gerarDescricao}
+                  onSalvar={guardarDescricao}
+                />
                 <PainelCapa
                   key={`capa-${rascunho.id}`}
                   rascunho={rascunho}
@@ -238,6 +287,7 @@ export function EstudioClient({
                   onMudou={() => void carregar()}
                   onAjustar={setTexto}
                 />
+                <PainelPacote rascunho={rascunho} palavrasChave={[...rascunho.produto.palavrasChave, ...(titulos?.palavrasChave ?? []), ...(descGerada?.palavras ?? [])]} />
               </div>
               <div className="space-y-4 lg:sticky lg:top-4">
                 <ConversaAssistente mensagens={rascunho.mensagens} texto={texto} onTexto={setTexto} enviando={qual === "conversa"} iaDisponivel={iaDisponivel} meta={meta} onEnviar={enviarMensagem} onAplicar={aplicar} />

@@ -43,6 +43,7 @@ import {
 } from "./prompts-relatorio";
 import { pesquisarComBusca } from "./pesquisa";
 import { montarPromptConcorrentes, interpretarConcorrentes, hashConcorrentes, pesquisaVazia, type ContextoConcorrentes, type PesquisaConcorrentes } from "./prompts-concorrentes";
+import { montarPromptDescricaoEstudio, esquemaDescricaoEstudio, interpretarDescricaoEstudio, hashDescricaoEstudio, descricaoVazia, type ContextoDescricaoEstudio, type DescricaoGerada } from "./prompts-descricao-estudio";
 import { montarPromptTitulos, esquemaTitulos, interpretarTitulos, hashTitulos, titulosVazios, type ContextoTitulosEstudio, type TitulosGerados } from "./prompts-titulos";
 import { montarPromptAssistente, esquemaAssistente, interpretarAssistente, hashAssistente, respostaVazia, type ContextoAssistente, type RespostaAssistente } from "./prompts-assistente";
 import { montarPromptMarca, esquemaMarca, interpretarMarca, hashMarca, propostaVazia, type ContextoMarca, type PropostaMarca } from "./prompts-marca";
@@ -470,6 +471,27 @@ export async function gerarTitulosEstudioIA(supabase: SupabaseClient, contexto: 
     );
     if (titulosVazios(valor)) throw new ErroIA("vazio", "títulos vazios");
     return { titulos: valor, ...meta };
+  });
+}
+
+export interface SugestaoDescricaoEstudio extends MetaGeracao {
+  descricao: DescricaoGerada;
+}
+
+/** Descrição do estúdio. Usa o tipo "descricao" (mesma cota e mesmo cache); a conferência de termos é de quem chama. */
+export async function gerarDescricaoEstudioIA(supabase: SupabaseClient, contexto: ContextoDescricaoEstudio): Promise<Resultado<SugestaoDescricaoEstudio>> {
+  return comResultado(async () => {
+    const { valor, ...meta } = await executarEstruturado(
+      supabase,
+      "descricao",
+      hashDescricaoEstudio(contexto),
+      montarPromptDescricaoEstudio(contexto),
+      esquemaDescricaoEstudio(),
+      (bruto) => interpretarDescricaoEstudio(bruto, contexto.limite),
+      PARAMETROS.descricao,
+    );
+    if (descricaoVazia(valor)) throw new ErroIA("vazio", "descrição vazia");
+    return { descricao: valor, ...meta };
   });
 }
 

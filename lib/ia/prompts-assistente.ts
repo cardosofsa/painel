@@ -16,6 +16,7 @@ export type AcaoProposta =
   | { tipo: "guardar_memoria"; memoria: { tipo: "preferencia" | "regra" | "aprendizado"; texto: string } }
   | { tipo: "ajustar_ficha"; tipoImagem: TipoImagemMarca; campos: FichaMarca }
   | { tipo: "gerar_titulos"; pedido: string | null }
+  | { tipo: "gerar_descricao"; pedido: string | null }
   | { tipo: "gerar_capa"; modo: "prompt" | "imagem" }
   | { tipo: "pesquisar_concorrentes" };
 
@@ -83,6 +84,7 @@ Responda em JSON com:
   - {"tipo":"guardar_memoria","tipo_memoria":"preferencia"|"regra"|"aprendizado","texto":"frase curta"}  (quando o lojista disser uma preferência que vale para os próximos anúncios)
   - {"tipo":"ajustar_ficha","tipo_imagem":"capa_1"|"capa_2"|"detalhe"|"beneficios"|"uso"|"composicao"|"faq"|"geral","campos":{...}}  (campos do visual: fundo, luz, enquadramento, areaProdutoMinPct, paleta, tipografia, tituloMaxPalavras, selos, faixaInferior, logoPosicao, logoLarguraPct, pessoas, tom, observacoes)
   - {"tipo":"gerar_titulos","pedido":"o que mudar nos títulos, ou vazio"}
+  - {"tipo":"gerar_descricao","pedido":"o que mudar na descrição, ou vazio"}  (só depois de o título estar escolhido)
   - {"tipo":"gerar_capa","modo":"prompt"|"imagem"}  ("prompt" só monta o texto, sem custo; "imagem" gera a imagem e gasta a cota do mês)
   - {"tipo":"pesquisar_concorrentes"}
 
@@ -151,6 +153,9 @@ export function interpretarAssistente(bruto: string, maxImagens: number | null):
       }
       case "gerar_titulos":
         acoes.push({ tipo: "gerar_titulos", pedido: typeof r.pedido === "string" && r.pedido.trim() ? truncarEmPalavra(r.pedido.replace(/\s+/g, " ").trim(), 300) : null });
+        break;
+      case "gerar_descricao":
+        acoes.push({ tipo: "gerar_descricao", pedido: typeof r.pedido === "string" && r.pedido.trim() ? truncarEmPalavra(r.pedido.replace(/\s+/g, " ").trim(), 300) : null });
         break;
       case "gerar_capa":
         acoes.push({ tipo: "gerar_capa", modo: r.modo === "imagem" ? "imagem" : "prompt" });

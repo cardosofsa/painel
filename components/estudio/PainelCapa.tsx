@@ -129,7 +129,7 @@ export function PainelCapa({
       <div id="painel-capa" />
       <CardHeader>
         <div>
-          <CardTitle>3. Capa 1</CardTitle>
+          <CardTitle>4. Capa 1</CardTitle>
           <CardSubtitle>A primeira imagem decide o clique. Em 2 segundos, reduzida, o produto e o nome precisam ser entendidos.</CardSubtitle>
         </div>
       </CardHeader>

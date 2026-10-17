@@ -15,7 +15,8 @@ import {
   type EstadoRascunho,
 } from "@/lib/validacao";
 import { z } from "zod";
-import { conversarIA, gerarTitulosEstudioIA, pesquisarConcorrentesIA } from "@/lib/ia/gerar";
+import { conversarIA, gerarDescricaoEstudioIA, gerarTitulosEstudioIA, pesquisarConcorrentesIA } from "@/lib/ia/gerar";
+import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, type AvaliacaoDescricao } from "@/lib/ia/prompts-descricao-estudio";
 import { avaliarVariantes, type VarianteAvaliada } from "@/lib/ia/prompts-titulos";
 import { gerarImagemGemini } from "@/lib/ia/imagem";
 import { ErroIA } from "@/lib/ia/erro";
@@ -40,6 +41,9 @@ function checar(erro: { message: string; code?: string } | null) {
 export interface RascunhoAberto {
   id: string;
   titulo: string | null;
+  descricao: string | null;
+  /** Dados do produto que a tela precisa (preço, palavras-chave, foto). */
+  produto: { nome: string; precoVenda: number | null; palavrasChave: string[]; imagemUrl: string | null };
   status: string;
   estado: EstadoRascunho;
   mensagens: { id: string; papel: "usuario" | "ia"; texto: string; acoes: AcaoProposta[]; criado_em: string }[];
@@ -52,21 +56,24 @@ export async function abrirRascunho(entrada: unknown) {
     const supabase = await createClient();
     await usuarioDaSessao(supabase);
 
-    let consulta = supabase.from("anuncio_rascunhos").select("id, titulo, status, estado").eq("produto_id", v.produto_id).order("atualizado_em", { ascending: false }).limit(1);
+    let consulta = supabase.from("anuncio_rascunhos").select("id, titulo, descricao, status, estado").eq("produto_id", v.produto_id).order("atualizado_em", { ascending: false }).limit(1);
     consulta = v.perfil_id ? consulta.eq("perfil_id", v.perfil_id) : consulta.is("perfil_id", null);
     const { data: achados, error } = await consulta;
     checar(error);
 
     let r = achados?.[0];
     if (!r) {
-      const { data, error: erroNovo } = await supabase.from("anuncio_rascunhos").insert({ produto_id: v.produto_id, perfil_id: v.perfil_id }).select("id, titulo, status, estado").single();
+      const { data, error: erroNovo } = await supabase.from("anuncio_rascunhos").insert({ produto_id: v.produto_id, perfil_id: v.perfil_id }).select("id, titulo, descricao, status, estado").single();
       checar(erroNovo);
       r = data!;
     }
+    const { data: p } = await supabase.from("produtos").select("nome, preco_venda, palavras_chave, imagem_url").eq("id", v.produto_id).maybeSingle();
     const { data: msgs } = await supabase.from("anuncio_rascunho_mensagens").select("id, papel, texto, acoes, criado_em").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60);
     return {
       id: r.id,
       titulo: r.titulo ?? null,
+      descricao: r.descricao ?? null,
+      produto: { nome: (p?.nome as string | undefined) ?? "", precoVenda: p?.preco_venda != null ? Number(p.preco_venda) : null, palavrasChave: (p?.palavras_chave as string[] | null) ?? [], imagemUrl: (p?.imagem_url as string | null) ?? null },
       status: r.status,
       estado: lerEstado(r.estado),
       mensagens: ((msgs ?? []) as RascunhoAberto["mensagens"]).map((m) => ({ ...m, acoes: Array.isArray(m.acoes) ? m.acoes : [] })),
@@ -135,6 +142,60 @@ export async function escolherTitulo(entrada: unknown) {
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, {}, { titulo: v.titulo });
     revalidatePath(PATH);
     return { violacoes };
+  });
+}
+
+// ---------- Descrição ----------
+
+export interface DescricaoDoEstudio {
+  descricao: string;
+  palavrasChave: string[];
+  avaliacao: AvaliacaoDescricao;
+  usadas: number;
+  limite: number;
+  doCache: boolean;
+}
+
+/** Gera, mas NÃO grava: o texto vai para a tela, o usuário edita e só então salva. */
+export async function gerarDescricaoEstudio(entrada: unknown) {
+  return comResultado(async (): Promise<DescricaoDoEstudio> => {
+    const v = validar(titulosEstudioSchema, entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
+    const termos = ctx.perfil?.termosProibidos ?? [];
+    const g = await gerarDescricaoEstudioIA(supabase, {
+      produto: { nome: ctx.produto.nome, variante: ctx.produto.variante, categoria: ctx.produto.categoria, componentes: [] },
+      titulo: ctx.rascunho.titulo,
+      plataforma: ctx.plataforma.nome,
+      limite,
+      nicho: ctx.perfil?.nicho ?? null,
+      palavrasChave: ctx.produto.palavrasChave,
+      memoria: ctx.memoria,
+      termosProibidos: termos,
+      diferenciaisConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).flatMap((c) => c.diferenciais),
+      pedido: v.pedido,
+    });
+    if (!g.ok) throw new Error(g.erro);
+    const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasAtivas([], termos) });
+    return { descricao: g.dado.descricao.descricao, palavrasChave: g.dado.descricao.palavrasChave, avaliacao, usadas: g.dado.usadas, limite: g.dado.limite, doCache: g.dado.doCache };
+  });
+}
+
+/** Salva a descrição que o usuário aprovou, depois de conferir tamanho e termos no servidor. */
+export async function salvarDescricao(entrada: unknown) {
+  return comResultado(async (): Promise<{ avaliacao: AvaliacaoDescricao }> => {
+    const v = validar(rascunhoIdSchema.extend({ descricao: z.string().max(5000) }), entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
+    const avaliacao = avaliarDescricao(v.descricao, { limite, regras: regrasAtivas([], ctx.perfil?.termosProibidos ?? []) });
+    if (avaliacao.curta) throw new Error("A descrição está curta demais: escreva pelo menos 100 caracteres.");
+    if (avaliacao.longa) throw new Error(`A descrição passa de ${limite} caracteres.`);
+    if (avaliacao.violacoes.some((x) => x.gravidade === "bloquear")) throw new Error(`Há algo que as plataformas costumam barrar na descrição: “${avaliacao.violacoes[0].trecho}”. Ajuste e tente de novo.`);
+    const { error } = await supabase.from("anuncio_rascunhos").update({ descricao: v.descricao.trim(), atualizado_em: new Date().toISOString() }).eq("id", v.rascunho_id);
+    checar(error);
+    return { avaliacao };
   });
 }
 

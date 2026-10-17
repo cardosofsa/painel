@@ -22,6 +22,8 @@ export function descreverAcao(a: AcaoProposta): { rotulo: string; botao: string 
     }
     case "gerar_titulos":
       return { rotulo: `Gerar títulos${a.pedido ? `: ${a.pedido}` : ""}`, botao: "Gerar títulos" };
+    case "gerar_descricao":
+      return { rotulo: `Gerar a descrição${a.pedido ? `: ${a.pedido}` : ""}`, botao: "Gerar descrição" };
     case "gerar_capa":
       return a.modo === "imagem"
         ? { rotulo: "Gerar a capa aqui (usa 1 imagem da cota do mês)", botao: "Ir para a capa" }

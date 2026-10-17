@@ -236,6 +236,19 @@ concorrente vindos do navegador).
 - **Assistente:** responde e PROPÕE ações de uma lista fechada (`lib/ia/prompts-assistente.ts`); cada uma
   é um botão que o usuário aprova. Ação fora da lista ou com valor inválido é descartada na leitura.
 
+**Botão de copiar (fluxo do anúncio).** `lib/copiar.ts` (formatadores puros + cópia com plano B por
+`execCommand` quando `navigator.clipboard` falha) e `components/ui/BotaoCopiar.tsx` (ícone que vira ✓,
+aviso para leitor de tela; `AcoesImagem` copia/baixa a capa). `FormField` aceita `copiar={{ texto }}` e
+põe o botão FORA do `<label>` (dentro dele, o botão viraria o controle do rótulo). Está no Estúdio, no
+modal "Montar anúncio para a Shopee", nas opções da precificação e na narração dos Insights; os outros
+usos soltos de `navigator.clipboard` (recibo, Pix, convite...) não foram trocados.
+
+**Descrição e Pacote do anúncio.** A descrição segue o molde dos títulos (`prompts-descricao-estudio.ts`):
+memória e termos proibidos entram no prompt, concorrentes só como referência, e a conferência de termos
+roda a cada tecla na tela e de novo no servidor ao salvar (mínimo 100, teto 3.000 caracteres). O "Pacote do
+anúncio" junta título, descrição, palavras-chave, hashtags, preço do cadastro, quantidade e capas
+aprovadas, cada um com copiar, mais "Copiar tudo" na ordem do Seller Centre.
+
 ### Cota e custo
 
 A chave é uma só, do sistema, então cada conta tem uma **cota diária** (`perfis_acesso.
