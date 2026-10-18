@@ -51,7 +51,7 @@ async function preparar(rascunhoId: string): Promise<Preparo> {
   const ctx = await carregarContextoRascunho(supabase, rascunhoId);
   if (!ctx.perfil) throw new Error("Escolha um perfil da loja ao abrir o estúdio: é ele que diz em qual loja o anúncio será criado.");
   if (ctx.perfil.plataforma !== "shopee") throw new Error("Criar o anúncio direto na plataforma só funciona com a Shopee por enquanto.");
-  if (!ctx.perfil.lojaId) throw new Error("Vincule o perfil a uma loja já conectada à Shopee (em Produtos › Padrão da loja, campo “Loja do Painel”).");
+  if (!ctx.perfil.lojaId) throw new Error("Vincule o perfil a uma loja já conectada à Shopee (em Anúncio Infinito › Configurações › Perfil, campo “Loja do Painel”).");
   const { data: conexao } = await supabase.from("marketplace_conexoes").select("*").eq("loja_id", ctx.perfil.lojaId).maybeSingle();
   if (!conexao) throw new Error("Esta loja ainda não está conectada à Shopee. Conecte em Configurações › Canais de venda.");
   if (plataformaDa(conexao as ConexaoShopee) !== "shopee") throw new Error("A loja vinculada ao perfil não é da Shopee.");

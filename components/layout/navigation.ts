@@ -11,6 +11,7 @@ import {
   Wallet,
   BookOpen,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { IconeLampiao } from "@/components/ui/IconeLampiao";
@@ -27,6 +28,7 @@ const ICONES: Record<AbaId, IconeNav> = {
   vendas: Receipt,
   precificacao: Tag,
   produtos: Package,
+  anuncio: Sparkles,
   clientes: Users,
   fornecedores: Truck,
   compras: ShoppingCart,
@@ -56,7 +58,7 @@ export const GRUPOS_NAV: { label: string | null; itens: AbaId[] }[] = [
   // ficam dentro da própria página, para não encher a barra lateral.
   { label: null, itens: ["dashboard", "vixe"] },
   { label: "Vendas", itens: ["pdv", "vendas", "catalogo"] },
-  { label: "Produtos & Estoque", itens: ["precificacao", "produtos", "estoque"] },
+  { label: "Produtos & Estoque", itens: ["precificacao", "produtos", "anuncio", "estoque"] },
   { label: "Compras", itens: ["compras", "fornecedores"] },
   { label: "Clientes & Financeiro", itens: ["clientes", "financeiro"] },
 ];

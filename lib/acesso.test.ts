@@ -40,6 +40,11 @@ describe("normalizarAbas", () => {
     expect(abas.filter((a) => a === "pdv")).toHaveLength(1);
   });
 
+  it("Anúncio acompanha Produtos, mas não aparece sozinha", () => {
+    expect(normalizarAbas(["produtos"])).toContain("anuncio");
+    expect(normalizarAbas(["pdv"])).not.toContain("anuncio");
+  });
+
   it("acrescenta as obrigatórias à liberação parcial", () => {
     expect(normalizarAbas(["pdv"])).toEqual(["dashboard", "pdv", "configuracoes"]);
   });

@@ -6,6 +6,9 @@ import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card"
 import { inputClass } from "@/components/ui/Modal";
 import { regrasAtivas, temBloqueio, verificarTextos } from "@/lib/conformidade/termos";
 
+const EXEMPLO_LIMPO = "Organizador de Gaveta Modular 6 Peças – Plástico Resistente, Fácil de Limpar";
+const EXEMPLO_COM_PROBLEMA = "Melhor do Brasil! Cura ansiedade, 100% garantido, frete grátis, o mais barato do mercado";
+
 /**
  * Conferidor rápido: cole um título, uma descrição ou o texto que vai numa imagem e veja se
  * aparece algo das regras gerais de marketplace ou dos termos que você marcou. É uma primeira
@@ -21,7 +24,7 @@ export function ConferirTexto({ termosDoPerfil }: { termosDoPerfil: string[] }) 
       <CardHeader>
         <div>
           <CardTitle>Conferir um texto</CardTitle>
-          <CardSubtitle>Regras gerais de marketplace e os seus termos. Nada é enviado: a conferência roda aqui.</CardSubtitle>
+          <CardSubtitle>Cole o título, a descrição ou o texto de uma imagem para ver se tem algo que a plataforma costuma barrar. Nada é enviado: a conferência roda aqui.</CardSubtitle>
         </div>
       </CardHeader>
       <div className="flex gap-2 mb-2">
@@ -29,6 +32,15 @@ export function ConferirTexto({ termosDoPerfil }: { termosDoPerfil: string[] }) 
           <option value="texto">Título ou descrição</option>
           <option value="imagem">Texto dentro de uma imagem</option>
         </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs text-text-secondary">
+        Testar com um exemplo:
+        <button type="button" className="text-accent hover:underline" onClick={() => { setTipo("texto"); setTexto(EXEMPLO_LIMPO); }}>
+          texto limpo
+        </button>
+        <button type="button" className="text-accent hover:underline" onClick={() => { setTipo("texto"); setTexto(EXEMPLO_COM_PROBLEMA); }}>
+          texto com problema
+        </button>
       </div>
       <textarea className={`${inputClass} h-24 py-2`} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Cole o texto aqui" aria-label="Texto a conferir" />
       {texto.trim() && (

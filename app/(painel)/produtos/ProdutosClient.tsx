@@ -565,13 +565,8 @@ export function ProdutosClient({
               </Link>
             )}
             {!emInsumos && (
-              <Link href="/produtos/marca" className={classesBotao({ variant: "secondary" })}>
-                Padrão da loja
-              </Link>
-            )}
-            {!emInsumos && (
-              <Link href="/produtos/estudio" className={classesBotao({ variant: "secondary" })}>
-                Estúdio de anúncios
+              <Link href="/anuncio" className={classesBotao({ variant: "secondary" })}>
+                Anúncio Infinito
               </Link>
             )}
             {emInsumos ? (
