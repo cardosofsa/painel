@@ -212,15 +212,17 @@ export function PrecificacaoClient({
               </div>
             </Card>
           )}
+          {/* No layout novo, indicador e botão moram no cartão do resultado. */}
+          {!layoutNovo && (
           <div className="flex flex-wrap items-center justify-end gap-3 mb-3">
             <IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />
-            {/* No layout novo o botão mora no cartão do resultado. */}
-            {!layoutNovo && (
+            {(
               <Button size="sm" variant="secondary" onClick={() => void rasc.salvarRascunho()} loading={rasc.salvando} disabled={!estado.temConteudo}>
                 Salvar rascunho
               </Button>
             )}
           </div>
+          )}
           {layoutNovo ? (
             <IndividualNova
               estado={estado}
@@ -230,6 +232,7 @@ export function PrecificacaoClient({
               precosLoja={precosLoja}
               onSalvarRascunho={() => void rasc.salvarRascunho()}
               salvandoRascunho={rasc.salvando}
+              indicadorRascunho={<IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />}
             />
           ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

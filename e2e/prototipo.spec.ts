@@ -35,7 +35,7 @@ test("protótipo: Individual nova, Ajuste de Preço e Revisar", async ({ page })
   await busca.click();
   await busca.fill("a");
   await page.getByRole("option").first().click();
-  await page.locator('button[aria-pressed]').filter({ hasText: "·" }).first().click();
+  await page.getByRole("radiogroup", { name: "Onde vende" }).getByRole("radio").first().click();
   await expect(page.getByText("Lucro", { exact: false }).first()).toBeVisible();
   await capturar(page, "individual");
 

@@ -553,3 +553,9 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - **Ajuste de Preço** (`/precificacao/ajuste/novo?produto=&loja=`): régua interativa (arrastar ou digitar), lucro, margem, comissão, mínimo/ideal/máximo de referência com "Pôr na régua", estratégias por regra (`estrategiasDeAjuste`), simulador de promoção com desconto máximo, "Usar este preço" (grava na loja, com confirmação; não mexe na Shopee) e copiar preço. Atalhos em Preços por loja ("Ajustar") e no Raio-X. A entrada por anúncio sincronizado e a IA ficam para a fase 6.
 - **Revisar**: "Pronto para publicar?" (preço, lucro, checklist, "Publiquei manualmente") → Pacote → "Criar na Shopee pelo Painel (opcional)", recolhido. No celular, "Etapa X de 6".
 - Testes: 1576 passando.
+
+### 18.1 Revisão do visual (pedido do dono)
+
+- Individual: Produto, Onde vende e Como quer lucrar viraram **um cartão com passos numerados**; lojas em cartões de escolha (2 colunas, com a comissão escrita); forma de calcular em seletor segmentado com rótulos curtos. Resultado: preço, loja, três quadros (lucro, margem, markup), "para onde vai o dinheiro", faixas de comissão recolhíveis, Salvar + Salvar rascunho + WhatsApp e o indicador do rascunho dentro do cartão. Preços por loja em linhas alinhadas (loja | preço e selo), ações embaixo.
+- Ajuste: mínimo, ideal e máximo num cartão de três colunas (também no celular), com a margem alvo do ideal logo abaixo.
+- Migração **0102** escrita, testada e enviada ao dono para aplicar.

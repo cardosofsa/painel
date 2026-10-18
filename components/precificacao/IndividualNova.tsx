@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, Sparkles } from "lucide-react";
 import { Card, CardEyebrow, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Chip, ChipRow } from "@/components/ui/Chip";
 import { Combobox } from "@/components/ui/Combobox";
 import { CampoNumero } from "@/components/ui/CampoNumero";
 import { FormField, inputClass } from "@/components/ui/Modal";
-import { InfoTooltip } from "@/components/ui/InfoTooltip";
+import { StatusChip } from "@/components/ui/Badge";
 import { PriceBreakdownChart } from "@/components/charts/dinamicos";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { PainelConcorrentes } from "@/components/precificacao/PainelConcorrentes";
@@ -19,10 +18,12 @@ import { PainelPrecosLoja } from "@/components/precificacao/PainelPrecosLoja";
 import { ReguaPreco } from "@/components/precificacao/ReguaPreco";
 import { calcularAjuste } from "@/lib/ajuste-preco";
 import { classeValor, formatBRL } from "@/lib/format";
-import { MODOS } from "@/lib/pricing";
+import { MODOS, type ModoCalculo } from "@/lib/pricing";
 import type { EstadoPrecificacao, LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-estado";
 
 const ID_RESULTADO = "resultado-precificacao";
+/** Rótulos curtos para o seletor segmentado (os longos de `MODOS` quebravam em três linhas). */
+const ROTULO_CURTO: Record<ModoCalculo, string> = { margem: "Margem", markup: "Markup", lucro: "Lucro (R$)", preco: "Preço fixo" };
 const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 /**
@@ -40,7 +41,10 @@ export function IndividualNova({
   precosLoja,
   onSalvarRascunho,
   salvandoRascunho,
+  indicadorRascunho,
 }: {
+  /** "Rascunho salvo há X" (desenhado pela tela, que tem o relógio). */
+  indicadorRascunho?: ReactNode;
   estado: EstadoPrecificacao;
   produtos: ProdutoOpcao[];
   lojas: LojaOpcao[];
@@ -74,99 +78,99 @@ export function IndividualNova({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-5 items-start pb-24 lg:pb-0">
       <div className="space-y-5 min-w-0">
-        {/* 1. Produto */}
-        <Card>
-          <CardTitle>Produto</CardTitle>
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_10rem] gap-3 items-end">
-            <FormField label="Qual produto">
-              <Combobox
-                itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
-                valor={e.produtoId}
-                onChange={(id) => {
-                  const p = produtos.find((x) => x.id === id);
-                  if (p) e.selecionarSugestao(p);
-                }}
-                placeholder="Buscar produto pelo nome ou SKU…"
-              />
-            </FormField>
-            <FormField label="Custo total">
-              <div className="h-9 flex items-center gap-1.5 font-mono text-text-primary">
-                {formatBRL(e.custoTotal)}
-                {e.custoTotal > 0 && <Check size={14} className="text-positive" aria-label="custo preenchido" />}
+        {/* Os três passos que decidem o preço, num cartão só. */}
+        <Card padding="nenhum">
+          <Passo n={1} titulo="Produto">
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end mb-3 [&>*]:mb-0">
+              <FormField label="Qual produto">
+                <Combobox
+                  itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
+                  valor={e.produtoId}
+                  onChange={(id) => {
+                    const p = produtos.find((x) => x.id === id);
+                    if (p) e.selecionarSugestao(p);
+                  }}
+                  placeholder="Buscar produto pelo nome ou SKU…"
+                />
+              </FormField>
+              <div className="rounded-md bg-surface-2 px-3 py-1.5 min-w-[9rem]">
+                <div className="text-xs text-text-tertiary">Custo total</div>
+                <div className="font-mono text-text-primary flex items-center gap-1.5">
+                  {formatBRL(e.custoTotal)}
+                  {e.custoTotal > 0 && <Check size={14} className="text-positive" aria-label="custo preenchido" />}
+                </div>
               </div>
-            </FormField>
-          </div>
-          {!e.produtoId && (
-            <FormField label="Ou digite um nome (produto sem cadastro)">
-              <input className={inputClass} value={e.nomeProduto} onChange={(ev) => e.setNomeProduto(ev.target.value)} placeholder="Ex.: Kit Chá" />
-            </FormField>
-          )}
-          {e.produtoId && (
-            <Link href={`/anuncio/infinito?produto=${e.produtoId}${e.lojaId ? `&loja=${e.lojaId}` : ""}`} className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline mt-1">
-              <Sparkles size={14} aria-hidden /> Criar anúncio deste produto
-            </Link>
-          )}
-        </Card>
+            </div>
+            {!e.produtoId ? (
+              <FormField label="Ou digite um nome (produto sem cadastro)">
+                <input className={inputClass} value={e.nomeProduto} onChange={(ev) => e.setNomeProduto(ev.target.value)} placeholder="Ex.: Kit Chá" />
+              </FormField>
+            ) : (
+              <Link href={`/anuncio/infinito?produto=${e.produtoId}${e.lojaId ? `&loja=${e.lojaId}` : ""}`} className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
+                <Sparkles size={14} aria-hidden /> Criar anúncio deste produto
+              </Link>
+            )}
+          </Passo>
 
-        {/* 2. Onde vende */}
-        <Card>
-          <CardTitle>Onde vende</CardTitle>
-          <div className="mt-3">
-            <ChipRow>
+          <Passo n={2} titulo="Onde vende" resumo={loja ? `${loja.canalNome} · ${loja.nome}` : e.modoTaxas === "manual" ? "taxas à mão" : null}>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Onde vende">
               {lojas.map((l) => (
-                <Chip key={l.id} ativo={e.modoTaxas === "loja" && e.lojaId === l.id} onClick={() => escolherLoja(l.id)}>
-                  {l.canalNome} · {l.nome}
-                </Chip>
+                <OpcaoLoja
+                  key={l.id}
+                  ativa={e.modoTaxas === "loja" && e.lojaId === l.id}
+                  titulo={l.nome}
+                  sub={`${l.canalNome} · ${l.tipoTaxa === "faixas" && l.faixas.length ? "comissão por faixa" : `${l.comissaoPct}% + ${formatBRL(l.taxaFixa)}`}`}
+                  onClick={() => escolherLoja(l.id)}
+                />
               ))}
-              <Chip ativo={e.modoTaxas === "manual"} onClick={() => escolherLoja(null)}>
-                Taxas à mão
-              </Chip>
-            </ChipRow>
-          </div>
-          {e.modoTaxas === "manual" && (
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <FormField label="Comissão (%)">
-                <CampoNumero value={e.taxaVariavelPct} onChange={e.setTaxaVariavelPct} min={0} max={99} />
-              </FormField>
-              <FormField label="Tarifa fixa (R$)">
-                <CampoNumero value={e.taxaFixa} onChange={e.setTaxaFixa} min={0} casas={2} />
-              </FormField>
-              <FormField label="Canal (para o resumo)">
-                <select className={inputClass} value={e.lojaId ?? ""} onChange={(ev) => e.setLojaId(ev.target.value || null)}>
-                  <option value="">Escolha…</option>
-                  {lojas.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.canalNome} · {l.nome}
-                    </option>
+              <OpcaoLoja ativa={e.modoTaxas === "manual"} titulo="Taxas à mão" sub="Digite comissão e tarifa" onClick={() => escolherLoja(null)} />
+            </div>
+            {e.modoTaxas === "manual" && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 [&>*]:mb-0">
+                <FormField label="Comissão (%)">
+                  <CampoNumero value={e.taxaVariavelPct} onChange={e.setTaxaVariavelPct} min={0} max={99} />
+                </FormField>
+                <FormField label="Tarifa fixa (R$)">
+                  <CampoNumero value={e.taxaFixa} onChange={e.setTaxaFixa} min={0} casas={2} />
+                </FormField>
+                <FormField label="Canal (para o resumo)">
+                  <select className={inputClass} value={e.lojaId ?? ""} onChange={(ev) => e.setLojaId(ev.target.value || null)}>
+                    <option value="">Escolha…</option>
+                    {lojas.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.canalNome} · {l.nome}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+            )}
+          </Passo>
+
+          <Passo n={3} titulo="Como quer lucrar" ultimo>
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_12rem] gap-3 items-end [&>*]:mb-0">
+              <div>
+                <span className="block text-xs font-medium text-text-secondary mb-1.5">Forma de calcular</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-lg bg-surface-2 p-1" role="radiogroup" aria-label="Forma de calcular">
+                  {MODOS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={e.modo === m.id}
+                      onClick={() => e.setModo(m.id)}
+                      className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors duration-[--duracao-rapida] ${e.modo === m.id ? "bg-surface-1 text-text-primary shadow-elev-1" : "text-text-secondary hover:text-text-primary"}`}
+                    >
+                      {ROTULO_CURTO[m.id]}
+                    </button>
                   ))}
-                </select>
+                </div>
+              </div>
+              <FormField label={e.modo === "margem" ? "Margem líquida (%)" : e.modo === "markup" ? "Markup (%)" : e.modo === "lucro" ? "Lucro por venda (R$)" : "Preço de venda (R$)"}>
+                <CampoNumero value={valorModo} onChange={mudarValor} min={0} casas={2} />
               </FormField>
             </div>
-          )}
-          {loja && (
-            <p className="mt-2 text-xs text-text-tertiary">
-              {loja.tipoTaxa === "faixas" && loja.faixas.length ? "Comissão por faixa de preço, calculada sozinha." : `Comissão ${loja.comissaoPct}% + ${formatBRL(loja.taxaFixa)}.`}
-            </p>
-          )}
-        </Card>
-
-        {/* 3. Como quer lucrar */}
-        <Card>
-          <CardTitle>Como quer lucrar</CardTitle>
-          <div className="mt-3">
-            <ChipRow>
-              {MODOS.map((m) => (
-                <Chip key={m.id} ativo={e.modo === m.id} onClick={() => e.setModo(m.id)}>
-                  {m.label}
-                </Chip>
-              ))}
-            </ChipRow>
-          </div>
-          <div className="mt-3 max-w-xs">
-            <FormField label={e.modo === "margem" ? "Margem líquida (% do preço)" : e.modo === "markup" ? "Markup (% sobre o custo)" : e.modo === "lucro" ? "Lucro por venda (R$)" : "Preço de venda (R$)"}>
-              <CampoNumero value={valorModo} onChange={mudarValor} min={0} casas={2} />
-            </FormField>
-          </div>
+          </Passo>
         </Card>
 
         {/* 4. Mais opções */}
@@ -211,43 +215,36 @@ export function IndividualNova({
       <div className="space-y-5 lg:sticky lg:top-20">
         <Card className={r.viavel ? "" : "border-negative/40"}>
           <div id={ID_RESULTADO} className="scroll-mt-20" />
-          <CardEyebrow>{e.modo === "preco" ? "Preço informado" : "Preço de venda"}</CardEyebrow>
+          <div className="flex items-center justify-between gap-2">
+            <CardEyebrow>{e.modo === "preco" ? "Preço informado" : "Preço de venda"}</CardEyebrow>
+            <StatusChip label={r.viavel ? "Viável" : "Inviável"} tone={r.viavel ? "positive" : "negative"} />
+          </div>
           <div key={r.precoVenda} className="destaque-valor rounded-md -mx-1 px-1 mt-1 font-mono text-4xl font-semibold tracking-tight text-text-primary">
             {r.viavel ? formatBRL(r.precoVenda) : "—"}
           </div>
+          {loja && <div className="text-xs text-text-tertiary">{loja.canalNome} · {loja.nome}</div>}
+
           {r.viavel ? (
-            <p key={`l-${r.lucroLiquido}`} className="destaque-valor rounded-md -mx-1 px-1 mt-1 text-sm text-text-secondary">
-              Lucro <span className={`font-mono font-medium ${classeValor(r.lucroLiquido)}`}>{formatBRL(r.lucroLiquido)}</span> · Margem{" "}
-              <span className="font-mono text-text-primary">{pct(r.margemEfetivaPct)}</span>
-              <InfoTooltip text="Margem = lucro ÷ preço de venda. Markup = lucro ÷ custo. São números diferentes para o mesmo preço." />
-            </p>
+            <dl key={`n-${r.precoVenda}`} className="destaque-valor mt-4 grid grid-cols-3 gap-2">
+              <Metrica rotulo="Lucro" valor={formatBRL(r.lucroLiquido)} classe={classeValor(r.lucroLiquido)} />
+              <Metrica rotulo="Margem" valor={pct(r.margemEfetivaPct)} dica="Lucro ÷ preço de venda" />
+              <Metrica rotulo="Markup" valor={pct(r.markupSobreCustoPct)} dica="Lucro ÷ custo" />
+            </dl>
           ) : (
-            <p className="mt-1 text-sm text-negative flex gap-1.5">
-              <AlertTriangle size={14} className="mt-0.5" aria-hidden /> {e.custoTotal > 0 ? "Inviável: taxas + margem passam de 100% do preço." : "Escolha o produto ou informe o custo."}
+            <p className="mt-3 text-sm text-negative flex gap-1.5">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden /> {e.custoTotal > 0 ? "Inviável: taxas + margem passam de 100% do preço." : "Escolha o produto ou informe o custo."}
             </p>
           )}
 
-          {regua && (
-            <div className="mt-4">
-              <ReguaPreco
-                escala={regua.escala}
-                faixas={regua.faixas}
-                zonasMortas={regua.zonasMortas}
-                marcadores={[
-                  ...(regua.precoMinimo ? [{ preco: regua.precoMinimo, rotulo: "mín.", tom: "minimo" as const }] : []),
-                  { preco: r.precoVenda, rotulo: "este", tom: "atual" as const },
-                ]}
-              />
-              {e.zonaMorta && (
-                <button type="button" onClick={() => e.aplicarPrecoMelhor(e.zonaMorta!.precoMelhor)} className="mt-2 text-xs text-negative hover:underline text-left">
-                  Zona morta: a {formatBRL(e.zonaMorta.precoMelhor)} você recebe {formatBRL(e.zonaMorta.ganhoLiquido)} a mais. Usar
-                </button>
-              )}
-            </div>
+          {e.zonaMorta && (
+            <button type="button" onClick={() => e.aplicarPrecoMelhor(e.zonaMorta!.precoMelhor)} className="mt-3 w-full rounded-md border border-negative/40 bg-negative-soft px-3 py-2 text-left text-xs text-negative hover:underline">
+              Zona morta: a {formatBRL(e.zonaMorta.precoMelhor)} você recebe {formatBRL(e.zonaMorta.ganhoLiquido)} a mais por venda. Usar esse preço
+            </button>
           )}
 
           {r.viavel && (
-            <div className="mt-4">
+            <div className="mt-4 pt-4 border-t border-border">
+              <span className="block text-xs font-medium text-text-secondary mb-2">Para onde vai o dinheiro</span>
               <PriceBreakdownChart
                 data={[
                   { nome: "Custo", valor: r.custoTotal },
@@ -259,18 +256,39 @@ export function IndividualNova({
             </div>
           )}
 
-          <Button variant="primary" className="w-full mt-4" onClick={e.salvar} loading={e.pending} disabled={!podeSalvar}>
+          {regua && (
+            <details className="mt-4 pt-4 border-t border-border group">
+              <summary className="flex cursor-pointer items-center justify-between text-xs font-medium text-text-secondary list-none">
+                Faixas de comissão {e.faixaShopee ? `(nesta: ${e.faixaShopee.comissaoPct}% + ${formatBRL(e.faixaShopee.tarifaFixa)})` : ""}
+                <ChevronDown size={14} className="transition-transform duration-[--duracao-media] group-open:rotate-180" aria-hidden />
+              </summary>
+              <div className="mt-2">
+                <ReguaPreco
+                  escala={regua.escala}
+                  faixas={regua.faixas}
+                  zonasMortas={regua.zonasMortas}
+                  marcadores={[
+                    ...(regua.precoMinimo ? [{ preco: regua.precoMinimo, rotulo: "mín.", tom: "minimo" as const }] : []),
+                    { preco: r.precoVenda, rotulo: "este", tom: "atual" as const },
+                  ]}
+                />
+              </div>
+            </details>
+          )}
+
+          <Button variant="primary" className="w-full mt-5" onClick={e.salvar} loading={e.pending} disabled={!podeSalvar}>
             Salvar precificação
           </Button>
           {!e.lojaId && e.custoTotal > 0 && <p className="mt-1.5 text-xs text-text-tertiary">Escolha onde vende para salvar.</p>}
-          <div className="mt-2 flex items-center justify-between gap-2 text-sm">
-            <button type="button" className="text-accent hover:underline disabled:opacity-50" onClick={onSalvarRascunho} disabled={salvandoRascunho || !e.temConteudo}>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button variant="secondary" size="sm" onClick={onSalvarRascunho} loading={salvandoRascunho} disabled={!e.temConteudo}>
               Salvar rascunho
-            </button>
-            <button type="button" className="text-accent hover:underline" onClick={() => e.setPendenteExport({ acao: "whatsapp", dados: e.resumoAtual() })}>
-              Enviar no WhatsApp
-            </button>
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => e.setPendenteExport({ acao: "whatsapp", dados: e.resumoAtual() })} disabled={!r.viavel}>
+              WhatsApp
+            </Button>
           </div>
+          {indicadorRascunho && <div className="mt-2 text-center">{indicadorRascunho}</div>}
         </Card>
 
         {precosLoja && e.produtoVinculado && (
@@ -300,6 +318,48 @@ export function IndividualNova({
           Salvar
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Um passo do cartão de configuração: número, título, resumo do que foi escolhido. */
+function Passo({ n, titulo, resumo, ultimo = false, children }: { n: number; titulo: string; resumo?: string | null; ultimo?: boolean; children: ReactNode }) {
+  return (
+    <section className={`p-5 ${ultimo ? "" : "border-b border-border"}`} aria-labelledby={`passo-${n}`}>
+      <div className="flex items-center gap-3 mb-3">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent text-xs font-semibold font-mono" aria-hidden="true">
+          {n}
+        </span>
+        <h3 id={`passo-${n}`} className="text-sm font-semibold text-text-primary">
+          {titulo}
+        </h3>
+        {resumo && <span className="ml-auto text-xs text-text-secondary truncate">{resumo}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function OpcaoLoja({ ativa, titulo, sub, onClick }: { ativa: boolean; titulo: string; sub: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={ativa}
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-2.5 text-left transition-colors duration-[--duracao-rapida] ${ativa ? "border-accent bg-accent-soft" : "border-border hover:border-border-forte hover:bg-surface-2"}`}
+    >
+      <span className="block text-sm font-medium text-text-primary truncate">{titulo}</span>
+      <span className="block text-xs text-text-secondary truncate">{sub}</span>
+    </button>
+  );
+}
+
+function Metrica({ rotulo, valor, classe = "text-text-primary", dica }: { rotulo: string; valor: string; classe?: string; dica?: string }) {
+  return (
+    <div className="rounded-md bg-surface-2 px-2.5 py-2 min-w-0" title={dica}>
+      <dt className="text-xs text-text-tertiary">{rotulo}</dt>
+      <dd className={`font-mono text-sm font-medium truncate ${classe}`}>{valor}</dd>
     </div>
   );
 }

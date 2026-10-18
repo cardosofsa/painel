@@ -94,9 +94,9 @@ export function AjusteClient({
   }
 
   const cartoes = [
-    { rotulo: "Mínimo (lucro zero)", valor: ajuste.precoMinimo, dica: "Abaixo disso, prejuízo" },
+    { rotulo: "Mínimo", valor: ajuste.precoMinimo, dica: "Lucro zero: abaixo disso, prejuízo" },
     { rotulo: "Ideal", valor: ajuste.precoIdeal, dica: `Margem de ${margemAlvo.toLocaleString("pt-BR")}%` },
-    { rotulo: "Máximo (referência)", valor: ajuste.precoMaximo, dica: ajuste.motivoMaximo ?? "" },
+    { rotulo: "Máximo", valor: ajuste.precoMaximo, dica: ajuste.motivoMaximo ? `Referência: ${ajuste.motivoMaximo}` : "" },
   ];
 
   return (
@@ -156,20 +156,31 @@ export function AjusteClient({
             </dl>
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {cartoes.map((c) => (
-              <Card key={c.rotulo}>
-                <CardEyebrow>{c.rotulo}</CardEyebrow>
-                <div className="mt-1 font-mono text-xl font-semibold text-text-primary">{c.valor !== null ? formatBRL(c.valor) : "—"}</div>
-                <p className="text-xs text-text-tertiary mt-0.5 min-h-8">{c.dica}</p>
-                {c.valor !== null && (
-                  <Button size="sm" variant="ghost" className="mt-1 -ml-2" onClick={() => setPreco(c.valor!)}>
-                    Pôr na régua
-                  </Button>
-                )}
-              </Card>
-            ))}
-          </div>
+          <Card padding="nenhum">
+            <dl className="grid grid-cols-3 divide-x divide-border">
+              {cartoes.map((c) => (
+                <div key={c.rotulo} className="p-3 sm:p-4 min-w-0">
+                  <dt className="text-xs text-text-tertiary">{c.rotulo}</dt>
+                  <dd className="mt-0.5 font-mono text-base sm:text-xl font-semibold text-text-primary">{c.valor !== null ? formatBRL(c.valor) : "—"}</dd>
+                  <dd className="hidden sm:block text-xs text-text-tertiary mt-0.5 min-h-8">{c.dica}</dd>
+                  {c.valor !== null && (
+                    <dd>
+                      <button type="button" className="mt-1 text-xs text-accent hover:underline" onClick={() => setPreco(c.valor!)}>
+                        Pôr na régua
+                      </button>
+                    </dd>
+                  )}
+                </div>
+              ))}
+            </dl>
+            <div className="border-t border-border px-4 py-3 flex flex-wrap items-center gap-3 [&>*]:mb-0">
+              <span className="text-xs text-text-secondary">O ideal usa a margem alvo de</span>
+              <div className="w-24">
+                <CampoNumero value={margemAlvo} onChange={setMargemAlvo} min={0} max={90} aria-label="Margem alvo do ideal (%)" />
+              </div>
+              <span className="text-xs text-text-secondary">%. O máximo é referência, não garantia.</span>
+            </div>
+          </Card>
 
           <Card>
             <CardTitle className="flex items-center gap-2">
@@ -202,10 +213,7 @@ export function AjusteClient({
         <div className="space-y-5 lg:sticky lg:top-20">
           <Card>
             <CardTitle>Usar este preço</CardTitle>
-            <p className="mt-1 text-xs text-text-secondary">Grava em {loja.canalNome} · {loja.nome}. Não altera o preço na Shopee.</p>
-            <FormField label="Margem alvo do ideal (%)">
-              <CampoNumero value={margemAlvo} onChange={setMargemAlvo} min={0} max={90} />
-            </FormField>
+            <p className="mt-1 mb-4 text-xs text-text-secondary">Grava em {loja.canalNome} · {loja.nome}. Não altera o preço na Shopee.</p>
             <Button variant="primary" className="w-full" onClick={aplicar} loading={pending} disabled={!migracao0101 || preco <= 0}>
               Usar {formatBRL(preco)} nesta loja
             </Button>

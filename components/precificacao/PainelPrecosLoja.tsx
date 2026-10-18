@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Card, CardEyebrow } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { formatBRL } from "@/lib/format";
 import { precosPorLoja, type LojaParaPreco, type PrecoGravado, type SituacaoPrecoLoja } from "@/lib/precos-loja";
 
@@ -48,37 +47,43 @@ export function PainelPrecosLoja({
       </CardEyebrow>
       <ul className="mt-2 divide-y divide-border">
         {linhas.map((l) => (
-          <li key={l.loja.id} className="py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <div className="min-w-0 flex-1 basis-full sm:basis-0">
-              <div className="text-sm font-medium text-text-primary truncate">{l.rotulo}</div>
-              {l.resultado ? (
-                <div className="text-xs text-text-secondary">
-                  Lucro <span className={l.resultado.lucroLiquido < 0 ? "text-negative" : "text-text-primary"}>{formatBRL(l.resultado.lucroLiquido)}</span> · margem{" "}
-                  {(l.resultado.margemEfetivaPct * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+          <li key={l.loja.id} className={`py-3 ${lojaAtual === l.loja.id ? "-mx-2 px-2 rounded-md bg-accent-soft/50" : ""}`}>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 items-start">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-text-primary truncate" title={l.rotulo}>
+                  {l.rotulo}
                 </div>
-              ) : (
-                <div className="text-xs text-text-tertiary">Ainda não precificado para esta loja</div>
-              )}
-              {l.zonaMorta && (
-                <div className="text-xs text-negative flex gap-1 mt-0.5">
-                  <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden /> Baixe para {formatBRL(l.zonaMorta.precoMelhor)} e receba {formatBRL(l.zonaMorta.ganhoLiquido)} a mais
-                </div>
-              )}
+                {l.resultado ? (
+                  <div className="text-xs text-text-secondary">
+                    lucro <span className={l.resultado.lucroLiquido < 0 ? "text-negative" : "text-text-primary"}>{formatBRL(l.resultado.lucroLiquido)}</span> · margem{" "}
+                    {(l.resultado.margemEfetivaPct * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+                  </div>
+                ) : (
+                  <div className="text-xs text-text-tertiary">ainda sem preço</div>
+                )}
+              </div>
+              <div className="text-right">
+                {l.preco !== null && <div className="font-mono text-sm text-text-primary">{formatBRL(l.preco)}</div>}
+                <span className={`inline-block mt-0.5 text-xs font-medium rounded px-1.5 py-0.5 ${SELO[l.situacao].classe}`}>{SELO[l.situacao].texto}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {l.preco !== null && <span className="font-mono text-sm text-text-primary">{formatBRL(l.preco)}</span>}
-              <span className={`text-xs font-medium rounded px-1.5 py-0.5 ${SELO[l.situacao].classe}`}>{SELO[l.situacao].texto}</span>
-              {l.preco !== null && (
-                <Link href={`/precificacao/ajuste/novo?produto=${produtoId}&loja=${l.loja.id}`} className="text-xs text-accent hover:underline">
-                  Ajustar
-                </Link>
-              )}
+            {l.zonaMorta && (
+              <div className="mt-1 text-xs text-negative flex gap-1">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden /> Baixe para {formatBRL(l.zonaMorta.precoMelhor)} e receba {formatBRL(l.zonaMorta.ganhoLiquido)} a mais
+              </div>
+            )}
+            <div className="mt-1.5 flex gap-4 text-xs">
               {lojaAtual === l.loja.id ? (
-                <span className="text-xs text-accent">Calculando</span>
+                <span className="text-accent font-medium">Calculando nesta loja</span>
               ) : (
-                <Button size="sm" variant="ghost" onClick={() => onPrecificar(l.loja.id)}>
-                  Precificar
-                </Button>
+                <button type="button" className="text-accent hover:underline" onClick={() => onPrecificar(l.loja.id)}>
+                  Precificar aqui
+                </button>
+              )}
+              {l.preco !== null && (
+                <Link href={`/precificacao/ajuste/novo?produto=${produtoId}&loja=${l.loja.id}`} className="text-accent hover:underline">
+                  Ajuste de Preço
+                </Link>
               )}
             </div>
           </li>
