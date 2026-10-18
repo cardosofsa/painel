@@ -36,3 +36,13 @@ export function formatarParaCampo(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "";
   return String(n).replace(".", ",");
 }
+
+/**
+ * Valor de um campo numérico que pode chegar como número (`CampoNumero`) ou como texto
+ * digitado. Texto passa por `numeroOuNulo` (aceita "19,90"); vazio ou inválido vira 0.
+ * Substitui o `Number(v) || 0`, que fazia "19,90" virar 0 sem aviso.
+ */
+export function numeroDoCampo(valor: string | number): number {
+  if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
+  return numeroOuNulo(valor) ?? 0;
+}

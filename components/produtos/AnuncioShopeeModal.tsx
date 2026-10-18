@@ -35,7 +35,7 @@ export function AnuncioShopeeModal({ produto, iaDisponivel, onEstudio, onClose }
   const [titulo, setTitulo] = useState(produto.nome.slice(0, LIMITE_TITULO_SHOPEE));
   const [descricao, setDescricao] = useState((produto.descricao ?? "").slice(0, LIMITE_DESCRICAO_SHOPEE));
   const [preco, setPreco] = useState(produto.preco ? produto.preco.toFixed(2).replace(".", ",") : "");
-  const precoNum = numeroOuNulo(preco.replace(",", "."));
+  const precoNum = numeroOuNulo(preco);
   const rascunho = { titulo, descricao, preco: precoNum, sku: produto.sku, fotos: produto.fotos, palavrasChave: produto.palavrasChave, pesoG: produto.pesoG, medidas: produto.medidas, produtoNome: produto.nome };
   const { itens, pronto } = checklistAnuncio(rascunho);
   const tags = hashtags(produto.palavrasChave);

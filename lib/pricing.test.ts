@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  composicaoDoProduto,
+  fecharPreco,
   resultadoParaPreco,
   resultadoParaPrecoComFaixas,
   resolverPorMargem,
@@ -670,5 +672,55 @@ describe("analisarConcorrencia com loja de faixas", () => {
     // 150 − 60 − 21 (14%) − 20 − 9 (6%) = 40
     expect(a.resultadoNoPrecoMedio.lucroLiquido).toBeCloseTo(40, 9);
     expect(a.resultadoNoPrecoMedio.margemEfetivaPct).toBeCloseTo(40 / 150, 9);
+  });
+});
+
+describe("fecharPreco", () => {
+  const taxas = { impostoPct: 0.06, taxaFixa: 4, taxaVariavelPct: 0.2, taxaAdicionalPct: 0 };
+  const shopee = [
+    { min: 8, max: 79.99, comissaoPct: 20, tarifaFixa: 4 },
+    { min: 80, max: 99.99, comissaoPct: 14, tarifaFixa: 16 },
+  ];
+
+  it("modo de meta sobe ao centavo e recalcula o lucro no preço fechado", () => {
+    const r = fecharPreco(resolverPorMargem(30, 0.28, taxas), "margem", { taxas });
+    expect(r.precoVenda).toBe(73.92);
+    expect(r.lucroLiquido).toBeCloseTo(73.92 * 0.74 - 34, 10);
+    expect(r.margemEfetivaPct).toBeGreaterThanOrEqual(0.28);
+  });
+
+  it("preço fixo arredonda normal", () => {
+    expect(fecharPreco(resultadoParaPreco(49.904, 30, taxas), "preco", { taxas }).precoVenda).toBe(49.9);
+  });
+
+  it("com faixas não atravessa o piso da faixa seguinte", () => {
+    const base = { impostoPct: 0, taxaAdicionalPct: 0 };
+    const bruto = resultadoParaPrecoComFaixas(79.9925, 30, base, shopee);
+    const r = fecharPreco(bruto, "margem", { taxasBase: base, faixas: shopee });
+    expect(r.precoVenda).toBe(79.99);
+    expect(r.taxaVariavelValor).toBeCloseTo(79.99 * 0.2, 10);
+  });
+
+  it("inviável volta como está", () => {
+    const r = resolverPorMargem(30, 0.9, taxas);
+    expect(fecharPreco(r, "margem", { taxas })).toBe(r);
+  });
+});
+
+describe("composicaoDoProduto", () => {
+  const insumo = { id: "i1", nome: "Caixa", quantidade: 2, custoUnitario: 1.5 };
+
+  it("separa valor do produto e insumos quando a soma bate com o custo", () => {
+    expect(composicaoDoProduto({ custo: 33, custo_base: 30, insumos: [insumo] })).toEqual({ custoBase: 30, insumos: [insumo] });
+  });
+
+  it("sem os campos, ou com soma que não bate, o custo inteiro vira o valor do produto", () => {
+    expect(composicaoDoProduto({ custo: 33 })).toEqual({ custoBase: 33, insumos: [] });
+    expect(composicaoDoProduto({ custo: 40, custo_base: 30, insumos: [insumo] })).toEqual({ custoBase: 40, insumos: [] });
+  });
+
+  it("variação (custo_base 0, insumos do pai × N) também separa", () => {
+    const pai = { id: "p", nome: "Pai", quantidade: 3, custoUnitario: 10 };
+    expect(composicaoDoProduto({ custo: 30, custo_base: 0, insumos: [pai] })).toEqual({ custoBase: 0, insumos: [pai] });
   });
 });

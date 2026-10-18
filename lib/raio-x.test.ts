@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analisarRaioX, montarItensRaioX, notaRaioX, perdaMensal, precoMinimo, type EntradaRaioX } from "./raio-x";
+import { analisarRaioX, lojaUsadaNaPrecificacao, modoAoReabrir, montarItensRaioX, notaRaioX, perdaMensal, precoIdeal, precoMinimo, type EntradaRaioX } from "./raio-x";
 
 // Mesmo cenário da auditoria: custo 30, tarifa fixa 4, comissão 20%, imposto 6%.
 const manual: EntradaRaioX = {
@@ -21,7 +21,7 @@ const shopee = [
 describe("Raio-X", () => {
   it("sem preço praticado: mostra o ideal e pede o preço", () => {
     const r = analisarRaioX(manual);
-    expect(r.ideal.precoVenda).toBeCloseTo(73.91, 2);
+    expect(r.ideal.precoVenda).toBe(73.92); // 34 / 0,46 = 73,913…, fechado para cima como na calculadora
     expect(r.selo).toBe("sem_preco");
     expect(r.nota).toBeNull();
     expect(r.dicas[0]).toContain("Informe o preço");
@@ -146,5 +146,45 @@ describe("montarItensRaioX", () => {
       { noAr: {}, digitados: { "p1|l1": { preco: 72, observado_em: "" }, "p2|l1": { preco: 50, observado_em: "" } }, vendas: {} },
     );
     expect(itens.map((i) => i.precificacao.id)).toEqual(["y", "x"]);
+  });
+
+  it("faixas só valem em loja de faixas e quando a precificação foi feita com elas", () => {
+    const lojaFaixas = [{ id: "l1", nome: "Minha loja", canalNome: "Shopee", tipoTaxa: "faixas" as const, faixas: shopee }];
+    const lojaFixa = [{ ...lojaFaixas[0], tipoTaxa: "fixo" as const }];
+    const fontes = { noAr: {}, digitados: { "p1|l1": { preco: 85, observado_em: "" } }, vendas: {} };
+    // Gravada com a comissão da faixa (20% + R$ 4 em 73,91): a tabela vale e R$ 85 cai em 14% + R$ 16.
+    const [comFaixa] = montarItensRaioX([{ ...base, id: "a", criado_em: "2026-10-01" }], lojaFaixas, new Map(), fontes);
+    expect(comFaixa.resultado.praticado!.taxaVariavelValor).toBeCloseTo(85 * 0.14, 6);
+    // Manual (12% + R$ 2 digitados, a loja só marcando o canal): as taxas gravadas valem.
+    const manual = { ...base, id: "b", criado_em: "2026-10-01", taxa_variavel_pct: 0.12, taxa_fixa: 2 };
+    const [semFaixa] = montarItensRaioX([manual], lojaFaixas, new Map(), fontes);
+    expect(semFaixa.resultado.praticado!.taxaVariavelValor).toBeCloseTo(85 * 0.12, 6);
+    // Canal de taxa fixa com faixas antigas no banco: nunca aplica a tabela.
+    const [fixo] = montarItensRaioX([{ ...base, id: "c", criado_em: "2026-10-01" }], lojaFixa, new Map(), fontes);
+    expect(fixo.resultado.praticado!.taxaVariavelValor).toBeCloseTo(85 * 0.2, 6);
+  });
+});
+
+describe("reabrir precificação salva", () => {
+  const naMargem = (m: number) => precoIdeal({ ...manual, margemAlvo: m });
+
+  it("margem gravada que reproduz o preço volta como margem", () => {
+    // 73,92 é o preço fechado de 28%; a margem atingida gravada é 28,00x%.
+    expect(modoAoReabrir(0.28003, 73.92, naMargem)).toEqual({ modo: "margem", margemPct: 28 });
+  });
+
+  it("preço fixo (margem que não reproduz o preço) volta como preço fixo", () => {
+    expect(modoAoReabrir(0.3123, 79.9, naMargem)).toEqual({ modo: "preco", preco: 79.9 });
+    expect(modoAoReabrir(null, 79.9, naMargem)).toEqual({ modo: "preco", preco: 79.9 });
+  });
+
+  it("loja usada no cálculo × loja só marcando o canal", () => {
+    const fixa = { tipoTaxa: "fixo" as const, faixas: [], comissaoPct: 12, taxaFixa: 3 };
+    expect(lojaUsadaNaPrecificacao({ preco_calculado: 50, taxa_variavel_pct: 0.12, taxa_fixa: 3 }, fixa)).toBe(true);
+    expect(lojaUsadaNaPrecificacao({ preco_calculado: 50, taxa_variavel_pct: 0.2, taxa_fixa: 4 }, fixa)).toBe(false);
+    const porFaixa = { tipoTaxa: "faixas" as const, faixas: shopee, comissaoPct: 0, taxaFixa: 0 };
+    expect(lojaUsadaNaPrecificacao({ preco_calculado: 85, taxa_variavel_pct: 0.14, taxa_fixa: 16 }, porFaixa)).toBe(true);
+    expect(lojaUsadaNaPrecificacao({ preco_calculado: 85, taxa_variavel_pct: 0.2, taxa_fixa: 4 }, porFaixa)).toBe(false);
+    expect(lojaUsadaNaPrecificacao({ preco_calculado: 85, taxa_variavel_pct: 0.2, taxa_fixa: 4 }, undefined)).toBe(false);
   });
 });

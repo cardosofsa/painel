@@ -492,3 +492,20 @@ git add -A && git commit -m "<fase>: <resumo>" && git push -u origin claude/laug
   deste plano começam na **0100**.
 - Observação: `db:verificar` não lista migrações aplicadas (não há tabela de controle); a
   conferência é feita pelos objetos de cada migração.
+
+## 14. Fase 1 concluída: bugs de dinheiro da Precificação
+
+- **P1** ✔ Escolher o produto traz `custo_base` e insumos do cadastro (`composicaoDoProduto`) e limpa a foto do produto anterior.
+- **P2** ✔ `fecharPreco()` em `lib/pricing.ts`: Individual, Variações, Kits, Em Massa e o "Ideal" do Raio-X fecham o preço do mesmo jeito.
+- **P3** ✔ "Simular preço diferente" usa a comissão da faixa do preço simulado e mostra qual é.
+- **P4** ✔ `numeroOuNulo` sem o `replace(",", ".")` (que fazia "1,500" virar 1500); `numeroDoCampo` no lugar de `Number(v) || 0`; insumos e Em Massa com `CampoNumero`. Mesmo bug corrigido no preço do `AnuncioShopeeModal`.
+- **P5** ✔ Raio-X só aplica faixas quando a loja é de faixas **e** a precificação foi feita com elas (comissão gravada = comissão da faixa).
+- **P6** ✔ `margem_pct` gravada é sempre a margem atingida no preço final (`margemAtingida`).
+- **P7** ◐ "Adicionar concorrente" ganhou `loading`. O "Salvar no histórico" do Em Massa **já tinha** `loading`: item descartado.
+- **P8** ✔ Em Massa usa a alíquota do regime.
+- **P9** ✔ "Aplicar preço ao produto" avisa se o custo mudou, mostra o lucro com o custo de hoje e oferece "Recalcular".
+- **P10** ✔ Duplicar mantém o produto, a loja (só como canal, se a precificação foi manual) e o modo. O banco não guarda o modo: a margem gravada é testada e, se reproduz o preço, volta como margem; senão, preço fixo (exato). Guardar o modo de verdade pode entrar na 0100.
+- **P12** ✔ Composição do preço virou barra empilhada; no prejuízo, o trecho depois do preço aparece hachurado como perda.
+- **P17** ✔ Erro de `categorias` conferido; `iaDisponivelParaConta` dentro do `Promise.all`.
+- Testes: 1557 → todos passando; `tsc`, `lint` e `build` limpos. Conferido no navegador com a conta de teste.
+- Observação do ambiente: a `NEXT_PUBLIC_SUPABASE_URL` deste container termina em `/rest/v1/`; para o teste local o build usou só a origem.

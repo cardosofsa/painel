@@ -26,6 +26,8 @@ import { DetalheLinhaMassa, resumoDeResultadoEmMassa } from "@/components/precif
 import { salvarPrecificacoesEmMassa } from "@/app/(painel)/precificacao/actions";
 import type { PrecificacaoHist } from "@/lib/precificacao-estado";
 import { executarComToast } from "@/lib/acao-cliente";
+import { numeroDoCampo } from "@/lib/campo-numero";
+import { margemAtingida } from "@/lib/pricing";
 
 export function CalculadoraEmMassa({
   produtos,
@@ -33,7 +35,10 @@ export function CalculadoraEmMassa({
   historico,
   onVerHistorico,
   empresa = null,
+  aliquotaDasPadrao,
 }: {
+  /** Alíquota do regime (perfil_negocio.aliquota_das): antes toda linha nova vinha com 6% fixo. */
+  aliquotaDasPadrao: number;
   empresa?: { nome: string | null; logoUrl: string | null } | null;
   produtos: ProdutoMassa[];
   lojas: LojaMassa[];
@@ -43,7 +48,7 @@ export function CalculadoraEmMassa({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [linhas, setLinhas] = useState<LinhaEmMassa[]>([linhaVazia()]);
+  const [linhas, setLinhas] = useState<LinhaEmMassa[]>([linhaVazia(aliquotaDasPadrao)]);
   const [visualizacao, setVisualizacao] = useState<"tabela" | "resultado">("tabela");
   const [filtroResultado, setFiltroResultado] = useState<"todos" | "subir" | "ok">("todos");
   const [sugestaoAbertaId, setSugestaoAbertaId] = useState<string | null>(null);
@@ -69,10 +74,11 @@ export function CalculadoraEmMassa({
     setSugestaoAbertaId(null);
   }
 
-  function atualizarLinha(id: string, campo: keyof LinhaEmMassa, valor: string) {
+  function atualizarLinha(id: string, campo: keyof LinhaEmMassa, valor: string | number) {
     setLinhas((prev) =>
       prev.map((l) => {
         if (l.id !== id) return l;
+        if (typeof valor === "number") return { ...l, [campo]: numeroDoCampo(valor) };
         if (campo === "sku") {
           const produto = produtos.find((p) => p.sku.toLowerCase() === valor.trim().toLowerCase());
           if (produto) {
@@ -93,7 +99,7 @@ export function CalculadoraEmMassa({
             taxaFixa: comissaoDaLoja ? loja.taxaFixa : l.taxaFixa,
           };
         }
-        return { ...l, [campo]: Number(valor) || 0 };
+        return { ...l, [campo]: numeroDoCampo(valor) };
       }),
     );
   }
@@ -103,11 +109,11 @@ export function CalculadoraEmMassa({
       toast.error(`No máximo ${MAX_LINHAS_MASSA} linhas por vez.`);
       return;
     }
-    setLinhas((prev) => [...prev, linhaVazia()]);
+    setLinhas((prev) => [...prev, linhaVazia(aliquotaDasPadrao)]);
   }
 
   function removerLinha(id: string) {
-    setLinhas((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : [linhaVazia()]));
+    setLinhas((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : [linhaVazia(aliquotaDasPadrao)]));
   }
 
   async function limparTabela() {
@@ -122,7 +128,7 @@ export function CalculadoraEmMassa({
       });
       if (!ok) return;
     }
-    setLinhas([linhaVazia()]);
+    setLinhas([linhaVazia(aliquotaDasPadrao)]);
   }
 
   const resultados = useMemo(() => calcularResultadosEmMassa(linhas, lojas), [linhas, lojas]);
@@ -172,7 +178,7 @@ export function CalculadoraEmMassa({
               taxa_fixa: taxaFixa,
               taxa_adicional_pct: 0,
               imposto_pct: r.linha.impostoPct / 100,
-              margem_pct: r.linha.margemPct / 100,
+              margem_pct: margemAtingida(r.resultado),
               preco_calculado: r.resultado.precoVenda,
               lucro: r.resultado.lucroLiquido,
               origem: "em_massa" as const,

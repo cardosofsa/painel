@@ -3,6 +3,7 @@
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { useState } from "react";
 import { Combobox } from "@/components/ui/Combobox";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 import { formatBRL } from "@/lib/format";
 import type { ComponenteKit } from "@/lib/pricing";
 
@@ -34,7 +35,7 @@ export function EditorInsumos({
 }: {
   componentes: ComponenteKit[];
   produtos: ProdutoParaInsumo[];
-  atualizarComponente: (id: string, campo: keyof ComponenteKit, valor: string) => void;
+  atualizarComponente: (id: string, campo: keyof ComponenteKit, valor: string | number) => void;
   adicionarComponente: () => void;
   adicionarComponenteDoProduto: (produtoId: string) => void;
   removerComponente: (id: string) => void;
@@ -99,22 +100,23 @@ export function EditorInsumos({
                 />
               </Td>
               <Td align="right">
-                <input
-                  type="number"
+                <CampoNumero
                   min={0}
+                  casas={3}
                   value={c.quantidade}
-                  onChange={(e) => atualizarComponente(c.id, "quantidade", e.target.value)}
-                  className="w-14 bg-transparent text-text-primary text-right outline-none tabular"
+                  onChange={(n) => atualizarComponente(c.id, "quantidade", n)}
+                  aria-label={`Quantidade de ${c.nome || "insumo"}`}
+                  className="w-14 bg-transparent text-text-primary text-right tabular"
                 />
               </Td>
               <Td align="right">
-                <input
-                  type="number"
+                <CampoNumero
                   min={0}
-                  step="0.01"
+                  casas={4}
                   value={c.custoUnitario}
-                  onChange={(e) => atualizarComponente(c.id, "custoUnitario", e.target.value)}
-                  className="w-20 bg-transparent text-text-primary text-right outline-none tabular"
+                  onChange={(n) => atualizarComponente(c.id, "custoUnitario", n)}
+                  aria-label={`Custo unitário de ${c.nome || "insumo"}`}
+                  className="w-20 bg-transparent text-text-primary text-right tabular"
                 />
               </Td>
               <Td align="right" mono>

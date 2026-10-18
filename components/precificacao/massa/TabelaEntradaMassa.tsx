@@ -3,6 +3,7 @@
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { campoBase } from "@/components/ui/Modal";
 import { formatBRL } from "@/lib/format";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 import type { LinhaEmMassa, LojaMassa, ProdutoMassa } from "@/lib/precificacao-massa";
 
 const NUM = `${campoBase} text-right tabular`;
@@ -24,7 +25,7 @@ export function TabelaEntradaMassa({
   onSugestaoAberta: (atualizar: (atual: string | null) => string | null) => void;
   sugestoesPorNome: (nome: string) => ProdutoMassa[];
   onVincularProduto: (linhaId: string, produto: ProdutoMassa) => void;
-  onAtualizar: (linhaId: string, campo: keyof LinhaEmMassa, valor: string) => void;
+  onAtualizar: (linhaId: string, campo: keyof LinhaEmMassa, valor: string | number) => void;
   onRemover: (linhaId: string) => void;
 }) {
   return (
@@ -102,11 +103,11 @@ export function TabelaEntradaMassa({
                 </select>
               </Td>
               <Td align="right">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={l.custo || ""}
-                  onChange={(e) => onAtualizar(l.id, "custo", e.target.value)}
+                <CampoNumero
+                  min={0}
+                  casas={2}
+                  value={l.custo}
+                  onChange={(n) => onAtualizar(l.id, "custo", n)}
                   className={`${NUM} w-24`}
                   aria-label="Custo"
                 />
@@ -118,11 +119,11 @@ export function TabelaEntradaMassa({
                   // Com loja, o cálculo usa a comissão dela: campo editável aqui era ignorado.
                   <span className="text-xs text-text-secondary font-mono">{loja.comissaoPct}%</span>
                 ) : (
-                  <input
-                    type="number"
-                    step="0.1"
+                  <CampoNumero
+                    min={0}
+                    casas={2}
                     value={l.comissaoPct}
-                    onChange={(e) => onAtualizar(l.id, "comissaoPct", e.target.value)}
+                    onChange={(n) => onAtualizar(l.id, "comissaoPct", n)}
                     className={`${NUM} w-20`}
                     aria-label="Comissão"
                   />
@@ -134,42 +135,42 @@ export function TabelaEntradaMassa({
                 ) : loja ? (
                   <span className="text-xs text-text-secondary font-mono">{formatBRL(loja.taxaFixa)}</span>
                 ) : (
-                  <input
-                    type="number"
-                    step="0.01"
+                  <CampoNumero
+                    min={0}
+                    casas={2}
                     value={l.taxaFixa}
-                    onChange={(e) => onAtualizar(l.id, "taxaFixa", e.target.value)}
+                    onChange={(n) => onAtualizar(l.id, "taxaFixa", n)}
                     className={`${NUM} w-20`}
                     aria-label="Taxa fixa"
                   />
                 )}
               </Td>
               <Td align="right">
-                <input
-                  type="number"
-                  step="0.1"
+                <CampoNumero
+                  min={0}
+                  casas={2}
                   value={l.impostoPct}
-                  onChange={(e) => onAtualizar(l.id, "impostoPct", e.target.value)}
+                  onChange={(n) => onAtualizar(l.id, "impostoPct", n)}
                   className={`${NUM} w-20`}
                   aria-label="Impostos"
                 />
               </Td>
               <Td align="right">
-                <input
-                  type="number"
-                  step="0.1"
+                <CampoNumero
+                  min={0}
+                  casas={2}
                   value={l.margemPct}
-                  onChange={(e) => onAtualizar(l.id, "margemPct", e.target.value)}
+                  onChange={(n) => onAtualizar(l.id, "margemPct", n)}
                   className={`${NUM} w-20`}
                   aria-label="Margem"
                 />
               </Td>
               <Td align="right">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={l.precoAtual || ""}
-                  onChange={(e) => onAtualizar(l.id, "precoAtual", e.target.value)}
+                <CampoNumero
+                  min={0}
+                  casas={2}
+                  value={l.precoAtual}
+                  onChange={(n) => onAtualizar(l.id, "precoAtual", n)}
                   className={`${NUM} w-24`}
                   placeholder="—"
                   aria-label="Preço atual"

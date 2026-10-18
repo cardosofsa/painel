@@ -19,6 +19,7 @@ export function PainelConcorrentes({ estado }: { estado: EstadoPrecificacao }) {
     novoConcorrentePreco,
     setNovoConcorrentePreco,
     adicionarConcorrente,
+    adicionandoConcorrente,
     removerConcorrente,
   } = estado;
 
@@ -50,7 +51,7 @@ export function PainelConcorrentes({ estado }: { estado: EstadoPrecificacao }) {
           placeholder="Preço"
           className={`${campoBase} w-28 tabular`}
         />
-        <Button variant="secondary" onClick={adicionarConcorrente}>
+        <Button variant="secondary" onClick={adicionarConcorrente} loading={adicionandoConcorrente}>
           Adicionar
         </Button>
       </div>

@@ -56,6 +56,8 @@ export function PainelResultado({
     lojaId,
     setLojaId,
     modoTaxas,
+    faixaShopee,
+    lojaSelecionada,
   } = estado;
 
   return (
@@ -133,6 +135,7 @@ export function PainelResultado({
               taxaExtraValor: taxaExtraValorEfetivo ?? undefined,
               taxaExtraTipo: taxaExtraTipoEfetivo,
             }}
+            faixas={faixaShopee && lojaSelecionada ? lojaSelecionada.faixas : []}
           />
         </div>
 
@@ -258,7 +261,7 @@ export function PainelResultado({
               valor: taxaFixaEfetiva + resultado.taxaVariavelValor + resultado.taxaAdicionalValor + resultado.taxaExtraCalculada,
             },
             { nome: "Imposto", valor: resultado.impostoValor },
-            { nome: "Lucro líquido", valor: Math.max(0, resultado.lucroLiquido) },
+            { nome: "Lucro líquido", valor: resultado.lucroLiquido },
           ]}
         />
       </Card>

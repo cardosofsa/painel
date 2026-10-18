@@ -40,6 +40,27 @@ export function custoComposto(custoBase: number, insumos: ComponenteKit[]): numb
 }
 
 /**
+ * Como a Precificação abre a composição de um produto escolhido: "valor do produto" e
+ * insumos separados, como estão no cadastro. Só separa quando a soma bate com o `custo`
+ * gravado (o trigger da 0029 garante isso; dado antigo ou de outra origem pode não bater).
+ * Se não bater, ou sem os campos, o custo inteiro vira o valor do produto: o total que entra
+ * na conta é sempre o `custo` do banco.
+ */
+export function composicaoDoProduto(p: {
+  custo: number;
+  custo_base?: number | null;
+  insumos?: ComponenteKit[] | null;
+}): { custoBase: number; insumos: ComponenteKit[] } {
+  const custo = Number(p.custo) || 0;
+  const insumos = Array.isArray(p.insumos) ? p.insumos.filter((c) => c && Number.isFinite(c.quantidade) && Number.isFinite(c.custoUnitario)) : [];
+  const base = p.custo_base === null || p.custo_base === undefined ? null : Number(p.custo_base);
+  if (base !== null && Number.isFinite(base) && Math.abs(base + custoDeInsumos(insumos) - custo) < 0.01) {
+    return { custoBase: base, insumos: insumos.map((c) => ({ ...c })) };
+  }
+  return { custoBase: custo, insumos: [] };
+}
+
+/**
  * Custo médio ponderado após uma entrada de estoque por um custo diferente do atual.
  * Espelha a RPC `registrar_entrada_com_custo` de `0029_...sql`.
  *
@@ -273,9 +294,47 @@ export function precoEmCentavos(preco: number, paraCima: boolean, faixas: FaixaC
   return acima;
 }
 
+/**
+ * O `margem_pct` que vai para o banco: SEMPRE a margem atingida no preço final (lucro ÷
+ * preço), nas quatro abas. Antes a Individual gravava a meta digitada (e `null` fora do modo
+ * margem), Variações a atingida e Em Massa a meta: o Raio-X lia a coluna como margem-alvo e
+ * cada origem dava um "ideal" diferente para o mesmo preço. Limitada a ±100% (o schema
+ * recusa fora disso) e a 4 casas.
+ */
+export function margemAtingida(r: ResultadoPrecificacao): number {
+  if (!r.viavel || !Number.isFinite(r.margemEfetivaPct)) return 0;
+  return Math.round(Math.max(-1, Math.min(1, r.margemEfetivaPct)) * 10000) / 10000;
+}
+
 export interface ResultadoComFaixa {
   resultado: ResultadoPrecificacao;
   faixa: FaixaComissao;
+}
+
+/** As taxas de um cálculo: fixas (`taxas`) ou por faixa de comissão (`taxasBase` + `faixas`). */
+export type TaxasDoCalculo =
+  | { taxas: TaxasPlataforma; faixas?: undefined }
+  | { taxasBase: Omit<TaxasPlataforma, "taxaVariavelPct" | "taxaFixa">; faixas: FaixaComissao[] };
+
+/**
+ * Fecha um preço resolvido no centavo e recalcula lucro, taxas e margem NESSE preço.
+ *
+ * É a única regra de arredondamento de preço do sistema: Individual, Variações, Kits, Em
+ * Massa e o "Ideal" do Raio-X passam todos por aqui, então o preço da tela, o gravado no
+ * banco e o lucro mostrado não têm como divergir. Antes cada aba fazia o seu (uma não
+ * arredondava, outra usava `Math.round` só na hora de gravar e o lucro ficava calculado no
+ * preço com décimos de centavo).
+ *
+ * Margem, lucro e markup sobem ao centavo (sem atravessar o piso de faixa, ver
+ * `precoEmCentavos`); preço fixo arredonda normal. Resultado inviável volta como está.
+ */
+export function fecharPreco(r: ResultadoPrecificacao, modo: ModoCalculo, calc: TaxasDoCalculo): ResultadoPrecificacao {
+  if (!r.viavel) return r;
+  const faixas = calc.faixas ?? [];
+  const preco = precoEmCentavos(r.precoVenda, modo !== "preco", faixas);
+  return "taxasBase" in calc
+    ? resultadoParaPrecoComFaixas(preco, r.custoTotal, calc.taxasBase, faixas)
+    : resultadoParaPreco(preco, r.custoTotal, calc.taxas);
 }
 
 function resolverPorModo(

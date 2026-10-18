@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Precificação" };
 export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string }> }) {
   const { visao } = await searchParams;
   const supabase = await createClient();
-  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes] =
+  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel] =
     await Promise.all([
     supabase
       .from("precificacoes")
@@ -24,7 +24,7 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     // Precifica o que se vende: insumo/embalagem (0096) fora; a variação continua (preço próprio).
     soMercadorias(
       (f) => {
-        const q = supabase.from("produtos").select("id, sku, nome, custo, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id");
+        const q = supabase.from("produtos").select("id, sku, nome, custo, custo_base, insumos, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id");
         return filtrarMercadorias(q, f).order("nome");
       },
       { incluirFilhas: true },
@@ -49,6 +49,8 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     supabase.from("produto_grupos").select("id, nome"),
     // `*`: `tipo` (insumo/embalagem) só existe a partir da 0042.
     supabase.from("categorias").select("*"),
+    // No mesmo `Promise.all`: era um `await` sozinho no fim, uma ida ao banco a mais em série.
+    iaDisponivelParaConta(supabase),
   ]);
 
   if (historicoRes.error) throw new Error(historicoRes.error.message);
@@ -60,6 +62,7 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
   if (anunciosRes.error) throw new Error(anunciosRes.error.message);
   if (concorrentesRes.error) throw new Error(concorrentesRes.error.message);
   if (gruposRes.error) throw new Error(gruposRes.error.message);
+  if (categoriasRes.error) throw new Error(categoriasRes.error.message);
 
   // O autocomplete corta em 6 sugestões: sem o rótulo, três variantes do mesmo
   // grupo ocupam metade da lista sem dar pra distinguir uma da outra.
@@ -111,8 +114,6 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     lista.push({ id: c.id, nome: c.nome, preco: c.preco, link: c.link });
     concorrentesPorProduto[c.produto_id] = lista;
   }
-
-  const iaDisponivel = await iaDisponivelParaConta(supabase);
 
   return (
     <PrecificacaoClient

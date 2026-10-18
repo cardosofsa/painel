@@ -10,6 +10,7 @@ import { Chip } from "@/components/ui/Chip";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL } from "@/lib/format";
+import { margemAtingida } from "@/lib/pricing";
 import { useExportarPrecificacao, type ResumoExport } from "@/components/precificacao/resultado-compartilhado";
 import { calcularKit, nomeDoKit, quantidadeEmUnidadeDePreco, textoQuantidade, UNIDADES_KIT, type ItemKit, type ModoKit, type UnidadeKit } from "@/lib/kit";
 import type { LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-tipos";
@@ -138,7 +139,7 @@ export function KitsView({ produtos, lojas, aliquotaDasPadrao, empresa = null }:
           taxa_fixa: Math.round(taxaFixa * 100) / 100,
           taxa_adicional_pct: 0,
           imposto_pct: imposto / 100,
-          margem_pct: Math.max(-1, Math.min(1, res.margemEfetivaPct)),
+          margem_pct: margemAtingida(res),
           preco_calculado: Math.round(res.precoVenda * 100) / 100,
           lucro: Math.round(res.lucroLiquido * 100) / 100,
           origem: "individual",

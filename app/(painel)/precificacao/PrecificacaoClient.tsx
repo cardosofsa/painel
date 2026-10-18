@@ -128,7 +128,7 @@ export function PrecificacaoClient({
           o <Tabs>. Duas telas do mesmo app navegavam de jeitos visualmente diferentes. */}
       <Tabs tabs={ABAS_PRECIFICACAO} value={visao} onChange={setVisao} className="mb-5" />
 
-      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} onVerHistorico={() => setHistoricoAberto(true)} empresa={empresa} />}
+      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} historico={historico} onVerHistorico={() => setHistoricoAberto(true)} empresa={empresa} />}
 
       {visao === "kits" && <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} empresa={empresa} />}
 

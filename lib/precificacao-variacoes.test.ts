@@ -69,7 +69,7 @@ describe("calcularVariacao", () => {
     expect(r.faixa).toEqual({ min: 0, max: 79.99, comissaoPct: 20, tarifaFixa: 4 });
     expect(r.taxas.taxaFixa).toBe(4);
     expect(r.taxas.taxaVariavelPct).toBeCloseTo(0.2, 6);
-    expect(r.resultado.precoVenda).toBeCloseTo(14 / 0.49, 2);
+    expect(r.resultado.precoVenda).toBe(28.58); // 14 / 0,49, fechado para cima no centavo
   });
 
   it("loja com faixas: a tarifa fixa não embute taxa adicional nem taxa extra", () => {
@@ -90,14 +90,14 @@ describe("calcularVariacao", () => {
   it("markup: bate o markup sobre o custo (antes caía no preço fixo)", () => {
     const r = calcularVariacao({ ...cfgBase, modo: "markup", parametroPadrao: 50 }, { ...unidade, multiplicador: 2 });
     // (20 × 1,5 + 4) / (1 - 0,2 - 0,06)
-    expect(r.resultado.precoVenda).toBeCloseTo(34 / 0.74, 4);
-    expect(r.resultado.markupSobreCustoPct).toBeCloseTo(0.5, 4);
+    expect(r.resultado.precoVenda).toBe(45.95); // 34 / 0,74 = 45,9459…, fechado para cima
+    expect(r.resultado.markupSobreCustoPct).toBeGreaterThanOrEqual(0.5);
   });
 
   it("markup com faixas: o % vira fração (antes 50 virava 5.000%)", () => {
     const r = calcularVariacao({ ...cfgBase, modo: "markup", parametroPadrao: 50, loja: lojaFaixas }, unidade);
     expect(r.resultado.viavel).toBe(true);
-    expect(r.resultado.markupSobreCustoPct).toBeCloseTo(0.5, 4);
+    expect(r.resultado.markupSobreCustoPct).toBeGreaterThanOrEqual(0.5);
     expect(r.resultado.precoVenda).toBeLessThan(80);
   });
 
@@ -105,7 +105,7 @@ describe("calcularVariacao", () => {
     const vazia: LojaVariacao = { ...lojaFaixas, comissaoPct: 10, taxaFixa: 2, faixas: [] };
     const r = calcularVariacao({ ...cfgBase, loja: vazia }, unidade);
     // (10 + 2) / (1 - 0,10 - 0,06 - 0,25)
-    expect(r.resultado.precoVenda).toBeCloseTo(12 / 0.59, 4);
+    expect(r.resultado.precoVenda).toBe(20.34); // 12 / 0,59, fechado para cima
     expect(r.taxas.taxaVariavelPct).toBe(0.1);
     expect(r.faixa).toBeNull();
   });

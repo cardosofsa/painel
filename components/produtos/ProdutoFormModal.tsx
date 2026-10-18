@@ -16,6 +16,7 @@ import { CamposEnvio, type DimensoesEnvio } from "@/components/produtos/CamposEn
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { formatBRL } from "@/lib/format";
+import { numeroDoCampo } from "@/lib/campo-numero";
 import { skuMudou } from "@/lib/sku-troca";
 import { custoComposto, type ComponenteKit } from "@/lib/pricing";
 import { gerarDescricaoProdutoIA, type ProdutoInput } from "@/app/(painel)/produtos/actions";
@@ -79,10 +80,10 @@ export function ProdutoFormModal({
 }) {
   const [estudioAberto, setEstudioAberto] = useState(false);
   const [anuncioAberto, setAnuncioAberto] = useState(false);
-  function atualizarInsumoProduto(id: string, campo: keyof ComponenteKit, valor: string) {
+  function atualizarInsumoProduto(id: string, campo: keyof ComponenteKit, valor: string | number) {
     setForm((prev) => ({
       ...prev,
-      insumos: prev.insumos.map((c) => (c.id === id ? { ...c, [campo]: campo === "nome" ? valor : Number(valor) || 0 } : c)),
+      insumos: prev.insumos.map((c) => (c.id === id ? { ...c, [campo]: campo === "nome" ? String(valor) : numeroDoCampo(valor) } : c)),
     }));
   }
 

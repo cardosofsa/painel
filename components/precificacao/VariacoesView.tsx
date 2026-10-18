@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { numeroOuNulo } from "@/lib/format";
-import { MODOS, type ModoCalculo } from "@/lib/pricing";
+import { MODOS, margemAtingida, type ModoCalculo } from "@/lib/pricing";
 import {
   calcularVariacao,
   type ConfigVariacoes,
@@ -163,7 +163,7 @@ export function VariacoesView({
         imposto_pct: impostoPct / 100,
         taxa_extra_valor: taxas.taxaExtraValor ?? null,
         taxa_extra_tipo: taxas.taxaExtraTipo ?? null,
-        margem_pct: resultado.margemEfetivaPct,
+        margem_pct: margemAtingida(resultado),
         preco_calculado: resultado.precoVenda,
         lucro: resultado.lucroLiquido,
       };

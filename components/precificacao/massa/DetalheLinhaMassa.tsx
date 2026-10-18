@@ -99,6 +99,7 @@ export function DetalheLinhaMassa({
               taxaExtraValor: r.loja?.taxaExtraValor ?? undefined,
               taxaExtraTipo: r.loja?.taxaExtraTipo ?? null,
             }}
+            faixas={r.faixa && r.loja ? r.loja.faixas : []}
           />
         </div>
         <div className="flex gap-2 mt-4">
@@ -127,7 +128,7 @@ export function DetalheLinhaMassa({
                 r.resultado.taxaExtraCalculada,
             },
             { nome: "Imposto", valor: r.resultado.impostoValor },
-            { nome: "Lucro líquido", valor: Math.max(0, r.resultado.lucroLiquido) },
+            { nome: "Lucro líquido", valor: r.resultado.lucroLiquido },
           ]}
         />
       </Card>

@@ -16,7 +16,7 @@ const TOM: Record<SituacaoPromocao, string> = {
   ganha: "bg-positive-soft text-positive",
 };
 
-const num = (t: string) => numeroOuNulo(t.replace(",", ".")) ?? 0;
+const num = (t: string) => numeroOuNulo(t) ?? 0;
 const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 /**

@@ -80,6 +80,9 @@ export interface ProdutoOpcao {
   nome: string;
   custo: number;
   preco_venda: number;
+  /** "Valor do produto" e insumos do cadastro (0029): `custo = custo_base + insumos`. */
+  custo_base?: number | null;
+  insumos?: ComponenteKit[] | null;
   /** Palavras-chave guardadas no produto (0037), reaproveitadas no título. */
   palavras_chave?: string[] | null;
   /** Foto do produto, usada na imagem compartilhada da precificação. */

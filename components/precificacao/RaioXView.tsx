@@ -165,7 +165,7 @@ function LinhaRaioX({
   const fonteAtual = r.praticado ? (Object.entries(i.precos).find(([, v]) => v === r.praticado!.precoVenda)?.[0] as FontePreco | undefined) : undefined;
 
   function salvar() {
-    const v = numeroOuNulo(preco.replace(",", "."));
+    const v = numeroOuNulo(preco);
     if (v === null || v <= 0) return;
     startTransition(async () => {
       const res = await executarComToast(

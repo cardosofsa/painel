@@ -190,7 +190,7 @@ export function TabelaVariacoes({
                             </div>
                           </div>
                           <div className="mt-3">
-                            <SimuladorPreco custoTotal={resultado.custoTotal} taxas={taxas} />
+                            <SimuladorPreco custoTotal={resultado.custoTotal} taxas={taxas} faixas={r.faixas} />
                           </div>
                           <div className="flex gap-2 mt-4">
                             <Button variant="secondary" className="flex-1" onClick={() => onCopiar(resumoDe(v))}>
@@ -214,7 +214,7 @@ export function TabelaVariacoes({
                                 valor: taxas.taxaFixa + resultado.taxaVariavelValor + resultado.taxaAdicionalValor + resultado.taxaExtraCalculada,
                               },
                               { nome: "Imposto", valor: resultado.impostoValor },
-                              { nome: "Lucro líquido", valor: Math.max(0, resultado.lucroLiquido) },
+                              { nome: "Lucro líquido", valor: resultado.lucroLiquido },
                             ]}
                           />
                         </Card>

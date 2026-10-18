@@ -66,7 +66,7 @@ export const ALTURA_GRAFICO = {
   categorias: 180,
   faturamentoLucro: 240,
   crescimento: 160,
-  composicaoPreco: 220,
+  composicaoPreco: 96,
   historicoPreco: 140,
   vendas: 160,
   vendasComparadas: 260,
