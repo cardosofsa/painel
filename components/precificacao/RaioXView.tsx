@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ChevronDown, Download, Lightbulb, ScanSearch } from "lucide-react";
 import { Card, CardEyebrow, CardTitle } from "@/components/ui/Card";
@@ -240,6 +241,11 @@ function LinhaRaioX({
               <Button size="sm" variant="ghost" onClick={onAbrir}>
                 Abrir na calculadora
               </Button>
+              {i.precificacao.produto_id && i.precificacao.loja_id && (
+                <Link href={`/precificacao/ajuste/novo?produto=${i.precificacao.produto_id}&loja=${i.precificacao.loja_id}`} className="text-sm text-accent hover:underline px-2">
+                  Ajuste de Preço
+                </Link>
+              )}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-surface-2 p-3">

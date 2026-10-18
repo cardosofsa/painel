@@ -5,7 +5,8 @@ import { regrasDaPlataforma, type PlataformaMarcaId, type RegrasPlataforma } fro
 import { estadoRascunhoSchema, type EstadoRascunho } from "@/lib/validacao";
 import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { statusDoRascunho } from "@/lib/anuncio/etapas";
-import { precosPorLoja, type LojaParaPreco, type SituacaoPrecoLoja } from "@/lib/precos-loja";
+import { precosPorLoja, type SituacaoPrecoLoja } from "@/lib/precos-loja";
+import { carregarLojaParaPreco } from "@/lib/precos-loja-servidor";
 
 /**
  * O preço que o anúncio usa (0101): o da loja do perfil, com lucro e margem calculados com as
@@ -216,29 +217,13 @@ export async function precoDoAnuncio(supabase: SupabaseClient, produtoId: string
   const lojaId = (perfil?.loja_id as string | null) ?? null;
   if (!lojaId) return doCadastro;
 
-  const [lojaRes, precoRes, negocioRes] = await Promise.all([
-    supabase.from("lojas_canal").select("id, nome, canal_id, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo, canais(nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao)").eq("id", lojaId).maybeSingle(),
+  const [loja, precoRes, negocioRes] = await Promise.all([
+    carregarLojaParaPreco(supabase, lojaId),
     supabase.from("produto_lojas").select("loja_id, preco, preco_atualizado_em").eq("produto_id", produtoId).eq("loja_id", lojaId).maybeSingle(),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
   ]);
   // Sem a 0101 a coluna `preco` não existe: segue com o preço do cadastro.
-  if (precoRes.error || !lojaRes.data) return doCadastro;
-  const l = lojaRes.data as unknown as {
-    id: string; nome: string; canal_id: string; comissao_pct: number | null; taxa_fixa: number | null; taxa_extra_valor: number | null; taxa_extra_tipo: "percentual" | "fixo" | null;
-    canais: { nome: string; tipo_taxa: "faixas" | "fixo"; comissao_pct_padrao: number | null; taxa_fixa_padrao: number | null; taxa_extra_valor_padrao: number | null; taxa_extra_tipo_padrao: "percentual" | "fixo" | null } | null;
-  };
-  const { data: faixas } = await supabase.from("faixas_comissao_canal").select("preco_min, preco_max, comissao_pct, tarifa_fixa").eq("canal_id", l.canal_id).order("ordem");
-  const loja: LojaParaPreco = {
-    id: l.id,
-    nome: l.nome,
-    canalNome: l.canais?.nome ?? "—",
-    tipoTaxa: l.canais?.tipo_taxa ?? "fixo",
-    comissaoPct: Number(l.comissao_pct ?? l.canais?.comissao_pct_padrao ?? 0),
-    taxaFixa: Number(l.taxa_fixa ?? l.canais?.taxa_fixa_padrao ?? 0),
-    taxaExtraValor: l.taxa_extra_valor ?? l.canais?.taxa_extra_valor_padrao ?? null,
-    taxaExtraTipo: l.taxa_extra_tipo ?? l.canais?.taxa_extra_tipo_padrao ?? null,
-    faixas: ((faixas ?? []) as { preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[]).map((f) => ({ min: Number(f.preco_min), max: f.preco_max != null ? Number(f.preco_max) : null, comissaoPct: Number(f.comissao_pct), tarifaFixa: Number(f.tarifa_fixa) })),
-  };
+  if (precoRes.error || !loja) return doCadastro;
   const aliquota = Number(negocioRes.data?.aliquota_das ?? 6) / 100;
   const [linha] = precosPorLoja([loja], precoRes.data ? [precoRes.data as { loja_id: string; preco: number | null }] : [], Number(prod?.custo ?? 0), aliquota);
   return {

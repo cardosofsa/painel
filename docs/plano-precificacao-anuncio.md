@@ -544,3 +544,12 @@ git add -A && git commit -m "<fase>: <resumo>" && git push -u origin claude/laug
 - Anúncio: o preço vem da loja do perfil (`precoDoAnuncio`); Revisar mostra "Pronto para publicar?" com preço, lucro, margem e alerta, ou "Precificar agora"; o Pacote e a confirmação de "Criar na Shopee" mostram o preço enviado; criar na Shopee recusa loja sem preço.
 - IA só no Anúncio: saiu o gerador de título/descrição da Individual e de Variações; entrou "Criar anúncio deste produto", que abre o rascunho sozinho no perfil daquela loja. "Títulos que você já usou" aparece no painel de Títulos.
 - Testes: 1570 unitários e 48 scripts SQL passando; `tsc`, `lint`, `build` limpos. Atalho e abertura automática conferidos no navegador. O bloco Preços por loja só aparece depois da 0101.
+
+## 18. Fase 5: protótipo (aguardando aprovação)
+
+A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de teste; capturas em `docs/prototipo/` (360 e 1280 px, claro e escuro), geradas por `e2e/prototipo.spec.ts`.
+
+- **Individual nova** (`/precificacao?layout=novo`, `components/precificacao/IndividualNova.tsx`): 4 blocos (Produto, Onde vende, Como quer lucrar, Mais opções recolhido) e o resultado fixo ao rolar: preço, lucro e margem (o valor que muda pisca em `accent-soft` por 140 ms, desligado em reduced-motion), régua de faixas, composição, Salvar precificação, Salvar rascunho, WhatsApp e Preços por loja. No celular, barra fixa no rodapé com preço, lucro e Salvar. A tela antiga continua sendo a padrão até a aprovação.
+- **Ajuste de Preço** (`/precificacao/ajuste/novo?produto=&loja=`): régua interativa (arrastar ou digitar), lucro, margem, comissão, mínimo/ideal/máximo de referência com "Pôr na régua", estratégias por regra (`estrategiasDeAjuste`), simulador de promoção com desconto máximo, "Usar este preço" (grava na loja, com confirmação; não mexe na Shopee) e copiar preço. Atalhos em Preços por loja ("Ajustar") e no Raio-X. A entrada por anúncio sincronizado e a IA ficam para a fase 6.
+- **Revisar**: "Pronto para publicar?" (preço, lucro, checklist, "Publiquei manualmente") → Pacote → "Criar na Shopee pelo Painel (opcional)", recolhido. No celular, "Etapa X de 6".
+- Testes: 1582 passando.

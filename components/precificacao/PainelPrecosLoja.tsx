@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Card, CardEyebrow } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -19,6 +20,7 @@ const SELO: Record<SituacaoPrecoLoja, { texto: string; classe: string }> = {
  * sozinha, sem preço. "Precificar" passa a calcular com a loja; salvar grava o preço nela.
  */
 export function PainelPrecosLoja({
+  produtoId,
   custo,
   impostoPct,
   lojas,
@@ -26,6 +28,7 @@ export function PainelPrecosLoja({
   lojaAtual,
   onPrecificar,
 }: {
+  produtoId: string;
   custo: number;
   /** Fração (0,06). */
   impostoPct: number;
@@ -46,7 +49,7 @@ export function PainelPrecosLoja({
       <ul className="mt-2 divide-y divide-border">
         {linhas.map((l) => (
           <li key={l.loja.id} className="py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-full sm:basis-0">
               <div className="text-sm font-medium text-text-primary truncate">{l.rotulo}</div>
               {l.resultado ? (
                 <div className="text-xs text-text-secondary">
@@ -65,6 +68,11 @@ export function PainelPrecosLoja({
             <div className="flex items-center gap-2">
               {l.preco !== null && <span className="font-mono text-sm text-text-primary">{formatBRL(l.preco)}</span>}
               <span className={`text-xs font-medium rounded px-1.5 py-0.5 ${SELO[l.situacao].classe}`}>{SELO[l.situacao].texto}</span>
+              {l.preco !== null && (
+                <Link href={`/precificacao/ajuste/novo?produto=${produtoId}&loja=${l.loja.id}`} className="text-xs text-accent hover:underline">
+                  Ajustar
+                </Link>
+              )}
               {lojaAtual === l.loja.id ? (
                 <span className="text-xs text-accent">Calculando</span>
               ) : (

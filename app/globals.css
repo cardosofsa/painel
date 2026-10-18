@@ -266,6 +266,20 @@ body {
 
 /* Carregamento (components/ui/Skeleton.tsx): um brilho atravessa o bloco, em vez do
    piscar do `animate-pulse`. Em tokens, então funciona nos dois temas. */
+/* Valor que acabou de mudar (preço, lucro): o fundo pisca em accent-soft e some. Funcional,
+   não enfeite: mostra o que a última mudança afetou. O bloco de reduced-motion abaixo o desliga. */
+@keyframes destaque-valor {
+  from {
+    background-color: var(--accent-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.destaque-valor {
+  animation: destaque-valor var(--duracao-rapida) var(--curva);
+}
+
 @keyframes esqueleto-brilho {
   from {
     background-position: 200% 0;

@@ -23,6 +23,7 @@ import { PainelModo } from "@/components/precificacao/PainelModo";
 import { PainelConcorrentes } from "@/components/precificacao/PainelConcorrentes";
 import { PainelResultado } from "@/components/precificacao/PainelResultado";
 import { PainelPrecosLoja } from "@/components/precificacao/PainelPrecosLoja";
+import { IndividualNova } from "@/components/precificacao/IndividualNova";
 import { PainelEstrategiaVixe } from "@/components/precificacao/PainelEstrategiaVixe";
 import { PainelAnuncio } from "@/components/precificacao/PainelAnuncio";
 import { HistoricoPrecificacoes } from "@/components/precificacao/HistoricoPrecificacoes";
@@ -73,7 +74,10 @@ export function PrecificacaoClient({
   rascunhosPendentes = [],
   precosLoja = null,
   inicial,
+  layoutNovo = false,
 }: {
+  /** Protótipo do redesenho da Individual (fase 5): `?layout=novo`. */
+  layoutNovo?: boolean;
   /** Preço de cada produto em cada loja (0101); `null` sem a migração. */
   precosLoja?: { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[] | null;
   inicial?: { produtoId: string | null; lojaId: string | null };
@@ -210,10 +214,24 @@ export function PrecificacaoClient({
           )}
           <div className="flex flex-wrap items-center justify-end gap-3 mb-3">
             <IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />
-            <Button size="sm" variant="secondary" onClick={() => void rasc.salvarRascunho()} loading={rasc.salvando} disabled={!estado.temConteudo}>
-              Salvar rascunho
-            </Button>
+            {/* No layout novo o botão mora no cartão do resultado. */}
+            {!layoutNovo && (
+              <Button size="sm" variant="secondary" onClick={() => void rasc.salvarRascunho()} loading={rasc.salvando} disabled={!estado.temConteudo}>
+                Salvar rascunho
+              </Button>
+            )}
           </div>
+          {layoutNovo ? (
+            <IndividualNova
+              estado={estado}
+              produtos={produtos}
+              lojas={lojas}
+              iaDisponivel={iaDisponivel}
+              precosLoja={precosLoja}
+              onSalvarRascunho={() => void rasc.salvarRascunho()}
+              salvandoRascunho={rasc.salvando}
+            />
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-5">
               <PainelEntradas estado={estado} produtos={produtos} />
@@ -226,6 +244,7 @@ export function PrecificacaoClient({
               <PainelResultado estado={estado} produtoVinculado={estado.produtoVinculado} lojas={lojas} />
               {precosLoja && estado.produtoVinculado && (
                 <PainelPrecosLoja
+                  produtoId={estado.produtoVinculado.id}
                   custo={Number(estado.produtoVinculado.custo)}
                   impostoPct={estado.impostoPct / 100}
                   lojas={lojas}
@@ -238,6 +257,7 @@ export function PrecificacaoClient({
               <PainelAnuncio estado={estado} />
             </div>
           </div>
+          )}
 
           <Card className="mt-5">
             <div className="flex items-center justify-between mb-3">

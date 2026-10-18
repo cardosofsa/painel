@@ -11,8 +11,8 @@ import type { RascunhoPendente } from "@/lib/precificacao-rascunho";
 
 export const metadata: Metadata = { title: "Precificação" };
 
-export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string; produto?: string; loja?: string }> }) {
-  const { visao, produto, loja } = await searchParams;
+export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string; produto?: string; loja?: string; layout?: string }> }) {
+  const { visao, produto, loja, layout } = await searchParams;
   const supabase = await createClient();
   const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel, rascunhosRes, precosLojaRes] =
     await Promise.all([
@@ -136,6 +136,7 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       rascunhosPendentes={rascunhosRes.error ? [] : ((rascunhosRes.data ?? []) as RascunhoPendente[])}
       precosLoja={precosLojaRes.error ? null : ((precosLojaRes.data ?? []) as { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[])}
       inicial={{ produtoId: produto ?? null, lojaId: loja ?? null }}
+      layoutNovo={layout === "novo"}
     />
   );
 }

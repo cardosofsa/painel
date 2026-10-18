@@ -111,6 +111,7 @@ export function InfinitoClient({
   const [abaConfig, setAbaConfig] = useState<ConfigAba>(configInicial ?? "perfil");
   const [cfgPerfil, setCfgPerfil] = useState<string>(perfis[0]?.id ?? "novo");
   const [conversaAberta, setConversaAberta] = useState(false);
+  const [shopeeAberto, setShopeeAberto] = useState(false);
   // Erro de IA fica na tela (com "Tentar de novo") até dar certo: antes era só um toast que sumia.
   const [falhaIA, setFalhaIA] = useState<{ etapa: EtapaId; mensagem: string; repetir: () => void } | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
@@ -395,6 +396,9 @@ export function InfinitoClient({
         </div>
 
         <div className="space-y-4 min-w-0">
+          <p className="lg:hidden text-xs font-medium text-text-secondary" aria-live="polite">
+            Etapa {indice + 1} de {ETAPAS.length}: {ETAPAS[indice]?.rotulo}
+          </p>
           {falhaIA && falhaIA.etapa === atual && (
             <Card className="border-negative/40">
               <div role="alert" className="flex flex-wrap items-start justify-between gap-3">
@@ -553,7 +557,17 @@ export function InfinitoClient({
                 )}
               </Card>
               <PainelPacote rascunho={rascunho} palavrasChave={[...rascunho.produto.palavrasChave, ...(titulos?.palavrasChave ?? []), ...(descGerada?.palavras ?? [])]} />
-              <PainelShopee key={`shopee-${rascunho.id}`} rascunho={rascunho} onMudou={() => void carregar()} />
+              {/* Criar pela API é opcional: o Pacote acima já basta para publicar à mão. */}
+              <Card>
+                <button type="button" className="w-full flex items-center justify-between text-left" aria-expanded={shopeeAberto} onClick={() => setShopeeAberto((v) => !v)}>
+                  <span>
+                    <CardTitle>Criar na Shopee pelo Painel (opcional)</CardTitle>
+                    <CardSubtitle>Cria como não listado: você revisa e publica no Seller Centre.</CardSubtitle>
+                  </span>
+                  <ArrowRight size={16} className={`text-text-tertiary transition-transform duration-[--duracao-media] ${shopeeAberto ? "rotate-90" : ""}`} aria-hidden />
+                </button>
+              </Card>
+              {(shopeeAberto || !!estado?.itemShopee) && <PainelShopee key={`shopee-${rascunho.id}`} rascunho={rascunho} onMudou={() => void carregar()} />}
             </>
           )}
 
