@@ -342,7 +342,7 @@ export function KitsView({
                 <dl key={`m-${res.precoVenda}`} className="destaque-valor mt-4 grid grid-cols-3 gap-2">
                   <Metrica rotulo="Lucro" valor={formatBRL(res.lucroLiquido)} classe={classeValor(res.lucroLiquido)} />
                   <Metrica rotulo="Margem" valor={pct(res.margemEfetivaPct)} dica={DICA_MARGEM} />
-                  <Metrica rotulo="Cliente economiza" valor={r.precoAvulso > 0 ? pct(r.economiaPct) : "—"} dica="Em relação a comprar cada item separado." />
+                  <Metrica rotulo="Economia" valor={r.precoAvulso > 0 ? pct(r.economiaPct) : "—"} dica="Quanto o cliente economiza em relação a comprar cada item separado." />
                 </dl>
 
                 {r.precoAvulso > 0 && (

@@ -80,13 +80,14 @@ export function OndeVende({
       {lojas.map((l) => (
         <OpcaoCartao key={l.id} ativa={lojaId === l.id} titulo={l.nome} sub={`${l.canalNome} · ${textoTaxasLoja(l)}`} onClick={() => onEscolher(l.id)} />
       ))}
-      {semLoja && <OpcaoCartao ativa={lojaId === null} titulo={semLoja.titulo} sub={semLoja.sub} onClick={() => onEscolher(null)} />}
+      {/* Número ímpar de opções: a última ocupa a linha toda, para a grade fechar alinhada. */}
+      {semLoja && <OpcaoCartao ativa={lojaId === null} titulo={semLoja.titulo} sub={semLoja.sub} onClick={() => onEscolher(null)} className={opcoes.length % 2 === 1 ? "col-span-2" : ""} />}
       {lojas.length === 0 && <p className="text-xs text-text-tertiary col-span-2">Nenhuma loja cadastrada ainda. Cadastre em Configurações → Canais de Venda.</p>}
     </div>
   );
 }
 
-function OpcaoCartao({ ativa, titulo, sub, onClick }: { ativa: boolean; titulo: string; sub: string; onClick: () => void }) {
+function OpcaoCartao({ ativa, titulo, sub, onClick, className = "" }: { ativa: boolean; titulo: string; sub: string; onClick: () => void; className?: string }) {
   return (
     <button
       type="button"
@@ -94,7 +95,7 @@ function OpcaoCartao({ ativa, titulo, sub, onClick }: { ativa: boolean; titulo: 
       aria-checked={ativa}
       tabIndex={ativa ? 0 : -1}
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2.5 text-left transition-colors duration-[--duracao-rapida] ${ativa ? "border-accent bg-accent-soft" : "border-border hover:border-border-forte hover:bg-surface-2"}`}
+      className={`${className} min-w-0 rounded-lg border px-3 py-2.5 text-left transition-colors duration-[--duracao-rapida] ${ativa ? "border-accent bg-accent-soft" : "border-border hover:border-border-forte hover:bg-surface-2"}`}
     >
       <span className="block text-sm font-medium text-text-primary truncate">{titulo}</span>
       <span className="block text-xs text-text-secondary truncate">{sub}</span>
@@ -176,10 +177,11 @@ export const MODOS_PRECO = [
 /** Quadro pequeno de número (lucro, margem, markup), com a explicação do termo. */
 export function Metrica({ rotulo, valor, classe = "text-text-primary", dica }: { rotulo: string; valor: string; classe?: string; dica?: string }) {
   return (
-    <div className="rounded-md bg-surface-2 px-2.5 py-2 min-w-0">
-      <dt className="flex items-center gap-1 text-xs text-text-tertiary">
-        {rotulo}
-        {dica && <InfoTooltip text={dica} />}
+    // Rótulo numa linha só: os valores dos quadros lado a lado ficam na mesma altura.
+    <div className="flex flex-col justify-between gap-0.5 rounded-md bg-surface-2 px-2.5 py-2 min-w-0">
+      <dt className="flex items-center gap-1 text-xs text-text-tertiary min-w-0">
+        <span className="truncate">{rotulo}</span>
+        {dica && <span className="shrink-0"><InfoTooltip text={dica} /></span>}
       </dt>
       <dd className={`font-mono text-sm font-medium truncate ${classe}`}>{valor}</dd>
     </div>
