@@ -3,14 +3,16 @@ import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Copy, ImageIcon, MessageCircle, PackagePlus, Trash2 } from "lucide-react";
-import { Card } from "@/components/ui/Card";
+import { AlertTriangle, ChevronDown, Copy, ImageIcon, MessageCircle, PackageOpen, PackagePlus, Plus, Trash2 } from "lucide-react";
+import { Card, CardEyebrow, CardTitle } from "@/components/ui/Card";
+import { StatusChip } from "@/components/ui/Badge";
+import { PriceBreakdownChart } from "@/components/charts/dinamicos";
 import { Button, IconButton } from "@/components/ui/Button";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { classeValor, formatBRL } from "@/lib/format";
-import { ComoLucrar, DICA_MARGEM, OndeVende, Passo, type ModoOpcao } from "@/components/precificacao/blocos";
-import { AvisoRascunho, BarraRascunho } from "@/components/precificacao/RascunhoAviso";
+import { ComoLucrar, DICA_MARGEM, Metrica, OndeVende, Passo, type ModoOpcao } from "@/components/precificacao/blocos";
+import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
 import { Combobox } from "@/components/ui/Combobox";
 import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
 import { margemAtingida } from "@/lib/pricing";
@@ -201,165 +203,242 @@ export function KitsView({
     });
   }
 
+  const res = r.resultado;
+  const temItens = itens.length > 0;
+  const viavel = temItens && res.viavel;
+  const taxasEImposto = res.precoVenda - r.custoKit - res.lucroLiquido;
+  // Barra "cliente paga": o kit em relação à soma dos itens avulsos.
+  const fracaoKit = r.precoAvulso > 0 && viavel ? Math.min(1, res.precoVenda / r.precoAvulso) : 0;
+
   return (
     <>
-    {aba.pendente && <AvisoRascunho pendente={aba.pendente} onContinuar={aba.continuar} onDescartar={() => void aba.descartar()} />}
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-      <div className="lg:col-span-2 space-y-5">
-        <Card>
-          <h3 className="text-sm font-medium text-text-primary mb-3">Itens do kit</h3>
-          <div className="mb-3 flex flex-col sm:flex-row gap-2">
-            <Combobox
-              className="flex-1"
-              ariaLabel="Adicionar produto ao kit"
-              limparAoEscolher
-              itens={produtos.filter((p) => !itens.some((i) => i.produtoId === p.id)).map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: `custo ${formatBRL(Number(p.custo))} · venda ${formatBRL(Number(p.preco_venda))}` }))}
-              valor={null}
-              onChange={(id) => {
-                const p = produtos.find((x) => x.id === id);
-                if (p) adicionar(p);
-              }}
-              criar={{ rotulo: (t) => `+ Adicionar “${t}” sem cadastro`, onCriar: adicionarSemCadastro }}
-              placeholder="Buscar produto pelo nome ou SKU para adicionar…"
-            />
-            <Button type="button" variant="secondary" className="shrink-0" onClick={() => adicionarSemCadastro()}>
-              + Item sem cadastro
-            </Button>
-          </div>
-          {itens.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border text-sm text-text-tertiary text-center px-4 py-6">Adicione os produtos que vão no kit (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use &quot;+ Item sem cadastro&quot; e informe nome, custo e preço.</p>
-          ) : (
-            <div className="border border-border rounded-md">
-              <div className="divide-y divide-border">
-                {itens.map((i) => (
-                  <LinhaItem key={i.id} item={i} onChange={(parcial) => mudarItem(i.id, parcial)} onRemover={() => setItens((x) => x.filter((y) => y.id !== i.id))} />
-                ))}
+      {aba.pendente && <AvisoRascunho pendente={aba.pendente} onContinuar={aba.continuar} onDescartar={() => void aba.descartar()} />}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-5 items-start pb-24 lg:pb-0">
+        <div className="space-y-5 min-w-0">
+          <Card padding="nenhum">
+            <Passo n={1} titulo="O que vai no kit" resumo={temItens ? `${itens.length} ite${itens.length === 1 ? "m" : "ns"} · custo ${formatBRL(r.custoKit)}` : null}>
+              <div className="mb-3 flex flex-col sm:flex-row gap-2">
+                <Combobox
+                  className="flex-1"
+                  ariaLabel="Adicionar produto ao kit"
+                  limparAoEscolher
+                  itens={produtos.filter((p) => !itens.some((i) => i.produtoId === p.id)).map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: `custo ${formatBRL(Number(p.custo))} · venda ${formatBRL(Number(p.preco_venda))}` }))}
+                  valor={null}
+                  onChange={(id) => {
+                    const p = produtos.find((x) => x.id === id);
+                    if (p) adicionar(p);
+                  }}
+                  criar={{ rotulo: (t) => `+ Adicionar “${t}” sem cadastro`, onCriar: adicionarSemCadastro }}
+                  placeholder="Buscar produto pelo nome ou SKU para adicionar…"
+                />
+                <Button type="button" variant="secondary" className="shrink-0" onClick={() => adicionarSemCadastro()}>
+                  <Plus size={14} aria-hidden /> Item sem cadastro
+                </Button>
               </div>
-              <p className="px-3 py-2 text-xs text-text-tertiary border-t border-border">
-                Em g e ml, informe o custo e o preço por kg e por litro (como você compra): 250 g a R$ 30/kg custa R$ 7,50. Em unidade, é o valor de cada uma.
-              </p>
-            </div>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-            <FormField label="Embalagem / brinde por kit (R$)">
-              <CampoNumero value={extra} onChange={setExtra} min={0} casas={2} placeholder="0,00" />
-            </FormField>
-            <FormField label="Nome do kit">
-              <input className={inputClass} maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder={nomeDoKit(itens)} />
-            </FormField>
-          </div>
-        </Card>
-
-        <Card padding="nenhum">
-          <Passo n={1} titulo="Onde vende" resumo={loja ? `${loja.canalNome} · ${loja.nome}` : "venda direta"}>
-            <OndeVende lojas={lojas} lojaId={lojaId || null} onEscolher={(id) => setLojaId(id ?? "")} semLoja={{ titulo: "Venda direta", sub: "PDV, catálogo, sem comissão" }} />
-            <div className="mt-3 max-w-48">
-              <FormField label="Imposto (%)">
-                <CampoNumero value={imposto} onChange={setImposto} min={0} max={50} />
-              </FormField>
-            </div>
-          </Passo>
-          <Passo n={2} titulo="Como quer lucrar" ultimo>
-            <ComoLucrar
-              modos={MODOS}
-              modo={modo}
-              onModo={(m) => {
-                if (m === modo) return;
-                setModo(m);
-                setParametro(m === "preco" ? Math.round(r.precoAvulso * 0.9 * 100) / 100 : m === "margem" ? 20 : 10);
-              }}
-              valor={parametro}
-              onValor={setParametro}
-            />
-          </Passo>
-        </Card>
-
-        <Card>
-          <h3 className="text-sm font-medium text-text-primary mb-1">Faixa de venda (opcional)</h3>
-          <p className="text-xs text-text-tertiary mb-3">Informe o menor e o maior preço que você aceitaria vender o kit para ver o lucro mínimo e máximo — útil para negociar sem perder dinheiro.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Preço mínimo do kit (R$)">
-              <CampoNumero value={precoMinimo} onChange={setPrecoMinimo} min={0} casas={2} placeholder="Ex.: 79,90" />
-            </FormField>
-            <FormField label="Preço máximo do kit (R$)">
-              <CampoNumero value={precoMaximo} onChange={setPrecoMaximo} min={0} casas={2} placeholder="Ex.: 129,90" />
-            </FormField>
-          </div>
-          {(r.faixaVenda.minimo || r.faixaVenda.maximo) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm border-t border-border pt-3 mt-3">
-              {([["Lucro no mínimo", r.faixaVenda.minimo], ["Lucro no máximo", r.faixaVenda.maximo]] as const).map(([rotulo, f]) => (
-                <div key={rotulo}>
-                  <div className="text-xs text-text-tertiary mb-0.5">{rotulo}</div>
-                  {f ? (
-                    <span className={`font-mono ${classeValor(f.lucroLiquido)}`}>
-                      {formatBRL(f.lucroLiquido)} ({pct(f.margemEfetivaPct)})
-                    </span>
-                  ) : (
-                    <span className="text-text-tertiary">—</span>
+              {!temItens ? (
+                <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                  <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent">
+                    <PackageOpen size={18} aria-hidden />
+                  </span>
+                  <p className="text-sm font-medium text-text-primary">Monte o kit</p>
+                  <p className="mt-1 text-xs text-text-secondary max-w-sm mx-auto">Busque os produtos (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use “Item sem cadastro” e informe custo e preço.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {itens.map((i) => (
+                    <LinhaItem key={i.id} item={i} onChange={(parcial) => mudarItem(i.id, parcial)} onRemover={() => setItens((x) => x.filter((y) => y.id !== i.id))} />
+                  ))}
+                  {itens.some((i) => (i.unidade ?? "un") !== "un") && (
+                    <p className="text-xs text-text-tertiary">Em g e ml, custo e preço são por kg e por litro (como você compra): 250 g a R$ 30/kg custa R$ 7,50.</p>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 [&>*]:mb-0">
+                <FormField label="Nome do kit">
+                  <input className={inputClass} maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder={nomeDoKit(itens) || "Ex.: Kit Café da Manhã"} />
+                </FormField>
+                <FormField label="Embalagem / brinde por kit (R$)">
+                  <CampoNumero value={extra} onChange={setExtra} min={0} casas={2} placeholder="0,00" />
+                </FormField>
+              </div>
+            </Passo>
 
-      <div className="space-y-5">
-        <Card>
-          <div className="text-xs text-text-tertiary mb-1">Preço do kit</div>
-          <div className="text-3xl font-mono font-semibold text-accent mb-1">{r.resultado.viavel ? formatBRL(r.resultado.precoVenda) : "—"}</div>
-          {!r.resultado.viavel && itens.length > 0 && <p className="text-sm text-negative mb-2">Com essas taxas e essa margem não fecha a conta. Baixe a margem ou o desconto.</p>}
-          {r.resultado.viavel && (
-            <div className="space-y-1.5 text-sm">
-              <Linha rotulo="Custo do kit" valor={formatBRL(r.custoKit)} />
-              <Linha rotulo="Taxas do canal e imposto" valor={formatBRL(r.resultado.precoVenda - r.custoKit - r.resultado.lucroLiquido)} />
-              <Linha rotulo="Lucro" valor={`${formatBRL(r.resultado.lucroLiquido)} · ${pct(r.resultado.margemEfetivaPct)}`} destaque={r.resultado.lucroLiquido >= 0 ? "positivo" : "negativo"} />
-              <div className="border-t border-border my-2" />
-              <Linha rotulo="Separado, o cliente pagaria" valor={formatBRL(r.precoAvulso)} />
-              <Linha rotulo="Economia do cliente" valor={`${formatBRL(r.economia)} · ${pct(r.economiaPct)}`} />
-              <Linha rotulo="Seu lucro vendendo separado" valor={formatBRL(r.lucroAvulso)} />
-              <p className={`text-xs mt-2 ${classeValor(r.diferencaLucro)}`}>
-                {r.diferencaLucro >= 0
-                  ? `O kit rende ${formatBRL(r.diferencaLucro)} a mais que vender separado${loja ? " (a tarifa fixa do canal é paga uma vez só)" : ""}.`
-                  : `O kit rende ${formatBRL(-r.diferencaLucro)} a menos que vender separado: vale se ele aumentar as vendas.`}
-              </p>
+            <Passo n={2} titulo="Onde vende" resumo={loja ? `${loja.canalNome} · ${loja.nome}` : "venda direta"}>
+              <OndeVende lojas={lojas} lojaId={lojaId || null} onEscolher={(id) => setLojaId(id ?? "")} semLoja={{ titulo: "Venda direta", sub: "PDV, catálogo, sem comissão" }} />
+            </Passo>
+
+            <Passo n={3} titulo="Como quer lucrar" ultimo>
+              <ComoLucrar
+                modos={MODOS}
+                modo={modo}
+                onModo={(m) => {
+                  if (m === modo) return;
+                  setModo(m);
+                  setParametro(m === "preco" ? Math.round(r.precoAvulso * 0.9 * 100) / 100 : m === "margem" ? 20 : 10);
+                }}
+                valor={parametro}
+                onValor={setParametro}
+              />
+            </Passo>
+          </Card>
+
+          <Card>
+            <details className="group">
+              <summary className="flex cursor-pointer items-center justify-between list-none">
+                <span>
+                  <CardTitle>Mais opções</CardTitle>
+                  <span className="block text-xs text-text-secondary">Imposto e faixa de venda (o menor e o maior preço que você aceitaria)</span>
+                </span>
+                <ChevronDown size={18} className="text-text-tertiary transition-transform duration-[--duracao-media] group-open:rotate-180" aria-hidden />
+              </summary>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 [&>*]:mb-0">
+                <FormField label="Imposto (%)">
+                  <CampoNumero value={imposto} onChange={setImposto} min={0} max={50} />
+                </FormField>
+                <FormField label="Preço mínimo do kit (R$)">
+                  <CampoNumero value={precoMinimo} onChange={setPrecoMinimo} min={0} casas={2} placeholder="Ex.: 79,90" />
+                </FormField>
+                <FormField label="Preço máximo do kit (R$)">
+                  <CampoNumero value={precoMaximo} onChange={setPrecoMaximo} min={0} casas={2} placeholder="Ex.: 129,90" />
+                </FormField>
+              </div>
+              {(r.faixaVenda.minimo || r.faixaVenda.maximo) && (
+                <dl className="mt-3 grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ["Lucro no mínimo", r.faixaVenda.minimo],
+                      ["Lucro no máximo", r.faixaVenda.maximo],
+                    ] as const
+                  ).map(([rotulo, f]) => (
+                    <Metrica key={rotulo} rotulo={rotulo} valor={f ? `${formatBRL(f.lucroLiquido)} · ${pct(f.margemEfetivaPct)}` : "—"} classe={f ? classeValor(f.lucroLiquido) : "text-text-tertiary"} />
+                  ))}
+                </dl>
+              )}
+            </details>
+          </Card>
+        </div>
+
+        {/* Resultado: fixo ao rolar no computador, no mesmo desenho da Individual. */}
+        <div className="lg:sticky lg:top-20">
+          <Card className={temItens && !res.viavel ? "border-negative/40" : ""}>
+            <div id="resultado-kit" className="scroll-mt-20" />
+            <div className="flex items-center justify-between gap-2">
+              <CardEyebrow>Preço do kit</CardEyebrow>
+              {temItens && <StatusChip label={res.viavel ? "Viável" : "Inviável"} tone={res.viavel ? "positive" : "negative"} />}
             </div>
-          )}
-        </Card>
-        <Card className="space-y-2">
-          <div className="text-xs font-medium text-text-tertiary uppercase">Compartilhar</div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 gap-2">
-            <Button variant="secondary" disabled={!r.resultado.viavel || !itens.length} onClick={() => setPendenteExport({ acao: "copiar", dados: resumoDoKit() })}>
-              <Copy size={14} /> Copiar
+            <div key={res.precoVenda} className="destaque-valor rounded-md -mx-1 px-1 mt-1 font-mono text-4xl font-semibold tracking-tight text-text-primary" aria-live="polite">
+              {viavel ? formatBRL(res.precoVenda) : "—"}
+            </div>
+            <div className="text-xs text-text-tertiary truncate">{nomeFinal || "Kit"} · {loja ? `${loja.canalNome} · ${loja.nome}` : "Venda direta"}</div>
+
+            {!temItens ? (
+              <p className="mt-4 text-sm text-text-secondary">Adicione os itens para ver o preço, o lucro e quanto o cliente economiza.</p>
+            ) : !res.viavel ? (
+              <p className="mt-3 text-sm text-negative flex gap-1.5">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden /> Com essas taxas e essa margem não fecha a conta. Baixe a margem ou o desconto.
+              </p>
+            ) : (
+              <>
+                <dl key={`m-${res.precoVenda}`} className="destaque-valor mt-4 grid grid-cols-3 gap-2">
+                  <Metrica rotulo="Lucro" valor={formatBRL(res.lucroLiquido)} classe={classeValor(res.lucroLiquido)} />
+                  <Metrica rotulo="Margem" valor={pct(res.margemEfetivaPct)} dica={DICA_MARGEM} />
+                  <Metrica rotulo="Cliente economiza" valor={r.precoAvulso > 0 ? pct(r.economiaPct) : "—"} dica="Em relação a comprar cada item separado." />
+                </dl>
+
+                {r.precoAvulso > 0 && (
+                  <div className="mt-4 pt-4 border-t border-border space-y-2">
+                    <span className="block text-xs font-medium text-text-secondary">Kit × comprar separado</span>
+                    <Barra rotulo="Separado" valor={formatBRL(r.precoAvulso)} fracao={1} tom="neutro" />
+                    <Barra rotulo="No kit" valor={formatBRL(res.precoVenda)} fracao={fracaoKit} tom="destaque" />
+                    <p className={`text-xs ${classeValor(r.diferencaLucro)}`}>
+                      {r.diferencaLucro >= 0
+                        ? `Você lucra ${formatBRL(r.diferencaLucro)} a mais que vendendo separado${loja ? " (a tarifa fixa é paga uma vez só)" : ""}.`
+                        : `Você lucra ${formatBRL(-r.diferencaLucro)} a menos que vendendo separado: vale se o kit vender mais.`}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-4 pt-4 border-t border-border">
+                  <span className="block text-xs font-medium text-text-secondary mb-2">Para onde vai o dinheiro</span>
+                  <PriceBreakdownChart
+                    data={[
+                      { nome: "Custo", valor: r.custoKit },
+                      { nome: "Taxas e imposto", valor: taxasEImposto },
+                      { nome: "Lucro", valor: res.lucroLiquido },
+                    ]}
+                  />
+                </div>
+              </>
+            )}
+
+            <Button variant="primary" className="w-full mt-5" disabled={!viavel || semCadastro.length > 0} loading={pending} onClick={() => salvar(true)}>
+              <PackagePlus size={14} aria-hidden /> Salvar e criar produto
             </Button>
-            <Button variant="secondary" disabled={!r.resultado.viavel || !itens.length} onClick={() => setPendenteExport({ acao: "whatsapp", dados: resumoDoKit() })}>
-              <MessageCircle size={14} /> WhatsApp
-            </Button>
-            <Button variant="secondary" disabled={!r.resultado.viavel || !itens.length} onClick={() => setPendenteImagem(resumoDoKit())}>
-              <ImageIcon size={14} /> Imagem
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Button variant="secondary" size="sm" disabled={!viavel || pending || semNome} onClick={() => salvar(false)}>
+                Só a precificação
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => void aba.rasc.salvarRascunho()} loading={aba.rasc.salvando} disabled={!temItens}>
+                Salvar rascunho
+              </Button>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <Button variant="ghost" size="sm" disabled={!viavel} onClick={() => setPendenteExport({ acao: "copiar", dados: resumoDoKit() })}>
+                <Copy size={14} aria-hidden /> Copiar
+              </Button>
+              <Button variant="ghost" size="sm" disabled={!viavel} onClick={() => setPendenteExport({ acao: "whatsapp", dados: resumoDoKit() })}>
+                <MessageCircle size={14} aria-hidden /> WhatsApp
+              </Button>
+              <Button variant="ghost" size="sm" disabled={!viavel} onClick={() => setPendenteImagem(resumoDoKit())}>
+                <ImageIcon size={14} aria-hidden /> Imagem
+              </Button>
+            </div>
+            <div className="mt-2 text-center">
+              <IndicadorRascunho sujo={aba.rasc.sujo} salvando={aba.rasc.salvando} salvoEm={aba.rasc.salvoEm} semMigracao={aba.rasc.semMigracao} />
+            </div>
+            {semCadastro.length > 0 ? (
+              <p className="mt-3 text-xs text-text-tertiary">
+                {semNome ? "Dê um nome a cada item sem cadastro para salvar. " : ""}
+                Para criar o produto kit, cadastre {semCadastro.length === 1 ? "o item sem cadastro" : "os itens sem cadastro"} (o kit baixa o estoque de cada item). Dá para salvar só a precificação agora.
+              </p>
+            ) : (
+              temItens && <p className="mt-3 text-xs text-text-tertiary">O produto kit nasce com os itens na composição: custo = soma deles, estoque = quantos kits dá para montar.</p>
+            )}
+          </Card>
+        </div>
+
+        {/* Celular: barra fixa no rodapé com o preço e o salvar. */}
+        {temItens && (
+          <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface-1 shadow-elev-2 px-4 py-2.5 flex items-center gap-3">
+            <a href="#resultado-kit" className="min-w-0 flex-1">
+              <span className="block font-mono text-lg font-semibold text-text-primary leading-tight">{viavel ? formatBRL(res.precoVenda) : "—"}</span>
+              {viavel && (
+                <span className="block text-xs text-text-secondary truncate">
+                  lucro <span className={classeValor(res.lucroLiquido)}>{formatBRL(res.lucroLiquido)}</span> · {pct(res.margemEfetivaPct)}
+                </span>
+              )}
+            </a>
+            <Button variant="primary" disabled={!viavel || pending || semNome} loading={pending} onClick={() => salvar(semCadastro.length === 0)}>
+              Salvar
             </Button>
           </div>
-        </Card>
-        <Card className="space-y-2">
-          <Button variant="primary" className="w-full" disabled={!r.resultado.viavel || !itens.length || semCadastro.length > 0} loading={pending} onClick={() => salvar(true)}>
-            <PackagePlus size={14} /> Salvar e criar produto
-          </Button>
-          <Button variant="secondary" className="w-full" disabled={!r.resultado.viavel || !itens.length || pending || semNome} onClick={() => salvar(false)}>
-            Só salvar a precificação
-          </Button>
-          {semCadastro.length > 0 && (
-            <p className="text-xs text-text-tertiary">
-              {semNome ? "Dê um nome a cada item sem cadastro para salvar. " : ""}
-              Para criar o produto kit, cadastre {semCadastro.length === 1 ? "o item sem cadastro" : "os itens sem cadastro"}: o kit baixa o estoque de cada item. Você pode salvar só a precificação agora.
-            </p>
-          )}
-          <BarraRascunho rasc={aba.rasc} temConteudo={itens.length > 0} />
-          <p className="text-xs text-text-tertiary">O kit nasce com os itens na composição: o custo é a soma deles e o estoque é quantos kits dá para montar. Vender o kit baixa cada item.</p>
-        </Card>
+        )}
+        {modaisExportacao}
       </div>
-      {modaisExportacao}
-    </div>
     </>
+  );
+}
+
+/** Barra horizontal simples (kit × separado). */
+function Barra({ rotulo, valor, fracao, tom }: { rotulo: string; valor: string; fracao: number; tom: "neutro" | "destaque" }) {
+  return (
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 text-xs">
+      <span className="text-text-secondary">{rotulo}</span>
+      <span className="h-2 rounded-full bg-surface-2 overflow-hidden">
+        <span className={`block h-full rounded-full transition-[width] duration-[--duracao-media] ${tom === "destaque" ? "bg-accent" : "bg-border-forte"}`} style={{ width: `${Math.round(fracao * 100)}%` }} />
+      </span>
+      <span className="font-mono text-text-primary">{valor}</span>
+    </div>
   );
 }
 
@@ -378,8 +457,36 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
   const unid = UNIDADES_KIT.find((u) => u.id === (i.unidade ?? "un")) ?? UNIDADES_KIT[0];
   const totalCusto = i.custo * quantidadeEmUnidadeDePreco(i);
   const campo = `${inputClass} h-8 text-right`;
+  if (!livre) {
+    // Item do cadastro: custo e preço vêm do produto, só a quantidade muda. Uma linha só.
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-surface-1 px-3 py-2.5 text-sm">
+        <div className="min-w-0 flex-1 basis-48">
+          <div className="truncate font-medium text-text-primary" title={i.nome}>
+            {i.nome}
+          </div>
+          <div className="text-xs text-text-tertiary">
+            custo <span className="font-mono">{formatBRL(i.custo)}</span> · avulso <span className="font-mono">{formatBRL(i.preco)}</span>
+          </div>
+        </div>
+        <label className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary">
+          Qtd.
+          <span className="block w-16">
+          <CampoNumero padrao={1} min={1} casas={0} className={campo} value={i.quantidade} aria-label={`Quantidade de ${i.nome}`} onChange={(n) => onChange({ quantidade: Math.max(1, Math.floor(n)) })} />
+          </span>
+        </label>
+        <div className="w-24 shrink-0 text-right">
+          <div className="text-xs text-text-tertiary">no kit</div>
+          <div className="font-mono text-sm text-text-primary">{formatBRL(totalCusto)}</div>
+        </div>
+        <IconButton className="shrink-0" aria-label={`Tirar ${i.nome}`} onClick={onRemover}>
+          <Trash2 size={14} />
+        </IconButton>
+      </div>
+    );
+  }
   return (
-    <div className={`space-y-2 px-3 py-3 text-sm ${livre ? "bg-surface-2/40" : ""}`}>
+    <div className={`space-y-2 rounded-lg border px-3 py-3 text-sm ${livre ? "border-dashed border-border-forte bg-surface-2/40" : "border-border bg-surface-1"}`}>
       <div className="flex items-center gap-2 min-w-0">
         {livre ? (
           <>
@@ -387,7 +494,7 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
             <input className={`${inputClass} h-9`} value={i.nome} maxLength={120} aria-label="Nome do item sem cadastro" placeholder="Nome do item (ex.: Farinha de maracujá)" onChange={(e) => onChange({ nome: e.target.value })} />
           </>
         ) : (
-          <span className="truncate text-text-primary" title={i.nome}>
+          <span className="truncate font-medium text-text-primary" title={i.nome}>
             {i.nome}
           </span>
         )}
@@ -416,14 +523,14 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
           <span className="text-text-secondary h-8 flex items-center">un</span>
         )}
       </Rotulo>
-      <Rotulo texto={`Custo (R$ por ${unid.base})`}>
+      <Rotulo texto={`Custo (por ${unid.base})`}>
         {livre ? (
           <CampoNumero min={0} casas={4} className={campo} value={i.custo} aria-label={`Custo por ${unid.base} de ${i.nome || "item"}`} placeholder={`R$ por ${unid.base}`} onChange={(n) => onChange({ custo: Math.max(0, n) })} />
         ) : (
           <span className="font-mono text-xs text-text-secondary text-right h-8 flex items-center justify-end">{formatBRL(i.custo)}</span>
         )}
       </Rotulo>
-      <Rotulo texto={`Preço avulso (R$ por ${unid.base})`}>
+      <Rotulo texto={`Avulso (por ${unid.base})`}>
         {livre ? (
           <CampoNumero min={0} casas={4} className={campo} value={i.preco} aria-label={`Preço avulso por ${unid.base} de ${i.nome || "item"}`} placeholder={`R$ por ${unid.base}`} onChange={(n) => onChange({ preco: Math.max(0, n) })} />
         ) : (
@@ -431,19 +538,10 @@ function LinhaItem({ item: i, onChange, onRemover }: { item: ItemKit; onChange: 
         )}
       </Rotulo>
       <div className="flex flex-col gap-0.5 min-w-0 col-span-2 sm:col-span-1">
-        <span className="text-xs text-text-tertiary">Custo no kit</span>
+        <span className="text-xs text-text-tertiary">No kit</span>
         <span className="font-mono text-xs text-text-primary h-8 flex items-center sm:justify-end">{formatBRL(totalCusto)}</span>
       </div>
       </div>
-    </div>
-  );
-}
-
-function Linha({ rotulo, valor, destaque }: { rotulo: string; valor: string; destaque?: "positivo" | "negativo" }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <span className="text-text-secondary">{rotulo}</span>
-      <span className={`font-mono ${destaque === "positivo" ? "text-positive font-semibold" : destaque === "negativo" ? "text-negative font-semibold" : "text-text-primary"}`}>{valor}</span>
     </div>
   );
 }

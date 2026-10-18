@@ -12,7 +12,9 @@ import {
   type VariacaoLinha,
 } from "@/lib/precificacao-variacoes";
 import { type ResumoExport, useExportarPrecificacao } from "@/components/precificacao/resultado-compartilhado";
-import { TabelaVariacoes } from "@/components/precificacao/variacoes/TabelaVariacoes";
+import { EscadaPrecos, ListaVariacoes } from "@/components/precificacao/variacoes/TabelaVariacoes";
+import { Button } from "@/components/ui/Button";
+import { ChevronDown } from "lucide-react";
 import { ExportarVariacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 import { VariacoesSalvas } from "@/components/precificacao/variacoes/VariacoesSalvas";
 import { criarAnuncio, removerAnuncio, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
@@ -22,7 +24,7 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { ComoLucrar, MODOS_PRECO, OndeVende, Passo } from "@/components/precificacao/blocos";
-import { AvisoRascunho, BarraRascunho } from "@/components/precificacao/RascunhoAviso";
+import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
 import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
 
 const VARIACOES_INICIAIS: VariacaoLinha[] = [
@@ -254,10 +256,13 @@ export function VariacoesView({
     });
   }
 
+  const canal = modoTaxas === "loja" && lojaSelecionada ? `${lojaSelecionada.canalNome} · ${lojaSelecionada.nome}` : null;
+
   return (
     <div className="space-y-5">
       {aba.pendente && <AvisoRascunho pendente={aba.pendente} onContinuar={aba.continuar} onDescartar={() => void aba.descartar()} />}
-      <Card padding="nenhum">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-5 items-start">
+      <Card padding="nenhum" className="min-w-0">
         <Passo n={1} titulo="Anúncio e produto">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 [&>*]:mb-0">
             <FormField label="Nome do anúncio *">
@@ -280,7 +285,10 @@ export function VariacoesView({
             </FormField>
           </div>
           <details className="mt-3 group">
-            <summary className="cursor-pointer text-xs font-medium text-text-secondary list-none">Descrição, imposto e taxa adicional ▾</summary>
+            <summary className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-text-secondary hover:text-text-primary list-none">
+              Descrição, imposto e taxa adicional
+              <ChevronDown size={14} className="transition-transform duration-[--duracao-media] group-open:rotate-180" aria-hidden />
+            </summary>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 [&>*]:mb-0">
               <div className="sm:col-span-2">
                 <FormField label="Descrição do anúncio (opcional)" dica="Vai junto para os produtos criados a partir destas variações.">
@@ -318,7 +326,7 @@ export function VariacoesView({
           )}
         </Passo>
 
-        <Passo n={3} titulo="Como quer lucrar" resumo="padrão das variações sem valor próprio" ultimo>
+        <Passo n={3} titulo="Como quer lucrar" resumo="vale para as variações sem valor próprio">
           <ComoLucrar
             modos={[...MODOS_PRECO]}
             modo={modo}
@@ -332,28 +340,48 @@ export function VariacoesView({
             }}
           />
         </Passo>
+
+        <Passo n={4} titulo="Variações" resumo={`${variacoes.length} variaç${variacoes.length === 1 ? "ão" : "ões"}`} ultimo>
+          <ListaVariacoes
+            variacoes={variacoes}
+            modo={modo}
+            parametroPadrao={parametroPadrao}
+            calcular={calcular}
+            impostoPct={impostoPct}
+            taxaAdicionalPct={taxaAdicionalPct}
+            resumoDe={resumoDeVariacao}
+            onCopiar={(dados) => setPendenteExport({ acao: "copiar", dados })}
+            onWhatsapp={(dados) => setPendenteExport({ acao: "whatsapp", dados })}
+            onImagem={setPendenteImagem}
+            onAdicionar={adicionarVariacao}
+            onRemover={removerVariacao}
+            onAtualizar={atualizarVariacao}
+          />
+        </Passo>
       </Card>
 
-      <TabelaVariacoes
-        variacoes={variacoes}
-        modo={modo}
-        parametroPadrao={parametroPadrao}
-        calcular={calcular}
-        impostoPct={impostoPct}
-        taxaAdicionalPct={taxaAdicionalPct}
-        resumoDe={resumoDeVariacao}
-        onCopiar={(dados) => setPendenteExport({ acao: "copiar", dados })}
-        onWhatsapp={(dados) => setPendenteExport({ acao: "whatsapp", dados })}
-        onImagem={setPendenteImagem}
-        onAdicionar={adicionarVariacao}
-        onRemover={removerVariacao}
-        onAtualizar={atualizarVariacao}
-        onSalvar={salvarAnuncio}
-        salvando={pending}
-        podeSalvar={podeSalvar}
-      />
-
-      <BarraRascunho rasc={aba.rasc} temConteudo={temConteudo} />
+      <div className="lg:sticky lg:top-20">
+        <EscadaPrecos
+          variacoes={variacoes}
+          calcular={calcular}
+          canal={canal}
+          acoes={
+            <>
+              <Button variant="primary" className="w-full" onClick={salvarAnuncio} loading={pending} disabled={!podeSalvar}>
+                Salvar variações
+              </Button>
+              {!nomeAnuncio.trim() && <p className="mt-1.5 text-xs text-text-tertiary">Dê um nome ao anúncio para salvar.</p>}
+              <Button variant="secondary" size="sm" className="w-full mt-2" onClick={() => void aba.rasc.salvarRascunho()} loading={aba.rasc.salvando} disabled={!temConteudo}>
+                Salvar rascunho
+              </Button>
+              <div className="mt-2 text-center">
+                <IndicadorRascunho sujo={aba.rasc.sujo} salvando={aba.rasc.salvando} salvoEm={aba.rasc.salvoEm} semMigracao={aba.rasc.semMigracao} />
+              </div>
+            </>
+          }
+        />
+      </div>
+      </div>
 
       <VariacoesSalvas
         anuncios={anuncios}

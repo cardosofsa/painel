@@ -121,6 +121,8 @@ export function Combobox({
           setAberto(true);
           e.currentTarget.select();
         }}
+        // Já focado (acabou de escolher), o foco não dispara de novo: o clique reabre a lista.
+        onClick={() => setAberto(true)}
         onBlur={() => setTimeout(() => setAberto(false), 120)}
         onChange={(e) => {
           setTexto(e.target.value);

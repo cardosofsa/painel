@@ -588,3 +588,10 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - **E2E** `e2e/precificacao.spec.ts` (smoke, conta de teste): precificar e salvar para uma loja em **4 cliques** (meta 5); trocar de aba mantém o digitado e atualiza a URL; rascunho de Kits guarda, oferece e é descartado. `rascunho.spec.ts` e `prototipo.spec.ts` atualizados e passando.
 - Testes: 1591 unitários; `tsc`, `lint`, `build` limpos. Sem migração.
 
+
+### 20.1 Revisão do visual de Kits e Variações (pedido do dono)
+
+- **Kits**: o mesmo desenho da Individual. À esquerda, um cartão em três passos (O que vai no kit · Onde vende · Como quer lucrar) e "Mais opções" recolhido (imposto e faixa de venda). Item do cadastro numa linha só (nome, custo/avulso, quantidade, custo no kit); item sem cadastro em cartão tracejado. À direita, o resultado fixo ao rolar: preço, lucro, margem, quanto o cliente economiza, barras "kit × separado", para onde vai o dinheiro, salvar, rascunho e compartilhar. No celular, barra no rodapé com preço e Salvar.
+- **Variações**: passo 4 "Variações" com um cartão por variação (o que se digita à esquerda, preço/lucro/margem à direita; valor próprio destacado) e o detalhamento ao abrir. À direita, a **escada de preços** fixa: cada variação, o preço por unidade e quanto sai mais barato que a unidade, mais Salvar variações e o rascunho.
+- `Combobox`: clicar no campo já focado reabre a lista (antes, depois de escolher um item, era preciso sair e voltar ao campo).
+- **Migração 0103** (`perfis_marca.presets`, `presets_gravidade`, `termos_bloqueados`) escrita e testada (`scripts/sql/termos-perfil.mjs`, PGlite 2×), enviada ao dono para aplicar. O código que usa as colunas vem na fase 8.
