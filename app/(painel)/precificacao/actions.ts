@@ -14,10 +14,13 @@ import {
   precoPraticadoSchema,
   rascunhoPrecificacaoSchema,
   precoLojaSchema,
+  explicarAjusteSchema,
   type PrecoPraticadoInput,
 } from "@/lib/validacao";
 import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
-import { gerarComIA } from "@/lib/ia/gerar";
+import { gerarComIA, gerarDiagnosticoPrecoIA } from "@/lib/ia/gerar";
+import { carregarDadosAjuste } from "@/lib/ajuste-servidor";
+import { calcularAjuste, noPreco, psicologicoAcima } from "@/lib/ajuste-preco";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { truncarEmPalavra } from "@/lib/ia/texto";
 import { comResultado } from "@/lib/acao";
@@ -503,5 +506,47 @@ export async function salvarPrecoLoja(entrada: { produto_id: string; loja_id: st
     revalidatePath("/precificacao");
     revalidatePath("/produtos");
     revalidatePath("/anuncio");
+  });
+}
+
+// ---------- Ajuste de Preço: a IA explica e prioriza (fase 6) ----------
+
+/**
+ * A IA só NARRA: os números (custo, taxas, faixa, mínimo, zona morta, concorrentes) são lidos e
+ * calculados aqui, no servidor, a partir de ids. Do navegador vêm só os ids e o preço da régua.
+ */
+export async function explicarAjusteIA(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(explicarAjusteSchema, entrada);
+    const supabase = await createClient();
+    const dados = await carregarDadosAjuste(supabase, v.anuncio_id ? { anuncioId: v.anuncio_id } : { produtoId: v.produto_id!, lojaId: v.loja_id ?? null });
+    if (!dados || dados === "sem_produto" || !dados.loja) throw new Error("Não foi possível carregar o anúncio.");
+    const e = { custo: dados.produto.custo, loja: dados.loja, impostoPct: dados.impostoPct, margemAlvo: dados.margemAlvo, precoAtual: v.preco, concorrentes: dados.concorrentes, vendas30d: dados.vendas?.d30.unidades ?? 0 };
+    const a = calcularAjuste(e);
+    const { resultado, faixa } = noPreco(e, v.preco);
+    const zona = a.zonasMortas.find((z) => v.preco >= z.inicio && v.preco <= z.fim);
+    const media = dados.concorrentes.length ? dados.concorrentes.reduce((x, y) => x + y, 0) / dados.concorrentes.length : null;
+    const r = await gerarDiagnosticoPrecoIA(supabase, {
+      produtoNome: dados.produto.nome,
+      canal: `${dados.loja.canalNome} · ${dados.loja.nome}`,
+      objetivo: v.objetivo,
+      custo: dados.produto.custo,
+      preco: v.preco,
+      lucro: resultado.lucroLiquido,
+      margemPct: resultado.margemEfetivaPct,
+      comissaoPct: faixa ? faixa.comissaoPct : dados.loja.comissaoPct,
+      tarifa: faixa ? faixa.tarifaFixa : dados.loja.taxaFixa,
+      impostoPct: dados.impostoPct,
+      precoMinimoViavel: a.precoMinimo,
+      zonaMorta: zona ? { inicio: zona.inicio, fim: zona.fim, precoMelhor: Math.round((zona.inicio - 0.01) * 100) / 100, ganhoLiquido: 0 } : null,
+      concorrencia:
+        media !== null
+          ? { min: Math.min(...dados.concorrentes), max: Math.max(...dados.concorrentes), media, diferencaPct: (v.preco - media) / media, quantidade: dados.concorrentes.length }
+          : null,
+      precoPsicologico: psicologicoAcima(v.preco),
+      instrucaoExtra: dados.vendas ? `Vendas: ${dados.vendas.d30.unidades} unidades em 30 dias e ${dados.vendas.d90.unidades} em 90; tendência ${dados.tendencia}; estoque ${dados.produto.estoque}.` : null,
+    });
+    if (!r.ok) throw new Error(r.erro);
+    return r.dado;
   });
 }

@@ -11,7 +11,9 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
-import { Download, History } from "lucide-react";
+import { Download, History, ScanSearch } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Combobox } from "@/components/ui/Combobox";
 import { ExportarPrecificacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 import { formatBRL, formatarData } from "@/lib/format";
 import { CalculadoraEmMassa } from "@/components/precificacao/CalculadoraEmMassa";
@@ -75,7 +77,10 @@ export function PrecificacaoClient({
   precosLoja = null,
   inicial,
   layoutNovo = false,
+  anunciosLoja = [],
 }: {
+  /** Anúncios sincronizados (um por item), para "Analisar anúncio". */
+  anunciosLoja?: { id: string; nome: string }[];
   /** Protótipo do redesenho da Individual (fase 5): `?layout=novo`. */
   layoutNovo?: boolean;
   /** Preço de cada produto em cada loja (0101); `null` sem a migração. */
@@ -95,6 +100,8 @@ export function PrecificacaoClient({
   visaoInicial?: VisaoPrecificacao;
 }) {
   const [exportandoSalvas, setExportandoSalvas] = useState(false);
+  const [analisando, setAnalisando] = useState(false);
+  const router = useRouter();
   // O histórico abre num pop-up (antes era uma aba).
   const [historicoAberto, setHistoricoAberto] = useState(false);
   // Linhas mais antigas buscadas sob demanda (a página traz só as 50 mais recentes).
@@ -166,9 +173,14 @@ export function PrecificacaoClient({
       <PageHeader
         title="Calculadora de Precificação"
         actions={
-          <Button variant="secondary" size="sm" onClick={() => setHistoricoAberto(true)}>
-            <History size={14} /> Histórico
-          </Button>
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setAnalisando(true)} disabled={anunciosLoja.length === 0} title={anunciosLoja.length === 0 ? "Conecte e sincronize uma loja para analisar os anúncios" : undefined}>
+              <ScanSearch size={14} aria-hidden /> Analisar anúncio
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setHistoricoAberto(true)}>
+              <History size={14} aria-hidden /> Histórico
+            </Button>
+          </>
         }
       />
 
@@ -335,6 +347,19 @@ export function PrecificacaoClient({
       {estado.modaisExportacao}
       {estado.ConfirmDialog}
       <ModalSaida protecao={protecao} />
+      <Modal open={analisando} onClose={() => setAnalisando(false)} title="Analisar um anúncio da loja">
+        <p className="text-sm text-text-secondary mb-3">Título, imagens, preço e estratégia de um anúncio sincronizado.</p>
+        <Combobox
+          itens={anunciosLoja.map((a) => ({ id: a.id, rotulo: a.nome }))}
+          valor={null}
+          onChange={(id) => {
+            if (!id) return;
+            setAnalisando(false);
+            router.push(`/anuncio/analise/${id}`);
+          }}
+          placeholder="Buscar anúncio pelo título…"
+        />
+      </Modal>
     </>
   );
 }

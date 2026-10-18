@@ -20,6 +20,12 @@ export interface EntradaAjuste {
   concorrentes: number[];
   /** Unidades vendidas em 30 dias (0 = não se sabe). */
   vendas30d: number;
+  /** Para as regras de giro e de kit (opcionais). */
+  estoque?: number;
+  tendencia?: "subindo" | "estavel" | "caindo";
+  /** Unidades vendidas por dia, previstas (lib/demanda). */
+  vendaPorDia?: number;
+  kits?: { id: string; nome: string }[];
 }
 
 export interface FaixaNaRegua {
@@ -131,7 +137,7 @@ export function posicaoNaRegua(preco: number, escala: { de: number; ate: number 
 }
 
 export interface EstrategiaAjuste {
-  id: "subir_na_faixa" | "sair_zona_morta" | "abaixo_minimo" | "abaixo_margem" | "acima_maximo";
+  id: "subir_na_faixa" | "sair_zona_morta" | "abaixo_minimo" | "abaixo_margem" | "acima_maximo" | "giro" | "kit";
   titulo: string;
   detalhe: string;
   /** Preço sugerido pela regra (clicar aplica na régua). */
@@ -168,8 +174,38 @@ export function estrategiasDeAjuste(e: EntradaAjuste, a: Ajuste, preco: number):
     }
   }
 
+  // Giro: muito estoque para a venda de hoje e a venda caindo. Um preço de entrada, sem
+  // descer abaixo da margem mínima.
+  const dias = e.vendaPorDia && e.vendaPorDia > 0 ? (e.estoque ?? 0) / e.vendaPorDia : null;
+  if (e.tendencia === "caindo" && (e.estoque ?? 0) >= 5 && dias !== null && dias >= 45 && a.precoMinimoMargem !== null) {
+    const entrada = r2(Math.max(a.precoMinimoMargem, preco * 0.93));
+    if (entrada < preco - 0.01) lista.push({ id: "giro", titulo: "Preço de entrada para girar o estoque", detalhe: `O estoque dá para ${Math.round(dias)} dias e a venda está caindo. Testar ${brl(entrada)} por algumas semanas, sem sair da margem mínima.`, preco: entrada });
+  }
+  if (e.kits && e.kits.length) {
+    lista.push({ id: "kit", titulo: "Vender também em kit", detalhe: `${e.kits.map((k) => k.nome).slice(0, 2).join(" e ")} já ${e.kits.length > 1 ? "estão cadastrados" : "está cadastrado"}: o kit dilui a tarifa fixa e aumenta o tíquete.`, preco: null });
+  }
+
   if (a.precoMaximo !== null && preco > a.precoMaximo) {
     lista.push({ id: "acima_maximo", titulo: "Acima da referência de máximo", detalhe: `Passa de ${brl(a.precoMaximo)} (${a.motivoMaximo}). Não é proibido, mas pode vender menos.`, preco: a.precoMaximo });
   }
   return lista;
+}
+
+/**
+ * Série de unidades por semana, da mais antiga para a atual, a partir das linhas de
+ * `vendas_semanais_por_anuncio` (só vêm as semanas COM venda; as outras viram 0).
+ * `hoje` em AAAA-MM-DD (dia no Brasil); a semana começa na segunda, como o `date_trunc`.
+ */
+export function serieSemanal(linhas: { semana: string; unidades: number }[], semanas: number, hoje: string): number[] {
+  const [a, m, d] = hoje.split("-").map(Number);
+  const dia = new Date(Date.UTC(a, m - 1, d));
+  const deslocamento = (dia.getUTCDay() + 6) % 7; // segunda = 0
+  const segundaAtual = Date.UTC(a, m - 1, d - deslocamento);
+  const serie = new Array<number>(semanas).fill(0);
+  for (const l of linhas) {
+    const [la, lm, ld] = l.semana.slice(0, 10).split("-").map(Number);
+    const atras = Math.round((segundaAtual - Date.UTC(la, lm - 1, ld)) / (7 * 86_400_000));
+    if (atras >= 0 && atras < semanas) serie[semanas - 1 - atras] += Number(l.unidades) || 0;
+  }
+  return serie;
 }

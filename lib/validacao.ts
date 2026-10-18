@@ -1152,3 +1152,14 @@ export const precoLojaSchema = z.object({
   preco: z.number().finite().positive("O preço precisa ser maior que zero").max(10_000_000),
   precificacao_id: z.string().uuid().nullable().optional(),
 });
+
+/** Pedido de explicação do Ajuste de Preço: só ids e o preço da régua; o resto o servidor lê. */
+export const explicarAjusteSchema = z
+  .object({
+    anuncio_id: z.string().uuid().nullish(),
+    produto_id: z.string().uuid().nullish(),
+    loja_id: z.string().uuid().nullish(),
+    preco: z.number().finite().positive().max(10_000_000),
+    objetivo: z.enum(["volume", "margem"]),
+  })
+  .refine((x) => !!x.anuncio_id || !!x.produto_id, "Informe o anúncio ou o produto.");

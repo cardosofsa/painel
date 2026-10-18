@@ -544,6 +544,11 @@ export function InfinitoClient({
                   ))}
                 </ul>
                 <p className="text-xs text-text-tertiary mt-3">Os termos que as plataformas costumam barrar são conferidos no título e nos textos da capa. A revisão final é sempre sua.</p>
+                {rascunho.anuncioLojaId && (
+                  <Link href={`/anuncio/analise/${rascunho.anuncioLojaId}`} className="mt-3 inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
+                    <Sparkles size={14} aria-hidden /> Analisar o anúncio que está na loja
+                  </Link>
+                )}
                 {rascunho.status === "publicado" ? (
                   <p className="mt-3 text-sm text-positive flex gap-1.5">
                     <Check size={14} className="mt-0.5" aria-hidden /> Publicado.

@@ -537,3 +537,13 @@ export async function postLojaArquivo(c: CredenciaisShopee, caminho: string, tok
   }
   return new Uint8Array(await r.arrayBuffer());
 }
+
+/**
+ * Lista completa de imagens de um item (`get_item_base_info` → `image.image_url_list`), para a
+ * Análise do anúncio. Sob demanda, com o token da conexão. Não testado contra a loja real.
+ */
+export async function buscarImagensItem(c: CredenciaisShopee, token: string, shopId: number, itemId: number): Promise<string[]> {
+  const r = await getLoja(c, "/api/v2/product/get_item_base_info", token, shopId, { item_id_list: String(itemId) });
+  const item = ((r.item_list as { image?: { image_url_list?: unknown[] } }[] | undefined) ?? [])[0];
+  return (item?.image?.image_url_list ?? []).filter((u): u is string => typeof u === "string" && /^https:\/\//.test(u)).slice(0, 12);
+}

@@ -559,3 +559,18 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - Individual: Produto, Onde vende e Como quer lucrar viraram **um cartão com passos numerados**; lojas em cartões de escolha (2 colunas, com a comissão escrita); forma de calcular em seletor segmentado com rótulos curtos. Resultado: preço, loja, três quadros (lucro, margem, markup), "para onde vai o dinheiro", faixas de comissão recolhíveis, Salvar + Salvar rascunho + WhatsApp e o indicador do rascunho dentro do cartão. Preços por loja em linhas alinhadas (loja | preço e selo), ações embaixo.
 - Ajuste: mínimo, ideal e máximo num cartão de três colunas (também no celular), com a margem alvo do ideal logo abaixo.
 - Migração **0102** escrita, testada e enviada ao dono para aplicar.
+
+## 19. Fase 6 concluída: Ajuste de Preço + Análise do anúncio
+
+- **0102** aplicada pelo dono (conferido).
+- **Histórico de preço**: a sincronização da Shopee grava em `marketplace_precos_historico` só quando o preço muda (`lib/marketplace/precos-historico.ts` + teste); sem a tabela, não faz nada.
+- **Ajuste de Preço completo** (`/precificacao/ajuste/[id]`, `[id]` = anúncio sincronizado, ou `novo?produto=&loja=`), dados de `lib/ajuste-servidor.ts`: vendas de 30/90 dias e por semana somadas no banco (RPCs da 0102), tendência (`lib/demanda`), "lucro no mês", estoque em dias, regras novas de **giro** (estoque alto e venda caindo) e **kit**, e "Pedir a explicação da IA" (`explicarAjusteIA`: o navegador manda ids e o preço da régua; os números saem do servidor; reaproveita o tipo `preco`). Anúncio sem produto ligado manda para o mapeamento.
+- **Análise do anúncio** (`/anuncio/analise/[id]`), abas Visão geral · Título · Imagens · Preço · Estratégia:
+  - sem IA (`lib/analise-anuncio.ts` + teste): nota do título, termos, palavras-chave presentes/ausentes, imagens, veredito de vendas pelos limiares do Consultor, ruptura, nota geral e pontos fortes/fracos;
+  - com IA (`lib/ia/prompts-analise-anuncio.ts` + teste, tipo `analise_anuncio`, ordem cache → cota → chamada): diagnóstico, 3 títulos (o que passa do limite ou tem termo barrado é descartado) e estratégia priorizada;
+  - capa: botão próprio com confirmação; baixada só dos domínios de imagem da Shopee/ML. **Desvio do plano:** usa 1 geração da cota de texto do dia (como a leitura de foto de produto), não a cota de imagens do mês, que é para gerar imagem;
+  - lista completa de imagens via `get_item_base_info` (`buscarImagensItem`), sob demanda — **não testado contra a loja real**;
+  - ações com clique: "Usar no Anúncio Infinito" (grava o título no rascunho do produto, com conferência de termos), "Abrir Ajuste de Preço", "Guardar na memória da loja".
+- Entradas: "Meus anúncios na loja" na página Anúncio, "Analisar anúncio" no cabeçalho da Precificação, link dentro do rascunho (quando o produto tem anúncio na loja) e "Ajuste de Preço" no Raio-X e em Preços por loja.
+- **Desvio do plano:** os itens de pedido não guardam o item_id da Shopee; as vendas são por produto + loja.
+- Testes: 1588 unitários e 49 scripts SQL; `tsc`, `lint`, `build` limpos. Conferido no navegador com um anúncio fictício na conta de teste (apagado depois). Não testado: IA (a conta de teste não tem), leitura de imagens e preço real da Shopee.

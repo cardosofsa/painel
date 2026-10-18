@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularAjuste, estrategiasDeAjuste, noPreco, posicaoNaRegua, psicologicoAcima, type EntradaAjuste } from "./ajuste-preco";
+import { calcularAjuste, estrategiasDeAjuste, noPreco, posicaoNaRegua, psicologicoAcima, serieSemanal, type EntradaAjuste } from "./ajuste-preco";
 
 const entrada: EntradaAjuste = {
   custo: 30,
@@ -75,5 +75,33 @@ describe("estrategiasDeAjuste", () => {
     // Até o fim da faixa (79,99), limitado ao máximo de referência (74,90).
     expect(estrategiasDeAjuste(entrada, a, 70).find((s) => s.id === "subir_na_faixa")?.preco).toBe(74.9);
     expect(ids(95)).toContain("acima_maximo");
+  });
+});
+
+describe("regras de giro e kit", () => {
+  it("giro só com estoque alto e venda caindo; kit quando há kit cadastrado", () => {
+    const base = { ...entrada, estoque: 120, vendaPorDia: 1, tendencia: "caindo" as const };
+    const a = calcularAjuste(base);
+    const giro = estrategiasDeAjuste(base, a, 73.92).find((s) => s.id === "giro");
+    expect(giro?.preco).toBeCloseTo(68.75, 2); // 73,92 × 0,93
+    expect(estrategiasDeAjuste({ ...base, tendencia: "estavel" }, a, 73.92).some((s) => s.id === "giro")).toBe(false);
+    expect(estrategiasDeAjuste({ ...base, estoque: 10 }, a, 73.92).some((s) => s.id === "giro")).toBe(false);
+    expect(estrategiasDeAjuste({ ...entrada, kits: [{ id: "k", nome: "Kit 2 Canecas" }] }, a, 73.92).find((s) => s.id === "kit")?.detalhe).toContain("Kit 2 Canecas");
+  });
+});
+
+describe("serieSemanal", () => {
+  it("encaixa cada semana na posição certa e completa com zero", () => {
+    // 2026-10-18 é domingo: a semana atual começa na segunda 2026-10-12.
+    const s = serieSemanal(
+      [
+        { semana: "2026-10-12", unidades: 3 },
+        { semana: "2026-09-28", unidades: 5 },
+        { semana: "2026-01-05", unidades: 9 },
+      ],
+      4,
+      "2026-10-18",
+    );
+    expect(s).toEqual([0, 5, 0, 3]);
   });
 });

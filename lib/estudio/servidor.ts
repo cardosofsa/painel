@@ -40,6 +40,8 @@ export interface RascunhoAberto {
   preco: PrecoDoAnuncio;
   /** Títulos já usados nas precificações deste produto (`precificacoes.titulo_anuncio`). */
   titulosUsados: string[];
+  /** O anúncio sincronizado deste produto na loja (o criado por este rascunho, se houver), para a Análise. */
+  anuncioLojaId: string | null;
 }
 
 /**
@@ -176,6 +178,11 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
     precoDoAnuncio(supabase, r.produto_id, r.perfil_id ?? null),
     supabase.from("precificacoes").select("titulo_anuncio").eq("produto_id", r.produto_id).not("titulo_anuncio", "is", null).order("criado_em", { ascending: false }).limit(30),
   ]);
+  const estadoLido = lerEstado(r.estado);
+  const itemCriado = estadoLido.itemShopee?.itemId ?? null;
+  const { data: noAr } = await (itemCriado
+    ? supabase.from("marketplace_anuncios").select("id").eq("item_id", itemCriado).limit(1)
+    : supabase.from("marketplace_anuncios").select("id").eq("produto_id", r.produto_id).limit(1));
   const titulosUsados = [...new Set(((titulosRes ?? []) as { titulo_anuncio: string | null }[]).map((t) => (t.titulo_anuncio ?? "").trim()).filter((t) => t.length >= 3))].slice(0, 5);
   return {
     id: r.id,
@@ -197,6 +204,7 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
     mensagens: ((msgs ?? []) as RascunhoAberto["mensagens"]).map((m) => ({ ...m, acoes: Array.isArray(m.acoes) ? m.acoes : [] })),
     preco,
     titulosUsados,
+    anuncioLojaId: ((noAr ?? []) as { id: string }[])[0]?.id ?? null,
   };
 }
 

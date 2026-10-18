@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, Palette, Sparkles } from "lucide-react";
+import { ArrowRight, BarChart3, Palette, Sparkles, Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AberturaMarca } from "@/components/anuncio/AberturaMarca";
 import { Card, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusChip } from "@/components/ui/Badge";
-import { formatarDataHora } from "@/lib/format";
+import { formatBRL, formatarDataHora } from "@/lib/format";
 import { calcularEtapas } from "@/lib/anuncio/etapas";
 import { lerEstado } from "@/lib/estudio/servidor";
 import type { Metadata } from "next";
@@ -27,11 +27,21 @@ const estadoTemItem = (estado: unknown) => !!lerEstado(estado).itemShopee;
 
 export default async function AnuncioPage() {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("anuncio_rascunhos")
-    .select("id, produto_id, titulo, descricao, status, estado, atualizado_em, produtos(nome)")
-    .order("atualizado_em", { ascending: false })
-    .limit(6);
+  const [{ data }, anunciosRes] = await Promise.all([
+    supabase.from("anuncio_rascunhos").select("id, produto_id, titulo, descricao, status, estado, atualizado_em, produtos(nome)").order("atualizado_em", { ascending: false }).limit(6),
+    // `*`: nome_item, imagem_url e preco_atual dependem de migrações (0071/0093).
+    supabase.from("marketplace_anuncios").select("*").order("atualizado_em", { ascending: false }).limit(400),
+  ]);
+  // Um por item (as variações de um anúncio são o mesmo anúncio na loja).
+  const vistos = new Set<string>();
+  const meus = ((anunciosRes.data ?? []) as { id: string; loja_id: string; item_id: number; nome?: string | null; nome_item?: string | null; imagem_url?: string | null; preco_atual?: number | null; produto_id: string | null }[])
+    .filter((a) => {
+      const k = `${a.loja_id}:${a.item_id}`;
+      if (vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    })
+    .slice(0, 20);
   const rascunhos = ((data ?? []) as unknown as LinhaRascunho[]).map((r) => {
     const estado = lerEstado(r.estado);
     const etapas = calcularEtapas({
@@ -74,6 +84,42 @@ export default async function AnuncioPage() {
           </Card>
         </Link>
       </div>
+
+      <Card className="mb-6">
+        <CardTitle>Meus anúncios na loja</CardTitle>
+        <CardSubtitle>Os anúncios sincronizados das lojas conectadas: análise completa e ajuste de preço.</CardSubtitle>
+        {meus.length === 0 ? (
+          <EmptyState icon={Store} title="Nenhum anúncio sincronizado" description="Conecte a loja da Shopee em Configurações › Canais de venda e sincronize: os anúncios aparecem aqui." />
+        ) : (
+          <ul className="mt-3 divide-y divide-border">
+            {meus.map((a) => (
+              <li key={a.id} className="flex items-center gap-3 py-2.5">
+                {a.imagem_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={a.imagem_url} alt="" className="h-10 w-10 rounded-md border border-border object-cover bg-surface-2 shrink-0" loading="lazy" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="h-10 w-10 rounded-md bg-surface-2 shrink-0" aria-hidden="true" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-text-primary truncate">{a.nome_item ?? a.nome ?? `Anúncio ${a.item_id}`}</span>
+                  <span className="block text-xs text-text-secondary">
+                    {a.preco_atual ? formatBRL(Number(a.preco_atual)) : "sem preço lido"}
+                    {!a.produto_id && " · sem produto ligado"}
+                  </span>
+                </span>
+                <span className="flex items-center gap-3 text-sm shrink-0">
+                  <Link href={`/anuncio/analise/${a.id}`} className="text-accent hover:underline">
+                    Analisar
+                  </Link>
+                  <Link href={`/precificacao/ajuste/${a.id}`} className="text-accent hover:underline hidden sm:inline">
+                    Ajuste de Preço
+                  </Link>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card>
         <CardTitle>Anúncios em andamento</CardTitle>

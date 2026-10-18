@@ -13,6 +13,21 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { comResultado, type Resultado } from "@/lib/acao";
 import { ErroIA } from "./erro";
 import { PROVEDORES, chamarProvedor } from "./provedores";
+import {
+  analiseVazia,
+  esquemaAnalise,
+  esquemaCapa,
+  hashCapa,
+  hashContextoAnalise,
+  interpretarAnalise,
+  interpretarCapa,
+  montarPromptAnalise,
+  montarPromptCapa,
+  type AnaliseCapa,
+  type ContextoAnaliseIA,
+  type ContextoCapaIA,
+  type NarracaoAnalise,
+} from "./prompts-analise-anuncio";
 import { resolverProvedor, type ProvedorResolvido } from "./resolver";
 import {
   montarPromptTitulo,
@@ -98,7 +113,7 @@ import {
 export type TipoGeracaoTexto = "titulo" | "descricao";
 
 /** Todo tipo de geração, incluindo "tema" (que não é texto — ver `gerarTemaVitrineIA`). */
-export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | "relatorio" | "consultor" | "concorrentes" | "assistente" | FerramentaTexto;
+export type TipoGeracao = TipoGeracaoTexto | "tema" | "preco" | "relatorio" | "consultor" | "concorrentes" | "assistente" | "analise_anuncio" | FerramentaTexto;
 
 export interface SugestaoGerada {
   texto: string;
@@ -142,6 +157,8 @@ const PARAMETROS: Record<TipoGeracao, { maxTokens: number; temperatura: number }
   concorrentes: { maxTokens: 2500, temperatura: 0.2 },
   // Conversa do estúdio: resposta curta + até 4 ações propostas.
   assistente: { maxTokens: 1200, temperatura: 0.6 },
+  // Análise do anúncio: diagnóstico + 3 títulos + até 5 passos (0102).
+  analise_anuncio: { maxTokens: 1800, temperatura: 0.6 },
   // Ferramentas de texto da 7.7: respostas curtas.
   resposta: { maxTokens: 700, temperatura: 0.5 },
   cobranca: { maxTokens: 700, temperatura: 0.6 },
@@ -417,6 +434,50 @@ export async function gerarConsultorIA(supabase: SupabaseClient, contexto: Conte
   );
   if (narracaoVazia(valor)) throw new ErroIA("vazio", "narração vazia");
   return { narracao: valor, ...meta };
+}
+
+export interface SugestaoAnalise extends MetaGeracao {
+  narracao: NarracaoAnalise;
+}
+
+/**
+ * Análise do anúncio (0102): a IA narra os números de `lib/analise-anuncio.ts`, sugere 3
+ * títulos e prioriza a estratégia. Mesma ordem de sempre (cache → cota → chamada).
+ */
+export async function gerarAnaliseAnuncioIA(supabase: SupabaseClient, contexto: ContextoAnaliseIA, termosProibidos: string[]): Promise<SugestaoAnalise> {
+  const { valor, ...meta } = await executarEstruturado(
+    supabase,
+    "analise_anuncio",
+    hashContextoAnalise(contexto),
+    montarPromptAnalise(contexto),
+    esquemaAnalise(),
+    (bruto) => interpretarAnalise(bruto, contexto.limite, termosProibidos),
+  );
+  if (analiseVazia(valor)) throw new ErroIA("vazio", "análise vazia");
+  return { narracao: valor, ...meta };
+}
+
+export interface SugestaoCapa extends MetaGeracao {
+  capa: AnaliseCapa;
+}
+
+/**
+ * Análise da CAPA: uma imagem, uma geração de "analise_anuncio" (a mesma cota de texto, como a
+ * leitura de foto de produto). O cache é pelo hash dos bytes: a mesma capa não cobra de novo.
+ */
+export async function gerarAnaliseCapaIA(supabase: SupabaseClient, contexto: ContextoCapaIA, imagem: { base64: string; mime: string; hash: string }): Promise<SugestaoCapa> {
+  const { valor, ...meta } = await executarEstruturado(
+    supabase,
+    "analise_anuncio",
+    hashCapa(imagem.hash, contexto),
+    montarPromptCapa(contexto),
+    esquemaCapa(),
+    interpretarCapa,
+    { maxTokens: 900, temperatura: 0.3 },
+    { base64: imagem.base64, mime: imagem.mime },
+  );
+  if (!valor.resumo && valor.pontos.length === 0) throw new Error("A IA não conseguiu avaliar esta imagem. Confira se a sua IA aceita imagem (modelo com visão).");
+  return { capa: valor, ...meta };
 }
 
 export interface SugestaoMarca extends MetaGeracao {

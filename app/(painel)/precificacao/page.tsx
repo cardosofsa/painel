@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Precificação" };
 export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string; produto?: string; loja?: string; layout?: string }> }) {
   const { visao, produto, loja, layout } = await searchParams;
   const supabase = await createClient();
-  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel, rascunhosRes, precosLojaRes] =
+  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel, rascunhosRes, precosLojaRes, anunciosLojaRes] =
     await Promise.all([
     supabase
       .from("precificacoes")
@@ -56,6 +56,8 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     supabase.from("precificacao_rascunhos").select("id, titulo, atualizado_em, dados").eq("visao", "individual").order("atualizado_em", { ascending: false }).limit(3),
     // Preço de cada loja (0101). Sem a migração vem erro e o bloco não aparece.
     supabase.from("produto_lojas").select("produto_id, loja_id, preco, preco_atualizado_em").not("preco", "is", null),
+    // Anúncios sincronizados, para o seletor "Analisar anúncio". `*`: nome_item é da 0093.
+    supabase.from("marketplace_anuncios").select("*").limit(1000),
   ]);
 
   if (historicoRes.error) throw new Error(historicoRes.error.message);
@@ -136,6 +138,12 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       rascunhosPendentes={rascunhosRes.error ? [] : ((rascunhosRes.data ?? []) as RascunhoPendente[])}
       precosLoja={precosLojaRes.error ? null : ((precosLojaRes.data ?? []) as { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[])}
       inicial={{ produtoId: produto ?? null, lojaId: loja ?? null }}
+      anunciosLoja={(() => {
+        const vistos = new Set<string>();
+        return ((anunciosLojaRes.data ?? []) as { id: string; loja_id: string; item_id: number; nome?: string | null; nome_item?: string | null }[])
+          .filter((a) => !vistos.has(`${a.loja_id}:${a.item_id}`) && !!vistos.add(`${a.loja_id}:${a.item_id}`))
+          .map((a) => ({ id: a.id, nome: a.nome_item ?? a.nome ?? `Anúncio ${a.item_id}` }));
+      })()}
       layoutNovo={layout === "novo"}
     />
   );
