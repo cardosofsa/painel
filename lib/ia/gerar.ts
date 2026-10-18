@@ -585,6 +585,20 @@ async function estornarSePreciso(supabase: SupabaseClient, ia: ProvedorResolvido
  * saldo do teste; na IA própria não há saldo a mostrar. Falha aqui é cosmética: zera o
  * rótulo, não quebra a geração.
  */
+/**
+ * Saldo de IA de texto para mostrar ANTES de gerar (antes só aparecia depois de gastar).
+ * `null` quando não há IA ou a leitura falha: a tela só esconde o rótulo.
+ */
+export async function saldoIAParaTela(supabase: SupabaseClient): Promise<{ origem: "propria" | "sistema"; usadas: number; limite: number } | null> {
+  try {
+    const ia = await resolverProvedor(supabase);
+    const s = await lerSaldo(supabase, ia);
+    return { origem: ia.origem === "propria" ? "propria" : "sistema", ...s };
+  } catch {
+    return null;
+  }
+}
+
 async function lerSaldo(supabase: SupabaseClient, ia: ProvedorResolvido): Promise<{ usadas: number; limite: number }> {
   if (ia.origem === "propria") return { usadas: 0, limite: 0 };
   const { data } = await supabase

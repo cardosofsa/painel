@@ -17,16 +17,19 @@ interface LinhaRascunho {
   produto_id: string;
   titulo: string | null;
   descricao: string | null;
+  status: string;
   estado: unknown;
   atualizado_em: string;
   produtos: { nome: string } | null;
 }
 
+const estadoTemItem = (estado: unknown) => !!lerEstado(estado).itemShopee;
+
 export default async function AnuncioPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("anuncio_rascunhos")
-    .select("id, produto_id, titulo, descricao, estado, atualizado_em, produtos(nome)")
+    .select("id, produto_id, titulo, descricao, status, estado, atualizado_em, produtos(nome)")
     .order("atualizado_em", { ascending: false })
     .limit(6);
   const rascunhos = ((data ?? []) as unknown as LinhaRascunho[]).map((r) => {
@@ -39,6 +42,7 @@ export default async function AnuncioPage() {
       descricao: r.descricao,
       capaAprovada: (estado.capas ?? []).some((c) => c.veredito === "aprovada"),
       itemCriadoNaShopee: !!estado.itemShopee,
+      publicado: r.status === "publicado",
     });
     return { ...r, etapas };
   });
@@ -82,14 +86,17 @@ export default async function AnuncioPage() {
               const proxima = r.etapas.etapas.find((e) => e.id === r.etapas.atual)!;
               return (
                 <li key={r.id}>
-                  <Link href={`/anuncio/infinito?produto=${r.produto_id}`} className="flex items-center justify-between gap-3 py-3 hover:bg-surface-2 -mx-2 px-2 rounded-md">
+                  <Link href={`/anuncio/infinito?rascunho=${r.id}`} className="flex items-center justify-between gap-3 py-3 hover:bg-surface-2 -mx-2 px-2 rounded-md">
                     <span className="min-w-0">
                       <span className="block text-sm font-medium text-text-primary truncate">{r.titulo || r.produtos?.nome || "Anúncio sem título"}</span>
                       <span className="block text-xs text-text-secondary">
                         {r.etapas.feitas} de 6 etapas · próxima: {proxima.rotulo} · {formatarDataHora(r.atualizado_em)}
                       </span>
                     </span>
-                    <StatusChip tone={r.etapas.etapas[5].feita ? "positive" : "neutral"} label={r.etapas.etapas[5].feita ? "Na Shopee" : "Em andamento"} />
+                    <StatusChip
+                      tone={r.status === "publicado" || r.status === "pronto" ? "positive" : "neutral"}
+                      label={r.status === "publicado" ? (estadoTemItem(r.estado) ? "Na Shopee" : "Publicado") : r.status === "pronto" ? "Pronto" : "Em andamento"}
+                    />
                   </Link>
                 </li>
               );

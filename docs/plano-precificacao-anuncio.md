@@ -509,3 +509,18 @@ git add -A && git commit -m "<fase>: <resumo>" && git push -u origin claude/laug
 - **P17** ✔ Erro de `categorias` conferido; `iaDisponivelParaConta` dentro do `Promise.all`.
 - Testes: 1557 → todos passando; `tsc`, `lint` e `build` limpos. Conferido no navegador com a conta de teste.
 - Observação do ambiente: a `NEXT_PUBLIC_SUPABASE_URL` deste container termina em `/rest/v1/`; para o teste local o build usou só a origem.
+
+## 15. Fase 2 concluída: bugs do Anúncio
+
+- **A1** ✔ "Continuar" abre `?rascunho=<id>`, lido no servidor; abrir um anúncio grava o id na URL (`router.replace`) e as ações relêem pelo id. Conferido no navegador: recarregar volta na mesma etapa.
+- **A2** ◐ `key` por rascunho em Títulos e Descrição. Na prática o painel já desmontava ao trocar de produto; ficou como garantia.
+- **A3** ✔ Gravação condicional por `atualizado_em` (`gravarEstadoVersionado`) e trava `capaEmGeracao` antes de reservar a imagem: a segunda geração simultânea para sem gastar. Testado em `lib/estudio/servidor.test.ts`.
+- **A5** ✔ Antes de criar na Shopee: estoque maior que zero e as três medidas da embalagem.
+- **A6** ✔ `status` passa a andar (rascunho → pronto → publicado); botão "Publiquei manualmente"; criar pela API marca publicado. A lista mostra o status real.
+- **A8** ✔ Painéis com o número do trilho (`numeroDaEtapa`); Capa e Descrição só liberam com título.
+- **A9** ✔ "Gerar a capa" mostra que está gerando; se o desenho do texto falha, aparece "Desenhar de novo (sem custo)".
+- **A10** ✔ "Gerar outra" descrição pergunta antes de descartar edição; apagar memória confirma; "Descartar este anúncio" (conferido no navegador).
+- **A11** ✔ Erro de IA fica na tela com "Tentar de novo"; saldo da IA de texto e de imagens aparece no topo antes de gastar.
+- **A13** ✔ Ícones decorativos com `aria-hidden`; produto sem cadastro mostra `EmptyState`.
+- Testes: 1564 passando; `tsc`, `lint` e `build` limpos.
+- Não testado: criação real na Shopee e geração de capa com cota (conta de teste sem IA).

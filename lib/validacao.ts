@@ -902,6 +902,8 @@ export const estadoRascunhoSchema = z.object({
       canais: z.array(z.number().int().positive()).max(30),
     })
     .optional(),
+  /** Quando uma geração de capa começou: trava outra geração em paralelo (outra aba, clique duplo). */
+  capaEmGeracao: z.string().max(40).optional(),
   /** O item que o Painel criou na Shopee (para não criar duas vezes e para poder remover). */
   itemShopee: z
     .object({ itemId: z.number().int().positive(), status: z.string().trim().max(30), criadoEm: z.string().max(40), erro: z.string().trim().max(300).optional() })

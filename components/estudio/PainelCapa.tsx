@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { Copy, ImageIcon, ThumbsDown, ThumbsUp, Wrench } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { AcoesImagem, BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
@@ -17,6 +16,7 @@ import { urlPublicaImagem } from "@/lib/marca/tipos";
 import type { Violacao } from "@/lib/conformidade/termos";
 import { gerarCenaCapa, promptDaCapa, registrarCapaFinal, vereditoCapa, type RascunhoAberto } from "@/app/(painel)/produtos/estudio/actions";
 import { comporCapa } from "@/components/marca/compor";
+import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
 type Veredito = "aprovada" | "ajustar" | "rejeitada";
 const ROTULO_VEREDITO: Record<Veredito, string> = { aprovada: "Aprovada", ajustar: "Ajustar", rejeitada: "Rejeitada" };
@@ -61,6 +61,10 @@ export function PainelCapa({
   const [previa, setPrevia] = useState<Previa | null>(null);
   const [motivo, setMotivo] = useState("");
   const [usadas, setUsadas] = useState<{ usadas: number; limite: number | null } | null>(null);
+  // A cena já foi gerada e paga, mas desenhar o texto falhou: fica o aviso com "Desenhar de
+  // novo", que só refaz o desenho no navegador (sem cota). Antes a prévia sumia com um toast.
+  const [falhaDesenho, setFalhaDesenho] = useState<{ indice: number; cenaPath: string; mensagem: string } | null>(null);
+  const [gerando, setGerando] = useState(false);
 
   const titulo = rascunho.titulo;
   const capas = rascunho.estado.capas ?? [];
@@ -84,26 +88,29 @@ export function PainelCapa({
 
   function gerar() {
     setConfirmando(false);
+    setGerando(true);
     startTransition(async () => {
       const r = await executarComToast(gerarCenaCapa({ rascunho_id: rascunho.id, textoFaixa: textoFaixa.trim() || null }), { erro: "Não foi possível gerar a capa." });
+      setGerando(false);
       if (!r.ok) return;
       setUsadas({ usadas: r.dado.usadas, limite: r.dado.limite });
-      try {
-        await comporDe(r.dado.url, r.dado.indice, r.dado.cenaPath);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Não consegui desenhar o título na imagem.");
-      }
+      await desenhar(r.dado.url, r.dado.indice, r.dado.cenaPath);
       onMudou();
     });
   }
 
+  async function desenhar(cenaUrl: string, indice: number, cenaPath: string) {
+    try {
+      await comporDe(cenaUrl, indice, cenaPath);
+      setFalhaDesenho(null);
+    } catch (e) {
+      setFalhaDesenho({ indice, cenaPath, mensagem: e instanceof Error ? e.message : "Não consegui desenhar o título na imagem." });
+    }
+  }
+
   function reabrir(indice: number, cenaPath: string) {
     startTransition(async () => {
-      try {
-        await comporDe(urlPublicaImagem(cenaPath), indice, cenaPath);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Não consegui abrir a capa.");
-      }
+      await desenhar(urlPublicaImagem(cenaPath), indice, cenaPath);
     });
   }
 
@@ -129,7 +136,7 @@ export function PainelCapa({
       <div id="painel-capa" />
       <CardHeader>
         <div>
-          <CardTitle>4. Capa 1</CardTitle>
+          <CardTitle>{numeroDaEtapa("capa")}. Capa 1</CardTitle>
           <CardSubtitle>A primeira imagem decide o clique. Em 2 segundos, reduzida, o produto e o nome precisam ser entendidos.</CardSubtitle>
         </div>
       </CardHeader>
@@ -147,12 +154,21 @@ export function PainelCapa({
 
           <div className="flex flex-wrap gap-2 mb-3">
             <Button variant="secondary" onClick={verPrompt} loading={pending && !previa} disabled={pending}>
-              <Copy size={14} /> Ver o prompt (sem custo)
+              <Copy size={14} aria-hidden /> Ver o prompt (sem custo)
             </Button>
-            <Button variant="primary" onClick={() => setConfirmando(true)} disabled={pending || !iaDisponivel || semVeredito || capas.length >= 6} title={semVeredito ? "Dê um veredito à capa anterior primeiro" : undefined}>
-              <ImageIcon size={14} /> Gerar a capa aqui
+            <Button variant="primary" onClick={() => setConfirmando(true)} loading={gerando} disabled={pending || !iaDisponivel || semVeredito || capas.length >= 6} title={semVeredito ? "Dê um veredito à capa anterior primeiro" : undefined}>
+              <ImageIcon size={14} aria-hidden /> {gerando ? "Gerando a cena…" : "Gerar a capa aqui"}
             </Button>
           </div>
+          {gerando && <p className="text-xs text-text-secondary mb-3" aria-live="polite">A cena leva alguns segundos. Não feche a página: a imagem já está reservada na sua cota.</p>}
+          {falhaDesenho && (
+            <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-negative/40 p-3 text-sm">
+              <span className="text-negative min-w-0">A cena foi gerada, mas o desenho do texto falhou: {falhaDesenho.mensagem}</span>
+              <Button size="sm" variant="secondary" onClick={() => reabrir(falhaDesenho.indice, falhaDesenho.cenaPath)} loading={pending} disabled={pending}>
+                Desenhar de novo (sem custo)
+              </Button>
+            </div>
+          )}
           {semVeredito && !previa && <p className="text-xs text-text-tertiary mb-3">Há uma capa sem veredito. Abra-a abaixo e diga se aprova, quer ajustar ou rejeita: assim a ficha melhora antes de gastar outra imagem.</p>}
 
           {prompts && (
@@ -196,13 +212,13 @@ export function PainelCapa({
                 </FormField>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="primary" onClick={() => decidir("aprovada")} loading={pending} disabled={pending}>
-                    <ThumbsUp size={14} /> Aprovar
+                    <ThumbsUp size={14} aria-hidden /> Aprovar
                   </Button>
                   <Button variant="secondary" onClick={() => decidir("ajustar")} disabled={pending}>
-                    <Wrench size={14} /> Ajustar
+                    <Wrench size={14} aria-hidden /> Ajustar
                   </Button>
                   <Button variant="ghost" onClick={() => decidir("rejeitada")} disabled={pending}>
-                    <ThumbsDown size={14} /> Rejeitar
+                    <ThumbsDown size={14} aria-hidden /> Rejeitar
                   </Button>
                 </div>
                 <p className="text-xs text-text-tertiary mt-2">Ajustar ou rejeitar leva o seu motivo para a conversa, onde a IA propõe a mudança na ficha. Você aprova antes de valer.</p>

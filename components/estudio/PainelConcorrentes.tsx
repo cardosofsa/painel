@@ -29,13 +29,13 @@ export function PainelConcorrentes({
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>2. Concorrentes na web</CardTitle>
+          <CardTitle>Concorrentes na web</CardTitle>
           <CardSubtitle>A IA pesquisa anúncios parecidos para você ver o que eles destacam. Serve de referência, nunca para copiar.</CardSubtitle>
         </div>
       </CardHeader>
 
       <Button variant="secondary" onClick={onPesquisar} loading={ocupado} disabled={ocupado || !iaDisponivel}>
-        <Globe size={14} /> {concorrentes.length ? "Pesquisar de novo" : "Pesquisar concorrentes"}
+        <Globe size={14} aria-hidden /> {concorrentes.length ? "Pesquisar de novo" : "Pesquisar concorrentes"}
       </Button>
       <p className="text-xs text-text-tertiary mt-2 flex gap-1.5">
         <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { comResultado } from "@/lib/acao";
 import { validar, escolhasShopeeSchema, rascunhoIdSchema } from "@/lib/validacao";
-import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, type ContextoRascunho } from "@/lib/estudio/servidor";
+import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, sincronizarStatus, type ContextoRascunho } from "@/lib/estudio/servidor";
 import { plataformaDa } from "@/lib/marketplace/conexao-api";
 import { tokenDaConexao, type ConexaoShopee } from "@/lib/marketplace/tokens";
 import type { CredenciaisShopee } from "@/lib/marketplace/shopee-api";
@@ -205,6 +205,7 @@ export async function criarNaoListadoShopee(entrada: unknown) {
         }
       }
       await gravarEstado(supabase, v.rascunho_id, estado, { itemShopee: { itemId, status: status as string, criadoEm: estado.itemShopee?.criadoEm ?? new Date().toISOString() } });
+      await sincronizarStatus(supabase, v.rascunho_id, true);
       return { itemId, status: status as string, naoListado: true };
     } catch (e) {
       if (itemId && e instanceof Error && /ficou com status/.test(e.message)) throw e;

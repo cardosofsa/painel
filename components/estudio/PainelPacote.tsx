@@ -7,6 +7,7 @@ import { formatBRL } from "@/lib/format";
 import { textoHashtags, textoPacoteAnuncio, textoPalavrasChave, textoPreco } from "@/lib/copiar";
 import { urlPublicaImagem } from "@/lib/marca/tipos";
 import type { RascunhoAberto } from "@/app/(painel)/produtos/estudio/actions";
+import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
 function Linha({ rotulo, texto, children, vazio }: { rotulo: string; texto: string; children?: React.ReactNode; vazio: string }) {
   return (
@@ -41,7 +42,7 @@ export function PainelPacote({ rascunho, palavrasChave }: { rascunho: RascunhoAb
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>5. Pacote do anúncio</CardTitle>
+          <CardTitle>{numeroDaEtapa("revisar")}. Pacote do anúncio</CardTitle>
           <CardSubtitle>Tudo pronto para colar no Seller Centre, na ordem em que ele pede.</CardSubtitle>
         </div>
         <span className="flex items-center gap-1 text-xs text-text-secondary">

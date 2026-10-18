@@ -68,14 +68,15 @@ export function PainelShopee({ rascunho, onMudou }: { rascunho: RascunhoAberto; 
     descricao: rascunho.descricao ?? "",
     preco: rascunho.produto.precoVenda,
     pesoG: rascunho.produto.pesoG,
-    dimensoesCm: { altura: null, largura: null, comprimento: null },
+    // A tela só sabe SE as três medidas existem; o servidor confere os valores de novo.
+    dimensoesCm: rascunho.produto.temMedidas ? { altura: 1, largura: 1, comprimento: 1 } : { altura: null, largura: null, comprimento: null },
     categoryId: escolhidas?.categoryId ?? null,
     atributos: escolhidas?.atributos ?? [],
     obrigatorios: escolhidas?.obrigatorios ?? [],
     canais: escolhidas?.canais ?? [],
     imagens: capas.map((c) => c.finalPath as string),
     sku: null,
-    estoque: 0,
+    estoque: rascunho.produto.estoque,
   });
 
   function testar() {
@@ -158,7 +159,7 @@ export function PainelShopee({ rascunho, onMudou }: { rascunho: RascunhoAberto; 
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>6. Criar na Shopee (não listado)</CardTitle>
+          <CardTitle>Criar na Shopee (não listado)</CardTitle>
           <CardSubtitle>O anúncio vai para a sua loja escondido dos compradores. Você revisa no Seller Centre e publica quando quiser.</CardSubtitle>
         </div>
       </CardHeader>
@@ -177,14 +178,14 @@ export function PainelShopee({ rascunho, onMudou }: { rascunho: RascunhoAberto; 
             )}
           </p>
           <Button variant="ghost" onClick={() => setConfirmando("apagar")} disabled={pending}>
-            <Trash2 size={14} /> Apagar da Shopee
+            <Trash2 size={14} aria-hidden /> Apagar da Shopee
           </Button>
         </div>
       ) : (
         <>
           <div className="mb-4">
             <Button variant="secondary" onClick={testar} loading={pending && !sonda} disabled={pending}>
-              <PlugZap size={14} /> Testar conexão (só leitura)
+              <PlugZap size={14} aria-hidden /> Testar conexão (só leitura)
             </Button>
             <p className="text-xs text-text-tertiary mt-1.5">Pede à Shopee as categorias e os canais de frete da sua loja. Não cria nem altera nada. Se negar, o app da Shopee ainda não tem permissão de produto.</p>
           </div>
@@ -287,7 +288,7 @@ export function PainelShopee({ rascunho, onMudou }: { rascunho: RascunhoAberto; 
               </ul>
             )}
             <Button className="mt-3" variant="primary" onClick={() => setConfirmando("criar")} disabled={pending || pendencias.length > 0}>
-              <Send size={14} /> Criar na Shopee (não listado)
+              <Send size={14} aria-hidden /> Criar na Shopee (não listado)
             </Button>
           </div>
         </>

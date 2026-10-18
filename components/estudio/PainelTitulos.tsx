@@ -8,6 +8,7 @@ import { textoPalavrasChave } from "@/lib/copiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
 import type { TitulosDoEstudio } from "@/app/(painel)/produtos/estudio/actions";
+import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
 /**
  * Títulos: cinco variantes, cada uma com nota (sem IA), contagem de caracteres e conferência de
@@ -38,7 +39,7 @@ export function PainelTitulos({
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>1. Título</CardTitle>
+          <CardTitle>{numeroDaEtapa("titulo")}. Título</CardTitle>
           <CardSubtitle>A porta de entrada: é o que aparece na busca. Limite da plataforma: {limite} caracteres.</CardSubtitle>
         </div>
       </CardHeader>
@@ -56,7 +57,7 @@ export function PainelTitulos({
       <div className="flex flex-wrap gap-2 mb-3">
         <input className={`${inputClass} flex-1 min-w-[12rem]`} value={pedido} maxLength={300} onChange={(e) => setPedido(e.target.value)} placeholder="Pedido opcional: mais curto, destacar o kit…" aria-label="Pedido para os títulos" />
         <Button variant="secondary" onClick={() => onGerar(pedido.trim() || null)} loading={ocupado} disabled={ocupado || !iaDisponivel}>
-          <Sparkles size={14} /> {resultado ? "Gerar outros" : "Gerar 5 títulos"}
+          <Sparkles size={14} aria-hidden /> {resultado ? "Gerar outros" : "Gerar 5 títulos"}
         </Button>
       </div>
       {!iaDisponivel && <p className="text-xs text-text-tertiary mb-3">Configure uma IA em Configurações para gerar títulos. Você pode digitar o seu abaixo.</p>}

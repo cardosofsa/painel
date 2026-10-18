@@ -5,12 +5,14 @@ import { AlertTriangle, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
+import { useConfirm } from "@/components/ui/ConfirmModal";
 import { inputClass } from "@/components/ui/Modal";
 import { regrasAtivas } from "@/lib/conformidade/termos";
 import { avaliarDescricao, MINIMO_DESCRICAO } from "@/lib/ia/prompts-descricao-estudio";
+import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
 /** O texto editável. `key` no consumidor: uma geração nova (ou uma descrição salva) remonta com o texto novo. */
-function Editor({ inicial, limite, termos, ocupado, onSalvar }: { inicial: string; limite: number; termos: string[]; ocupado: boolean; onSalvar: (texto: string) => void }) {
+function Editor({ inicial, limite, termos, ocupado, onSalvar, onEditado }: { inicial: string; limite: number; termos: string[]; ocupado: boolean; onSalvar: (texto: string) => void; onEditado: (sujo: boolean) => void }) {
   const [texto, setTexto] = useState(inicial);
   const avaliacao = useMemo(() => avaliarDescricao(texto, { limite, regras: regrasAtivas([], termos) }), [texto, limite, termos]);
 
@@ -25,7 +27,12 @@ function Editor({ inicial, limite, termos, ocupado, onSalvar }: { inicial: strin
           <BotaoCopiar texto={texto} rotulo="descrição" compacto />
         </span>
       </div>
-      <textarea className={`${inputClass} h-56 py-2 resize-y`} value={texto} maxLength={5000} onChange={(e) => setTexto(e.target.value)} aria-label="Descrição do anúncio" />
+      <textarea className={`${inputClass} h-56 py-2 resize-y`} value={texto} maxLength={5000} onChange={(e) => {
+          setTexto(e.target.value);
+          onEditado(e.target.value !== inicial);
+        }}
+        aria-label="Descrição do anúncio"
+      />
       {avaliacao.curta && texto.trim() && <p className="mt-1.5 text-xs text-text-secondary">Curta demais: o mínimo é {MINIMO_DESCRICAO} caracteres.</p>}
       {avaliacao.violacoes.length > 0 && (
         <ul className="mt-2 space-y-1">
@@ -38,7 +45,7 @@ function Editor({ inicial, limite, termos, ocupado, onSalvar }: { inicial: strin
         </ul>
       )}
       <Button className="mt-3" variant="primary" onClick={() => onSalvar(texto)} disabled={ocupado || !avaliacao.utilizavel} loading={ocupado}>
-        <Check size={14} /> Salvar descrição
+        <Check size={14} aria-hidden /> Salvar descrição
       </Button>
     </div>
   );
@@ -74,12 +81,21 @@ export function PainelDescricao({
   onSalvar: (texto: string) => void;
 }) {
   const [pedido, setPedido] = useState("");
+  // O texto do editor mudou desde a geração ou o salvamento: "Gerar outra" pergunta antes de jogar fora.
+  const [sujo, setSujo] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
+
+  async function gerarOutra() {
+    if (sujo && !(await confirm({ title: "Descartar o que você editou?", message: "Gerar outra descrição substitui o texto do editor, inclusive as suas mudanças que ainda não foram salvas.", confirmLabel: "Gerar outra mesmo assim" }))) return;
+    setSujo(false);
+    onGerar(pedido.trim() || null);
+  }
 
   return (
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>3. Descrição</CardTitle>
+          <CardTitle>{numeroDaEtapa("descricao")}. Descrição</CardTitle>
           <CardSubtitle>Benefícios de uso, sem inventar medida, material nem promessa. Até {limite.toLocaleString("pt-BR")} caracteres.</CardSubtitle>
         </div>
       </CardHeader>
@@ -90,15 +106,21 @@ export function PainelDescricao({
         <>
           <div className="flex flex-wrap gap-2 mb-3">
             <input className={`${inputClass} flex-1 min-w-[12rem]`} value={pedido} maxLength={300} onChange={(e) => setPedido(e.target.value)} placeholder="Pedido opcional: mais curta, destacar o kit…" aria-label="Pedido para a descrição" />
-            <Button variant="secondary" onClick={() => onGerar(pedido.trim() || null)} loading={ocupado} disabled={ocupado || !iaDisponivel}>
-              <Sparkles size={14} /> {geradaTexto || salva ? "Gerar outra" : "Gerar descrição"}
+            <Button variant="secondary" onClick={gerarOutra} loading={ocupado} disabled={ocupado || !iaDisponivel}>
+              <Sparkles size={14} aria-hidden /> {geradaTexto || salva ? "Gerar outra" : "Gerar descrição"}
             </Button>
           </div>
           {meta && <p className="text-xs text-text-tertiary mb-2">{meta}</p>}
-          <Editor key={`${versao}-${salva ?? ""}`} inicial={geradaTexto ?? salva ?? ""} limite={limite} termos={termos} ocupado={ocupado} onSalvar={onSalvar} />
+          <Editor key={`${versao}-${salva ?? ""}`} inicial={geradaTexto ?? salva ?? ""} limite={limite} termos={termos} ocupado={ocupado} onSalvar={(t) => {
+              setSujo(false);
+              onSalvar(t);
+            }}
+            onEditado={setSujo}
+          />
           {salva && <p className="mt-2 text-xs text-text-tertiary">Descrição salva neste rascunho: {salva.length} caracteres.</p>}
         </>
       )}
+      {ConfirmDialog}
     </Card>
   );
 }

@@ -24,6 +24,8 @@ export interface EntradaEtapas {
   descricao: string | null;
   capaAprovada: boolean;
   itemCriadoNaShopee: boolean;
+  /** `status = 'publicado'` no rascunho: criado pelo Painel ou marcado "Publiquei manualmente". */
+  publicado?: boolean;
 }
 
 export interface EtapaCalculada {
@@ -51,12 +53,14 @@ export function calcularEtapas(e: EntradaEtapas): ResultadoEtapas {
     titulo: !!e.titulo?.trim(),
     capa: e.capaAprovada,
     descricao: !!e.descricao?.trim(),
-    revisar: e.itemCriadoNaShopee,
+    revisar: e.itemCriadoNaShopee || !!e.publicado,
   };
   const motivo = (id: EtapaId): string | null => {
     if (id === "loja") return null;
     if (id === "produto") return e.lojaDecidida ? null : "Escolha a loja primeiro.";
     if (!e.rascunhoAberto) return "Escolha o produto e abra o anúncio primeiro.";
+    // Capa e descrição levam o título aprovado: o servidor já recusava, a tela liberava.
+    if ((id === "capa" || id === "descricao") && !feita.titulo) return "Escolha o título primeiro.";
     if (id === "revisar" && !(feita.titulo && feita.descricao)) return "Falta escolher o título e salvar a descrição.";
     return null;
   };
@@ -66,4 +70,21 @@ export function calcularEtapas(e: EntradaEtapas): ResultadoEtapas {
   });
   const proxima = etapas.find((t) => t.liberada && !t.feita);
   return { etapas, atual: (proxima ?? etapas[etapas.length - 1]).id, feitas: etapas.filter((t) => t.feita).length };
+}
+
+/** Número da etapa como aparece no trilho (1 a 6). Os painéis usam este, nunca um número à mão. */
+export function numeroDaEtapa(id: EtapaId): number {
+  return ETAPAS.findIndex((t) => t.id === id) + 1;
+}
+
+export type StatusRascunho = "rascunho" | "pronto" | "publicado";
+
+/**
+ * Status gravado no rascunho (`anuncio_rascunhos.status`, 0099), que antes nunca mudava.
+ * "pronto" = título, descrição e capa aprovada; "publicado" não volta atrás (a pessoa marcou
+ * ou o Painel criou o item).
+ */
+export function statusDoRascunho(e: { atual: string | null | undefined; titulo: string | null; descricao: string | null; capaAprovada: boolean; publicado: boolean }): StatusRascunho {
+  if (e.publicado || e.atual === "publicado") return "publicado";
+  return e.titulo?.trim() && e.descricao?.trim() && e.capaAprovada ? "pronto" : "rascunho";
 }
