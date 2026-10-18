@@ -1,11 +1,11 @@
 "use client";
 import { CampoNumero } from "@/components/ui/CampoNumero";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
-import { numeroOuNulo } from "@/lib/format";
-import { MODOS, margemAtingida, type ModoCalculo } from "@/lib/pricing";
+import { formatBRL, numeroOuNulo } from "@/lib/format";
+import { margemAtingida, type ModoCalculo } from "@/lib/pricing";
 import {
   calcularVariacao,
   type ConfigVariacoes,
@@ -19,8 +19,11 @@ import { criarAnuncio, removerAnuncio, type VariacaoInput } from "@/app/(painel)
 import { limiteEfetivo, LIMITE_DESCRICAO_ANUNCIO } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/lib/precificacao-estado";
 import { executarComToast } from "@/lib/acao-cliente";
-import { inputClass } from "@/components/ui/Modal";
-import { Chip } from "@/components/ui/Chip";
+import { FormField, inputClass } from "@/components/ui/Modal";
+import { Combobox } from "@/components/ui/Combobox";
+import { ComoLucrar, MODOS_PRECO, OndeVende, Passo } from "@/components/precificacao/blocos";
+import { AvisoRascunho, BarraRascunho } from "@/components/precificacao/RascunhoAviso";
+import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
 
 const VARIACOES_INICIAIS: VariacaoLinha[] = [
   { id: "v1", nome: "Unidade", multiplicador: 1, custoManual: null, parametroOverride: null },
@@ -36,7 +39,12 @@ export function VariacoesView({
   confirm,
   onVerHistorico,
   empresa = null,
+  rascunhoPendente = null,
+  relatar,
 }: {
+  /** Rascunho desta aba guardado no banco (0100). */
+  rascunhoPendente?: RascunhoPendente | null;
+  relatar?: RelatarRascunho;
   empresa?: { nome: string | null; logoUrl: string | null } | null;
   produtos: ProdutoOpcao[];
   lojas: LojaOpcao[];
@@ -68,14 +76,65 @@ export function VariacoesView({
   const [exportandoAnuncios, setExportandoAnuncios] = useState(false);
   const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- override de parâmetro só faz sentido dentro do modo em que foi digitado
+  /** O valor próprio de uma variação só faz sentido no modo em que foi digitado. */
+  function trocarModo(m: ModoCalculo) {
+    if (m === modo) return;
+    setModo(m);
     setVariacoes((prev) => prev.map((v) => ({ ...v, parametroOverride: null })));
-  }, [modo]);
+  }
+
+  function escolherProduto(id: string | null) {
+    setProdutoId(id);
+    const p = produtos.find((x) => x.id === id);
+    if (!p) return;
+    // Escolher o produto traz o custo (antes só vinculava e o custo continuava o digitado).
+    if (Number(p.custo) > 0) setCustoUnitarioBase(Number(p.custo));
+    if (!nomeAnuncio.trim()) setNomeAnuncio(p.nome);
+  }
+
+  const instantaneo = { nomeAnuncio, tituloAnuncio, descricaoAnuncio, produtoId, modoTaxas, lojaId, custoUnitarioBase, taxaFixa, taxaVariavelPct, taxaAdicionalPct, impostoPct, modo, margemPct, markupPct, lucroDesejado, precoFixo, variacoes };
+  // Depois de salvar, o nome volta a vazio: sem nome não há o que guardar.
+  const temConteudo = !!nomeAnuncio.trim();
+  const aba = useRascunhoDaAba({
+    visao: "variacoes",
+    instantaneo,
+    temConteudo,
+    titulo: nomeAnuncio.trim() || "Variações",
+    produtoId,
+    pendenteInicial: rascunhoPendente,
+    relatar,
+    confirm,
+    aplicar: (d) => {
+      setNomeAnuncio(lerTexto(d.nomeAnuncio));
+      setTituloAnuncio(lerTexto(d.tituloAnuncio));
+      setDescricaoAnuncio(lerTexto(d.descricaoAnuncio));
+      const pid = lerId(d.produtoId);
+      setProdutoId(pid && produtos.some((p) => p.id === pid) ? pid : null);
+      const lid = lerId(d.lojaId);
+      const lojaValida = lid && lojas.some((l) => l.id === lid) ? lid : null;
+      setLojaId(lojaValida);
+      setModoTaxas(d.modoTaxas === "loja" && lojaValida ? "loja" : "manual");
+      setCustoUnitarioBase(lerNumero(d.custoUnitarioBase, 10));
+      setTaxaFixa(lerNumero(d.taxaFixa, 4));
+      setTaxaVariavelPct(lerNumero(d.taxaVariavelPct, 20));
+      setTaxaAdicionalPct(lerNumero(d.taxaAdicionalPct, 0));
+      setImpostoPct(lerNumero(d.impostoPct, aliquotaDasPadrao));
+      setModo(MODOS_PRECO.some((m) => m.id === d.modo) ? (d.modo as ModoCalculo) : "margem");
+      setMargemPct(lerNumero(d.margemPct, 28));
+      setMarkupPct(lerNumero(d.markupPct, 50));
+      setLucroDesejado(lerNumero(d.lucroDesejado, 30));
+      setPrecoFixo(lerNumero(d.precoFixo, 99.9));
+      const lidas = lerLista<VariacaoLinha>(d.variacoes, (x) =>
+        typeof x.id === "string" && typeof x.nome === "string"
+          ? { id: x.id, nome: x.nome, multiplicador: lerNumero(x.multiplicador, 1), custoManual: typeof x.custoManual === "number" ? x.custoManual : null, parametroOverride: typeof x.parametroOverride === "number" ? x.parametroOverride : null }
+          : null,
+      );
+      setVariacoes(lidas.length ? lidas : VARIACOES_INICIAIS);
+    },
+  });
 
   const lojaSelecionada = useMemo(() => lojas.find((l) => l.id === lojaId) ?? null, [lojas, lojaId]);
   const limiteDescricao = limiteEfetivo("descricao", lojaSelecionada?.limiteDescricao ?? LIMITE_DESCRICAO_ANUNCIO);
-  const canaisAgrupados = useMemo(() => Array.from(new Set(lojas.map((l) => l.canalNome))), [lojas]);
   const parametroPadrao =
     modo === "margem" ? margemPct : modo === "markup" ? markupPct : modo === "lucro" ? lucroDesejado : precoFixo;
 
@@ -179,6 +238,7 @@ export function VariacoesView({
         { sucesso: "Anúncio com variações salvo", erro: "Erro ao salvar anúncio" },
       );
       if (r.ok) {
+        await aba.rasc.descartarAposSalvar();
         setNomeAnuncio("");
         setTituloAnuncio("");
         setDescricaoAnuncio("");
@@ -196,153 +256,82 @@ export function VariacoesView({
 
   return (
     <div className="space-y-5">
-      <Card>
-        <h3 className="text-sm font-medium text-text-primary mb-3">Produto com Variações</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="text-xs text-text-secondary mb-1.5 block">
-              Nome do Anúncio <span className="text-negative">*</span>
-            </label>
-            <input
-              value={nomeAnuncio}
-              onChange={(e) => setNomeAnuncio(e.target.value)}
-              placeholder="Ex: Óleo para Barba"
-              className={inputClass}
-            />
+      {aba.pendente && <AvisoRascunho pendente={aba.pendente} onContinuar={aba.continuar} onDescartar={() => void aba.descartar()} />}
+      <Card padding="nenhum">
+        <Passo n={1} titulo="Anúncio e produto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 [&>*]:mb-0">
+            <FormField label="Nome do anúncio *">
+              <input value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} placeholder="Ex.: Óleo para Barba" className={inputClass} />
+            </FormField>
+            <FormField label="Produto (opcional)" dica="Sem cadastro? Deixe vazio e informe o custo unitário base.">
+              <Combobox
+                key={produtoId ?? "nenhum"}
+                itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
+                valor={produtoId}
+                onChange={escolherProduto}
+                placeholder="Buscar produto pelo nome ou SKU…"
+              />
+            </FormField>
+            <FormField label="Custo unitário base (R$) *">
+              <CampoNumero value={custoUnitarioBase} onChange={setCustoUnitarioBase} min={0} casas={2} />
+            </FormField>
+            <FormField label="Título do anúncio (opcional)">
+              <input value={tituloAnuncio} onChange={(e) => setTituloAnuncio(e.target.value)} className={inputClass} />
+            </FormField>
           </div>
-          <div>
-            <label className="text-xs text-text-secondary mb-1.5 block">Título do Anúncio (opcional)</label>
-            <input value={tituloAnuncio} onChange={(e) => setTituloAnuncio(e.target.value)} className={inputClass} />
-          </div>
-        </div>
-        <div className="mb-4">
-          <label className="text-xs text-text-secondary mb-1.5 block">Descrição do Anúncio (opcional)</label>
-          <textarea
-            value={descricaoAnuncio}
-            onChange={(e) => setDescricaoAnuncio(e.target.value)}
-            className={`${inputClass} h-24 py-2 resize-y`}
-            maxLength={limiteDescricao}
-            placeholder="Vai junto para os produtos criados a partir destas variações"
+          <details className="mt-3 group">
+            <summary className="cursor-pointer text-xs font-medium text-text-secondary list-none">Descrição, imposto e taxa adicional ▾</summary>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 [&>*]:mb-0">
+              <div className="sm:col-span-2">
+                <FormField label="Descrição do anúncio (opcional)" dica="Vai junto para os produtos criados a partir destas variações.">
+                  <textarea value={descricaoAnuncio} onChange={(e) => setDescricaoAnuncio(e.target.value)} className={`${inputClass} h-24 py-2 resize-y`} maxLength={limiteDescricao} />
+                </FormField>
+              </div>
+              <FormField label="Imposto / DAS (%)">
+                <CampoNumero value={impostoPct} onChange={setImpostoPct} min={0} max={50} />
+              </FormField>
+              <FormField label="Taxa adicional (%)">
+                <CampoNumero value={taxaAdicionalPct} onChange={setTaxaAdicionalPct} min={0} max={50} />
+              </FormField>
+            </div>
+          </details>
+        </Passo>
+
+        <Passo n={2} titulo="Onde vende" resumo={modoTaxas === "loja" && lojaSelecionada ? `${lojaSelecionada.canalNome} · ${lojaSelecionada.nome}` : "taxas à mão"}>
+          <OndeVende
+            lojas={lojas}
+            lojaId={modoTaxas === "loja" ? lojaId : null}
+            onEscolher={(id) => {
+              setModoTaxas(id ? "loja" : "manual");
+              if (id) setLojaId(id);
+            }}
           />
-        </div>
-        <div className="mb-4">
-          <label className="text-xs text-text-secondary mb-1.5 block">Vincular Produto (opcional)</label>
-          <p className="text-[11px] text-text-tertiary mb-1.5">Produto ainda não cadastrado? Deixe em &quot;Nenhum&quot; e informe o custo unitário base abaixo: dá para precificar e salvar do mesmo jeito.</p>
-          <select value={produtoId ?? ""} onChange={(e) => setProdutoId(e.target.value || null)} className={inputClass}>
-            <option value="">Nenhum</option>
-            {produtos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.sku} — {p.nome}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="mb-4">
-          <label className="text-xs text-text-secondary mb-1.5 block">Como calcular o preço (padrão pra variações sem override)</label>
-          <div className="flex gap-2 flex-wrap">
-            {MODOS.map((m) => (
-              <Chip key={m.id} onClick={() => setModo(m.id)} ativo={modo === m.id}>
-                {m.label}
-              </Chip>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-          <div>
-            <label className="text-xs text-text-secondary mb-1.5 block">
-              Custo Unitário Base (R$) <span className="text-negative">*</span>
-            </label>
-            <CampoNumero
-              value={custoUnitarioBase}
-              onChange={(n) => setCustoUnitarioBase(n)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-text-secondary mb-1.5 block">
-              {modo === "margem"
-                ? "Margem Líquida Alvo (%)"
-                : modo === "markup"
-                  ? "Markup sobre Custo (%)"
-                  : modo === "lucro"
-                    ? "Lucro Líquido Desejado (R$)"
-                    : "Preço de Venda (R$)"}
-            </label>
-            <CampoNumero
-              value={parametroPadrao}
-              onChange={(valor) => {
-                if (modo === "margem") setMargemPct(valor);
-                else if (modo === "markup") setMarkupPct(valor);
-                else if (modo === "lucro") setLucroDesejado(valor);
-                else setPrecoFixo(valor);
-              }}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-text-secondary mb-1.5 block">Taxa Adicional (%)</label>
-            <CampoNumero
-              value={taxaAdicionalPct}
-              onChange={(n) => setTaxaAdicionalPct(n)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-text-secondary mb-1.5 block">Imposto / DAS (%)</label>
-            <CampoNumero
-              value={impostoPct}
-              onChange={(n) => setImpostoPct(n)}
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-2 mb-3 flex-wrap">
-          <Chip onClick={() => setModoTaxas("manual")} ativo={modoTaxas === "manual"}>
-            Manual
-          </Chip>
-          <Chip onClick={() => setModoTaxas("loja")} ativo={modoTaxas === "loja"}>
-            Selecionar Loja
-          </Chip>
-        </div>
-
-        {modoTaxas === "manual" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-text-secondary mb-1.5 block">Taxa Fixa (R$)</label>
-              <CampoNumero
-                value={taxaFixa}
-                onChange={(n) => setTaxaFixa(n)}
-                className={inputClass}
-              />
+          {modoTaxas === "manual" && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 [&>*]:mb-0">
+              <FormField label="Comissão (%)">
+                <CampoNumero value={taxaVariavelPct} onChange={setTaxaVariavelPct} min={0} max={99} />
+              </FormField>
+              <FormField label="Tarifa fixa (R$)">
+                <CampoNumero value={taxaFixa} onChange={setTaxaFixa} min={0} casas={2} />
+              </FormField>
             </div>
-            <div>
-              <label className="text-xs text-text-secondary mb-1.5 block">Taxa Variável (%)</label>
-              <CampoNumero
-                value={taxaVariavelPct}
-                onChange={(n) => setTaxaVariavelPct(n)}
-                className={inputClass}
-              />
-            </div>
-          </div>
-        ) : (
-          <select value={lojaId ?? ""} onChange={(e) => setLojaId(e.target.value || null)} className={inputClass}>
-            <option value="">Selecione…</option>
-            {canaisAgrupados.map((canalNome) => (
-              <optgroup label={canalNome} key={canalNome}>
-                {lojas
-                  .filter((l) => l.canalNome === canalNome)
-                  .map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.nome}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
-          </select>
-        )}
+          )}
+        </Passo>
+
+        <Passo n={3} titulo="Como quer lucrar" resumo="padrão das variações sem valor próprio" ultimo>
+          <ComoLucrar
+            modos={[...MODOS_PRECO]}
+            modo={modo}
+            onModo={trocarModo}
+            valor={parametroPadrao}
+            onValor={(valor) => {
+              if (modo === "margem") setMargemPct(valor);
+              else if (modo === "markup") setMarkupPct(valor);
+              else if (modo === "lucro") setLucroDesejado(valor);
+              else setPrecoFixo(valor);
+            }}
+          />
+        </Passo>
       </Card>
 
       <TabelaVariacoes
@@ -363,6 +352,8 @@ export function VariacoesView({
         salvando={pending}
         podeSalvar={podeSalvar}
       />
+
+      <BarraRascunho rasc={aba.rasc} temConteudo={temConteudo} />
 
       <VariacoesSalvas
         anuncios={anuncios}

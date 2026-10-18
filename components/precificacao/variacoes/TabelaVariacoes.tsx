@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { Button } from "@/components/ui/Button";
+import { ChevronDown, X } from "lucide-react";
+import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
@@ -132,22 +133,14 @@ export function TabelaVariacoes({
                     {formatarMargemPct(resultado.lucroLiquido, resultado.precoVenda)}
                   </Td>
                   <Td align="right">
-                    <button
-                      onClick={() => setExpandida(aberta ? null : v.id)}
-                      className="text-text-tertiary hover:text-text-primary"
-                      aria-label={aberta ? "Recolher detalhes" : "Ver detalhes"}
-                    >
-                      {aberta ? "▲" : "▾"}
-                    </button>
+                    <IconButton onClick={() => setExpandida(aberta ? null : v.id)} aria-label={aberta ? `Recolher detalhes de ${v.nome}` : `Ver detalhes de ${v.nome}`} aria-expanded={aberta}>
+                      <ChevronDown size={14} className={`transition-transform duration-[--duracao-media] ${aberta ? "rotate-180" : ""}`} />
+                    </IconButton>
                   </Td>
                   <Td align="right">
-                    <button
-                      onClick={() => onRemover(v.id)}
-                      className="text-text-tertiary hover:text-negative px-1"
-                      aria-label="Remover variação"
-                    >
-                      ×
-                    </button>
+                    <IconButton onClick={() => onRemover(v.id)} aria-label={`Remover a variação ${v.nome}`}>
+                      <X size={14} />
+                    </IconButton>
                   </Td>
                 </Tr>
                 {aberta && (
@@ -180,7 +173,7 @@ export function TabelaVariacoes({
                             />
                             <div className="flex justify-between font-medium pt-1.5 border-t border-border">
                               <span className="text-text-primary">Lucro líquido</span>
-                              <span className={`font-mono ${resultado.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
+                              <span className={`font-mono ${classeValor(resultado.lucroLiquido)}`}>
                                 {formatBRL(resultado.lucroLiquido)} ({(resultado.margemEfetivaPct * 100).toFixed(1)}%)
                               </span>
                             </div>
@@ -229,7 +222,7 @@ export function TabelaVariacoes({
       </Table>
       <div className="p-4 border-t border-border">
         <Button variant="primary" onClick={onSalvar} loading={salvando} disabled={!podeSalvar}>
-          Salvar Anúncio
+          Salvar variações
         </Button>
       </div>
     </Card>

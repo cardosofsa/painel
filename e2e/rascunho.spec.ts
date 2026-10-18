@@ -23,13 +23,13 @@ test("rascunho da Precificação sobrevive a sair pelo menu", async ({ page }) =
   await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
 
   await page.goto("/precificacao");
-  await page.getByPlaceholder("Insira aqui Nome do Produto").fill(nome);
+  await page.getByPlaceholder("Ex.: Kit Chá").fill(nome);
   await expect(page.getByText("Alterações ainda não salvas")).toBeVisible();
   // O salvamento automático roda a cada 5 s: ou grava, ou descobre que falta a migração.
   await expect(page.getByText(/Rascunho salvo há|falta a migração 0100/)).toBeVisible({ timeout: 15_000 });
   test.skip((await page.getByText("falta a migração 0100").count()) > 0, "A migração 0100 ainda não está no banco.");
   // Muda de novo: o modal só aparece com alteração não salva.
-  await page.getByPlaceholder("Insira aqui Nome do Produto").fill(`${nome}!`);
+  await page.getByPlaceholder("Ex.: Kit Chá").fill(`${nome}!`);
 
   await page.getByRole("link", { name: "Produtos", exact: true }).first().click();
   const modal = page.getByRole("dialog", { name: "Você tem alterações não salvas" });
@@ -41,7 +41,7 @@ test("rascunho da Precificação sobrevive a sair pelo menu", async ({ page }) =
   await page.goto("/precificacao");
   await expect(page.getByText(`Continuar rascunho: ${nome}!`)).toBeVisible();
   await page.getByRole("button", { name: "Continuar", exact: true }).click();
-  await expect(page.getByPlaceholder("Insira aqui Nome do Produto")).toHaveValue(`${nome}!`);
+  await expect(page.getByPlaceholder("Ex.: Kit Chá")).toHaveValue(`${nome}!`);
 
   // Limpeza: descarta o rascunho (volta a aparecer no aviso ao recarregar).
   await page.reload();

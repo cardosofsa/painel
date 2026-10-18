@@ -92,7 +92,7 @@ export function PainelEstrategiaVixe({ estado, iaDisponivel }: { estado: EstadoP
                 }}
                 onSalvar={() => undefined}
               />
-              {!estrategiaVelha && <p className="text-[11px] text-text-tertiary mt-2">Ao clicar em Salvar Anúncio, esta estratégia vai junto para o histórico.</p>}
+              {!estrategiaVelha && <p className="text-xs text-text-tertiary mt-2">Ao salvar a precificação, esta estratégia vai junto para o histórico.</p>}
             </div>
           )}
         </>

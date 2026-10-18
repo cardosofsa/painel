@@ -7,7 +7,7 @@ import { formatBRL } from "@/lib/format";
 import type { EstadoPrecificacao } from "@/lib/precificacao-estado";
 
 /** Preços de anúncios concorrentes, usados na Estratégia Sugerida. Extraído de
- * `PrecificacaoClient.tsx` — ver comentário em `PainelEntradas.tsx`. */
+ * `PrecificacaoClient.tsx`; recebe o `estado` inteiro de `usePrecificacao()`. */
 export function PainelConcorrentes({ estado }: { estado: EstadoPrecificacao }) {
   const {
     produtoId,

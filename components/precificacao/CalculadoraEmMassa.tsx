@@ -2,8 +2,14 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Clock, Download } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { ChevronDown, Clock, Download, History } from "lucide-react";
+import { Button, IconButton } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { CampoNumero } from "@/components/ui/CampoNumero";
+import { FormField } from "@/components/ui/Modal";
+import { OndeVende, Passo } from "@/components/precificacao/blocos";
+import { AvisoRascunho, BarraRascunho } from "@/components/precificacao/RascunhoAviso";
+import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
 import { Card, CardEyebrow, HeroMetric } from "@/components/ui/Card";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
 import { useConfirm } from "@/components/ui/ConfirmModal";
@@ -36,7 +42,12 @@ export function CalculadoraEmMassa({
   onVerHistorico,
   empresa = null,
   aliquotaDasPadrao,
+  rascunhoPendente = null,
+  relatar,
 }: {
+  /** Rascunho desta aba guardado no banco (0100). */
+  rascunhoPendente?: RascunhoPendente | null;
+  relatar?: RelatarRascunho;
   /** Alíquota do regime (perfil_negocio.aliquota_das): antes toda linha nova vinha com 6% fixo. */
   aliquotaDasPadrao: number;
   empresa?: { nome: string | null; logoUrl: string | null } | null;
@@ -48,6 +59,9 @@ export function CalculadoraEmMassa({
 }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
+  // Loja e margem de "Para todas as linhas": também valem para cada linha nova.
+  const [lojaPadrao, setLojaPadrao] = useState<string | null>(null);
+  const [margemPadrao, setMargemPadrao] = useState(25);
   const [linhas, setLinhas] = useState<LinhaEmMassa[]>([linhaVazia(aliquotaDasPadrao)]);
   const [visualizacao, setVisualizacao] = useState<"tabela" | "resultado">("tabela");
   const [filtroResultado, setFiltroResultado] = useState<"todos" | "subir" | "ok">("todos");
@@ -56,6 +70,65 @@ export function CalculadoraEmMassa({
   const [exportando, setExportando] = useState(false);
   const salvosRecentes = useMemo(() => historico.filter((h) => h.origem === "em_massa").slice(0, 5), [historico]);
   const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
+
+  /** A linha passa a usar a loja (a comissão fixa dela entra nos campos; faixa é automática). */
+  function comLoja(l: LinhaEmMassa, lojaId: string | null): LinhaEmMassa {
+    const loja = lojas.find((lj) => lj.id === lojaId);
+    const comissaoDaLoja = loja && !(loja.tipoTaxa === "faixas" && loja.faixas.length > 0);
+    return { ...l, lojaId, comissaoPct: comissaoDaLoja ? loja.comissaoPct : l.comissaoPct, taxaFixa: comissaoDaLoja ? loja.taxaFixa : l.taxaFixa };
+  }
+
+  /** Linha nova já com a loja e a margem escolhidas para todas. */
+  function novaLinha(): LinhaEmMassa {
+    return comLoja({ ...linhaVazia(aliquotaDasPadrao), margemPct: margemPadrao }, lojaPadrao);
+  }
+
+  function lojaParaTodas(id: string | null) {
+    setLojaPadrao(id);
+    setLinhas((prev) => prev.map((l) => comLoja(l, id)));
+  }
+
+  function margemParaTodas(n: number) {
+    setMargemPadrao(n);
+    setLinhas((prev) => prev.map((l) => ({ ...l, margemPct: n })));
+  }
+
+  const temConteudo = linhas.some((l) => l.sku.trim() !== "" || l.nome.trim() !== "");
+  const aba = useRascunhoDaAba({
+    visao: "massa",
+    instantaneo: { linhas, lojaPadrao, margemPadrao },
+    temConteudo,
+    titulo: `Em massa · ${linhas.filter((l) => l.sku.trim() || l.nome.trim()).length} produto(s)`,
+    pendenteInicial: rascunhoPendente,
+    relatar,
+    confirm,
+    aplicar: (d) => {
+      const lid = lerId(d.lojaPadrao);
+      setLojaPadrao(lid && lojas.some((l) => l.id === lid) ? lid : null);
+      setMargemPadrao(lerNumero(d.margemPadrao, 25));
+      const lidas = lerLista<LinhaEmMassa>(d.linhas, (x) => {
+        const base = linhaVazia(aliquotaDasPadrao);
+        const pid = lerId(x.produtoId);
+        const lj = lerId(x.lojaId);
+        return {
+          // Id novo: o contador de linhas recomeça a cada carga da página.
+          ...base,
+          produtoId: pid && produtos.some((p) => p.id === pid) ? pid : null,
+          sku: lerTexto(x.sku),
+          nome: lerTexto(x.nome),
+          custo: lerNumero(x.custo, 0),
+          lojaId: lj && lojas.some((l) => l.id === lj) ? lj : null,
+          comissaoPct: lerNumero(x.comissaoPct, base.comissaoPct),
+          taxaFixa: lerNumero(x.taxaFixa, base.taxaFixa),
+          impostoPct: lerNumero(x.impostoPct, base.impostoPct),
+          margemPct: lerNumero(x.margemPct, base.margemPct),
+          precoAtual: lerNumero(x.precoAtual, 0),
+        };
+      }).slice(0, MAX_LINHAS_MASSA);
+      setLinhas(lidas.length ? lidas : [linhaVazia(aliquotaDasPadrao)]);
+      setVisualizacao("tabela");
+    },
+  });
 
   function sugestoesPorNome(nome: string) {
     const q = nome.trim().toLowerCase();
@@ -89,16 +162,7 @@ export function CalculadoraEmMassa({
         if (campo === "nome") {
           return { ...l, nome: valor, produtoId: null };
         }
-        if (campo === "lojaId") {
-          const loja = lojas.find((lj) => lj.id === valor);
-          const comissaoDaLoja = loja && !(loja.tipoTaxa === "faixas" && loja.faixas.length > 0);
-          return {
-            ...l,
-            lojaId: valor || null,
-            comissaoPct: comissaoDaLoja ? loja.comissaoPct : l.comissaoPct,
-            taxaFixa: comissaoDaLoja ? loja.taxaFixa : l.taxaFixa,
-          };
-        }
+        if (campo === "lojaId") return comLoja(l, valor || null);
         return { ...l, [campo]: numeroDoCampo(valor) };
       }),
     );
@@ -109,11 +173,11 @@ export function CalculadoraEmMassa({
       toast.error(`No máximo ${MAX_LINHAS_MASSA} linhas por vez.`);
       return;
     }
-    setLinhas((prev) => [...prev, linhaVazia(aliquotaDasPadrao)]);
+    setLinhas((prev) => [...prev, novaLinha()]);
   }
 
   function removerLinha(id: string) {
-    setLinhas((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : [linhaVazia(aliquotaDasPadrao)]));
+    setLinhas((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : [novaLinha()]));
   }
 
   async function limparTabela() {
@@ -128,7 +192,7 @@ export function CalculadoraEmMassa({
       });
       if (!ok) return;
     }
-    setLinhas([linhaVazia(aliquotaDasPadrao)]);
+    setLinhas([novaLinha()]);
   }
 
   const resultados = useMemo(() => calcularResultadosEmMassa(linhas, lojas), [linhas, lojas]);
@@ -188,7 +252,9 @@ export function CalculadoraEmMassa({
         // Sem `sucesso`: a contagem só existe depois da resposta.
         { erro: "Erro ao salvar as precificações" },
       );
-      if (salvas.ok) toast.success(`${salvas.dado} precificação(ões) salva(s) no histórico`);
+      if (!salvas.ok) return;
+      toast.success(`${salvas.dado} precificação(ões) salva(s) no histórico`);
+      await aba.rasc.descartarAposSalvar();
     });
   }
 
@@ -266,13 +332,9 @@ export function CalculadoraEmMassa({
                         {formatBRL(r.resultado.lucroLiquido)}
                       </Td>
                       <Td align="right">
-                        <button
-                          onClick={() => setLinhaExpandidaId(expandida ? null : r.linha.id)}
-                          className="text-text-tertiary hover:text-text-primary"
-                          aria-label={expandida ? "Recolher detalhes" : "Ver detalhes"}
-                        >
-                          {expandida ? "▲" : "▾"}
-                        </button>
+                        <IconButton onClick={() => setLinhaExpandidaId(expandida ? null : r.linha.id)} aria-label={expandida ? "Recolher detalhes" : "Ver detalhes"} aria-expanded={expandida}>
+                          <ChevronDown size={14} className={`transition-transform duration-[--duracao-media] ${expandida ? "rotate-180" : ""}`} />
+                        </IconButton>
                       </Td>
                     </Tr>
                     {expandida && (
@@ -291,11 +353,11 @@ export function CalculadoraEmMassa({
                 );
               })}
               {resultadosFiltrados.length === 0 && (
-                <Tr>
-                  <Td align="center" className="text-text-tertiary text-center py-8">
+                <tr>
+                  <td colSpan={8} className="text-text-tertiary text-center py-8 text-sm">
                     Nada nessa categoria.
-                  </Td>
-                </Tr>
+                  </td>
+                </tr>
               )}
             </tbody>
           </Table>
@@ -319,6 +381,7 @@ export function CalculadoraEmMassa({
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-text-primary">Precificações Salvas</h2>
             <button
+              type="button"
               onClick={onVerHistorico}
               className="text-xs text-accent hover:underline flex items-center gap-1"
             >
@@ -336,9 +399,7 @@ export function CalculadoraEmMassa({
                 <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
               </div>
             ))}
-            {salvosRecentes.length === 0 && (
-              <p className="text-sm text-text-tertiary text-center py-4">Nenhuma precificação salva ainda.</p>
-            )}
+            {salvosRecentes.length === 0 && <EmptyState icon={History} title="Nenhuma precificação em massa salva ainda" description="Calcule a tabela e use “Salvar no histórico”." />}
           </div>
         </Card>
 
@@ -365,9 +426,23 @@ export function CalculadoraEmMassa({
   }
 
   return (
+    <div className="space-y-5">
+    {aba.pendente && <AvisoRascunho pendente={aba.pendente} onContinuar={aba.continuar} onDescartar={() => void aba.descartar()} />}
+    <Card padding="nenhum">
+      <Passo n={1} titulo="Onde vende" resumo="vale para todas as linhas">
+        <OndeVende lojas={lojas} lojaId={lojaPadrao} onEscolher={lojaParaTodas} semLoja={{ titulo: "Taxas à mão", sub: "Comissão e tarifa por linha" }} />
+      </Passo>
+      <Passo n={2} titulo="Como quer lucrar" resumo="vale para todas as linhas" ultimo>
+        <div className="max-w-48">
+          <FormField label="Margem líquida (%)" dica="Cada linha ainda pode ter a sua, na tabela.">
+            <CampoNumero value={margemPadrao} onChange={margemParaTodas} min={0} max={95} />
+          </FormField>
+        </div>
+      </Passo>
+    </Card>
     <Card>
       <div className="mb-4">
-        <h3 className="font-semibold text-text-primary">Adicione produtos para precificar</h3>
+        <h3 className="font-semibold text-text-primary">Produtos para precificar</h3>
       </div>
 
       <TabelaEntradaMassa
@@ -383,10 +458,10 @@ export function CalculadoraEmMassa({
 
       <div className="flex items-center justify-between mt-3">
         <div className="flex gap-4">
-          <button onClick={adicionarLinha} className="text-sm text-accent hover:underline">
+          <button type="button" onClick={adicionarLinha} className="text-sm text-accent hover:underline">
             + Adicionar linha
           </button>
-          <button onClick={limparTabela} className="text-sm text-text-tertiary hover:text-negative">
+          <button type="button" onClick={limparTabela} className="text-sm text-text-tertiary hover:text-negative">
             Limpar tabela
           </button>
         </div>
@@ -396,9 +471,13 @@ export function CalculadoraEmMassa({
       </div>
 
       <Button variant="primary" className="w-full mt-4" onClick={calcularTodos}>
-        Calcular Todos
+        Calcular todos
       </Button>
+      <div className="mt-3">
+        <BarraRascunho rasc={aba.rasc} temConteudo={temConteudo} />
+      </div>
       {ConfirmDialog}
     </Card>
+    </div>
   );
 }

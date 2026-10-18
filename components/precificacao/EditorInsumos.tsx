@@ -76,7 +76,7 @@ export function EditorInsumos({
             placeholder={temTipo ? "Buscar insumo ou embalagem cadastrado…" : "Buscar produto cadastrado para usar como insumo…"}
           />
           {/* Regra do dono: precificar NÃO baixa estoque. Só copia nome e custo. */}
-          <p className="text-[11px] text-text-tertiary mt-1">Só copia nome e custo para a conta: não mexe no estoque.</p>
+          <p className="text-xs text-text-tertiary mt-1">Só copia nome e custo para a conta: não mexe no estoque.</p>
         </div>
       )}
       <Table>
@@ -96,7 +96,8 @@ export function EditorInsumos({
                 <input
                   value={c.nome}
                   onChange={(e) => atualizarComponente(c.id, "nome", e.target.value)}
-                  className="w-full bg-transparent text-text-primary outline-none"
+                  className="w-full bg-transparent text-text-primary rounded-sm"
+                  aria-label="Nome do insumo"
                 />
               </Td>
               <Td align="right">

@@ -4,7 +4,8 @@ import { CampoNumero } from "@/components/ui/CampoNumero";
 import { Megaphone } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
-import { formatBRL } from "@/lib/format";
+import { classeValor, formatBRL } from "@/lib/format";
+import { useId } from "react";
 import type { EstadoPrecificacao } from "@/lib/precificacao-estado";
 
 const roas = (n: number | null) => (n == null ? "—" : n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
@@ -15,6 +16,7 @@ const pct = (f: number | null) => (f == null ? "—" : `${(f * 100).toLocaleStri
  * com o investimento informado. Não muda o preço calculado: mostra o efeito do anúncio sobre ele.
  */
 export function PainelAnuncio({ estado }: { estado: EstadoPrecificacao }) {
+  const id = useId();
   const { analiseAnuncio: a, anuncioTipo, setAnuncioTipo, anuncioValor, setAnuncioValor, margemAlvoAnuncio, setMargemAlvoAnuncio } = estado;
 
   return (
@@ -43,8 +45,9 @@ export function PainelAnuncio({ estado }: { estado: EstadoPrecificacao }) {
 
           <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
             <div>
-              <label className="text-xs text-text-secondary mb-1.5 block">Investimento por venda</label>
+              <label htmlFor={`${id}-valor`} className="text-xs text-text-secondary mb-1.5 block">Investimento por venda</label>
               <input
+                id={`${id}-valor`}
                 type="number"
                 min="0"
                 step="0.1"
@@ -76,8 +79,9 @@ export function PainelAnuncio({ estado }: { estado: EstadoPrecificacao }) {
             </div>
           </div>
           <div className="mt-2">
-            <label className="text-xs text-text-secondary mb-1.5 block">Margem que quer manter depois do anúncio (%)</label>
+            <label htmlFor={`${id}-margem`} className="text-xs text-text-secondary mb-1.5 block">Margem que quer manter depois do anúncio (%)</label>
             <CampoNumero
+              id={`${id}-margem`}
               min={0}
               max={90}
               value={margemAlvoAnuncio}
@@ -93,7 +97,7 @@ export function PainelAnuncio({ estado }: { estado: EstadoPrecificacao }) {
               <Linha
                 rotulo="Lucro depois do anúncio"
                 valor={`${formatBRL(a.lucroDepois)} (${pct(a.margemDepoisPct)})`}
-                classe={a.lucroDepois >= 0 ? "text-positive" : "text-negative"}
+                classe={classeValor(a.lucroDepois)}
                 forte
               />
               {a.lucroDepois < 0 && <p className="text-xs text-negative">Com esse investimento cada venda dá prejuízo. Aumente o preço ou reduza o anúncio.</p>}
@@ -108,9 +112,9 @@ export function PainelAnuncio({ estado }: { estado: EstadoPrecificacao }) {
 function Metrica({ rotulo, valor, dica, tom }: { rotulo: string; valor: string; dica: string; tom?: "negativo" }) {
   return (
     <div className="rounded-md border border-border bg-surface-2 p-2.5">
-      <div className="text-[11px] text-text-tertiary">{rotulo}</div>
+      <div className="text-xs text-text-tertiary">{rotulo}</div>
       <div className={`font-mono text-lg font-semibold ${tom === "negativo" ? "text-negative" : "text-text-primary"}`}>{valor}</div>
-      <div className="text-[11px] text-text-tertiary">{dica}</div>
+      <div className="text-xs text-text-tertiary">{dica}</div>
     </div>
   );
 }

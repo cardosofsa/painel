@@ -101,7 +101,7 @@ export function SimuladorPromocao({ historico, lojas, produtos }: { historico: P
           Preço {formatBRL(entrada.preco)} · custo de hoje {formatBRL(custo)}
           {faixas.length ? " · comissão por faixa de preço" : ""}
         </p>
-        <div className="grid grid-cols-2 gap-x-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
           <FormField label="Desconto (%)">
             <input className={inputClass} inputMode="decimal" value={desconto} onChange={(e) => setDesconto(e.target.value)} />
           </FormField>

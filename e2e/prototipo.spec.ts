@@ -30,7 +30,7 @@ test("protótipo: Individual nova, Ajuste de Preço e Revisar", async ({ page })
   await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
 
   // Individual nova
-  await page.goto("/precificacao?layout=novo");
+  await page.goto("/precificacao");
   const busca = page.getByPlaceholder("Buscar produto pelo nome ou SKU…");
   await busca.click();
   await busca.fill("a");

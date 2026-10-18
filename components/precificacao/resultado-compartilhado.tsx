@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { formatBRL, numeroOuNulo } from "@/lib/format";
+import { classeValor, formatBRL, numeroOuNulo } from "@/lib/format";
 import { resultadoNoPreco } from "@/lib/raio-x";
 import { useCapturaImagem } from "@/components/ui/PreviaImagem";
 import { CartaoPrecificacao, type EmpresaCartao } from "@/components/precificacao/CartaoPrecificacao";
@@ -233,7 +233,7 @@ export function DetalhamentoPrecificacao({
           {componentes && componentes.length > 0 && (
             <div className="pl-3 space-y-0.5">
               {componentes.map((c, i) => (
-                <div key={i} className="flex justify-between text-[11px] text-text-tertiary">
+                <div key={i} className="flex justify-between text-xs text-text-tertiary">
                   <span>
                     {c.nome}
                     {c.quantidade > 1 ? ` × ${c.quantidade}` : ""}
@@ -246,7 +246,7 @@ export function DetalhamentoPrecificacao({
           <div className="flex justify-between text-text-secondary">
             <span>
               Taxa variável
-              <span className="text-[10px] text-text-tertiary ml-1">({(taxaVariavelPct * 100).toFixed(1)}%)</span>
+              <span className="text-xs text-text-tertiary ml-1">({(taxaVariavelPct * 100).toFixed(1)}%)</span>
             </span>
             <span className="font-mono text-text-primary">{formatBRL(taxaVariavelValor)}</span>
           </div>
@@ -260,7 +260,7 @@ export function DetalhamentoPrecificacao({
             <div className="flex justify-between text-text-secondary">
               <span>
                 Taxa adicional
-                <span className="text-[10px] text-text-tertiary ml-1">({(taxaAdicionalPct * 100).toFixed(1)}%)</span>
+                <span className="text-xs text-text-tertiary ml-1">({(taxaAdicionalPct * 100).toFixed(1)}%)</span>
               </span>
               <span className="font-mono text-text-primary">{formatBRL(taxaAdicionalValor)}</span>
             </div>
@@ -274,7 +274,7 @@ export function DetalhamentoPrecificacao({
           <div className="flex justify-between text-text-secondary">
             <span>
               Imposto
-              <span className="text-[10px] text-text-tertiary ml-1">({(impostoPct * 100).toFixed(1)}%)</span>
+              <span className="text-xs text-text-tertiary ml-1">({(impostoPct * 100).toFixed(1)}%)</span>
             </span>
             <span className="font-mono text-text-primary">{formatBRL(impostoValor)}</span>
           </div>
@@ -326,13 +326,13 @@ export function SimuladorPreco({ custoTotal, taxas, faixas = [] }: { custoTotal:
         placeholder="Preço hipotético (R$)"
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
-        className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent text-sm"
+        className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary focus:border-accent text-sm"
       />
       {resultado && (
         <div className="text-sm space-y-1 pt-1">
           <div className="flex justify-between">
             <span className="text-text-secondary">Lucro líquido simulado</span>
-            <span className={`font-mono ${resultado.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
+            <span className={`font-mono ${classeValor(resultado.lucroLiquido)}`}>
               {formatBRL(resultado.lucroLiquido)} ({(resultado.margemEfetivaPct * 100).toFixed(1)}%)
             </span>
           </div>

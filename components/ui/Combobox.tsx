@@ -35,7 +35,16 @@ export function Combobox({
   limite = 50,
   autoFocus,
   className = "",
+  ariaLabel,
+  limparAoEscolher = false,
+  criar,
 }: {
+  /** Sem `<label>` em volta (ex.: busca para adicionar item). */
+  ariaLabel?: string;
+  /** Para "buscar e adicionar": depois de escolher, o campo volta vazio. */
+  limparAoEscolher?: boolean;
+  /** Última opção da lista com o texto digitado (ex.: item sem cadastro). Enter sem resultado também cria. */
+  criar?: { rotulo: (texto: string) => string; onCriar: (texto: string) => void };
   itens: ItemCombobox[];
   valor: string | null;
   onChange: (id: string | null) => void;
@@ -59,9 +68,19 @@ export function Combobox({
     return lista.slice(0, limite);
   }, [itens, texto, selecionado, limite]);
 
+  const podeCriar = !!criar && texto.trim().length > 0;
+  const total = filtrados.length + (podeCriar ? 1 : 0);
+
   function escolher(item: ItemCombobox) {
     onChange(item.id);
-    setTexto(item.rotulo);
+    setTexto(limparAoEscolher ? "" : item.rotulo);
+    setAberto(false);
+  }
+
+  function criarComTexto() {
+    if (!criar) return;
+    criar.onCriar(texto.trim());
+    setTexto("");
     setAberto(false);
   }
 
@@ -69,13 +88,16 @@ export function Combobox({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setAberto(true);
-      setAtivo((a) => Math.min(a + 1, filtrados.length - 1));
+      setAtivo((a) => Math.min(a + 1, total - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setAtivo((a) => Math.max(a - 1, 0));
     } else if (e.key === "Enter" && aberto && filtrados[ativo]) {
       e.preventDefault();
       escolher(filtrados[ativo]);
+    } else if (e.key === "Enter" && podeCriar) {
+      e.preventDefault();
+      criarComTexto();
     } else if (e.key === "Escape") {
       setAberto(false);
     }
@@ -91,6 +113,7 @@ export function Combobox({
         aria-expanded={aberto}
         aria-controls={idLista}
         aria-autocomplete="list"
+        aria-label={ariaLabel}
         autoFocus={autoFocus}
         value={texto}
         placeholder={placeholder}
@@ -110,7 +133,7 @@ export function Combobox({
       />
       {aberto && (
         <ul id={idLista} role="listbox" className="absolute z-40 mt-1 w-full max-h-72 overflow-y-auto rounded-md border border-border bg-surface-1 shadow-elev-2 py-1 text-sm">
-          {filtrados.length === 0 ? (
+          {filtrados.length === 0 && !podeCriar ? (
             <li className="px-3 py-2 text-text-tertiary">{vazio}</li>
           ) : (
             filtrados.map((item, i) => {
@@ -118,7 +141,7 @@ export function Combobox({
               grupoAnterior = item.grupo;
               return (
                 <li key={item.id}>
-                  {cabecalho && <div className="px-3 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-text-tertiary">{cabecalho}</div>}
+                  {cabecalho && <div className="px-3 pt-2 pb-1 text-xs font-medium uppercase tracking-wide text-text-tertiary">{cabecalho}</div>}
                   <button
                     type="button"
                     role="option"
@@ -134,6 +157,21 @@ export function Combobox({
                 </li>
               );
             })
+          )}
+          {podeCriar && (
+            <li>
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setAtivo(filtrados.length)}
+                onClick={criarComTexto}
+                className={`w-full px-3 py-2 text-left text-accent border-t border-border ${ativo === filtrados.length ? "bg-surface-2" : ""}`}
+              >
+                {criar!.rotulo(texto.trim())}
+              </button>
+            </li>
           )}
         </ul>
       )}

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
 import { PriceBreakdownChart } from "@/components/charts/dinamicos";
-import { formatBRL } from "@/lib/format";
+import { classeValor, formatBRL } from "@/lib/format";
 import { taxasDaLinha, type ResultadoLinhaMassa } from "@/lib/precificacao-massa";
 import {
   DetalhamentoPrecificacao,
@@ -79,7 +79,7 @@ export function DetalheLinhaMassa({
           />
           <div className="flex justify-between font-medium pt-1.5 border-t border-border">
             <span className="text-text-primary">Lucro líquido</span>
-            <span className={`font-mono ${r.resultado.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
+            <span className={`font-mono ${classeValor(r.resultado.lucroLiquido)}`}>
               {formatBRL(r.resultado.lucroLiquido)} ({(r.resultado.margemEfetivaPct * 100).toFixed(1)}%)
             </span>
           </div>

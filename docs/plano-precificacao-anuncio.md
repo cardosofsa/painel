@@ -549,7 +549,7 @@ git add -A && git commit -m "<fase>: <resumo>" && git push -u origin claude/laug
 
 A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de teste; capturas em `docs/prototipo/` (360 e 1280 px, claro e escuro), geradas por `e2e/prototipo.spec.ts`.
 
-- **Individual nova** (`/precificacao?layout=novo`, `components/precificacao/IndividualNova.tsx`): 4 blocos (Produto, Onde vende, Como quer lucrar, Mais opções recolhido) e o resultado fixo ao rolar: preço, lucro e margem (o valor que muda pisca em `accent-soft` por 140 ms, desligado em reduced-motion), régua de faixas, composição, Salvar precificação, Salvar rascunho, WhatsApp e Preços por loja. No celular, barra fixa no rodapé com preço, lucro e Salvar. A tela antiga continua sendo a padrão até a aprovação.
+- **Individual nova** (`components/precificacao/IndividualNova.tsx`; era `?layout=novo` até a fase 7): 4 blocos (Produto, Onde vende, Como quer lucrar, Mais opções recolhido) e o resultado fixo ao rolar: preço, lucro e margem (o valor que muda pisca em `accent-soft` por 140 ms, desligado em reduced-motion), régua de faixas, composição, Salvar precificação, Salvar rascunho, WhatsApp e Preços por loja. No celular, barra fixa no rodapé com preço, lucro e Salvar. A tela antiga continua sendo a padrão até a aprovação.
 - **Ajuste de Preço** (`/precificacao/ajuste/novo?produto=&loja=`): régua interativa (arrastar ou digitar), lucro, margem, comissão, mínimo/ideal/máximo de referência com "Pôr na régua", estratégias por regra (`estrategiasDeAjuste`), simulador de promoção com desconto máximo, "Usar este preço" (grava na loja, com confirmação; não mexe na Shopee) e copiar preço. Atalhos em Preços por loja ("Ajustar") e no Raio-X. A entrada por anúncio sincronizado e a IA ficam para a fase 6.
 - **Revisar**: "Pronto para publicar?" (preço, lucro, checklist, "Publiquei manualmente") → Pacote → "Criar na Shopee pelo Painel (opcional)", recolhido. No celular, "Etapa X de 6".
 - Testes: 1576 passando.
@@ -574,3 +574,17 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - Entradas: "Meus anúncios na loja" na página Anúncio, "Analisar anúncio" no cabeçalho da Precificação, link dentro do rascunho (quando o produto tem anúncio na loja) e "Ajuste de Preço" no Raio-X e em Preços por loja.
 - **Desvio do plano:** os itens de pedido não guardam o item_id da Shopee; as vendas são por produto + loja.
 - Testes: 1588 unitários e 49 scripts SQL; `tsc`, `lint`, `build` limpos. Conferido no navegador com um anúncio fictício na conta de teste (apagado depois). Não testado: IA (a conta de teste não tem), leitura de imagens e preço real da Shopee.
+
+## 20. Fase 7 concluída: redesenho completo da Precificação
+
+- **Individual nova é a padrão** (saiu `?layout=novo` e a tela antiga: `PainelEntradas`, `PainelTaxas`, `PainelModo`, `PainelResultado`). Tudo o que só a antiga tinha foi para a nova: foto, nome e descrição do anúncio, faixa de venda, preço psicológico, comparação com o preço do cadastro, detalhamento, "Simular preço diferente", Copiar/WhatsApp/Imagem, posição frente aos concorrentes, zona morta com "Pedir estratégia à Vixe" e as taxas da loja escolhida.
+- **Blocos compartilhados** (`components/precificacao/blocos.tsx`): `Passo`, `OndeVende` (cartões de loja, setas do teclado), `ComoLucrar` (seletor segmentado + campo, termo com `InfoTooltip`) e `Metrica`. Usados na Individual, em **Variações** (passos Anúncio e produto · Onde vende · Como quer lucrar; escolher o produto agora traz o custo), em **Kits** (Onde vende com "Venda direta"; Margem · Desconto · Preço fixo) e em **Em Massa** ("vale para todas as linhas": loja e margem aplicadas a todas e às linhas novas).
+- **P11**: abas montadas uma vez continuam montadas (escondidas), e a aba vai para a URL (`?visao=`, via `history.replaceState`, sem ida ao servidor).
+- **P13**: um seletor de loja só por aba. **P14**: "Salvar precificação"; margem e markup com o mesmo texto de ajuda em todas as abas; Variações salva com "Salvar variações".
+- **P15**: busca de Kits virou `Combobox` (setas, Enter, "+ Adicionar … sem cadastro"); `Combobox` ganhou `ariaLabel`, `limparAoEscolher` e `criar`; ▾/▲/× viraram `IconButton` com `aria-label`; tirado `outline-none` sem foco; rótulos ligados aos campos.
+- **P16**: `text-[10px]/[11px]` → `text-xs`, cores fixas → `classeValor`, grades começando em `grid-cols-1`, vazios com `EmptyState`.
+- **Rascunho em Variações, Kits e Em Massa** (`useRascunhoDaAba`; mesma tabela 0100, sem migração): salvamento automático, "Salvar rascunho", "Continuar rascunho" por aba, e a proteção de saída cobre as quatro abas juntas. Kits apaga o rascunho ao salvar (pelo servidor); Variações e Em Massa, logo depois de salvar. Leitura defensiva do rascunho em `lib/rascunho-leitura.ts` (+ teste).
+- **Corrigido**: o salvamento automático e o botão no mesmo instante criavam dois rascunhos (trava síncrona no hook).
+- **E2E** `e2e/precificacao.spec.ts` (smoke, conta de teste): precificar e salvar para uma loja em **4 cliques** (meta 5); trocar de aba mantém o digitado e atualiza a URL; rascunho de Kits guarda, oferece e é descartado. `rascunho.spec.ts` e `prototipo.spec.ts` atualizados e passando.
+- Testes: 1591 unitários; `tsc`, `lint`, `build` limpos. Sem migração.
+

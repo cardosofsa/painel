@@ -11,8 +11,8 @@ import type { RascunhoPendente } from "@/lib/precificacao-rascunho";
 
 export const metadata: Metadata = { title: "Precificação" };
 
-export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string; produto?: string; loja?: string; layout?: string }> }) {
-  const { visao, produto, loja, layout } = await searchParams;
+export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string; produto?: string; loja?: string }> }) {
+  const { visao, produto, loja } = await searchParams;
   const supabase = await createClient();
   const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel, rascunhosRes, precosLojaRes, anunciosLojaRes] =
     await Promise.all([
@@ -52,8 +52,9 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     supabase.from("categorias").select("*"),
     // No mesmo `Promise.all`: era um `await` sozinho no fim, uma ida ao banco a mais em série.
     iaDisponivelParaConta(supabase),
-    // Rascunho em andamento (0100). Sem a migração vem erro e a tela segue sem o aviso.
-    supabase.from("precificacao_rascunhos").select("id, titulo, atualizado_em, dados").eq("visao", "individual").order("atualizado_em", { ascending: false }).limit(3),
+    // Rascunhos em andamento das quatro abas (0100); cada aba oferece o seu mais recente.
+    // Sem a migração vem erro e a tela segue sem o aviso.
+    supabase.from("precificacao_rascunhos").select("id, visao, titulo, atualizado_em, dados").order("atualizado_em", { ascending: false }).limit(20),
     // Preço de cada loja (0101). Sem a migração vem erro e o bloco não aparece.
     supabase.from("produto_lojas").select("produto_id, loja_id, preco, preco_atualizado_em").not("preco", "is", null),
     // Anúncios sincronizados, para o seletor "Analisar anúncio". `*`: nome_item é da 0093.
@@ -144,7 +145,6 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
           .filter((a) => !vistos.has(`${a.loja_id}:${a.item_id}`) && !!vistos.add(`${a.loja_id}:${a.item_id}`))
           .map((a) => ({ id: a.id, nome: a.nome_item ?? a.nome ?? `Anúncio ${a.item_id}` }));
       })()}
-      layoutNovo={layout === "novo"}
     />
   );
 }

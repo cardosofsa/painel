@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { executarComToast } from "@/lib/acao-cliente";
 import { carregarHistoricoPrecificacoes, descartarRascunhoPrecificacao } from "./actions";
-import { haQuanto, useRascunhoPrecificacao, type RascunhoPendente } from "@/lib/precificacao-rascunho";
+import { useRascunhoPrecificacao, type RascunhoPendente, type VisaoRascunho } from "@/lib/precificacao-rascunho";
+import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useProtegerSaida } from "@/lib/hooks/useProtegerSaida";
 import { ModalSaida } from "@/components/ui/ModalSaida";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -11,7 +13,7 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
-import { Download, History, ScanSearch } from "lucide-react";
+import { Calculator, Download, History, ScanSearch } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Combobox } from "@/components/ui/Combobox";
 import { ExportarPrecificacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
@@ -19,15 +21,7 @@ import { formatBRL, formatarData } from "@/lib/format";
 import { CalculadoraEmMassa } from "@/components/precificacao/CalculadoraEmMassa";
 import { VariacoesView } from "@/components/precificacao/VariacoesView";
 import { KitsView } from "@/components/precificacao/KitsView";
-import { PainelEntradas } from "@/components/precificacao/PainelEntradas";
-import { PainelTaxas } from "@/components/precificacao/PainelTaxas";
-import { PainelModo } from "@/components/precificacao/PainelModo";
-import { PainelConcorrentes } from "@/components/precificacao/PainelConcorrentes";
-import { PainelResultado } from "@/components/precificacao/PainelResultado";
-import { PainelPrecosLoja } from "@/components/precificacao/PainelPrecosLoja";
 import { IndividualNova } from "@/components/precificacao/IndividualNova";
-import { PainelEstrategiaVixe } from "@/components/precificacao/PainelEstrategiaVixe";
-import { PainelAnuncio } from "@/components/precificacao/PainelAnuncio";
 import { HistoricoPrecificacoes } from "@/components/precificacao/HistoricoPrecificacoes";
 import { RaioXView } from "@/components/precificacao/RaioXView";
 import { SimuladorPromocao } from "@/components/precificacao/SimuladorPromocao";
@@ -76,17 +70,14 @@ export function PrecificacaoClient({
   rascunhosPendentes = [],
   precosLoja = null,
   inicial,
-  layoutNovo = false,
   anunciosLoja = [],
 }: {
   /** Anúncios sincronizados (um por item), para "Analisar anúncio". */
   anunciosLoja?: { id: string; nome: string }[];
-  /** Protótipo do redesenho da Individual (fase 5): `?layout=novo`. */
-  layoutNovo?: boolean;
   /** Preço de cada produto em cada loja (0101); `null` sem a migração. */
   precosLoja?: { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[] | null;
   inicial?: { produtoId: string | null; lojaId: string | null };
-  /** Rascunhos da Individual guardados no banco (0100), o mais recente primeiro. */
+  /** Rascunhos guardados no banco (0100), das quatro abas, o mais recente primeiro. */
   rascunhosPendentes?: RascunhoPendente[];
   empresa: { nome: string | null; logoUrl: string | null } | null;
   historico: PrecificacaoHist[];
@@ -131,9 +122,25 @@ export function PrecificacaoClient({
   useEffect(() => {
     rascRef.current = rasc;
   });
+
+  // Variações, Kits e Em Massa guardam o próprio rascunho e contam aqui se estão sujas:
+  // a proteção de saída cobre a tela inteira, não só a aba visível.
+  const [abasSujas, setAbasSujas] = useState<Partial<Record<VisaoRascunho, boolean>>>({});
+  const salvadores = useRef<Partial<Record<VisaoRascunho, () => Promise<boolean>>>>({});
+  const relatar = useCallback((v: VisaoRascunho, sujo: boolean, salvar: (() => Promise<boolean>) | undefined) => {
+    salvadores.current[v] = salvar;
+    setAbasSujas((a) => (!!a[v] === sujo ? a : { ...a, [v]: sujo }));
+  }, []);
+  const algumaSuja = rasc.sujo || Object.values(abasSujas).some(Boolean);
+  async function salvarTodosRascunhos() {
+    const pendentes = [...(rasc.sujo ? [rasc.salvarRascunho] : []), ...Object.entries(abasSujas).flatMap(([v, sujo]) => (sujo && salvadores.current[v as VisaoRascunho] ? [salvadores.current[v as VisaoRascunho]!] : []))];
+    const r = await Promise.all(pendentes.map((f) => f()));
+    return r.every(Boolean);
+  }
   // Sem a 0100 não há onde guardar: o modal oferece só ficar ou sair.
-  const protecao = useProtegerSaida({ sujo: rasc.sujo, salvarRascunho: rasc.semMigracao ? undefined : rasc.salvarRascunho });
-  const [pendente, setPendente] = useState<RascunhoPendente | null>(rascunhosPendentes[0] ?? null);
+  const protecao = useProtegerSaida({ sujo: algumaSuja, salvarRascunho: rasc.semMigracao ? undefined : salvarTodosRascunhos });
+  const pendentePorAba = (v: VisaoRascunho) => rascunhosPendentes.find((r) => (r.visao ?? "individual") === v) ?? null;
+  const [pendente, setPendente] = useState<RascunhoPendente | null>(pendentePorAba("individual"));
 
   function continuarRascunho(r: RascunhoPendente) {
     estado.aplicarInstantaneo(r.dados);
@@ -159,6 +166,17 @@ export function PrecificacaoClient({
     });
   }
   const { visao, setVisao } = estado;
+  // Abas montadas uma vez continuam montadas (escondidas): trocar de aba não perde o digitado.
+  const [montadas, setMontadas] = useState<ReadonlySet<VisaoPrecificacao>>(() => new Set<VisaoPrecificacao>(["individual", visao]));
+  if (!montadas.has(visao)) setMontadas(new Set(montadas).add(visao));
+  // A aba fica na URL (voltar, recarregar, mandar o link). Sem passar pelo roteador: nada a buscar no servidor.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("visao") === visao) return;
+    url.searchParams.set("visao", visao);
+    window.history.replaceState(window.history.state, "", url);
+  }, [visao]);
+  const mostrar = (v: VisaoPrecificacao) => montadas.has(v);
 
   function acoesLigarProduto(h: PrecificacaoHist) {
     return [
@@ -189,130 +207,97 @@ export function PrecificacaoClient({
           o <Tabs>. Duas telas do mesmo app navegavam de jeitos visualmente diferentes. */}
       <Tabs tabs={ABAS_PRECIFICACAO} value={visao} onChange={setVisao} className="mb-5" />
 
-      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} historico={historico} onVerHistorico={() => setHistoricoAberto(true)} empresa={empresa} />}
-
-      {visao === "kits" && <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} empresa={empresa} />}
-
-      {visao === "variacoes" && (
-        <VariacoesView
+      <div hidden={visao !== "individual"}>
+        {pendente && <AvisoRascunho pendente={pendente} onContinuar={() => continuarRascunho(pendente)} onDescartar={() => void descartarPendente(pendente)} />}
+        <IndividualNova
+          estado={estado}
           produtos={produtos}
           lojas={lojas}
-          anuncios={anuncios}
-          aliquotaDasPadrao={aliquotaDasPadrao}
-          confirm={estado.confirm}
-          onVerHistorico={() => setHistoricoAberto(true)}
-          empresa={empresa}
+          iaDisponivel={iaDisponivel}
+          precosLoja={precosLoja}
+          onSalvarRascunho={() => void rasc.salvarRascunho()}
+          salvandoRascunho={rasc.salvando}
+          indicadorRascunho={<IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />}
         />
-      )}
 
-      {visao === "individual" && (
-        <>
-          {pendente && (
-            <Card className="mb-5 border-accent/40">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-text-primary min-w-0">
-                  Continuar rascunho: <strong>{pendente.titulo || "Sem nome"}</strong> <span className="text-text-secondary">({haQuanto(pendente.atualizado_em)})</span>
-                </p>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="primary" onClick={() => continuarRascunho(pendente)}>
-                    Continuar
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void descartarPendente(pendente)}>
-                    Descartar
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-          {/* No layout novo, indicador e botão moram no cartão do resultado. */}
-          {!layoutNovo && (
-          <div className="flex flex-wrap items-center justify-end gap-3 mb-3">
-            <IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />
-            {(
-              <Button size="sm" variant="secondary" onClick={() => void rasc.salvarRascunho()} loading={rasc.salvando} disabled={!estado.temConteudo}>
-                Salvar rascunho
+        <Card className="mt-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-text-primary">Precificações salvas</h2>
+            <div className="flex items-center gap-3">
+              {/* Exporta as mesmas que o cartão lista (as individuais); antes levava também as em massa. */}
+              <Button variant="secondary" size="sm" onClick={() => setExportandoSalvas(true)} disabled={!historico.some((h) => h.origem === "individual")}>
+                <Download size={14} aria-hidden /> Exportar
               </Button>
-            )}
-          </div>
-          )}
-          {layoutNovo ? (
-            <IndividualNova
-              estado={estado}
-              produtos={produtos}
-              lojas={lojas}
-              iaDisponivel={iaDisponivel}
-              precosLoja={precosLoja}
-              onSalvarRascunho={() => void rasc.salvarRascunho()}
-              salvandoRascunho={rasc.salvando}
-              indicadorRascunho={<IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />}
-            />
-          ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <div className="lg:col-span-2 space-y-5">
-              <PainelEntradas estado={estado} produtos={produtos} />
-              <PainelTaxas estado={estado} lojas={lojas} iaDisponivel={iaDisponivel} />
-              <PainelModo estado={estado} />
-              <PainelConcorrentes estado={estado} />
-            </div>
-
-            <div className="space-y-5">
-              <PainelResultado estado={estado} produtoVinculado={estado.produtoVinculado} lojas={lojas} />
-              {precosLoja && estado.produtoVinculado && (
-                <PainelPrecosLoja
-                  produtoId={estado.produtoVinculado.id}
-                  custo={Number(estado.produtoVinculado.custo)}
-                  impostoPct={estado.impostoPct / 100}
-                  lojas={lojas}
-                  precos={precosLoja.filter((p) => p.produto_id === estado.produtoVinculado!.id)}
-                  lojaAtual={estado.modoTaxas === "loja" ? estado.lojaId : null}
-                  onPrecificar={estado.precificarNaLoja}
-                />
-              )}
-              <PainelEstrategiaVixe estado={estado} iaDisponivel={iaDisponivel} />
-              <PainelAnuncio estado={estado} />
+              <IconButton onClick={() => setHistoricoAberto(true)} aria-label="Ver histórico completo" title="Ver histórico completo">
+                <History size={14} />
+              </IconButton>
             </div>
           </div>
-          )}
-
-          <Card className="mt-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-semibold text-text-primary">Precificações Salvas</h2>
-              <div className="flex items-center gap-3">
-                {/* Exporta as mesmas que o cartão lista (as individuais); antes levava também as em massa. */}
-                <Button variant="secondary" size="sm" onClick={() => setExportandoSalvas(true)} disabled={!historico.some((h) => h.origem === "individual")}>
-                  <Download size={14} /> Exportar
-                </Button>
-                <IconButton onClick={() => setHistoricoAberto(true)} aria-label="Ver histórico completo" title="Ver histórico completo">
-                  <History size={14} />
-                </IconButton>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {historico
-                .filter((h) => h.origem === "individual")
-                .slice(0, 5)
-                .map((h) => (
-                  <div key={h.id} className="flex items-center justify-between border border-border rounded-md px-3 py-2 text-sm">
-                    <div>
-                      <div className="text-text-primary">{h.produto_nome}</div>
-                      <div className="text-xs text-text-tertiary">{formatarData(h.criado_em)}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
-                      <RowMenu actions={acoesLigarProduto(h)} />
-                    </div>
+          <div className="space-y-2">
+            {historico
+              .filter((h) => h.origem === "individual")
+              .slice(0, 5)
+              .map((h) => (
+                <div key={h.id} className="flex items-center justify-between gap-3 border border-border rounded-md px-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <div className="text-text-primary truncate">{h.produto_nome}</div>
+                    <div className="text-xs text-text-tertiary">{formatarData(h.criado_em)}</div>
                   </div>
-                ))}
-              {historico.filter((h) => h.origem === "individual").length === 0 && (
-                <p className="text-sm text-text-tertiary text-center py-4">Nenhuma precificação salva ainda.</p>
-              )}
-            </div>
-          </Card>
-        </>
-      )}
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
+                    <RowMenu actions={acoesLigarProduto(h)} />
+                  </div>
+                </div>
+              ))}
+            {!historico.some((h) => h.origem === "individual") && <EmptyState icon={Calculator} title="Nenhuma precificação salva ainda" description="Escolha o produto, onde vende e como quer lucrar, e use “Salvar precificação”." />}
+          </div>
+        </Card>
+      </div>
 
-      {visao === "raio-x" && <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />}
-      {visao === "promocao" && <SimuladorPromocao historico={historicoCompleto} lojas={lojas} produtos={produtos} />}
+      {mostrar("variacoes") && (
+        <div hidden={visao !== "variacoes"}>
+          <VariacoesView
+            produtos={produtos}
+            lojas={lojas}
+            anuncios={anuncios}
+            aliquotaDasPadrao={aliquotaDasPadrao}
+            confirm={estado.confirm}
+            onVerHistorico={() => setHistoricoAberto(true)}
+            empresa={empresa}
+            rascunhoPendente={pendentePorAba("variacoes")}
+            relatar={relatar}
+          />
+        </div>
+      )}
+      {mostrar("kits") && (
+        <div hidden={visao !== "kits"}>
+          <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} empresa={empresa} confirm={estado.confirm} rascunhoPendente={pendentePorAba("kits")} relatar={relatar} />
+        </div>
+      )}
+      {mostrar("massa") && (
+        <div hidden={visao !== "massa"}>
+          <CalculadoraEmMassa
+            produtos={produtos}
+            lojas={lojas}
+            aliquotaDasPadrao={aliquotaDasPadrao}
+            historico={historico}
+            onVerHistorico={() => setHistoricoAberto(true)}
+            empresa={empresa}
+            rascunhoPendente={pendentePorAba("massa")}
+            relatar={relatar}
+          />
+        </div>
+      )}
+      {mostrar("raio-x") && (
+        <div hidden={visao !== "raio-x"}>
+          <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />
+        </div>
+      )}
+      {mostrar("promocao") && (
+        <div hidden={visao !== "promocao"}>
+          <SimuladorPromocao historico={historicoCompleto} lojas={lojas} produtos={produtos} />
+        </div>
+      )}
 
       <Modal open={historicoAberto} onClose={() => setHistoricoAberto(false)} title="Histórico de precificações" width="max-w-5xl">
         <HistoricoPrecificacoes
@@ -401,29 +386,5 @@ function ModalVincularProduto({
         {filtrados.length === 0 && <p className="text-sm text-text-tertiary text-center py-4">Nenhum produto encontrado.</p>}
       </div>
     </Modal>
-  );
-}
-
-/** "Rascunho salvo há 3 s": refaz o texto a cada 5 s, sem tocar no resto da tela. */
-function IndicadorRascunho({ sujo, salvando, salvoEm, semMigracao }: { sujo: boolean; salvando: boolean; salvoEm: string | null; semMigracao: boolean }) {
-  const [agora, setAgora] = useState(() => Date.now());
-  useEffect(() => {
-    const t = window.setInterval(() => setAgora(Date.now()), 5000);
-    return () => window.clearInterval(t);
-  }, []);
-  const texto = semMigracao
-    ? "Rascunho automático indisponível (falta a migração 0100)"
-    : salvando
-      ? "Salvando rascunho…"
-      : sujo
-        ? "Alterações ainda não salvas"
-        : salvoEm
-          ? `Rascunho salvo ${haQuanto(salvoEm, agora)}`
-          : "";
-  if (!texto) return null;
-  return (
-    <span className="text-xs text-text-tertiary" aria-live="polite">
-      {texto}
-    </span>
   );
 }
