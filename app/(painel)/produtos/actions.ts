@@ -135,12 +135,15 @@ async function sincronizarLojasProduto(
   produtoId: string,
   lojaIds: string[],
 ) {
-  const { error: erroDelete } = await supabase.from("produto_lojas").delete().eq("produto_id", produtoId);
+  // Só tira as lojas desmarcadas e só põe as novas: apagar tudo e recriar levava junto o
+  // preço de cada loja (0101), que mora nesta mesma linha.
+  const remover = supabase.from("produto_lojas").delete().eq("produto_id", produtoId);
+  const { error: erroDelete } = await (lojaIds.length ? remover.not("loja_id", "in", `(${lojaIds.join(",")})`) : remover);
   if (erroDelete) lancarErroSupabase(erroDelete);
 
   if (lojaIds.length > 0) {
     const linhas = lojaIds.map((loja_id) => ({ produto_id: produtoId, loja_id }));
-    const { error: erroInsert } = await supabase.from("produto_lojas").insert(linhas);
+    const { error: erroInsert } = await supabase.from("produto_lojas").upsert(linhas, { onConflict: "produto_id,loja_id", ignoreDuplicates: true });
     if (erroInsert) lancarErroSupabase(erroInsert);
   }
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Circle, MessageCircle, Plus, Settings, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
+import { formatBRL } from "@/lib/format";
 import { AberturaMarca } from "@/components/anuncio/AberturaMarca";
 import { TrilhoEtapas } from "@/components/anuncio/TrilhoEtapas";
 import { Button } from "@/components/ui/Button";
@@ -62,6 +63,7 @@ export function InfinitoClient({
   produtos,
   produtoInicial,
   rascunhoInicial,
+  perfilInicial = null,
   saldoTexto,
   configInicial,
   perfis,
@@ -75,6 +77,7 @@ export function InfinitoClient({
   produtos: { id: string; rotulo: string; sku: string | null }[];
   produtoInicial: string | null;
   rascunhoInicial: RascunhoAberto | null;
+  perfilInicial?: string | null;
   /** Saldo de IA de texto lido no servidor, para aparecer antes de gastar. */
   saldoTexto: { origem: "propria" | "sistema"; usadas: number; limite: number } | null;
   configInicial: ConfigAba | null;
@@ -90,7 +93,7 @@ export function InfinitoClient({
   const [pending, startTransition] = useTransition();
   const [qual, setQual] = useState<Qual>(null);
   const [produtoId, setProdutoId] = useState<string | null>(rascunhoInicial?.produtoId ?? produtoInicial);
-  const [perfilId, setPerfilId] = useState(rascunhoInicial ? (rascunhoInicial.perfilId ?? "") : (perfis[0]?.id ?? ""));
+  const [perfilId, setPerfilId] = useState(rascunhoInicial ? (rascunhoInicial.perfilId ?? "") : (perfilInicial ?? perfis[0]?.id ?? ""));
   const [lojaDecidida, setLojaDecidida] = useState(!!produtoInicial || !!rascunhoInicial);
   const [rascunho, setRascunho] = useState<RascunhoAberto | null>(rascunhoInicial);
   // O par produto/perfil que de fato está aberto: trocar o seletor depois não muda o rascunho.
@@ -177,6 +180,17 @@ export function InfinitoClient({
     }
     return r.ok;
   }
+
+  // `?produto=` (atalho "Criar anúncio deste produto"): abre o rascunho sem pedir mais um clique.
+  const autoAbrir = useRef(!rascunhoInicial && !!produtoInicial);
+  useEffect(() => {
+    if (!autoAbrir.current || !produtoInicial) return;
+    autoAbrir.current = false;
+    startTransition(async () => {
+      await abrirPar({ produto: produtoInicial, perfil: perfilInicial ?? perfis[0]?.id ?? "" });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só na primeira montagem
+  }, []);
 
   function abrir() {
     if (!produtoId) return;
@@ -338,6 +352,7 @@ export function InfinitoClient({
         { ok: !!rascunho.descricao, texto: "Descrição salva" },
         { ok: !!estado?.numeroImagens, texto: estado?.numeroImagens ? `Quantidade de imagens combinada: ${estado.numeroImagens}` : "Quantidade de imagens (diga ao assistente)" },
         { ok: capaAprovada, texto: "Capa 1 aprovada" },
+        { ok: !!rascunho.preco.preco, texto: rascunho.preco.preco ? `Preço definido${rascunho.preco.origem === "loja" ? ` para ${rascunho.preco.lojaRotulo}` : " (do cadastro)"}` : "Preço da loja definido" },
       ]
     : [];
 
@@ -471,7 +486,7 @@ export function InfinitoClient({
 
           {rascunho && atual === "titulo" && (
             <>
-              <PainelTitulos key={`titulos-${rascunho.id}`} onPendente={setTituloPendente} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher} />
+              <PainelTitulos key={`titulos-${rascunho.id}`} onPendente={setTituloPendente} usados={rascunho.titulosUsados} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher} />
               <PainelConcorrentes concorrentes={estado?.concorrentes ?? []} observacao={observacao} iaDisponivel={iaDisponivel} ocupado={qual === "concorrentes"} onPesquisar={pesquisar} />
             </>
           )}
@@ -514,7 +529,8 @@ export function InfinitoClient({
           {rascunho && atual === "revisar" && (
             <>
               <Card>
-                <CardTitle>Antes de enviar</CardTitle>
+                <CardTitle>Pronto para publicar?</CardTitle>
+                <PrecoDoAnuncioResumo rascunho={rascunho} />
                 <ul className="space-y-1.5 text-sm mt-3">
                   {checklist.map((i) => (
                     <li key={i.texto} className={`flex gap-2 ${i.ok ? "text-text-primary" : "text-text-secondary"}`}>
@@ -608,4 +624,51 @@ function textoSaldo(saldo: { origem: "propria" | "sistema"; usadas: number; limi
   if (!partes.length) return "";
   const frase = partes.join(" · ");
   return ` ${frase[0].toUpperCase()}${frase.slice(1)}.`;
+}
+
+/** Preço que vai para o anúncio, com lucro e margem da loja e o alerta de prejuízo ou zona morta. */
+function PrecoDoAnuncioResumo({ rascunho }: { rascunho: RascunhoAberto }) {
+  const p = rascunho.preco;
+  const precificar = `/precificacao?produto=${rascunho.produtoId}${p.lojaId ? `&loja=${p.lojaId}` : ""}`;
+  if (p.preco === null) {
+    return (
+      <div className="mt-3 rounded-md border border-border bg-surface-2 p-3 text-sm flex flex-wrap items-center justify-between gap-2">
+        <span className="text-text-secondary">{p.origem === "loja" ? `Este produto ainda não tem preço em ${p.lojaRotulo}.` : "O produto está sem preço de venda."}</span>
+        <Link href={precificar} className="text-accent hover:underline font-medium">
+          Precificar agora
+        </Link>
+      </div>
+    );
+  }
+  const pct = p.margemPct !== null ? `${(p.margemPct * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : null;
+  return (
+    <div className="mt-3 rounded-md border border-border p-3">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="font-mono text-2xl font-semibold text-text-primary">{formatBRL(p.preco)}</span>
+        {p.lucro !== null && (
+          <span className="text-sm text-text-secondary">
+            Lucro <span className={p.lucro < 0 ? "text-negative font-medium" : "text-text-primary font-medium"}>{formatBRL(p.lucro)}</span>
+            {pct && <> · margem {pct}</>}
+          </span>
+        )}
+        <span className="text-xs text-text-tertiary">{p.origem === "loja" ? p.lojaRotulo : "preço do cadastro (o perfil não tem loja)"}</span>
+      </div>
+      {p.situacao === "prejuizo" && (
+        <p role="alert" className="mt-2 text-sm text-negative flex gap-1.5">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden /> Neste preço cada venda dá prejuízo.{" "}
+          <Link href={precificar} className="underline">
+            Ajustar o preço
+          </Link>
+        </p>
+      )}
+      {p.situacao === "zona_morta" && p.precoMelhor !== null && (
+        <p role="alert" className="mt-2 text-sm text-negative flex gap-1.5">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden /> Zona morta: a {formatBRL(p.precoMelhor)} você recebe mais por venda.{" "}
+          <Link href={precificar} className="underline">
+            Ajustar o preço
+          </Link>
+        </p>
+      )}
+    </div>
+  );
 }

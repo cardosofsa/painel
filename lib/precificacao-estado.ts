@@ -88,7 +88,10 @@ export function usePrecificacao({
   empresa = null,
   visaoInicial = "individual",
   rascunhoAtual,
+  inicial,
 }: PrecificacaoProps & {
+  /** `?produto=&loja=` (vindo de "Precificar agora" no Anúncio ou do bloco Preços por loja). */
+  inicial?: { produtoId: string | null; lojaId: string | null };
   /** Rascunho em uso (0100): é apagado quando a precificação é salva. Funções porque o
    * hook do rascunho roda depois deste e lê o id no momento de salvar. */
   rascunhoAtual?: { id: () => string | null; aoSalvar: () => void };
@@ -98,8 +101,10 @@ export function usePrecificacao({
   const [visao, setVisao] = useState<VisaoPrecificacao>(visaoInicial);
   const [subAbaHistorico, setSubAbaHistorico] = useState<"precificacoes" | "produtos">("precificacoes");
   const [anuncioExpandidoHistorico, setAnuncioExpandidoHistorico] = useState<string | null>(null);
-  const [produtoId, setProdutoId] = useState<string | null>(null);
-  const [nomeProduto, setNomeProduto] = useState("");
+  const produtoInicial = inicial?.produtoId ? (produtos.find((p) => p.id === inicial.produtoId) ?? null) : null;
+  const lojaInicial = inicial?.lojaId && lojas.some((l) => l.id === inicial.lojaId) ? inicial.lojaId : null;
+  const [produtoId, setProdutoId] = useState<string | null>(produtoInicial?.id ?? null);
+  const [nomeProduto, setNomeProduto] = useState(produtoInicial?.nome ?? "");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [descricaoAnuncio, setDescricaoAnuncio] = useState("");
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
@@ -114,8 +119,8 @@ export function usePrecificacao({
   const [precoMinimo, setPrecoMinimo] = useState<number | "">("");
   const [precoMaximo, setPrecoMaximo] = useState<number | "">("");
   const [impostoPct, setImpostoPct] = useState(aliquotaDasPadrao);
-  const [modoTaxas, setModoTaxas] = useState<"manual" | "loja">("manual");
-  const [lojaId, setLojaId] = useState<string | null>(null);
+  const [modoTaxas, setModoTaxas] = useState<"manual" | "loja">(lojaInicial ? "loja" : "manual");
+  const [lojaId, setLojaId] = useState<string | null>(lojaInicial);
   const [taxaFixa, setTaxaFixa] = useState(4);
   const [taxaVariavelPct, setTaxaVariavelPct] = useState(20);
   const [taxaAdicionalPct, setTaxaAdicionalPct] = useState(0);
@@ -124,8 +129,8 @@ export function usePrecificacao({
   const [filtroHistoricoDataFim, setFiltroHistoricoDataFim] = useState("");
   const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
-  const [custoProduto, setCustoProduto] = useState(0);
-  const [componentes, setComponentes] = useState<ComponenteKit[]>([]);
+  const [custoProduto, setCustoProduto] = useState(() => (produtoInicial ? composicaoDoProduto(produtoInicial).custoBase : 0));
+  const [componentes, setComponentes] = useState<ComponenteKit[]>(() => (produtoInicial ? composicaoDoProduto(produtoInicial).insumos : []));
 
   const [concorrentes, setConcorrentes] = useState<Concorrente[]>([]);
   const [novoConcorrenteNome, setNovoConcorrenteNome] = useState("");
@@ -653,10 +658,15 @@ export function usePrecificacao({
           parametro: modo === "margem" ? margemPct / 100 : modo === "markup" ? markupPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo,
           ...extras.extrasParaSalvar(),
         }, rascunhoAtual?.id() ?? null),
-        { sucesso: "Anúncio salvo no histórico", erro: "Erro ao salvar precificação" },
+        { sucesso: "Precificação salva no histórico", erro: "Erro ao salvar precificação" },
       );
       if (!r.ok) return;
       rascunhoAtual?.aoSalvar();
+      if (r.dado.precoNaLoja && lojaSelecionada) {
+        // O preço foi para a loja (0101): o do cadastro é o do PDV/catálogo e não muda aqui.
+        toast.success(`Preço de ${formatBRL(resultado.precoVenda)} gravado em ${lojaSelecionada.canalNome} · ${lojaSelecionada.nome}`);
+        return;
+      }
 
       // Só oferece atualizar o preço do produto depois que o histórico gravou: antes, uma
       // falha ao salvar caía no mesmo `catch` e o usuário nem chegava a ser perguntado.
@@ -674,6 +684,13 @@ export function usePrecificacao({
         }
       }
     });
+  }
+
+  /** "Precificar" no bloco Preços por loja: passa a calcular com as taxas daquela loja. */
+  function precificarNaLoja(id: string) {
+    setModoTaxas("loja");
+    setLojaId(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // ---------- Rascunho (0100): o que foi digitado, num objeto que vai e volta do banco ----------
@@ -741,6 +758,7 @@ export function usePrecificacao({
     temConteudo,
     tituloRascunho,
     aplicarInstantaneo,
+    precificarNaLoja,
 
     // navegação de abas
     visao,

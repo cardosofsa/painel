@@ -24,7 +24,10 @@ export function PainelTitulos({
   onGerar,
   onEscolher,
   onPendente,
+  usados = [],
 }: {
+  /** Títulos já usados nas precificações deste produto. */
+  usados?: string[];
   /** O título digitado e ainda não usado (ou `null`), para a proteção de saída da tela. */
   onPendente?: (texto: string | null) => void;
   titulo: string | null;
@@ -107,6 +110,26 @@ export function PainelTitulos({
             </div>
           )}
         </>
+      )}
+
+      {usados.filter((t) => t !== titulo).length > 0 && (
+        <div className="mb-3">
+          <h4 className="text-xs font-medium text-text-secondary mb-1.5">Títulos que você já usou</h4>
+          <ul className="space-y-1.5">
+            {usados
+              .filter((t) => t !== titulo)
+              .map((t) => (
+                <li key={t} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+                  <span className="text-sm text-text-primary min-w-0 break-words">
+                    {t} <span className="text-xs text-text-tertiary">({t.length}/{limite})</span>
+                  </span>
+                  <Button size="sm" variant="ghost" disabled={ocupado || t.length > limite} onClick={() => onEscolher(t)}>
+                    Usar este
+                  </Button>
+                </li>
+              ))}
+          </ul>
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { comResultado } from "@/lib/acao";
 import { validar, escolhasShopeeSchema, rascunhoIdSchema } from "@/lib/validacao";
-import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, sincronizarStatus, type ContextoRascunho } from "@/lib/estudio/servidor";
+import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, precoDoAnuncio, sincronizarStatus, type ContextoRascunho } from "@/lib/estudio/servidor";
 import { plataformaDa } from "@/lib/marketplace/conexao-api";
 import { tokenDaConexao, type ConexaoShopee } from "@/lib/marketplace/tokens";
 import type { CredenciaisShopee } from "@/lib/marketplace/shopee-api";
@@ -165,10 +165,13 @@ export async function criarNaoListadoShopee(entrada: unknown) {
 
     const capas = (est.capas ?? []).filter((x) => x.veredito === "aprovada" && x.finalPath).slice(0, MAX_IMAGENS);
     const p = ctx.produto;
+    // O preço da LOJA do perfil (0101), não mais o do cadastro (que é o do PDV).
+    const precoAnuncio = await precoDoAnuncio(supabase, p.id, ctx.perfil?.id ?? null);
+    if (precoAnuncio.origem === "loja" && precoAnuncio.preco === null) throw new Error(`Este produto ainda não tem preço em ${precoAnuncio.lojaRotulo}. Precifique em Precificação › Preços por loja antes de criar.`);
     const base = {
       titulo: ctx.rascunho.titulo ?? "",
       descricao: ctx.rascunho.descricao ?? "",
-      preco: p.precoVenda,
+      preco: precoAnuncio.preco,
       pesoG: p.pesoG,
       dimensoesCm: { altura: p.alturaCm, largura: p.larguraCm, comprimento: p.comprimentoCm },
       categoryId: est.shopee?.categoryId ?? null,

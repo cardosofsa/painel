@@ -1,4 +1,5 @@
 "use client";
+import { formatBRL } from "@/lib/format";
 
 import { useState, useTransition } from "react";
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, Circle, PlugZap, Send, Trash2 } from "lucide-react";
@@ -66,7 +67,7 @@ export function PainelShopee({ rascunho, onMudou }: { rascunho: RascunhoAberto; 
   const pendencias = conferirEntradaCriacao({
     titulo: rascunho.titulo ?? "",
     descricao: rascunho.descricao ?? "",
-    preco: rascunho.produto.precoVenda,
+    preco: rascunho.preco.preco,
     pesoG: rascunho.produto.pesoG,
     // A tela só sabe SE as três medidas existem; o servidor confere os valores de novo.
     dimensoesCm: rascunho.produto.temMedidas ? { altura: 1, largura: 1, comprimento: 1 } : { altura: null, largura: null, comprimento: null },
@@ -301,6 +302,11 @@ export function PainelShopee({ rascunho, onMudou }: { rascunho: RascunhoAberto; 
           </p>
           <p>Em seguida confiro o status real do item. Se a Shopee o deixar à venda por engano, tiro do ar na hora e aviso. Você revisa em Seller Centre › Meus Produtos › Não listados e publica quando quiser.</p>
           <ul className="list-disc pl-5">
+            <li>
+              Preço enviado: <strong className="text-text-primary">{rascunho.preco.preco ? formatBRL(rascunho.preco.preco) : "—"}</strong>
+              {rascunho.preco.origem === "loja" ? ` (de ${rascunho.preco.lojaRotulo}` : " (do cadastro"}
+              {rascunho.preco.lucro !== null ? `, lucro de ${formatBRL(rascunho.preco.lucro)} por venda)` : ")"}.
+            </li>
             <li>{capas.length} imagem(ns) será(ão) enviada(s) e a primeira é a capa.</li>
             <li>O estoque inicial é o do cadastro do produto.</li>
           </ul>

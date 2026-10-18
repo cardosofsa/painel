@@ -13,6 +13,7 @@ import {
   paginaHistoricoSchema,
   precoPraticadoSchema,
   rascunhoPrecificacaoSchema,
+  precoLojaSchema,
   type PrecoPraticadoInput,
 } from "@/lib/validacao";
 import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
@@ -64,9 +65,11 @@ export async function salvarPrecificacao(dados: PrecificacaoInput, rascunhoId: s
     if (error) lancarErroSupabase(error);
     // O rascunho cumpriu o papel: a precificação foi salva de verdade.
     if (rascunhoId && /^[0-9a-f-]{36}$/i.test(rascunhoId)) await supabase.from("precificacao_rascunhos").delete().eq("id", rascunhoId);
+    // O preço vai para AQUELA loja (0101); `produtos.preco_venda` fica para PDV e catálogo.
+    const precoNaLoja = v.produto_id && v.loja_id && data?.id ? await gravarPrecoLoja(supabase, v.produto_id, v.loja_id, v.preco_calculado, data.id as string) : false;
     revalidatePath("/precificacao");
     revalidatePath("/produtos");
-    return { id: (data?.id as string | undefined) ?? null };
+    return { id: (data?.id as string | undefined) ?? null, precoNaLoja };
   });
 }
 
@@ -463,5 +466,42 @@ export async function descartarRascunhoPrecificacao(id: string) {
     const supabase = await createClient();
     const { error } = await supabase.from("precificacao_rascunhos").delete().eq("id", id);
     if (error && !semTabela(error.code)) lancarErroSupabase(error);
+  });
+}
+
+// ---------- Preço por loja (0101) ----------
+
+/**
+ * Grava o preço de um produto numa loja (cria a ligação produto–loja se não existir).
+ * Sem a 0101 as colunas não existem: devolve `false` e nada muda (o código segue como antes).
+ */
+async function gravarPrecoLoja(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  produtoId: string,
+  lojaId: string,
+  preco: number,
+  precificacaoId: string | null,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("produto_lojas")
+    .upsert(
+      { produto_id: produtoId, loja_id: lojaId, preco: Math.round(preco * 100) / 100, precificacao_id: precificacaoId, preco_atualizado_em: new Date().toISOString() },
+      { onConflict: "produto_id,loja_id" },
+    );
+  if (error?.code === "PGRST204" || error?.code === "42703") return false;
+  if (error) lancarErroSupabase(error);
+  return true;
+}
+
+/** Define o preço de uma loja sem nova precificação (Ajuste de Preço, "usar este preço"). */
+export async function salvarPrecoLoja(entrada: { produto_id: string; loja_id: string; preco: number; precificacao_id?: string | null }) {
+  return comResultado(async () => {
+    const v = validar(precoLojaSchema, entrada);
+    const supabase = await createClient();
+    const ok = await gravarPrecoLoja(supabase, v.produto_id, v.loja_id, v.preco, v.precificacao_id ?? null);
+    if (!ok) throw new Error("O preço por loja precisa da migração 0101 no banco.");
+    revalidatePath("/precificacao");
+    revalidatePath("/produtos");
+    revalidatePath("/anuncio");
   });
 }

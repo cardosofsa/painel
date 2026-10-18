@@ -17,8 +17,8 @@ const ABAS_CONFIG: ConfigAba[] = ["perfil", "ficha", "memoria", "conferir", "apr
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function InfinitoPage({ searchParams }: { searchParams: Promise<{ produto?: string; config?: string; rascunho?: string }> }) {
-  const { produto, config, rascunho } = await searchParams;
+export default async function InfinitoPage({ searchParams }: { searchParams: Promise<{ produto?: string; config?: string; rascunho?: string; loja?: string }> }) {
+  const { produto, config, rascunho, loja } = await searchParams;
   const supabase = await createClient();
   const [produtosRes, perfisRes, memoriaRes, fichasRes, lojasRes, iaDisponivel, saldo, rascunhoAberto, saldoTexto] = await Promise.all([
     soMercadorias(
@@ -50,6 +50,8 @@ export default async function InfinitoPage({ searchParams }: { searchParams: Pro
       produtos={produtos}
       produtoInicial={produto && produtos.some((p) => p.id === produto) ? produto : null}
       rascunhoInicial={rascunhoAberto}
+      // Vindo da Precificação (`?produto=&loja=`): o perfil daquela loja, e o rascunho abre sozinho.
+      perfilInicial={loja ? (((perfisRes.data ?? []) as PerfilMarca[]).find((p) => p.loja_id === loja)?.id ?? null) : null}
       saldoTexto={saldoTexto}
       configInicial={ABAS_CONFIG.find((a) => a === config) ?? null}
       perfis={(perfisRes.data ?? []) as PerfilMarca[]}

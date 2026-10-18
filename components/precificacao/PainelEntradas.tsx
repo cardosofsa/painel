@@ -1,12 +1,12 @@
 "use client";
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { inputClass } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
 import { formatBRL } from "@/lib/format";
-import { GeradorIA } from "@/components/ia/GeradorIA";
 import { limiteEfetivo, LIMITE_DESCRICAO_ANUNCIO } from "@/lib/ia/prompts";
-import { gerarDescricaoAnuncioIA, gerarTituloAnuncioIA } from "@/app/(painel)/precificacao/actions";
 import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { FotoPrecificacao } from "@/components/precificacao/FotoPrecificacao";
 import type { EstadoPrecificacao, ProdutoOpcao } from "@/lib/precificacao-estado";
@@ -20,11 +20,9 @@ import type { EstadoPrecificacao, ProdutoOpcao } from "@/lib/precificacao-estado
 export function PainelEntradas({
   estado,
   produtos,
-  iaDisponivel,
 }: {
   estado: EstadoPrecificacao;
   produtos: ProdutoOpcao[];
-  iaDisponivel: boolean;
 }) {
   const {
     nomeProduto,
@@ -41,9 +39,7 @@ export function PainelEntradas({
     setDescricaoAnuncio,
     lojaSelecionada,
     custoTotal,
-    resultado,
     componentes,
-    concorrentes,
     custoProduto,
     setCustoProduto,
     custoInsumos,
@@ -99,38 +95,6 @@ export function PainelEntradas({
           className={inputClass}
           placeholder="Insira aqui Nome do Anúncio"
         />
-        {/* `key` pelo produto: trocar de produto zera a sugestão sem useEffect. */}
-        <div className="mb-3">
-          <GeradorIA
-            key={`ia-titulo-${produtoId ?? nomeProduto}`}
-            rotulo="Gerar título com IA"
-            tipo="titulo"
-            limite={limiteEfetivo("titulo", lojaSelecionada?.limiteTitulo)}
-            termoPrincipal={nomeProduto}
-            valorAtual={nomeAnuncio}
-            disponivel={iaDisponivel}
-            desabilitado={!nomeProduto.trim()}
-            motivoDesabilitado={!nomeProduto.trim() ? "Informe o nome do produto primeiro." : undefined}
-            gerar={(instrucaoExtra, tom) =>
-              gerarTituloAnuncioIA({
-                produtoNome: nomeProduto,
-                sku: produtoVinculado?.sku ?? null,
-                canal: lojaSelecionada?.canalNome ?? null,
-                loja: lojaSelecionada?.nome ?? null,
-                palavrasChave: produtoVinculado?.palavras_chave ?? undefined,
-                custo: custoTotal,
-                precoCalculado: resultado.viavel ? resultado.precoVenda : null,
-                componentes: componentes.map((c) => ({ nome: c.nome, quantidade: c.quantidade })),
-                // Só nome e preço: o link do concorrente não entra no prompt.
-                concorrentes: concorrentes.map((c) => ({ nome: c.nome, preco: c.preco })),
-                limite: lojaSelecionada?.limiteTitulo ?? null,
-                tom,
-                instrucaoExtra,
-              })
-            }
-            onUsar={setNomeAnuncio}
-          />
-        </div>
         <label className="block text-xs font-medium text-text-secondary mb-1.5">Descrição do Anúncio (opcional)</label>
         <textarea
           value={descricaoAnuncio}
@@ -139,32 +103,15 @@ export function PainelEntradas({
           maxLength={limiteDescricao}
           placeholder="Vai junto quando esta precificação virar produto"
         />
-        <div className="mb-3">
-          <GeradorIA
-            key={`ia-desc-${produtoId ?? nomeProduto}`}
-            rotulo="Gerar descrição com IA"
-            tipo="descricao"
-            limite={limiteDescricao}
-            valorAtual={descricaoAnuncio}
-            disponivel={iaDisponivel}
-            desabilitado={!nomeProduto.trim()}
-            motivoDesabilitado={!nomeProduto.trim() ? "Informe o nome do produto primeiro." : undefined}
-            gerar={(instrucaoExtra, tom) =>
-              gerarDescricaoAnuncioIA({
-                produtoNome: nomeAnuncio.trim() || nomeProduto,
-                sku: produtoVinculado?.sku ?? null,
-                canal: lojaSelecionada?.canalNome ?? null,
-                loja: lojaSelecionada?.nome ?? null,
-                descricaoAtual: descricaoAnuncio || null,
-                componentes: componentes.map((c) => ({ nome: c.nome, quantidade: c.quantidade })),
-                palavrasChave: produtoVinculado?.palavras_chave ?? undefined,
-                limite: limiteDescricao,
-                tom,
-                instrucaoExtra,
-              })
-            }
-            onUsar={setDescricaoAnuncio}
-          />
+        {/* Título e descrição com IA moram só no Anúncio (decisão 3 do plano): aqui fica o atalho. */}
+        <div className="mb-3 mt-1.5">
+          {produtoId ? (
+            <Link href={`/anuncio/infinito?produto=${produtoId}${lojaSelecionada ? `&loja=${lojaSelecionada.id}` : ""}`} className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
+              <Sparkles size={14} aria-hidden /> Criar anúncio deste produto (título, capa e descrição com IA)
+            </Link>
+          ) : (
+            <p className="text-xs text-text-tertiary">Escolha um produto cadastrado para criar o anúncio dele com IA na aba Anúncio.</p>
+          )}
         </div>
         <label className="block text-xs font-medium text-text-secondary mb-1.5">
           Custo do Produto (R$) <span className="text-negative">*</span>

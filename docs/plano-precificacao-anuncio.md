@@ -534,3 +534,13 @@ git add -A && git commit -m "<fase>: <resumo>" && git push -u origin claude/laug
 - Anúncio Infinito: a proteção cobre a descrição editada e o título digitado; "Salvar rascunho e sair" grava os dois.
 - E2E `e2e/rascunho.spec.ts` (roda com o smoke, na conta de teste): passou de ponta a ponta. Voltar e menu conferidos à mão.
 - Fica para a Fase 7 (redesenho): rascunho das abas Variações, Kits e Em Massa, que hoje guardam o estado dentro de cada componente.
+
+## 17. Fase 4 concluída: preço por loja + IA só no Anúncio
+
+- **Migração 0101** (`produto_lojas.preco`, `precificacao_id`, `preco_atualizado_em`, com check, FK e a trava de vínculo da 0026). Testada no PGlite (2×) e em `scripts/sql/preco-por-loja.mjs`. **Aplicação: pelo dono, no SQL Editor.**
+- **Cópia opcional do histórico** em `scripts/supabase/copiar-precos-historico.sql`: passo 1 só conta; passo 2 (comentado) preenche só loja sem preço, nunca sobrescreve, pode rodar 2×.
+- Produtos: salvar o produto não apaga mais as linhas `produto_lojas` (levaria o preço junto); só tira as desmarcadas.
+- Precificação: salvar com loja grava o preço **naquela loja**; sem a 0101, volta a perguntar se atualiza o cadastro (comportamento antigo). Bloco **Preços por loja** (`lib/precos-loja.ts` + teste): uma linha por loja, lucro e margem com as taxas da loja, selo sem preço / prejuízo / zona morta, botão "Precificar". `?produto=&loja=` abre a calculadora já no produto e na loja.
+- Anúncio: o preço vem da loja do perfil (`precoDoAnuncio`); Revisar mostra "Pronto para publicar?" com preço, lucro, margem e alerta, ou "Precificar agora"; o Pacote e a confirmação de "Criar na Shopee" mostram o preço enviado; criar na Shopee recusa loja sem preço.
+- IA só no Anúncio: saiu o gerador de título/descrição da Individual e de Variações; entrou "Criar anúncio deste produto", que abre o rascunho sozinho no perfil daquela loja. "Títulos que você já usou" aparece no painel de Títulos.
+- Testes: 1570 unitários e 48 scripts SQL passando; `tsc`, `lint`, `build` limpos. Atalho e abertura automática conferidos no navegador. O bloco Preços por loja só aparece depois da 0101.

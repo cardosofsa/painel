@@ -15,8 +15,7 @@ import { type ResumoExport, useExportarPrecificacao } from "@/components/precifi
 import { TabelaVariacoes } from "@/components/precificacao/variacoes/TabelaVariacoes";
 import { ExportarVariacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 import { VariacoesSalvas } from "@/components/precificacao/variacoes/VariacoesSalvas";
-import { criarAnuncio, removerAnuncio, gerarDescricaoAnuncioIA, gerarTituloAnuncioIA, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
-import { GeradorIA } from "@/components/ia/GeradorIA";
+import { criarAnuncio, removerAnuncio, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
 import { limiteEfetivo, LIMITE_DESCRICAO_ANUNCIO } from "@/lib/ia/prompts";
 import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/lib/precificacao-estado";
 import { executarComToast } from "@/lib/acao-cliente";
@@ -36,7 +35,6 @@ export function VariacoesView({
   aliquotaDasPadrao,
   confirm,
   onVerHistorico,
-  iaDisponivel,
   empresa = null,
 }: {
   empresa?: { nome: string | null; logoUrl: string | null } | null;
@@ -45,7 +43,6 @@ export function VariacoesView({
   anuncios: AnuncioSalvo[];
   aliquotaDasPadrao: number;
   /** Vem do servidor via PrecificacaoClient: `GEMINI_API_KEY` não é lida no cliente. */
-  iaDisponivel: boolean;
   confirm: (options: { title: string; message: string; confirmLabel?: string }) => Promise<boolean>;
   /** Abre o pop-up com o histórico de precificações. */
   onVerHistorico: () => void;
@@ -77,7 +74,6 @@ export function VariacoesView({
   }, [modo]);
 
   const lojaSelecionada = useMemo(() => lojas.find((l) => l.id === lojaId) ?? null, [lojas, lojaId]);
-  const produtoVinculado = produtos.find((p) => p.id === produtoId);
   const limiteDescricao = limiteEfetivo("descricao", lojaSelecionada?.limiteDescricao ?? LIMITE_DESCRICAO_ANUNCIO);
   const canaisAgrupados = useMemo(() => Array.from(new Set(lojas.map((l) => l.canalNome))), [lojas]);
   const parametroPadrao =
@@ -217,32 +213,6 @@ export function VariacoesView({
           <div>
             <label className="text-xs text-text-secondary mb-1.5 block">Título do Anúncio (opcional)</label>
             <input value={tituloAnuncio} onChange={(e) => setTituloAnuncio(e.target.value)} className={inputClass} />
-            <GeradorIA
-              key={`ia-titulo-var-${produtoId ?? nomeAnuncio}`}
-              rotulo="Gerar título com IA"
-              tipo="titulo"
-              limite={limiteEfetivo("titulo", lojaSelecionada?.limiteTitulo)}
-              termoPrincipal={nomeAnuncio}
-              valorAtual={tituloAnuncio}
-              disponivel={iaDisponivel}
-              desabilitado={!nomeAnuncio.trim()}
-              motivoDesabilitado={!nomeAnuncio.trim() ? "Preencha o nome do anúncio primeiro." : undefined}
-              gerar={(instrucaoExtra, tom) =>
-                gerarTituloAnuncioIA({
-                  produtoNome: nomeAnuncio,
-                  sku: produtoVinculado?.sku ?? null,
-                  palavrasChave: produtoVinculado?.palavras_chave ?? undefined,
-                  canal: lojaSelecionada?.canalNome ?? null,
-                  loja: lojaSelecionada?.nome ?? null,
-                  custo: custoUnitarioBase,
-                      variacoes: variacoes.map((v) => v.nome.trim()).filter(Boolean),
-                  limite: lojaSelecionada?.limiteTitulo ?? null,
-                  tom,
-                  instrucaoExtra,
-                })
-              }
-              onUsar={setTituloAnuncio}
-            />
           </div>
         </div>
         <div className="mb-4">
@@ -253,31 +223,6 @@ export function VariacoesView({
             className={`${inputClass} h-24 py-2 resize-y`}
             maxLength={limiteDescricao}
             placeholder="Vai junto para os produtos criados a partir destas variações"
-          />
-          <GeradorIA
-            key={`ia-desc-var-${produtoId ?? nomeAnuncio}`}
-            rotulo="Gerar descrição com IA"
-            tipo="descricao"
-            limite={limiteDescricao}
-            valorAtual={descricaoAnuncio}
-            disponivel={iaDisponivel}
-            desabilitado={!nomeAnuncio.trim()}
-            motivoDesabilitado={!nomeAnuncio.trim() ? "Preencha o nome do anúncio primeiro." : undefined}
-            gerar={(instrucaoExtra, tom) =>
-              gerarDescricaoAnuncioIA({
-                produtoNome: tituloAnuncio.trim() || nomeAnuncio,
-                sku: produtoVinculado?.sku ?? null,
-                canal: lojaSelecionada?.canalNome ?? null,
-                loja: lojaSelecionada?.nome ?? null,
-                descricaoAtual: descricaoAnuncio || null,
-                variacoes: variacoes.map((v) => v.nome.trim()).filter(Boolean),
-                palavrasChave: produtoVinculado?.palavras_chave ?? undefined,
-                limite: limiteDescricao,
-                tom,
-                instrucaoExtra,
-              })
-            }
-            onUsar={setDescricaoAnuncio}
           />
         </div>
         <div className="mb-4">

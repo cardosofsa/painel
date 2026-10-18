@@ -22,6 +22,7 @@ import { PainelTaxas } from "@/components/precificacao/PainelTaxas";
 import { PainelModo } from "@/components/precificacao/PainelModo";
 import { PainelConcorrentes } from "@/components/precificacao/PainelConcorrentes";
 import { PainelResultado } from "@/components/precificacao/PainelResultado";
+import { PainelPrecosLoja } from "@/components/precificacao/PainelPrecosLoja";
 import { PainelEstrategiaVixe } from "@/components/precificacao/PainelEstrategiaVixe";
 import { PainelAnuncio } from "@/components/precificacao/PainelAnuncio";
 import { HistoricoPrecificacoes } from "@/components/precificacao/HistoricoPrecificacoes";
@@ -70,7 +71,12 @@ export function PrecificacaoClient({
   empresa,
   visaoInicial,
   rascunhosPendentes = [],
+  precosLoja = null,
+  inicial,
 }: {
+  /** Preço de cada produto em cada loja (0101); `null` sem a migração. */
+  precosLoja?: { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[] | null;
+  inicial?: { produtoId: string | null; lojaId: string | null };
   /** Rascunhos da Individual guardados no banco (0100), o mais recente primeiro. */
   rascunhosPendentes?: RascunhoPendente[];
   empresa: { nome: string | null; logoUrl: string | null } | null;
@@ -108,6 +114,7 @@ export function PrecificacaoClient({
     empresa,
     visaoInicial,
     rascunhoAtual: { id: () => rascRef.current?.rascunhoId ?? null, aoSalvar: () => rascRef.current?.aoSalvarPrecificacao() },
+    inicial,
   });
   const rasc = useRascunhoPrecificacao({ instantaneo: estado.instantaneo, temConteudo: estado.temConteudo, titulo: estado.tituloRascunho, produtoId: estado.produtoId });
   useEffect(() => {
@@ -178,7 +185,6 @@ export function PrecificacaoClient({
           aliquotaDasPadrao={aliquotaDasPadrao}
           confirm={estado.confirm}
           onVerHistorico={() => setHistoricoAberto(true)}
-          iaDisponivel={iaDisponivel}
           empresa={empresa}
         />
       )}
@@ -210,7 +216,7 @@ export function PrecificacaoClient({
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-5">
-              <PainelEntradas estado={estado} produtos={produtos} iaDisponivel={iaDisponivel} />
+              <PainelEntradas estado={estado} produtos={produtos} />
               <PainelTaxas estado={estado} lojas={lojas} iaDisponivel={iaDisponivel} />
               <PainelModo estado={estado} />
               <PainelConcorrentes estado={estado} />
@@ -218,6 +224,16 @@ export function PrecificacaoClient({
 
             <div className="space-y-5">
               <PainelResultado estado={estado} produtoVinculado={estado.produtoVinculado} lojas={lojas} />
+              {precosLoja && estado.produtoVinculado && (
+                <PainelPrecosLoja
+                  custo={Number(estado.produtoVinculado.custo)}
+                  impostoPct={estado.impostoPct / 100}
+                  lojas={lojas}
+                  precos={precosLoja.filter((p) => p.produto_id === estado.produtoVinculado!.id)}
+                  lojaAtual={estado.modoTaxas === "loja" ? estado.lojaId : null}
+                  onPrecificar={estado.precificarNaLoja}
+                />
+              )}
               <PainelEstrategiaVixe estado={estado} iaDisponivel={iaDisponivel} />
               <PainelAnuncio estado={estado} />
             </div>

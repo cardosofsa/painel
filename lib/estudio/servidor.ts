@@ -5,6 +5,24 @@ import { regrasDaPlataforma, type PlataformaMarcaId, type RegrasPlataforma } fro
 import { estadoRascunhoSchema, type EstadoRascunho } from "@/lib/validacao";
 import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { statusDoRascunho } from "@/lib/anuncio/etapas";
+import { precosPorLoja, type LojaParaPreco, type SituacaoPrecoLoja } from "@/lib/precos-loja";
+
+/**
+ * O preço que o anúncio usa (0101): o da loja do perfil, com lucro e margem calculados com as
+ * taxas dela. Perfil sem loja (ou banco sem a 0101) cai no preço do cadastro, como antes.
+ */
+export interface PrecoDoAnuncio {
+  origem: "loja" | "cadastro";
+  lojaId: string | null;
+  lojaRotulo: string | null;
+  /** `null` = a loja ainda não tem preço para este produto. */
+  preco: number | null;
+  lucro: number | null;
+  margemPct: number | null;
+  situacao: SituacaoPrecoLoja | null;
+  /** Zona morta: o preço logo abaixo da virada de faixa, que rende mais. */
+  precoMelhor: number | null;
+}
 
 /** O rascunho como a tela do Anúncio Infinito o recebe (aberto por produto ou por id). */
 export interface RascunhoAberto {
@@ -18,6 +36,9 @@ export interface RascunhoAberto {
   status: string;
   estado: EstadoRascunho;
   mensagens: { id: string; papel: "usuario" | "ia"; texto: string; acoes: AcaoProposta[]; criado_em: string }[];
+  preco: PrecoDoAnuncio;
+  /** Títulos já usados nas precificações deste produto (`precificacoes.titulo_anuncio`). */
+  titulosUsados: string[];
 }
 
 /**
@@ -148,10 +169,13 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
   const { data: r, error } = await supabase.from("anuncio_rascunhos").select("id, produto_id, perfil_id, titulo, descricao, status, estado").eq("id", rascunhoId).maybeSingle();
   if (error) throw erro("Não foi possível abrir o rascunho.");
   if (!r) return null;
-  const [{ data: p }, { data: msgs }] = await Promise.all([
+  const [{ data: p }, { data: msgs }, preco, { data: titulosRes }] = await Promise.all([
     supabase.from("produtos").select("nome, preco_venda, palavras_chave, imagem_url, peso_g, altura_cm, largura_cm, comprimento_cm, estoque").eq("id", r.produto_id).maybeSingle(),
     supabase.from("anuncio_rascunho_mensagens").select("id, papel, texto, acoes, criado_em").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60),
+    precoDoAnuncio(supabase, r.produto_id, r.perfil_id ?? null),
+    supabase.from("precificacoes").select("titulo_anuncio").eq("produto_id", r.produto_id).not("titulo_anuncio", "is", null).order("criado_em", { ascending: false }).limit(30),
   ]);
+  const titulosUsados = [...new Set(((titulosRes ?? []) as { titulo_anuncio: string | null }[]).map((t) => (t.titulo_anuncio ?? "").trim()).filter((t) => t.length >= 3))].slice(0, 5);
   return {
     id: r.id,
     produtoId: r.produto_id,
@@ -170,6 +194,62 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
     status: r.status ?? "rascunho",
     estado: lerEstado(r.estado),
     mensagens: ((msgs ?? []) as RascunhoAberto["mensagens"]).map((m) => ({ ...m, acoes: Array.isArray(m.acoes) ? m.acoes : [] })),
+    preco,
+    titulosUsados,
+  };
+}
+
+export async function precoDoAnuncio(supabase: SupabaseClient, produtoId: string, perfilId: string | null): Promise<PrecoDoAnuncio> {
+  const { data: prod } = await supabase.from("produtos").select("preco_venda, custo").eq("id", produtoId).maybeSingle();
+  const doCadastro: PrecoDoAnuncio = {
+    origem: "cadastro",
+    lojaId: null,
+    lojaRotulo: null,
+    preco: prod?.preco_venda != null && Number(prod.preco_venda) > 0 ? Number(prod.preco_venda) : null,
+    lucro: null,
+    margemPct: null,
+    situacao: null,
+    precoMelhor: null,
+  };
+  if (!perfilId) return doCadastro;
+  const { data: perfil } = await supabase.from("perfis_marca").select("loja_id").eq("id", perfilId).maybeSingle();
+  const lojaId = (perfil?.loja_id as string | null) ?? null;
+  if (!lojaId) return doCadastro;
+
+  const [lojaRes, precoRes, negocioRes] = await Promise.all([
+    supabase.from("lojas_canal").select("id, nome, canal_id, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo, canais(nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao)").eq("id", lojaId).maybeSingle(),
+    supabase.from("produto_lojas").select("loja_id, preco, preco_atualizado_em").eq("produto_id", produtoId).eq("loja_id", lojaId).maybeSingle(),
+    supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
+  ]);
+  // Sem a 0101 a coluna `preco` não existe: segue com o preço do cadastro.
+  if (precoRes.error || !lojaRes.data) return doCadastro;
+  const l = lojaRes.data as unknown as {
+    id: string; nome: string; canal_id: string; comissao_pct: number | null; taxa_fixa: number | null; taxa_extra_valor: number | null; taxa_extra_tipo: "percentual" | "fixo" | null;
+    canais: { nome: string; tipo_taxa: "faixas" | "fixo"; comissao_pct_padrao: number | null; taxa_fixa_padrao: number | null; taxa_extra_valor_padrao: number | null; taxa_extra_tipo_padrao: "percentual" | "fixo" | null } | null;
+  };
+  const { data: faixas } = await supabase.from("faixas_comissao_canal").select("preco_min, preco_max, comissao_pct, tarifa_fixa").eq("canal_id", l.canal_id).order("ordem");
+  const loja: LojaParaPreco = {
+    id: l.id,
+    nome: l.nome,
+    canalNome: l.canais?.nome ?? "—",
+    tipoTaxa: l.canais?.tipo_taxa ?? "fixo",
+    comissaoPct: Number(l.comissao_pct ?? l.canais?.comissao_pct_padrao ?? 0),
+    taxaFixa: Number(l.taxa_fixa ?? l.canais?.taxa_fixa_padrao ?? 0),
+    taxaExtraValor: l.taxa_extra_valor ?? l.canais?.taxa_extra_valor_padrao ?? null,
+    taxaExtraTipo: l.taxa_extra_tipo ?? l.canais?.taxa_extra_tipo_padrao ?? null,
+    faixas: ((faixas ?? []) as { preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[]).map((f) => ({ min: Number(f.preco_min), max: f.preco_max != null ? Number(f.preco_max) : null, comissaoPct: Number(f.comissao_pct), tarifaFixa: Number(f.tarifa_fixa) })),
+  };
+  const aliquota = Number(negocioRes.data?.aliquota_das ?? 6) / 100;
+  const [linha] = precosPorLoja([loja], precoRes.data ? [precoRes.data as { loja_id: string; preco: number | null }] : [], Number(prod?.custo ?? 0), aliquota);
+  return {
+    origem: "loja",
+    lojaId: loja.id,
+    lojaRotulo: linha.rotulo,
+    preco: linha.preco,
+    lucro: linha.resultado?.lucroLiquido ?? null,
+    margemPct: linha.resultado?.margemEfetivaPct ?? null,
+    situacao: linha.situacao,
+    precoMelhor: linha.zonaMorta?.precoMelhor ?? null,
   };
 }
 

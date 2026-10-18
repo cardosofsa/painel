@@ -1144,3 +1144,11 @@ export const rascunhoPrecificacaoSchema = z.object({
   dados: z.record(z.string(), z.unknown()).refine((d) => JSON.stringify(d).length <= 200_000, "Rascunho grande demais."),
 });
 export type RascunhoPrecificacaoInput = z.infer<typeof rascunhoPrecificacaoSchema>;
+
+/** Preço de um produto numa loja (0101). */
+export const precoLojaSchema = z.object({
+  produto_id: z.string().uuid(),
+  loja_id: z.string().uuid(),
+  preco: z.number().finite().positive("O preço precisa ser maior que zero").max(10_000_000),
+  precificacao_id: z.string().uuid().nullable().optional(),
+});
