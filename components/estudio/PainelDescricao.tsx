@@ -12,7 +12,7 @@ import { avaliarDescricao, MINIMO_DESCRICAO } from "@/lib/ia/prompts-descricao-e
 import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
 /** O texto editável. `key` no consumidor: uma geração nova (ou uma descrição salva) remonta com o texto novo. */
-function Editor({ inicial, limite, termos, ocupado, onSalvar, onEditado }: { inicial: string; limite: number; termos: string[]; ocupado: boolean; onSalvar: (texto: string) => void; onEditado: (sujo: boolean) => void }) {
+function Editor({ inicial, limite, termos, ocupado, onSalvar, onEditado }: { inicial: string; limite: number; termos: string[]; ocupado: boolean; onSalvar: (texto: string) => void; onEditado: (texto: string | null) => void }) {
   const [texto, setTexto] = useState(inicial);
   const avaliacao = useMemo(() => avaliarDescricao(texto, { limite, regras: regrasAtivas([], termos) }), [texto, limite, termos]);
 
@@ -29,7 +29,7 @@ function Editor({ inicial, limite, termos, ocupado, onSalvar, onEditado }: { ini
       </div>
       <textarea className={`${inputClass} h-56 py-2 resize-y`} value={texto} maxLength={5000} onChange={(e) => {
           setTexto(e.target.value);
-          onEditado(e.target.value !== inicial);
+          onEditado(e.target.value !== inicial ? e.target.value : null);
         }}
         aria-label="Descrição do anúncio"
       />
@@ -67,7 +67,10 @@ export function PainelDescricao({
   meta,
   onGerar,
   onSalvar,
+  onPendente,
 }: {
+  /** O texto editado e ainda não salvo (ou `null`), para a proteção de saída da tela. */
+  onPendente?: (texto: string | null) => void;
   salva: string | null;
   geradaTexto: string | null;
   versao: number;
@@ -88,6 +91,7 @@ export function PainelDescricao({
   async function gerarOutra() {
     if (sujo && !(await confirm({ title: "Descartar o que você editou?", message: "Gerar outra descrição substitui o texto do editor, inclusive as suas mudanças que ainda não foram salvas.", confirmLabel: "Gerar outra mesmo assim" }))) return;
     setSujo(false);
+    onPendente?.(null);
     onGerar(pedido.trim() || null);
   }
 
@@ -113,9 +117,13 @@ export function PainelDescricao({
           {meta && <p className="text-xs text-text-tertiary mb-2">{meta}</p>}
           <Editor key={`${versao}-${salva ?? ""}`} inicial={geradaTexto ?? salva ?? ""} limite={limite} termos={termos} ocupado={ocupado} onSalvar={(t) => {
               setSujo(false);
+              onPendente?.(null);
               onSalvar(t);
             }}
-            onEditado={setSujo}
+            onEditado={(t) => {
+              setSujo(t !== null);
+              onPendente?.(t);
+            }}
           />
           {salva && <p className="mt-2 text-xs text-text-tertiary">Descrição salva neste rascunho: {salva.length} caracteres.</p>}
         </>

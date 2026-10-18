@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes } from "react";
+import { ButtonHTMLAttributes, Ref } from "react";
 import { LoaderCircle } from "lucide-react";
 
 type Variant = "primary" | "secondary" | "destructive" | "ghost";
@@ -49,7 +49,7 @@ export function Button({
   disabled,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; loading?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; loading?: boolean; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button
       className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}

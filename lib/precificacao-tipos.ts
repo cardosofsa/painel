@@ -32,6 +32,9 @@ export interface PrecificacaoHist {
   anuncio?: { tipo: "percentual" | "valor"; valor: number; margem_alvo_pct: number | null } | null;
   estrategia?: DiagnosticoPreco | null;
   imagem_url?: string | null;
+  /** 0100; ausentes antes da migração e em linhas antigas. */
+  modo_calculo?: "margem" | "lucro" | "preco" | "markup" | null;
+  parametro?: number | null;
 }
 
 export interface LojaOpcao {

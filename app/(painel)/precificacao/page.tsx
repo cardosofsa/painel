@@ -7,13 +7,14 @@ import type { LojaOpcao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificac
 import type { Concorrente } from "@/lib/pricing";
 import type { Metadata } from "next";
 import { VISOES_PRECIFICACAO } from "@/lib/precificacao-tipos";
+import type { RascunhoPendente } from "@/lib/precificacao-rascunho";
 
 export const metadata: Metadata = { title: "Precificação" };
 
 export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string }> }) {
   const { visao } = await searchParams;
   const supabase = await createClient();
-  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel] =
+  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel, rascunhosRes] =
     await Promise.all([
     supabase
       .from("precificacoes")
@@ -51,6 +52,8 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     supabase.from("categorias").select("*"),
     // No mesmo `Promise.all`: era um `await` sozinho no fim, uma ida ao banco a mais em série.
     iaDisponivelParaConta(supabase),
+    // Rascunho em andamento (0100). Sem a migração vem erro e a tela segue sem o aviso.
+    supabase.from("precificacao_rascunhos").select("id, titulo, atualizado_em, dados").eq("visao", "individual").order("atualizado_em", { ascending: false }).limit(3),
   ]);
 
   if (historicoRes.error) throw new Error(historicoRes.error.message);
@@ -128,6 +131,7 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       // bundler trocaria por `undefined` calado e o botão sumiria sempre.
       iaDisponivel={iaDisponivel}
       visaoInicial={VISOES_PRECIFICACAO.find((v) => v === visao)}
+      rascunhosPendentes={rascunhosRes.error ? [] : ((rascunhosRes.data ?? []) as RascunhoPendente[])}
     />
   );
 }

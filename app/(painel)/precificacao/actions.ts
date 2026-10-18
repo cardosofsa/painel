@@ -12,6 +12,7 @@ import {
   vincularProdutoPrecificacaoSchema,
   paginaHistoricoSchema,
   precoPraticadoSchema,
+  rascunhoPrecificacaoSchema,
   type PrecoPraticadoInput,
 } from "@/lib/validacao";
 import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
@@ -40,24 +41,29 @@ export interface PrecificacaoInput {
   preco_calculado: number;
   lucro: number;
   origem: "individual" | "em_massa";
+  /** 0100 (opcionais). */
+  modo_calculo?: "margem" | "lucro" | "preco" | "markup" | null;
+  parametro?: number | null;
   /** 0045 (opcionais). */
   anuncio?: { tipo: "percentual" | "valor"; valor: number; margem_alvo_pct: number | null } | null;
   estrategia?: { diagnostico: string; estrategias: { tipo: string; titulo: string; detalhe: string }[]; precoSugerido: number | null; motivoPreco: string | null } | null;
   imagem_url?: string | null;
 }
 
-export async function salvarPrecificacao(dados: PrecificacaoInput) {
+export async function salvarPrecificacao(dados: PrecificacaoInput, rascunhoId: string | null = null) {
   return comResultado(async () => {
     const supabase = await createClient();
     const v = validar(precificacaoSchema, dados);
     let { data, error } = await supabase.from("precificacoes").insert(v).select("id").single();
-    // Sem a 0045 as colunas novas não existem (PGRST204): grava o resto, como antes.
+    // Sem a 0045 ou a 0100 as colunas novas não existem (PGRST204): grava o resto, como antes.
     if (error?.code === "PGRST204") {
       const base: Record<string, unknown> = { ...v };
-      for (const c of ["anuncio", "estrategia", "imagem_url"]) delete base[c];
+      for (const c of ["anuncio", "estrategia", "imagem_url", "modo_calculo", "parametro"]) delete base[c];
       ({ data, error } = await supabase.from("precificacoes").insert(base).select("id").single());
     }
     if (error) lancarErroSupabase(error);
+    // O rascunho cumpriu o papel: a precificação foi salva de verdade.
+    if (rascunhoId && /^[0-9a-f-]{36}$/i.test(rascunhoId)) await supabase.from("precificacao_rascunhos").delete().eq("id", rascunhoId);
     revalidatePath("/precificacao");
     revalidatePath("/produtos");
     return { id: (data?.id as string | undefined) ?? null };
@@ -420,5 +426,42 @@ export async function salvarPrecoPraticado(input: PrecoPraticadoInput) {
     const { error } = await supabase.from("precos_praticados").insert({ chave: d.chave, produto_id: d.produto_id, loja_id: d.loja_id, preco: d.preco, observacao: d.observacao ?? null });
     if (error?.code === "PGRST205" || error?.code === "42P01") throw new Error("Guardar o preço praticado precisa da migração 0071.");
     if (error) lancarErroSupabase(error);
+  });
+}
+
+// ---------- Rascunho da Precificação (0100) ----------
+
+const semTabela = (code?: string) => code === "PGRST205" || code === "42P01";
+
+/**
+ * Grava (cria ou atualiza) o rascunho. Sem a migração 0100 devolve `semMigracao: true` em vez
+ * de erro: o salvamento automático só para, sem toast a cada 5 segundos.
+ */
+export async function salvarRascunhoPrecificacao(entrada: unknown) {
+  return comResultado(async (): Promise<{ id: string | null; semMigracao: boolean; salvoEm: string }> => {
+    const v = validar(rascunhoPrecificacaoSchema, entrada);
+    const supabase = await createClient();
+    const linha = { visao: v.visao, produto_id: v.produto_id, titulo: v.titulo, dados: v.dados, atualizado_em: new Date().toISOString() };
+    const r = v.id
+      ? await supabase.from("precificacao_rascunhos").update(linha).eq("id", v.id).select("id, atualizado_em").maybeSingle()
+      : await supabase.from("precificacao_rascunhos").insert(linha).select("id, atualizado_em").single();
+    if (semTabela(r.error?.code)) return { id: null, semMigracao: true, salvoEm: linha.atualizado_em };
+    if (r.error) lancarErroSupabase(r.error);
+    // Atualizar um rascunho apagado em outra aba não acha a linha: cria de novo.
+    if (!r.data) {
+      const novo = await supabase.from("precificacao_rascunhos").insert(linha).select("id, atualizado_em").single();
+      if (novo.error) lancarErroSupabase(novo.error);
+      return { id: novo.data!.id as string, semMigracao: false, salvoEm: linha.atualizado_em };
+    }
+    return { id: r.data.id as string, semMigracao: false, salvoEm: linha.atualizado_em };
+  });
+}
+
+export async function descartarRascunhoPrecificacao(id: string) {
+  return comResultado(async () => {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Rascunho inválido.");
+    const supabase = await createClient();
+    const { error } = await supabase.from("precificacao_rascunhos").delete().eq("id", id);
+    if (error && !semTabela(error.code)) lancarErroSupabase(error);
   });
 }

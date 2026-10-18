@@ -138,6 +138,9 @@ export const precificacaoSchema = z.object({
   preco_calculado: dinheiro.positive("O preço precisa ser maior que zero"),
   lucro: z.number().finite().min(-10_000_000).max(10_000_000),
   origem: z.enum(["individual", "em_massa"]),
+  // 0100; opcionais: o modo de cálculo e o número digitado (margem/markup em fração).
+  modo_calculo: z.enum(["margem", "lucro", "preco", "markup"]).nullable().optional(),
+  parametro: z.number().finite().min(-10_000_000).max(10_000_000).nullable().optional(),
   // 0045; opcionais: a calculadora em massa não manda.
   anuncio: z
     .object({ tipo: z.enum(["percentual", "valor"]), valor: z.number().finite().min(0).max(1_000_000), margem_alvo_pct: fracao.nullable() })
@@ -1131,3 +1134,13 @@ export const exportarListaSchema = z.object({
   ids: z.array(uuid).max(5000, "Selecione no máximo 5.000 itens para exportar"),
 });
 export type ExportarListaInput = z.infer<typeof exportarListaSchema>;
+
+/** Rascunho da Precificação (0100). `dados` é o estado da tela; o tamanho o banco também limita. */
+export const rascunhoPrecificacaoSchema = z.object({
+  id: z.string().uuid().nullable(),
+  visao: z.enum(["individual", "variacoes", "kits", "massa"]),
+  produto_id: uuidOpcional,
+  titulo: z.string().trim().max(200),
+  dados: z.record(z.string(), z.unknown()).refine((d) => JSON.stringify(d).length <= 200_000, "Rascunho grande demais."),
+});
+export type RascunhoPrecificacaoInput = z.infer<typeof rascunhoPrecificacaoSchema>;

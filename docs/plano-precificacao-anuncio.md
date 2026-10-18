@@ -524,3 +524,13 @@ git add -A && git commit -m "<fase>: <resumo>" && git push -u origin claude/laug
 - **A13** ✔ Ícones decorativos com `aria-hidden`; produto sem cadastro mostra `EmptyState`.
 - Testes: 1564 passando; `tsc`, `lint` e `build` limpos.
 - Não testado: criação real na Shopee e geração de capa com cota (conta de teste sem IA).
+
+## 16. Fase 3 concluída: proteção de saída + rascunho da Precificação
+
+- **Migração 0100** aplicada pelo dono no SQL Editor (conferida: tabela, coluna, RLS e policy). Inclui `precificacoes.modo_calculo`/`parametro`: "Duplicar" passa a reabrir no modo exato.
+- `lib/saida.ts` (+ teste): o que a proteção segura (link do sistema para outra tela) e o que deixa passar (externo, nova aba, download, âncora, Ctrl/Cmd).
+- `lib/hooks/useProtegerSaida.ts`: `beforeunload`, clique em link na captura e botão Voltar (entrada sentinela). `components/ui/ModalSaida.tsx`: "Salvar rascunho e sair", "Sair sem salvar", "Continuar aqui" (com foco).
+- Precificação Individual: salvamento automático a cada 5 s (só quando muda), botão "Salvar rascunho", indicador "Rascunho salvo há X", aviso "Continuar rascunho" com Continuar/Descartar; o rascunho é apagado ao salvar a precificação. Sem a migração, o automático para em silêncio e o modal não oferece salvar.
+- Anúncio Infinito: a proteção cobre a descrição editada e o título digitado; "Salvar rascunho e sair" grava os dois.
+- E2E `e2e/rascunho.spec.ts` (roda com o smoke, na conta de teste): passou de ponta a ponta. Voltar e menu conferidos à mão.
+- Fica para a Fase 7 (redesenho): rascunho das abas Variações, Kits e Em Massa, que hoje guardam o estado dentro de cada componente.

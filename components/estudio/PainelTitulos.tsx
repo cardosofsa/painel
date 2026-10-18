@@ -23,7 +23,10 @@ export function PainelTitulos({
   ocupado,
   onGerar,
   onEscolher,
+  onPendente,
 }: {
+  /** O título digitado e ainda não usado (ou `null`), para a proteção de saída da tela. */
+  onPendente?: (texto: string | null) => void;
   titulo: string | null;
   limite: number;
   resultado: TitulosDoEstudio | null;
@@ -107,8 +110,15 @@ export function PainelTitulos({
       )}
 
       <div className="flex flex-wrap gap-2">
-        <input className={`${inputClass} flex-1 min-w-[12rem]`} value={manual} maxLength={200} onChange={(e) => setManual(e.target.value)} placeholder="Ou digite o seu título" aria-label="Título digitado" />
-        <Button variant="ghost" onClick={() => onEscolher(manual.trim())} disabled={ocupado || manual.trim().length < 3}>
+        <input className={`${inputClass} flex-1 min-w-[12rem]`} value={manual} maxLength={200} onChange={(e) => {
+            setManual(e.target.value);
+            onPendente?.(e.target.value.trim() ? e.target.value : null);
+          }}
+          placeholder="Ou digite o seu título" aria-label="Título digitado" />
+        <Button variant="ghost" onClick={() => {
+            onPendente?.(null);
+            onEscolher(manual.trim());
+          }} disabled={ocupado || manual.trim().length < 3}>
           Usar o meu
         </Button>
       </div>

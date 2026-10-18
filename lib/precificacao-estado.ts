@@ -87,7 +87,12 @@ export function usePrecificacao({
   concorrentesPorProduto,
   empresa = null,
   visaoInicial = "individual",
-}: PrecificacaoProps) {
+  rascunhoAtual,
+}: PrecificacaoProps & {
+  /** Rascunho em uso (0100): é apagado quando a precificação é salva. Funções porque o
+   * hook do rascunho roda depois deste e lê o id no momento de salvar. */
+  rascunhoAtual?: { id: () => string | null; aoSalvar: () => void };
+}) {
   const [pending, startTransition] = useTransition();
   const { confirm, escolher, ConfirmDialog } = useConfirm();
   const [visao, setVisao] = useState<VisaoPrecificacao>(visaoInicial);
@@ -471,12 +476,22 @@ export function usePrecificacao({
       taxaExtraValor: h.taxa_extra_valor ?? undefined,
       taxaExtraTipo: h.taxa_extra_tipo,
     };
-    const reabrir = modoAoReabrir(h.margem_pct, h.preco_calculado, (m) =>
-      precoIdealRaioX({ custo: h.custo, taxas: taxasH, faixas: usaFaixasH ? loja!.faixas : [], margemAlvo: m }),
-    );
-    setModo(reabrir.modo);
-    if (reabrir.modo === "margem") setMargemPct(reabrir.margemPct);
-    else setPrecoFixo(reabrir.preco);
+    if (h.modo_calculo && h.parametro != null) {
+      // 0100: o modo e o número digitado estão gravados, sem adivinhar.
+      const p = Number(h.parametro);
+      setModo(h.modo_calculo);
+      if (h.modo_calculo === "margem") setMargemPct(Math.round(p * 100000) / 1000);
+      else if (h.modo_calculo === "markup") setMarkupPct(Math.round(p * 100000) / 1000);
+      else if (h.modo_calculo === "lucro") setLucroDesejado(p);
+      else setPrecoFixo(p);
+    } else {
+      const reabrir = modoAoReabrir(h.margem_pct, h.preco_calculado, (m) =>
+        precoIdealRaioX({ custo: h.custo, taxas: taxasH, faixas: usaFaixasH ? loja!.faixas : [], margemAlvo: m }),
+      );
+      setModo(reabrir.modo);
+      if (reabrir.modo === "margem") setMargemPct(reabrir.margemPct);
+      else setPrecoFixo(reabrir.preco);
+    }
     const salvos = h.componentes ?? [];
     const doProduto = salvos.find((c) => c.id === ID_CUSTO_PRODUTO);
     const insumos = salvos.filter((c) => c.id !== ID_CUSTO_PRODUTO);
@@ -634,11 +649,14 @@ export function usePrecificacao({
           preco_calculado: resultado.precoVenda,
           lucro: resultado.lucroLiquido,
           origem: "individual",
+          modo_calculo: modo,
+          parametro: modo === "margem" ? margemPct / 100 : modo === "markup" ? markupPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo,
           ...extras.extrasParaSalvar(),
-        }),
+        }, rascunhoAtual?.id() ?? null),
         { sucesso: "Anúncio salvo no histórico", erro: "Erro ao salvar precificação" },
       );
       if (!r.ok) return;
+      rascunhoAtual?.aoSalvar();
 
       // Só oferece atualizar o preço do produto depois que o histórico gravou: antes, uma
       // falha ao salvar caía no mesmo `catch` e o usuário nem chegava a ser perguntado.
@@ -658,7 +676,72 @@ export function usePrecificacao({
     });
   }
 
+  // ---------- Rascunho (0100): o que foi digitado, num objeto que vai e volta do banco ----------
+
+  const instantaneo = {
+    v: 1 as const,
+    produtoId,
+    nomeProduto,
+    nomeAnuncio,
+    descricaoAnuncio,
+    modo,
+    margemPct,
+    markupPct,
+    lucroDesejado,
+    precoFixo,
+    precoMinimo,
+    precoMaximo,
+    impostoPct,
+    modoTaxas,
+    lojaId,
+    taxaFixa,
+    taxaVariavelPct,
+    taxaAdicionalPct,
+    custoProduto,
+    componentes,
+    // Com produto, os concorrentes já ficam salvos nele; sem produto, só existem aqui.
+    concorrentes: produtoId ? [] : concorrentes,
+    extras: extras.extrasDoRascunho,
+  };
+  /** Tem algo digitado que valha guardar (tela vazia não vira rascunho). */
+  const temConteudo = !!nomeProduto.trim() || custoProduto > 0 || componentes.length > 0;
+  const tituloRascunho = [nomeProduto.trim() || "Sem nome", lojaSelecionada ? `${lojaSelecionada.canalNome} ${lojaSelecionada.nome}` : null].filter(Boolean).join(" · ");
+
+  function aplicarInstantaneo(d: Partial<typeof instantaneo>) {
+    const num = (x: unknown, padrao: number) => (typeof x === "number" && Number.isFinite(x) ? x : padrao);
+    const numOuVazio = (x: unknown) => (x === "" ? "" : typeof x === "number" && Number.isFinite(x) ? x : "");
+    setProdutoId(typeof d.produtoId === "string" && produtos.some((p) => p.id === d.produtoId) ? d.produtoId : null);
+    setNomeProduto(typeof d.nomeProduto === "string" ? d.nomeProduto : "");
+    setNomeAnuncio(typeof d.nomeAnuncio === "string" ? d.nomeAnuncio : "");
+    setDescricaoAnuncio(typeof d.descricaoAnuncio === "string" ? d.descricaoAnuncio : "");
+    setModo(d.modo === "margem" || d.modo === "markup" || d.modo === "lucro" || d.modo === "preco" ? d.modo : "margem");
+    setMargemPct(num(d.margemPct, 28));
+    setMarkupPct(num(d.markupPct, 50));
+    setLucroDesejado(num(d.lucroDesejado, 30));
+    setPrecoFixo(num(d.precoFixo, 99.9));
+    setPrecoMinimo(numOuVazio(d.precoMinimo));
+    setPrecoMaximo(numOuVazio(d.precoMaximo));
+    setImpostoPct(num(d.impostoPct, aliquotaDasPadrao));
+    const loja = typeof d.lojaId === "string" && lojas.some((l) => l.id === d.lojaId) ? d.lojaId : null;
+    setLojaId(loja);
+    setModoTaxas(d.modoTaxas === "loja" && loja ? "loja" : "manual");
+    setTaxaFixa(num(d.taxaFixa, 4));
+    setTaxaVariavelPct(num(d.taxaVariavelPct, 20));
+    setTaxaAdicionalPct(num(d.taxaAdicionalPct, 0));
+    setCustoProduto(num(d.custoProduto, 0));
+    setComponentes(Array.isArray(d.componentes) ? d.componentes.filter((c) => c && typeof c.id === "string") : []);
+    if (Array.isArray(d.concorrentes) && d.concorrentes.length) setConcorrentes(d.concorrentes);
+    if (d.extras) extras.aplicarExtrasDoRascunho(d.extras);
+    setVisao("individual");
+  }
+
   return {
+    // rascunho
+    instantaneo,
+    temConteudo,
+    tituloRascunho,
+    aplicarInstantaneo,
+
     // navegação de abas
     visao,
     setVisao,

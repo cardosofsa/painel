@@ -13,6 +13,8 @@ import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormField, Modal } from "@/components/ui/Modal";
 import { useConfirm } from "@/components/ui/ConfirmModal";
+import { ModalSaida } from "@/components/ui/ModalSaida";
+import { useProtegerSaida } from "@/lib/hooks/useProtegerSaida";
 import { Tabs } from "@/components/ui/Tabs";
 import { PainelTitulos } from "@/components/estudio/PainelTitulos";
 import { PainelConcorrentes } from "@/components/estudio/PainelConcorrentes";
@@ -109,6 +111,26 @@ export function InfinitoClient({
   // Erro de IA fica na tela (com "Tentar de novo") até dar certo: antes era só um toast que sumia.
   const [falhaIA, setFalhaIA] = useState<{ etapa: EtapaId; mensagem: string; repetir: () => void } | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
+  // O que foi digitado e ainda não está no rascunho: o resto já fica no banco a cada ação.
+  const [descPendente, setDescPendente] = useState<string | null>(null);
+  const [tituloPendente, setTituloPendente] = useState<string | null>(null);
+  const protecao = useProtegerSaida({
+    sujo: !!rascunho && (descPendente !== null || tituloPendente !== null),
+    salvarRascunho: async () => {
+      if (!rascunho) return true;
+      if (tituloPendente) {
+        const r = await executarComToast(escolherTitulo({ rascunho_id: rascunho.id, titulo: tituloPendente.trim() }), { erro: "Não foi possível salvar o título." });
+        if (!r.ok) return false;
+        setTituloPendente(null);
+      }
+      if (descPendente) {
+        const r = await executarComToast(salvarDescricao({ rascunho_id: rascunho.id, descricao: descPendente }), { erro: "Não foi possível salvar a descrição." });
+        if (!r.ok) return false;
+        setDescPendente(null);
+      }
+      return true;
+    },
+  });
 
   const perfil = perfis.find((p) => p.id === aberto?.perfil) ?? null;
   const plataforma = regrasDaPlataforma(perfil?.plataforma ?? "shopee");
@@ -449,7 +471,7 @@ export function InfinitoClient({
 
           {rascunho && atual === "titulo" && (
             <>
-              <PainelTitulos key={`titulos-${rascunho.id}`} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher} />
+              <PainelTitulos key={`titulos-${rascunho.id}`} onPendente={setTituloPendente} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher} />
               <PainelConcorrentes concorrentes={estado?.concorrentes ?? []} observacao={observacao} iaDisponivel={iaDisponivel} ocupado={qual === "concorrentes"} onPesquisar={pesquisar} />
             </>
           )}
@@ -474,6 +496,7 @@ export function InfinitoClient({
           {rascunho && atual === "descricao" && (
             <PainelDescricao
               key={`descricao-${rascunho.id}`}
+              onPendente={setDescPendente}
               salva={rascunho.descricao}
               geradaTexto={descGerada?.texto ?? null}
               versao={versaoDesc}
@@ -568,6 +591,7 @@ export function InfinitoClient({
 
       {/* Assistente: conversa do anúncio aberto. */}
       {ConfirmDialog}
+      <ModalSaida protecao={protecao} />
 
       <Modal open={conversaAberta && !!rascunho} onClose={() => setConversaAberta(false)} title="Pergunte à IA" width="max-w-xl">
         {rascunho && <ConversaAssistente mensagens={rascunho.mensagens} texto={texto} onTexto={setTexto} enviando={qual === "conversa"} iaDisponivel={iaDisponivel} meta={meta} onEnviar={enviarMensagem} onAplicar={aplicar} />}

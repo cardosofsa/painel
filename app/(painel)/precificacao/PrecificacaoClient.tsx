@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { executarComToast } from "@/lib/acao-cliente";
-import { carregarHistoricoPrecificacoes } from "./actions";
+import { carregarHistoricoPrecificacoes, descartarRascunhoPrecificacao } from "./actions";
+import { haQuanto, useRascunhoPrecificacao, type RascunhoPendente } from "@/lib/precificacao-rascunho";
+import { useProtegerSaida } from "@/lib/hooks/useProtegerSaida";
+import { ModalSaida } from "@/components/ui/ModalSaida";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -66,7 +69,10 @@ export function PrecificacaoClient({
   iaDisponivel,
   empresa,
   visaoInicial,
+  rascunhosPendentes = [],
 }: {
+  /** Rascunhos da Individual guardados no banco (0100), o mais recente primeiro. */
+  rascunhosPendentes?: RascunhoPendente[];
   empresa: { nome: string | null; logoUrl: string | null } | null;
   historico: PrecificacaoHist[];
   produtos: ProdutoOpcao[];
@@ -90,7 +96,39 @@ export function PrecificacaoClient({
     const ids = new Set(historico.map((h) => h.id));
     return [...historico, ...maisAntigas.filter((h) => !ids.has(h.id))];
   }, [historico, maisAntigas]);
-  const estado = usePrecificacao({ historico: historicoCompleto, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa, visaoInicial });
+  // O hook do rascunho roda depois do estado e precisa dele; o estado lê o rascunho só na hora de salvar.
+  const rascRef = useRef<ReturnType<typeof useRascunhoPrecificacao> | null>(null);
+  const estado = usePrecificacao({
+    historico: historicoCompleto,
+    produtos,
+    aliquotaDasPadrao,
+    lojas,
+    anuncios,
+    concorrentesPorProduto,
+    empresa,
+    visaoInicial,
+    rascunhoAtual: { id: () => rascRef.current?.rascunhoId ?? null, aoSalvar: () => rascRef.current?.aoSalvarPrecificacao() },
+  });
+  const rasc = useRascunhoPrecificacao({ instantaneo: estado.instantaneo, temConteudo: estado.temConteudo, titulo: estado.tituloRascunho, produtoId: estado.produtoId });
+  useEffect(() => {
+    rascRef.current = rasc;
+  });
+  // Sem a 0100 não há onde guardar: o modal oferece só ficar ou sair.
+  const protecao = useProtegerSaida({ sujo: rasc.sujo, salvarRascunho: rasc.semMigracao ? undefined : rasc.salvarRascunho });
+  const [pendente, setPendente] = useState<RascunhoPendente | null>(rascunhosPendentes[0] ?? null);
+
+  function continuarRascunho(r: RascunhoPendente) {
+    estado.aplicarInstantaneo(r.dados);
+    rasc.adotar(r);
+    setPendente(null);
+  }
+
+  async function descartarPendente(r: RascunhoPendente) {
+    const ok = await estado.confirm({ title: "Descartar o rascunho?", message: `“${r.titulo || "Sem nome"}” será apagado. Não dá para desfazer.`, confirmLabel: "Descartar" });
+    if (!ok) return;
+    const res = await executarComToast(descartarRascunhoPrecificacao(r.id), { sucesso: "Rascunho descartado", erro: "Não foi possível descartar." });
+    if (res.ok) setPendente(null);
+  }
 
   function carregarMais(tudo: boolean) {
     const ultima = historicoCompleto[historicoCompleto.length - 1];
@@ -147,6 +185,29 @@ export function PrecificacaoClient({
 
       {visao === "individual" && (
         <>
+          {pendente && (
+            <Card className="mb-5 border-accent/40">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-text-primary min-w-0">
+                  Continuar rascunho: <strong>{pendente.titulo || "Sem nome"}</strong> <span className="text-text-secondary">({haQuanto(pendente.atualizado_em)})</span>
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="primary" onClick={() => continuarRascunho(pendente)}>
+                    Continuar
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => void descartarPendente(pendente)}>
+                    Descartar
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-3 mb-3">
+            <IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />
+            <Button size="sm" variant="secondary" onClick={() => void rasc.salvarRascunho()} loading={rasc.salvando} disabled={!estado.temConteudo}>
+              Salvar rascunho
+            </Button>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-5">
               <PainelEntradas estado={estado} produtos={produtos} iaDisponivel={iaDisponivel} />
@@ -234,6 +295,7 @@ export function PrecificacaoClient({
       )}
       {estado.modaisExportacao}
       {estado.ConfirmDialog}
+      <ModalSaida protecao={protecao} />
     </>
   );
 }
@@ -275,5 +337,29 @@ function ModalVincularProduto({
         {filtrados.length === 0 && <p className="text-sm text-text-tertiary text-center py-4">Nenhum produto encontrado.</p>}
       </div>
     </Modal>
+  );
+}
+
+/** "Rascunho salvo há 3 s": refaz o texto a cada 5 s, sem tocar no resto da tela. */
+function IndicadorRascunho({ sujo, salvando, salvoEm, semMigracao }: { sujo: boolean; salvando: boolean; salvoEm: string | null; semMigracao: boolean }) {
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setAgora(Date.now()), 5000);
+    return () => window.clearInterval(t);
+  }, []);
+  const texto = semMigracao
+    ? "Rascunho automático indisponível (falta a migração 0100)"
+    : salvando
+      ? "Salvando rascunho…"
+      : sujo
+        ? "Alterações ainda não salvas"
+        : salvoEm
+          ? `Rascunho salvo ${haQuanto(salvoEm, agora)}`
+          : "";
+  if (!texto) return null;
+  return (
+    <span className="text-xs text-text-tertiary" aria-live="polite">
+      {texto}
+    </span>
   );
 }
