@@ -42,6 +42,8 @@ const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O estúdio precisa da migração 0099. Aplique no Supabase e recarregue.";
 const faltaMigracao = (code?: string) => code === "PGRST205" || code === "42P01" || code === "PGRST202" || code === "42883";
 const MAX_TENTATIVAS_CAPA = 6;
+/** Teto do `estado.capas` (o schema aceita 12): geradas + enviadas. */
+const MAX_CAPAS = 12;
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;
 const TIPOS_FOTO = ["image/jpeg", "image/png", "image/webp"];
 
@@ -347,7 +349,8 @@ export async function gerarCenaCapa(entrada: unknown) {
     if (!titulo) throw new Error("Escolha o título primeiro: a capa leva o título aprovado.");
 
     const capas = ctx.rascunho.estado.capas ?? [];
-    if (capas.length >= MAX_TENTATIVAS_CAPA) throw new Error(`Você já gerou ${MAX_TENTATIVAS_CAPA} capas neste rascunho. Ajuste a ficha ou o pedido antes de gerar outra.`);
+    if (capas.length >= MAX_CAPAS) throw new Error(`O anúncio já tem ${MAX_CAPAS} imagens. Remova uma antes de gerar outra.`);
+    if (capas.filter((c) => !c.propria).length >= MAX_TENTATIVAS_CAPA) throw new Error(`Você já gerou ${MAX_TENTATIVAS_CAPA} capas neste rascunho. Ajuste a ficha ou o pedido antes de gerar outra.`);
     if (capas.length > 0 && !capas[capas.length - 1].veredito) throw new Error("Dê um veredito à capa anterior (aprovar, ajustar ou rejeitar) antes de gerar outra: assim a ficha melhora e você não gasta à toa.");
 
     const violacoes = conferirTextosDaCapa(ctx, titulo, v.textoFaixa);
@@ -436,6 +439,44 @@ export async function registrarCapaFinal(entrada: unknown) {
     if (!capas[v.indice]) throw new Error("Capa não encontrada.");
     capas[v.indice] = { ...capas[v.indice], finalPath: v.finalPath };
     return gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas });
+  });
+}
+
+/**
+ * Imagem feita fora do Painel (outro gerador, foto, arte pronta), enviada pela tela. Entra já
+ * aprovada e como final: o texto, se houver, já está nela. Não gasta cota nem conta no teto de
+ * gerações com IA.
+ */
+export async function adicionarCapaPropria(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema.extend({ path: z.string().trim().min(1).max(300) }), entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    if (!caminhoDoUsuario(ctx.userId, v.path)) throw new Error("Envie a imagem por esta tela (só arquivos da sua conta).");
+    const capas = ctx.rascunho.estado.capas ?? [];
+    if (capas.length >= MAX_CAPAS) throw new Error(`O anúncio já tem ${MAX_CAPAS} imagens.`);
+    const nova = { cenaPath: v.path, finalPath: v.path, titulo: ctx.rascunho.titulo ?? "", veredito: "aprovada" as const, criadoEm: new Date().toISOString(), propria: true };
+    const estado = await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas: [...capas, nova] });
+    await sincronizarStatus(supabase, v.rascunho_id);
+    return estado;
+  });
+}
+
+/**
+ * Tira do anúncio uma imagem enviada pelo usuário (não apaga o arquivo). As geradas com IA ficam:
+ * elas contam no teto de tentativas, e removê-las abriria vaga para gerar além dele.
+ */
+export async function removerCapaPropria(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema.extend({ indice: z.number().int().min(0).max(11) }), entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const capas = [...(ctx.rascunho.estado.capas ?? [])];
+    if (!capas[v.indice]?.propria) throw new Error("Imagem não encontrada.");
+    capas.splice(v.indice, 1);
+    const estado = await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas });
+    await sincronizarStatus(supabase, v.rascunho_id);
+    return estado;
   });
 }
 
