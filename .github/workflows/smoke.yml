@@ -73,7 +73,7 @@ jobs:
             echo "rodar=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.config.outputs.rodar == 'true'
         with:
           # O teste é o do commit que foi para o ar.
