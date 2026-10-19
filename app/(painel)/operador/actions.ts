@@ -1,5 +1,6 @@
 "use server";
 
+import { lancarErroSupabase } from "@/lib/erros";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -32,7 +33,10 @@ export async function entrarOperador(operadorId: string, pin: string) {
     if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
     const { data, error } = await supabase.rpc("entrar_operador", { p_id: id, p_pin: p });
     if (error?.code === "PGRST202") throw new Error("Operadores precisam da migração 0063.");
-    if (error) throw new Error(error.message.includes("PIN") ? "PIN incorreto." : error.message);
+    if (error) {
+      if (error.message.includes("PIN")) throw new Error("PIN incorreto.");
+      lancarErroSupabase(error);
+    }
     const op = (data as { id: string; nome: string; abas: string[] }[] | null)?.[0];
     if (!op) throw new Error("PIN incorreto.");
     await gravarTurno(auth.user.id, op.id, op.nome, op.abas);
@@ -48,7 +52,7 @@ export async function entrarComoDono(pinAdmin: string) {
     if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
     const { data: ok, error } = await supabase.rpc("pin_admin_confere", { p_pin: pinAdmin || null });
     if (error?.code === "PGRST202") throw new Error("Operadores precisam da migração 0063.");
-    if (error) throw new Error(error.message);
+    if (error) lancarErroSupabase(error);
     if (!ok) throw new Error("PIN de administrador incorreto.");
     await gravarTurno(auth.user.id, "dono", "Dono", [...TODAS_AS_ABAS]);
     return { destino: "/dashboard" };

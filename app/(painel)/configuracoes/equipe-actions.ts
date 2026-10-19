@@ -1,5 +1,6 @@
 "use server";
 
+import { lancarErroSupabase } from "@/lib/erros";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -23,7 +24,7 @@ const operadorSchema = z.object({
 function erroDoBanco(error: { code?: string; message: string }): never {
   if (error.code === "PGRST202") throw new Error("Operadores precisam da migração 0063.");
   if (error.code === "23505") throw new Error("Já existe um operador com esse nome.");
-  throw new Error(error.message);
+  lancarErroSupabase(error);
 }
 
 export async function salvarOperador(dados: z.input<typeof operadorSchema>) {

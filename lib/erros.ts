@@ -70,6 +70,41 @@ export function traduzirErroSupabase(erro: ErroSupabase): string {
   return "Não foi possível concluir a operação. Tente de novo; se continuar, avise o suporte.";
 }
 
+/**
+ * Texto técnico que não pode chegar ao toast: mensagem crua do Postgres/PostgREST, de rede ou
+ * de JavaScript (em inglês, com nome de tabela, coluna ou constraint). As nossas mensagens são
+ * frases em pt-BR e passam direto.
+ */
+const TECNICO = [
+  /violates/i,
+  /\brelation "/i,
+  /\bcolumn "/i,
+  /does not exist/i,
+  /duplicate key/i,
+  /syntax error/i,
+  /permission denied/i,
+  /null value in column/i,
+  /invalid input syntax/i,
+  /schema cache/i,
+  /\bPGRST\d+/,
+  /\bJWT\b/,
+  /fetch failed|Failed to fetch|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i,
+  /Cannot read propert|is not a function|is not defined|Unexpected token|undefined is not/i,
+];
+
+export function mensagemTecnica(msg: string): boolean {
+  return TECNICO.some((r) => r.test(msg));
+}
+
+/** A mensagem que pode ir para a tela; a técnica vira uma frase genérica (e fica no log). */
+export function mensagemParaUsuario(msg: string): string {
+  if (!msg.trim()) return "Não foi possível concluir a operação. Tente de novo.";
+  if (!mensagemTecnica(msg)) return msg;
+  if (/fetch failed|Failed to fetch|ECONN|ETIMEDOUT|ENOTFOUND/i.test(msg)) return "Não foi possível falar com o servidor. Verifique sua conexão e tente de novo.";
+  console.error("[acao] mensagem técnica escondida da tela:", msg);
+  return "Não foi possível concluir a operação. Tente de novo; se continuar, avise o suporte.";
+}
+
 /** Lança o erro já traduzido — usado nas server actions, no lugar de `throw new Error(error.message)`. */
 export function lancarErroSupabase(erro: ErroSupabase): never {
   throw new Error(traduzirErroSupabase(erro));
