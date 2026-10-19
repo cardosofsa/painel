@@ -5,6 +5,7 @@ import { montarPedidosParaGravar } from "./margem";
 import { apiDaConexao } from "./conexao-api";
 import { sincronizarRetornos } from "./sincronizar-retornos";
 import type { ConexaoShopee } from "./tokens";
+import { faixaDaLinha } from "@/lib/faixas";
 
 export { aadToken, aadTokenML, tokenDaConexao, tokenML, type ConexaoShopee } from "./tokens";
 
@@ -106,9 +107,9 @@ async function faixasDaLoja(supabase: SupabaseClient, conexao: ConexaoShopee): P
   if (!loja?.canal_id) return [];
   const { data } = await supabase
     .from("faixas_comissao_canal")
-    .select("preco_min, preco_max, comissao_pct, tarifa_fixa")
+    .select("*") // `*`: tarifa_fixa_pct (0107) só existe depois da migração
     .eq("user_id", conexao.user_id)
     .eq("canal_id", loja.canal_id)
     .order("ordem");
-  return (data ?? []).map((f) => ({ min: Number(f.preco_min), max: f.preco_max == null ? null : Number(f.preco_max), comissaoPct: Number(f.comissao_pct), tarifaFixa: Number(f.tarifa_fixa ?? 0) }));
+  return (data ?? []).map(faixaDaLinha);
 }

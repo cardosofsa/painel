@@ -65,7 +65,8 @@ export interface Canal {
   taxa_extra_tipo_padrao: "percentual" | "fixo" | null;
   limite_titulo: number | null;
   limite_descricao: number | null;
-  faixas: { id: string; preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[];
+  /** `tarifa_fixa_pct` só depois da 0107. */
+  faixas: { id: string; preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number; tarifa_fixa_pct?: number }[];
 }
 export interface Loja extends LojaInput {
   id: string;

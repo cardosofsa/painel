@@ -1,0 +1,20 @@
+# Atualizações de dependências (auditoria de 19/10/2026). Os avisos de segurança abrem PR na
+# hora (com "Dependabot security updates" ligado em Settings → Code security); as versões
+# novas comuns vêm agrupadas uma vez por semana, para não encher a fila de PRs.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    groups:
+      menores:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

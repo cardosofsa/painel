@@ -169,6 +169,7 @@ export async function criarNaoListadoShopee(entrada: unknown) {
     const p = ctx.produto;
     // O preço da LOJA do perfil (0101), não mais o do cadastro (que é o do PDV).
     const precoAnuncio = await precoDoAnuncio(supabase, p.id, ctx.perfil?.id ?? null);
+    if (precoAnuncio.erro) throw new Error(precoAnuncio.erro);
     if (precoAnuncio.origem === "loja" && precoAnuncio.preco === null) throw new Error(`Este produto ainda não tem preço em ${precoAnuncio.lojaRotulo}. Precifique em Precificação › Preços por loja antes de criar.`);
     const base = {
       titulo: ctx.rascunho.titulo ?? "",

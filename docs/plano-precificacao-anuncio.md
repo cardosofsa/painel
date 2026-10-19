@@ -637,3 +637,17 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - **Next.js 16.4.2 e React/React DOM 19.2.9** (eram 16.4.0 e 19.2.8, afetados pelos avisos de 14/10/2026 de RCE em React Server Components e DoS em Server Actions). `eslint-config-next` 16.4.2. Tipos, lint, 1621 testes e build limpos. `npm audit` de produção: sobra só `uuid` dentro do `exceljs` (o aviso é das funções v3/v5/v6 com buffer; o exceljs usa a v4). No desenvolvimento: `braces` via `eslint-config-next` (só o lint). As duas "correções" do audit são rebaixamentos que quebram.
 - **Teto real de bytes no corpo** (`lib/corpo-limitado.ts` + teste): lê o fluxo contando bytes e cancela ao passar do limite; `content-length` só como recusa rápida. Em `csp-report`, `vitrine/pedido`, `vitrine/frete`, `mercadolivre/notificacoes` e no webhook do Asaas. Conferido com curl no build: corpo de 300 KB enviado em pedaços (sem content-length) dá 413; requisições normais seguem iguais.
 - Fica para a infraestrutura: limite de corpo e rate limiting na borda (Vercel/WAF).
+
+### 24.1 Auditorias de Precificação/Anúncio e do Painel (19/10/2026), demais itens
+
+- **P-01 (0107)** tabela padrão da Shopee (CNPJ, 01/10/2026): até R$ 8,99, 20% + metade do preço; de R$ 9 a R$ 79,99, 20% + R$ 4,50; acima, igual. Nova coluna `tarifa_fixa_pct` (tarifa em % do preço), somada na taxa variável por `faixaDaLinha` (`lib/faixas.ts` + teste com R$ 7,99/8/8,99/9/79,99/80). A 0107 converte só tabelas iguais ao preset antigo. A regra abaixo de R$ 9 tem fontes divergentes: usada a leitura conservadora (mais cara); conferir no Seller Centre.
+- **P-02/P-03 (0107)** `validarFaixas` (tela e action) + `salvar_faixas_canal` (banco): não vazia, começa em zero, sem buraco/sobreposição, só a última aberta, troca atômica. Editor com começo encadeado, tarifa em %, erro ao vivo e "Usar a tabela da Shopee". Individual avisa canal de faixas sem faixa.
+- **P-04** Preços por loja e Anúncio usam a taxa adicional da precificação que gravou o preço. A Em Massa não tem esse campo (segue sem taxa adicional, como a tela mostra).
+- **P-05** perfil com loja e erro ao ler o preço dela: erro visível e criação na Shopee bloqueada (sem cair no preço do cadastro).
+- **P-06** `gravarEstado` aplica a mudança sobre o estado relido, com UPDATE condicional e nova tentativa. Ressalva: ação que reescreve uma lista inteira (ex.: capas) a partir da leitura antiga ainda pode sobrepor um item da lista adicionado ao mesmo tempo.
+- **P-07** descrição: um limite só, 3.000 (Shopee Brasil), no estúdio, na tela e no preset do canal.
+- **P-08** preço sem custo: "Sem custo" (antes "Ok").
+- **A-03 (0108)** webhook do ML: `registrar_aviso_marketplace` (atômica, service role) descarta aviso repetido na janela e põe teto por conta. Os avisos de pedidos/envios do ML não trazem HMAC; a defesa segue sendo reler tudo na API.
+- **A-04** `origemDaRequisicao`: fora da Vercel, x-forwarded-host só na lista (canônico, domínios da Vercel, `ORIGENS_PERMITIDAS`).
+- **A-05/A-06** CI: `npm audit --omit=dev --audit-level=high`, Dependabot; smoke diz "NÃO EXECUTADO" e falha em produção sem credenciais. Falta ligar "Dependabot security updates" em Settings → Code security.
+- Testes: 1645 unitários, 55 scripts SQL, E2E smoke (7) passando; `tsc`, `lint` e `build` limpos.

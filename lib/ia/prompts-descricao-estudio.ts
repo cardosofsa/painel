@@ -7,11 +7,12 @@
  * fornecido: nada de medida, material, garantia ou prazo inventado.
  */
 
+import { LIMITE_DESCRICAO_SHOPEE } from "@/lib/anuncio-shopee";
 import { verificarTextos, temBloqueio, type RegraTermo, type Violacao } from "@/lib/conformidade/termos";
 import { hashTexto, lerObjetoJson, limparCampo, linhas } from "./texto";
 
-/** Teto do estúdio (o mesmo de `LIMITE_DESCRICAO_SHOPEE`): descrição enorme não vende mais. */
-export const LIMITE_DESCRICAO_ESTUDIO = 3000;
+/** Teto do estúdio: o limite da Shopee Brasil (3.000), uma constante só para o Painel inteiro. */
+export const LIMITE_DESCRICAO_ESTUDIO = LIMITE_DESCRICAO_SHOPEE;
 /** Abaixo disto o Seller Centre costuma recusar ou o anúncio fica pobre (mesma régua do checklist). */
 export const MINIMO_DESCRICAO = 100;
 

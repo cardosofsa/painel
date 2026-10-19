@@ -64,7 +64,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         .from("lojas_canal")
         .select("id, canal_id, nome, logo_path, link, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo")
         .order("nome"),
-      supabase.from("faixas_comissao_canal").select("id, canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
+      // `*`: tarifa_fixa_pct (0107) só existe depois da migração.
+      supabase.from("faixas_comissao_canal").select("*").order("ordem"),
       supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
       // `*`: `loja_ids` só existe a partir da 0041.
       supabase.from("armazens").select("*").order("nome"),

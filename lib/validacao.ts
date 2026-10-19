@@ -195,6 +195,8 @@ export const faixaComissaoSchema = z.object({
   preco_max: dinheiroOpcional,
   comissao_pct: percentual,
   tarifa_fixa: dinheiro,
+  /** 0107: tarifa fixa em % do preço (Shopee abaixo de R$ 9: 50). */
+  tarifa_fixa_pct: percentual.optional(),
 });
 
 export const contaSchema = z

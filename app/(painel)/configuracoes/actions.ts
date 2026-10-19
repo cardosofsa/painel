@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { validarFaixas } from "@/lib/faixas";
 import { createClient } from "@/lib/supabase/server";
 import { lancarErroSupabase } from "@/lib/erros";
 import {
@@ -147,7 +149,7 @@ export async function removerCanal(id: string) {
 
 const CANAIS_PADRAO: CanalInput[] = [
   // Limites de texto conferidos em set/2026; editáveis porque as plataformas mudam.
-  { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D", limite_titulo: 100, limite_descricao: 5000 },
+  { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D", limite_titulo: 100, limite_descricao: 3000 },
   { nome: "Mercado Livre", tipo_taxa: "fixo", icone: "ShoppingCart", cor: "#FFE600", limite_titulo: 60, limite_descricao: 10000 },
   { nome: "Loja Física", tipo_taxa: "fixo", icone: "Store", cor: "#64748b" },
   { nome: "Facebook", tipo_taxa: "fixo", icone: "Facebook", cor: "#1877F2" },
@@ -181,24 +183,27 @@ export interface FaixaComissaoInput {
 export async function atualizarFaixasCanal(canalId: string, faixas: FaixaComissaoInput[]) {
   return comResultado(async () => {
     const supabase = await createClient();
+    const id = validar(z.string().uuid(), canalId);
 
-    // Valida TUDO antes de apagar qualquer coisa. Antes a validação acontecia dentro do
-    // `.map()`, ou seja, depois do DELETE: uma faixa inválida apagava a tabela de
-    // comissões da Shopee do usuário e não inseria nada no lugar — e é ela que define
-    // todo o cálculo de preço do sistema.
-    const linhas = faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...validar(faixaComissaoSchema, f) }));
-    for (const linha of linhas) {
-      if (linha.preco_max !== null && linha.preco_max <= linha.preco_min) {
-        throw new Error(`A faixa ${linha.ordem} termina antes de começar — confira os valores mínimo e máximo.`);
-      }
-    }
+    // O CONJUNTO tem de fazer sentido (não vazio, começa em zero, sem buraco, só a última
+    // aberta). Antes uma tabela vazia salvava, e o cálculo caía em 0% + R$ 0.
+    const lista = faixas.map((f) => validar(faixaComissaoSchema, f));
+    const problema = validarFaixas(lista);
+    if (problema) throw new Error(problema);
 
-    const { error: erroDelete } = await supabase.from("faixas_comissao_canal").delete().eq("canal_id", canalId);
-    if (erroDelete) lancarErroSupabase(erroDelete);
-
-    if (linhas.length > 0) {
+    // 0107: validação de novo no banco e troca numa transação só (antes era DELETE + INSERT
+    // soltos: uma falha no INSERT deixava o canal sem faixa nenhuma).
+    const { error } = await supabase.rpc("salvar_faixas_canal", { p_canal_id: id, p_faixas: lista });
+    if (error?.code === "PGRST202") {
+      // Sem a 0107: caminho antigo. A tarifa em % do preço entra somada na comissão (a conta
+      // é a mesma) porque a coluna ainda não existe.
+      const linhas = lista.map((f, i) => ({ canal_id: id, ordem: i + 1, preco_min: f.preco_min, preco_max: f.preco_max, comissao_pct: f.comissao_pct + (f.tarifa_fixa_pct ?? 0), tarifa_fixa: f.tarifa_fixa }));
+      const { error: erroDelete } = await supabase.from("faixas_comissao_canal").delete().eq("canal_id", id);
+      if (erroDelete) lancarErroSupabase(erroDelete);
       const { error: erroInsert } = await supabase.from("faixas_comissao_canal").insert(linhas);
       if (erroInsert) lancarErroSupabase(erroInsert);
+    } else if (error) {
+      lancarErroSupabase(error);
     }
 
     revalidatePath(PATH);

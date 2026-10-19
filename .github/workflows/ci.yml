@@ -32,6 +32,20 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
 
+  # Vulnerabilidade conhecida em dependência de PRODUÇÃO, alta ou crítica, reprova o PR (as de
+  # desenvolvimento, que não vão para o servidor, ficam de fora). Exceção tem de ser explícita:
+  # atualizar a dependência, ou documentar por que o aviso não se aplica.
+  dependencias:
+    name: Dependências (npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm audit --omit=dev --audit-level=high
+
   testes:
     name: Testes
     runs-on: ubuntu-latest

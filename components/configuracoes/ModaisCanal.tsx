@@ -7,6 +7,8 @@ import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { formatBRL } from "@/lib/format";
 import { formatarFaixaLabel } from "@/lib/pricing";
+import { comNovaFaixa, faixaDaLinha, rotuloTaxaFaixa, semFaixa, validarFaixas, type FaixaEditavel } from "@/lib/faixas";
+import { FAIXAS_SHOPEE_PADRAO, VIGENCIA_FAIXAS_SHOPEE } from "@/lib/marketplace/plataformas";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { useFormularioSujo } from "@/lib/hooks/useFormularioSujo";
 import type { CanalInput, LojaInput, FaixaComissaoInput, LimitesCanalInput } from "@/app/(painel)/configuracoes/actions";
@@ -30,106 +32,94 @@ export function FaixasModal({
   onSave: (canalId: string, faixas: FaixaComissaoInput[]) => void;
   salvando: boolean;
 }) {
-  const [faixas, setFaixas] = useState<FaixaComissaoInput[]>(
-    () => canal?.faixas.map((f) => ({ preco_min: f.preco_min, preco_max: f.preco_max, comissao_pct: f.comissao_pct, tarifa_fixa: f.tarifa_fixa })) ?? [],
+  const [faixas, setFaixas] = useState<FaixaEditavel[]>(
+    () =>
+      canal?.faixas.map((f) => ({ preco_min: Number(f.preco_min), preco_max: f.preco_max == null ? null : Number(f.preco_max), comissao_pct: Number(f.comissao_pct), tarifa_fixa: Number(f.tarifa_fixa), tarifa_fixa_pct: Number(f.tarifa_fixa_pct ?? 0) })) ?? [],
   );
   const [faixasIniciais] = useState(faixas);
   const sujo = useFormularioSujo(faixas, faixasIniciais);
+  // O conjunto inteiro precisa fazer sentido; o botão Salvar só libera quando não há problema.
+  const problema = validarFaixas(faixas);
 
-  function atualizar(i: number, campo: keyof FaixaComissaoInput, valor: string) {
+  /** O começo de cada faixa é sempre um centavo depois do fim da anterior (a primeira, R$ 0). */
+  const encadear = (lista: FaixaEditavel[]) =>
+    lista.map((f, i) => ({ ...f, preco_min: i === 0 ? 0 : Math.round(((lista[i - 1].preco_max ?? lista[i - 1].preco_min) + 0.01) * 100) / 100 }));
+
+  function atualizar(i: number, campo: keyof FaixaEditavel, valor: string) {
     setFaixas((prev) =>
-      prev.map((f, idx) =>
-        idx === i ? { ...f, [campo]: campo === "preco_max" && valor.trim() === "" ? null : Number(valor) || 0 } : f,
-      ),
+      encadear(prev.map((f, idx) => (idx === i ? { ...f, [campo]: campo === "preco_max" && valor.trim() === "" ? null : Number(valor.replace(",", ".")) || 0 } : f))),
     );
   }
 
-  function adicionar() {
-    setFaixas((prev) => [...prev, { preco_min: 0, preco_max: null, comissao_pct: 0, tarifa_fixa: 0 }]);
-  }
-
-  function remover(i: number) {
-    setFaixas((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
   return (
-    <Modal open={!!canal} onClose={onClose} title={canal ? `Faixas de Comissão (${canal.nome})` : ""} width="max-w-xl" sujo={sujo}>
+    <Modal open={!!canal} onClose={onClose} title={canal ? `Faixas de Comissão (${canal.nome})` : ""} width="max-w-2xl" sujo={sujo}>
       <p className="text-sm text-text-secondary mb-4">
-        Vale para todas as lojas deste canal. Ajuste se a plataforma mudar a tabela oficial.
+        Vale para todas as lojas deste canal. Cada faixa começa um centavo depois do fim da anterior; a última fica aberta. A tarifa pode ser um valor fixo, uma porcentagem do
+        preço, ou os dois.
       </p>
       <div className="space-y-3 mb-4">
         {faixas.map((f, i) => {
           const ultima = i === faixas.length - 1;
           return (
             <div key={i} className="border border-border rounded-md p-3">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-                {ultima ? (
-                  <div className="col-span-2">
-                    <label className="text-xs text-text-tertiary block mb-1">Faixa de Preço</label>
-                    <div className="text-sm text-text-secondary bg-surface-2 rounded-md h-9 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis">
-                      Acima de {formatBRL(f.preco_min)}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="text-xs text-text-tertiary block mb-1">De (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={f.preco_min}
-                        onChange={(e) => atualizar(i, "preco_min", e.target.value)}
-                        className={inputClass}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-text-tertiary block mb-1">Até (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={f.preco_max ?? ""}
-                        onChange={(e) => atualizar(i, "preco_max", e.target.value)}
-                        className={inputClass}
-                      />
-                    </div>
-                  </>
-                )}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2">
                 <div>
-                  <label className="text-xs text-text-tertiary block mb-1">Comissão (%)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={f.comissao_pct}
-                    onChange={(e) => atualizar(i, "comissao_pct", e.target.value)}
-                    className={inputClass}
-                  />
+                  <span className="text-xs text-text-tertiary block mb-1">De</span>
+                  <div className="text-sm font-mono text-text-secondary bg-surface-2 rounded-md h-9 px-3 flex items-center">{formatBRL(f.preco_min)}</div>
                 </div>
-                <div>
-                  <label className="text-xs text-text-tertiary block mb-1">Tarifa Fixa (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={f.tarifa_fixa}
-                    onChange={(e) => atualizar(i, "tarifa_fixa", e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
+                <label className="block">
+                  <span className="text-xs text-text-tertiary block mb-1">Até (R$)</span>
+                  {ultima ? (
+                    <div className="text-sm text-text-secondary bg-surface-2 rounded-md h-9 px-3 flex items-center">ou mais</div>
+                  ) : (
+                    <input type="number" step="0.01" min={0} value={f.preco_max ?? ""} onChange={(e) => atualizar(i, "preco_max", e.target.value)} className={inputClass} />
+                  )}
+                </label>
+                <label className="block">
+                  <span className="text-xs text-text-tertiary block mb-1">Comissão (%)</span>
+                  <input type="number" step="0.1" min={0} max={100} value={f.comissao_pct} onChange={(e) => atualizar(i, "comissao_pct", e.target.value)} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-text-tertiary block mb-1">Tarifa (R$)</span>
+                  <input type="number" step="0.01" min={0} value={f.tarifa_fixa} onChange={(e) => atualizar(i, "tarifa_fixa", e.target.value)} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-text-tertiary block mb-1">Tarifa (% do preço)</span>
+                  <input type="number" step="0.1" min={0} max={100} value={f.tarifa_fixa_pct ?? 0} onChange={(e) => atualizar(i, "tarifa_fixa_pct", e.target.value)} className={inputClass} />
+                </label>
               </div>
-              <button onClick={() => remover(i)} className="text-xs text-negative hover:underline">
+              <button type="button" onClick={() => setFaixas((prev) => semFaixa(prev, i))} disabled={faixas.length <= 1} className="text-xs text-negative hover:underline disabled:opacity-40 disabled:no-underline">
                 Remover faixa
               </button>
             </div>
           );
         })}
       </div>
-      <button onClick={adicionar} className="text-sm text-accent hover:underline mb-5">
-        + Adicionar Faixa
-      </button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
+        <button type="button" onClick={() => setFaixas((prev) => comNovaFaixa(prev))} className="text-sm text-accent hover:underline">
+          + Adicionar faixa
+        </button>
+        {canal?.tipo_taxa === "faixas" && (
+          <button
+            type="button"
+            onClick={() => setFaixas(FAIXAS_SHOPEE_PADRAO.map((f) => ({ ...f, tarifa_fixa_pct: f.tarifa_fixa_pct ?? 0 })))}
+            className="text-sm text-text-secondary hover:text-text-primary hover:underline"
+            title="Tabela de referência da Shopee para vendedor CNPJ. Confira a da sua conta no Seller Centre."
+          >
+            Usar a tabela da Shopee ({VIGENCIA_FAIXAS_SHOPEE}, CNPJ)
+          </button>
+        )}
+      </div>
+      {problema && (
+        <p role="alert" className="mb-4 text-sm text-negative">
+          {problema}
+        </p>
+      )}
       <div className="flex gap-2">
         <Button variant="secondary" className="flex-1" onClick={onClose}>
           Cancelar
         </Button>
-        <Button variant="primary" className="flex-1" onClick={() => canal && onSave(canal.id, faixas)} loading={salvando}>
+        <Button variant="primary" className="flex-1" onClick={() => canal && onSave(canal.id, faixas)} loading={salvando} disabled={!!problema}>
           Salvar
         </Button>
       </div>
@@ -277,9 +267,7 @@ export function LojaModal({
             {canal.faixas.map((f) => (
               <div key={f.id} className="flex items-center justify-between px-3 py-1.5">
                 <span className="text-text-secondary">{formatarFaixaLabel({ min: f.preco_min, max: f.preco_max, comissaoPct: f.comissao_pct, tarifaFixa: f.tarifa_fixa })}</span>
-                <span className="text-text-primary">
-                  {f.comissao_pct}% + {formatBRL(f.tarifa_fixa)}
-                </span>
+                <span className="text-text-primary">{rotuloTaxaFaixa(faixaDaLinha(f))}</span>
               </div>
             ))}
             {canal.faixas.length === 0 && <div className="px-3 py-2 text-text-tertiary">Nenhuma faixa cadastrada.</div>}

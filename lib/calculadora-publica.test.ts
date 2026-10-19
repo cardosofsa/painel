@@ -4,21 +4,21 @@ import { calcularMercadoLivre, calcularShopee, type EntradaCalculadora } from ".
 const base: EntradaCalculadora = { custo: 30, modo: "margem", margemPct: 20, preco: null, impostoPct: null, mlComissaoPct: null, mlTaxaFixa: null };
 
 describe("calcularShopee", () => {
-  it("resolve pela margem dentro da faixa de 20% + R$ 4", () => {
+  it("resolve pela margem dentro da faixa de 20% + R$ 4,50 (regra de 01/10/2026)", () => {
     const r = calcularShopee(base);
-    // (30 + 4) / (1 - 0,20 - 0,20) = 56,67
+    // (30 + 4,50) / (1 - 0,20 - 0,20) = 57,50
     expect(r.falta).toBeNull();
     expect(r.viavel).toBe(true);
-    expect(r.precoVenda).toBeCloseTo(56.67, 2);
+    expect(r.precoVenda).toBeCloseTo(57.5, 2);
     expect(r.comissaoPct).toBe(20);
-    expect(r.taxaFixa).toBe(4);
+    expect(r.taxaFixa).toBe(4.5);
     expect(r.margem).toBeCloseTo(0.2, 6);
     expect(r.lucro).toBeCloseTo(r.precoVenda * 0.2, 6);
   });
 
   it("abate o imposto opcional", () => {
     const r = calcularShopee({ ...base, impostoPct: 6 });
-    expect(r.precoVenda).toBeCloseTo(34 / (1 - 0.2 - 0.06 - 0.2), 6);
+    expect(r.precoVenda).toBeCloseTo(34.5 / (1 - 0.2 - 0.06 - 0.2), 6);
     expect(r.impostoValor).toBeCloseTo(r.precoVenda * 0.06, 6);
   });
 

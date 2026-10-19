@@ -1,13 +1,15 @@
 import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { createClient } from "@/lib/supabase/server";
+import { buscarEmLotes } from "@/lib/lotes";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { PrecificacaoClient } from "./PrecificacaoClient";
 import type { LojaOpcao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
-import type { Concorrente } from "@/lib/pricing";
 import type { Metadata } from "next";
 import { VISOES_PRECIFICACAO } from "@/lib/precificacao-tipos";
 import type { RascunhoPendente } from "@/lib/precificacao-rascunho";
+import { faixaDaLinha, type LinhaFaixa } from "@/lib/faixas";
+import type { Concorrente, FaixaComissao } from "@/lib/pricing";
 
 export const metadata: Metadata = { title: "Precificação" };
 
@@ -38,7 +40,7 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       )
       .order("criado_em"),
     supabase.from("lojas_canal").select("id, canal_id, nome, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo").order("nome"),
-    supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
+    supabase.from("faixas_comissao_canal").select("*").order("ordem"),
     supabase
       .from("anuncios")
       .select(
@@ -56,7 +58,17 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     // Sem a migração vem erro e a tela segue sem o aviso.
     supabase.from("precificacao_rascunhos").select("id, visao, titulo, atualizado_em, dados").order("atualizado_em", { ascending: false }).limit(20),
     // Preço de cada loja (0101). Sem a migração vem erro e o bloco não aparece.
-    supabase.from("produto_lojas").select("produto_id, loja_id, preco, preco_atualizado_em").not("preco", "is", null),
+    // Com a taxa adicional da precificação que gravou o preço (o lucro por loja usa a mesma conta).
+    // Em lotes: o PostgREST corta em 1000 linhas.
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("produto_lojas")
+        .select("produto_id, loja_id, preco, preco_atualizado_em, precificacoes(taxa_adicional_pct)", { count: "exact" })
+        .not("preco", "is", null)
+        .order("produto_id")
+        .order("loja_id")
+        .range(de, ate),
+    ),
     // Anúncios sincronizados, para o seletor "Analisar anúncio". `*`: nome_item é da 0093.
     supabase.from("marketplace_anuncios").select("*").limit(1000),
   ]);
@@ -83,10 +95,10 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
 
   const canaisPorId = new Map((canaisRes.data ?? []).map((c) => [c.id, c]));
 
-  const faixasPorCanal = new Map<string, { min: number; max: number | null; comissaoPct: number; tarifaFixa: number }[]>();
-  for (const f of faixasRes.data ?? []) {
+  const faixasPorCanal = new Map<string, FaixaComissao[]>();
+  for (const f of (faixasRes.data ?? []) as (LinhaFaixa & { canal_id: string })[]) {
     const lista = faixasPorCanal.get(f.canal_id) ?? [];
-    lista.push({ min: f.preco_min, max: f.preco_max, comissaoPct: f.comissao_pct, tarifaFixa: f.tarifa_fixa });
+    lista.push(faixaDaLinha(f));
     faixasPorCanal.set(f.canal_id, lista);
   }
 
@@ -137,7 +149,13 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       iaDisponivel={iaDisponivel}
       visaoInicial={VISOES_PRECIFICACAO.find((v) => v === visao)}
       rascunhosPendentes={rascunhosRes.error ? [] : ((rascunhosRes.data ?? []) as RascunhoPendente[])}
-      precosLoja={precosLojaRes.error ? null : ((precosLojaRes.data ?? []) as { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[])}
+      precosLoja={
+        precosLojaRes.error
+          ? null
+          : (
+              (precosLojaRes.data ?? []) as unknown as { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null; precificacoes: { taxa_adicional_pct: number | null } | null }[]
+            ).map(({ precificacoes, ...p }) => ({ ...p, taxa_adicional_pct: precificacoes?.taxa_adicional_pct != null ? Number(precificacoes.taxa_adicional_pct) : null }))
+      }
       inicial={{ produtoId: produto ?? null, lojaId: loja ?? null }}
       anunciosLoja={(() => {
         const vistos = new Set<string>();

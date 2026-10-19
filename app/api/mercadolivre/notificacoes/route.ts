@@ -20,7 +20,10 @@ const recebido = () => new NextResponse(null, { status: 200 });
  * faz o Sertão reler um pedido de verdade. Sem service key ou credenciais, ignora.
  *
  * Segura repetição: o ML manda vários avisos seguidos, e a conexão que sincronizou há menos
- * de 60 s (`ultima_sincronizacao`) não sincroniza de novo. Quem grava essa data é a
+ * de 60 s (`ultima_sincronizacao`) não sincroniza de novo; e cada aviso (pedido ou envio) passa
+ * por `registrar_aviso_marketplace` (0108), que descarta o repetido e põe um teto por conta.
+ * Assinatura: os avisos de pedidos/envios do Mercado Livre não trazem assinatura HMAC (a do
+ * `x-signature` é do Mercado Pago); a defesa é não confiar no corpo e reler tudo na API. Quem grava essa data é a
  * sincronização completa (cron, botão, aviso de envio); o aviso de um pedido só relê aquele
  * pedido e não mexe nela, para não encurtar a janela da próxima sincronização completa.
  */
@@ -44,9 +47,15 @@ export async function POST(req: NextRequest) {
       return;
     }
     for (const conexao of (data ?? []) as ConexaoShopee[]) {
-      // O freio só vale para a relida completa (aviso de envio). Aviso de um pedido relê só ele, é barato,
+      // O freio por data só vale para a relida completa (aviso de envio). Aviso de um pedido relê só ele, é barato,
       // e descartá-lo perderia um pedido pago logo depois de uma sincronização completa.
       if (!aviso.pedido && sincronizouHaPouco(conexao.ultima_sincronizacao, Date.now())) continue;
+      // 0108: o mesmo aviso repetido (reenvio do ML ou repetição de propósito) só dispara trabalho
+      // uma vez por janela, decidido de forma atômica no banco, e cada conta tem um teto por minuto.
+      // Sem a migração a função não existe e segue como antes.
+      const chave = aviso.pedido ? `ml:pedido:${aviso.pedido}` : `ml:envio:${conexao.id}`;
+      const { data: novo, error: erroAviso } = await servico.rpc("registrar_aviso_marketplace", { p_user: conexao.user_id, p_chave: chave, p_janela_s: aviso.pedido ? 30 : 60 });
+      if (!erroAviso && novo === false) continue;
       try {
         // Pedido: só ele. Envio (status da etiqueta/entrega): relê a janela recente.
         await sincronizarConexao(servico, conexao, "servico", aviso.pedido ? [aviso.pedido] : undefined);

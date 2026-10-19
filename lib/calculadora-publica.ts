@@ -8,7 +8,8 @@
  * informa a comissão e a tarifa fixa do próprio anúncio. Nada de taxa inventada aqui.
  */
 
-import { FAIXAS_SHOPEE_PADRAO } from "@/lib/marketplace/plataformas";
+import { FAIXAS_SHOPEE_PADRAO, VIGENCIA_FAIXAS_SHOPEE } from "@/lib/marketplace/plataformas";
+import { faixaDaLinha } from "@/lib/faixas";
 import {
   formatarFaixaLabel,
   resolverComFaixas,
@@ -62,17 +63,12 @@ export interface ResultadoCanal {
 export const LINK_CADASTRO_CALCULADORA = "/signup?utm_source=calculadora";
 
 export const FONTE_TAXAS_SHOPEE =
-  "Faixas de comissão padrão do Sertão para a Shopee (as mesmas que toda conta nova recebe). Confira sempre na Central do Vendedor: a Shopee muda as regras de tempos em tempos.";
+  `Faixas de comissão padrão do Sertão para a Shopee, vendedor CNPJ, regra de ${VIGENCIA_FAIXAS_SHOPEE} (as mesmas que toda conta nova recebe). Confira sempre na Central do Vendedor: a Shopee muda as regras de tempos em tempos, e CPF ou volume alto podem ter outras condições.`;
 
 export const FONTE_TAXAS_ML =
   "O Mercado Livre cobra uma comissão por categoria e tipo de anúncio (Clássico ou Premium) e, em produto barato, uma tarifa fixa por venda. Copie as do seu anúncio, que aparecem ao publicar ou em Tarifas e faturamento.";
 
-export const FAIXAS_SHOPEE: FaixaComissao[] = FAIXAS_SHOPEE_PADRAO.map((f) => ({
-  min: f.preco_min,
-  max: f.preco_max,
-  comissaoPct: f.comissao_pct,
-  tarifaFixa: f.tarifa_fixa,
-}));
+export const FAIXAS_SHOPEE: FaixaComissao[] = FAIXAS_SHOPEE_PADRAO.map(faixaDaLinha);
 
 function vazio(canal: ResultadoCanal["canal"], nome: string, falta: string | null): ResultadoCanal {
   return { canal, nome, falta, viavel: false, precoVenda: 0, comissaoPct: 0, comissaoValor: 0, taxaFixa: 0, impostoValor: 0, lucro: 0, margem: 0, faixa: null, zonaMorta: null };

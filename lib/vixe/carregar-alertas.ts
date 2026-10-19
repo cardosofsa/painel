@@ -30,6 +30,7 @@ import {
   type ContaVencida,
   type PrecoEmZonaMorta,
 } from "./alertas";
+import { faixaDaLinha, type LinhaFaixa } from "@/lib/faixas";
 
 export interface ResultadoAlertas {
   alertas: AlertaVixe[];
@@ -237,7 +238,7 @@ async function precos(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     supabase.from("produto_lojas").select("produto_id, loja_id"),
     supabase.from("lojas_canal").select("id, canal_id, taxa_extra_valor, taxa_extra_tipo"),
     supabase.from("canais").select("id, nome, taxa_extra_valor_padrao, taxa_extra_tipo_padrao").eq("tipo_taxa", "faixas"),
-    supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
+    supabase.from("faixas_comissao_canal").select("*").order("ordem"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
   ]);
   if (perfilRes.error) throw new Error(perfilRes.error.message);
@@ -252,9 +253,9 @@ async function precos(supabase: SupabaseClient): Promise<AlertaVixe[]> {
     ok<{ id: string; nome: string; taxa_extra_valor_padrao: number | null; taxa_extra_tipo_padrao: TipoExtra }[]>(canaisRes).map((c) => [c.id, c]),
   );
   const faixas = new Map<string, FaixaComissao[]>();
-  for (const f of ok<{ canal_id: string; preco_min: number; preco_max: number | null; comissao_pct: number; tarifa_fixa: number }[]>(faixasRes)) {
+  for (const f of ok<(LinhaFaixa & { canal_id: string })[]>(faixasRes)) {
     const lista = faixas.get(f.canal_id) ?? [];
-    lista.push({ min: f.preco_min, max: f.preco_max, comissaoPct: f.comissao_pct, tarifaFixa: f.tarifa_fixa });
+    lista.push(faixaDaLinha(f));
     faixas.set(f.canal_id, lista);
   }
 
