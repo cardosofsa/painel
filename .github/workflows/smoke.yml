@@ -8,7 +8,9 @@
 #   SMOKE_VITRINE_SLUG                opcional (slug de um catálogo ativo da conta de teste)
 #   VERCEL_AUTOMATION_BYPASS_SECRET   opcional; sem ele o smoke só roda em produção (a prévia
 #                                     fica atrás da Deployment Protection)
-# Sem TESTE_EMAIL/TESTE_SENHA o job avisa e termina sem falhar.
+# Sem TESTE_EMAIL/TESTE_SENHA: no deploy de PRODUÇÃO o job FALHA (o smoke é obrigatório lá);
+# na prévia e no disparo manual ele avisa. Em todo caso em que não roda, o resumo do job diz
+# "NÃO EXECUTADO" e o motivo, para não ser confundido com "passou".
 name: Smoke
 
 on:
@@ -42,15 +44,27 @@ jobs:
       - name: Confere os secrets
         id: config
         run: |
+          nao_executado() {
+            echo "## ⚠ Smoke NÃO EXECUTADO" >> "$GITHUB_STEP_SUMMARY"
+            echo "$1" >> "$GITHUB_STEP_SUMMARY"
+            echo "Este job verde não significa que o smoke passou: ele não rodou." >> "$GITHUB_STEP_SUMMARY"
+          }
           if [ -z "$TESTE_EMAIL" ] || [ -z "$TESTE_SENHA" ]; then
+            nao_executado "Faltam os secrets TESTE_EMAIL e TESTE_SENHA (conta de teste). Ver docs/qa.md."
+            if [ "${{ github.event_name }}" = "deployment_status" ] && [ "$AMBIENTE" = "Production" ]; then
+              echo "::error title=Smoke obrigatório em produção::Cadastre os secrets TESTE_EMAIL e TESTE_SENHA (conta de teste). Ver docs/qa.md."
+              exit 1
+            fi
             echo "::warning title=Smoke desligado::Cadastre os secrets TESTE_EMAIL e TESTE_SENHA (conta de teste) para rodar o smoke. Ver docs/qa.md."
             echo "rodar=false" >> "$GITHUB_OUTPUT"
           elif [ "$AMBIENTE" != "Production" ] && [ -z "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
             # A prévia fica atrás da proteção de deploy da Vercel: sem o segredo de bypass, o
             # navegador cai na tela de login da Vercel (só e-mail) e o teste morre no campo de senha.
+            nao_executado "Prévia protegida e sem o secret VERCEL_AUTOMATION_BYPASS_SECRET. O smoke roda no deploy de produção."
             echo "::warning title=Smoke da prévia desligado::Prévia protegida e sem o secret VERCEL_AUTOMATION_BYPASS_SECRET (Vercel → Settings → Deployment Protection → Protection Bypass for Automation). O smoke roda no deploy de produção."
             echo "rodar=false" >> "$GITHUB_OUTPUT"
           elif [ -z "$SMOKE_BASE_URL" ]; then
+            nao_executado "O evento não trouxe a URL do deploy."
             echo "::warning title=Smoke sem URL::O evento não trouxe a URL do deploy."
             echo "rodar=false" >> "$GITHUB_OUTPUT"
           else
