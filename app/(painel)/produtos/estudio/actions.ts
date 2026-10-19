@@ -75,6 +75,44 @@ export async function abrirRascunho(entrada: unknown) {
   });
 }
 
+const produtoParaAnuncioSchema = z.object({
+  nome: z.string().trim().min(2, "Dê um nome ao produto").max(120, "Nome longo demais"),
+  custo: z.number().finite().min(0).max(1_000_000).nullable(),
+  perfil_id: z.string().uuid().nullable(),
+});
+
+/** SKU provisório de um produto criado pelo Anúncio (dá para trocar depois no cadastro). */
+function skuDoAnuncio(): string {
+  return `ANUN-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
+}
+
+/**
+ * Anúncio de um produto que ainda não está cadastrado: cria o produto com o mínimo (nome, custo
+ * se souber, SKU provisório, estoque zero) e já abre o rascunho dele. Antes, sem produto
+ * cadastrado não havia como começar. O resto (foto, medidas, estoque, preço por loja) se
+ * completa depois no cadastro; a criação na Shopee confere o que faltar.
+ */
+export async function criarProdutoParaAnuncio(entrada: unknown) {
+  return comResultado(async (): Promise<RascunhoAberto> => {
+    const v = validar(produtoParaAnuncioSchema, entrada);
+    const supabase = await createClient();
+    await usuarioDaSessao(supabase);
+    const { data: produto, error } = await supabase
+      .from("produtos")
+      .insert({ sku: skuDoAnuncio(), nome: v.nome, custo_base: v.custo ?? 0, preco_venda: 0, estoque: 0, estoque_minimo: 0, saida_media_semanal: 0, ativo: true })
+      .select("id")
+      .single();
+    if (error) lancarErroSupabase(error);
+    const { data: rascunho, error: erroRascunho } = await supabase.from("anuncio_rascunhos").insert({ produto_id: produto!.id, perfil_id: v.perfil_id }).select("id").single();
+    checar(erroRascunho);
+    const aberto = await lerRascunhoAberto(supabase, rascunho!.id as string);
+    if (!aberto) throw new Error("Rascunho não encontrado.");
+    revalidatePath("/produtos");
+    revalidatePath(PATH);
+    return aberto;
+  });
+}
+
 /** Reabre um rascunho pelo id (link "Continuar", recarregar a página). */
 export async function abrirRascunhoPorId(entrada: unknown) {
   return comResultado(async (): Promise<RascunhoAberto> => {

@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { FormField, Modal } from "@/components/ui/Modal";
+import { FormField, Modal, inputClass } from "@/components/ui/Modal";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { ModalSaida } from "@/components/ui/ModalSaida";
 import { useProtegerSaida } from "@/lib/hooks/useProtegerSaida";
@@ -38,7 +39,7 @@ import { regrasDaPlataforma, type PlataformaMarcaId } from "@/lib/marca/platafor
 import { urlPublicaImagem, type FichaSalva, type LojaParaMarca, type MemoriaMarca, type PerfilMarca } from "@/lib/marca/tipos";
 import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { adicionarMemoriaMarca, salvarFichaMarca } from "../../produtos/marca/actions";
-import { abrirRascunho, abrirRascunhoPorId, conversar, descartarRascunho, marcarPublicado, definirNumeroImagens, escolherTitulo, gerarDescricaoEstudio, gerarTitulosEstudio, pesquisarConcorrentesEstudio, salvarDescricao, type RascunhoAberto, type TitulosDoEstudio } from "../../produtos/estudio/actions";
+import { abrirRascunho, abrirRascunhoPorId, criarProdutoParaAnuncio, conversar, descartarRascunho, marcarPublicado, definirNumeroImagens, escolherTitulo, gerarDescricaoEstudio, gerarTitulosEstudio, pesquisarConcorrentesEstudio, salvarDescricao, type RascunhoAberto, type TitulosDoEstudio } from "../../produtos/estudio/actions";
 
 export type ConfigAba = "perfil" | "ficha" | "memoria" | "conferir" | "aprender";
 type Qual = "titulos" | "concorrentes" | "conversa" | "descricao" | null;
@@ -114,6 +115,11 @@ export function InfinitoClient({
   const [cfgPerfil, setCfgPerfil] = useState<string>(perfis[0]?.id ?? "novo");
   const [conversaAberta, setConversaAberta] = useState(false);
   const [shopeeAberto, setShopeeAberto] = useState(false);
+  // Produto que ainda não está cadastrado (criado na hora, a partir do nome digitado na busca).
+  const [novoProduto, setNovoProduto] = useState<{ nome: string; custo: number | null } | null>(null);
+  // Montar título e descrição com IA logo depois de abrir; e o passo em andamento, quando montando.
+  const [montarAoAbrir, setMontarAoAbrir] = useState(iaDisponivel);
+  const [montando, setMontando] = useState<string | null>(null);
   // Erro de IA fica na tela (com "Tentar de novo") até dar certo: antes era só um toast que sumia.
   const [falhaIA, setFalhaIA] = useState<{ etapa: EtapaId; mensagem: string; repetir: () => void } | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
@@ -174,15 +180,79 @@ export function InfinitoClient({
     return r.ok;
   }
 
-  async function abrirPar(par: { produto: string; perfil: string }): Promise<boolean> {
+  /** Põe o rascunho na tela e o id na URL (recarregar ou voltar para a página abre ESTE rascunho). */
+  function mostrarAberto(r: RascunhoAberto, par: { produto: string; perfil: string }) {
+    setRascunho(r);
+    setAberto(par);
+    if (r.id !== rascunho?.id) router.replace(`/anuncio/infinito?rascunho=${r.id}`, { scroll: false });
+  }
+
+  async function abrirPar(par: { produto: string; perfil: string }): Promise<RascunhoAberto | null> {
     const r = await executarComToast(abrirRascunho({ produto_id: par.produto, perfil_id: par.perfil || null }), { erro: "Não foi possível abrir o anúncio." });
-    if (r.ok) {
-      setRascunho(r.dado);
-      setAberto(par);
-      // O id na URL: recarregar ou voltar para a página abre ESTE rascunho.
-      if (r.dado.id !== rascunho?.id) router.replace(`/anuncio/infinito?rascunho=${r.dado.id}`, { scroll: false });
+    if (!r.ok) return null;
+    mostrarAberto(r.dado, par);
+    return r.dado;
+  }
+
+  /**
+   * "Montar com IA": o que antes eram vários cliques numa tacada só. Gera os títulos, usa o de
+   * melhor nota que passa na conferência de termos, gera a descrição e salva se ela também
+   * passa, e para na Capa (que gasta a cota de imagens e pede a sua aprovação). Onde algo não
+   * passa, para naquela etapa com o que já foi feito, para você ajustar.
+   */
+  async function montarComIA(rascunhoId: string) {
+    setFalhaIA(null);
+    try {
+      setMontando("Gerando os títulos…");
+      const t = await executarComToast(gerarTitulosEstudio({ rascunho_id: rascunhoId, pedido: null }), { erro: "Não foi possível gerar os títulos." });
+      if (!t.ok) return setManual("titulo");
+      setTitulos(t.dado);
+      const melhor = t.dado.variantes.find((x) => x.utilizavel);
+      if (!melhor) {
+        toast.message("Nenhum título gerado passou na conferência. Escolha um e ajuste, ou digite o seu.");
+        return setManual("titulo");
+      }
+      setMontando("Usando o título de melhor nota…");
+      const e = await executarComToast(escolherTitulo({ rascunho_id: rascunhoId, titulo: melhor.titulo }), { erro: "Não foi possível usar o título." });
+      if (!e.ok) return setManual("titulo");
+      setMontando("Escrevendo a descrição…");
+      const d = await executarComToast(gerarDescricaoEstudio({ rascunho_id: rascunhoId, pedido: null }), { erro: "Não foi possível gerar a descrição." });
+      if (!d.ok) return setManual("descricao");
+      if (!d.dado.avaliacao.utilizavel) {
+        setVersaoDesc((n) => n + 1);
+        setDescGerada({ texto: d.dado.descricao, palavras: d.dado.palavrasChave, versao: versaoDesc + 1, meta: "A descrição precisa de um ajuste antes de salvar (veja os avisos)." });
+        return setManual("descricao");
+      }
+      setMontando("Salvando a descrição…");
+      const sv = await executarComToast(salvarDescricao({ rascunho_id: rascunhoId, descricao: d.dado.descricao }), { erro: "Não foi possível salvar a descrição." });
+      if (!sv.ok) return setManual("descricao");
+      toast.success("Título e descrição prontos. Revise o que quiser e siga para a capa.");
+      setManual("capa");
+    } finally {
+      setMontando(null);
+      const r = await executarComToast(abrirRascunhoPorId({ rascunho_id: rascunhoId }), { erro: "Não foi possível atualizar o anúncio." });
+      if (r.ok) setRascunho(r.dado);
     }
-    return r.ok;
+  }
+
+  /** Produto que ainda não existe: cria o mínimo e já abre o anúncio (e monta com IA, se marcado). */
+  function criarEAbrir() {
+    if (!novoProduto || novoProduto.nome.trim().length < 2) return;
+    setTitulos(null);
+    setDescGerada(null);
+    setObservacao(null);
+    startTransition(async () => {
+      const r = await executarComToast(criarProdutoParaAnuncio({ nome: novoProduto.nome.trim(), custo: novoProduto.custo, perfil_id: perfilId || null }), {
+        sucesso: "Produto criado e anúncio aberto",
+        erro: "Não foi possível criar o produto.",
+      });
+      if (!r.ok) return;
+      setNovoProduto(null);
+      setProdutoId(r.dado.produtoId);
+      mostrarAberto(r.dado, { produto: r.dado.produtoId, perfil: perfilId });
+      setManual(null);
+      if (montarAoAbrir && iaDisponivel) await montarComIA(r.dado.id);
+    });
   }
 
   // `?produto=` (atalho "Criar anúncio deste produto"): abre o rascunho sem pedir mais um clique.
@@ -202,8 +272,11 @@ export function InfinitoClient({
     setDescGerada(null);
     setObservacao(null);
     startTransition(async () => {
-      const ok = await abrirPar({ produto: produtoId, perfil: perfilId });
-      if (ok) setManual(null);
+      const aberto = await abrirPar({ produto: produtoId, perfil: perfilId });
+      if (!aberto) return;
+      setManual(null);
+      // Só monta sozinho um anúncio ainda sem título (reabrir um começado não sobrescreve nada).
+      if (montarAoAbrir && iaDisponivel && !aberto.titulo) await montarComIA(aberto.id);
     });
   }
 
@@ -480,16 +553,92 @@ export function InfinitoClient({
                   <CardSubtitle>{perfilId ? `Perfil: ${perfis.find((p) => p.id === perfilId)?.nome ?? ""}.` : "Sem perfil (padrão neutro)."} Depois de abrir, o anúncio fica salvo e você pode sair e voltar.</CardSubtitle>
                 </div>
               </CardHeader>
-              {produtos.length === 0 ? (
-                <EmptyState icon={Sparkles} title="Nenhum produto cadastrado" description="Cadastre o produto em Produtos e volte aqui para montar o anúncio dele." />
+              {novoProduto || produtos.length === 0 ? (
+                // Produto que ainda não existe: o mínimo para começar; o resto se completa no cadastro.
+                <div className="rounded-lg border border-dashed border-border p-4">
+                  <p className="text-sm font-medium text-text-primary">Produto novo</p>
+                  <p className="mt-0.5 text-xs text-text-secondary">
+                    O Painel cadastra o produto com o nome (e o custo, se souber) e já abre o anúncio. Foto, medidas, estoque e preço por loja você completa depois em Produtos e na
+                    Precificação.
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_10rem] gap-3">
+                    <FormField label="Nome do produto">
+                      <input
+                        className={inputClass}
+                        value={novoProduto?.nome ?? ""}
+                        maxLength={120}
+                        autoFocus={!!novoProduto}
+                        onChange={(e) => setNovoProduto((a) => ({ nome: e.target.value, custo: a?.custo ?? null }))}
+                        placeholder="Ex.: Caneca de porcelana 300 ml"
+                      />
+                    </FormField>
+                    <FormField label="Custo (opcional)">
+                      <CampoNumero value={novoProduto?.custo ?? 0} onChange={(n) => setNovoProduto((a) => ({ nome: a?.nome ?? "", custo: n > 0 ? n : null }))} min={0} casas={2} />
+                    </FormField>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="primary" onClick={criarEAbrir} loading={pending} disabled={pending || (novoProduto?.nome.trim().length ?? 0) < 2}>
+                      <Wand2 size={14} aria-hidden /> Criar e abrir o anúncio
+                    </Button>
+                    {produtos.length > 0 && (
+                      <Button variant="ghost" onClick={() => setNovoProduto(null)} disabled={pending}>
+                        Escolher um produto cadastrado
+                      </Button>
+                    )}
+                  </div>
+                </div>
               ) : (
-              <FormField label="Produto">
-                <Combobox itens={produtos.map((p) => ({ id: p.id, rotulo: p.rotulo, detalhe: p.sku ?? undefined, busca: p.sku ?? undefined }))} valor={produtoId} onChange={setProdutoId} placeholder="Buscar produto…" />
-              </FormField>
+                <>
+                  <FormField label="Produto">
+                    <Combobox
+                      itens={produtos.map((p) => ({ id: p.id, rotulo: p.rotulo, detalhe: p.sku ?? undefined, busca: p.sku ?? undefined }))}
+                      valor={produtoId}
+                      onChange={setProdutoId}
+                      placeholder="Buscar produto ou digitar um novo…"
+                      criar={{ rotulo: (t) => `+ Criar anúncio para “${t}” (produto novo)`, onCriar: (t) => setNovoProduto({ nome: t, custo: null }) }}
+                    />
+                  </FormField>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="primary" onClick={abrir} loading={pending} disabled={pending || !produtoId}>
+                      <Wand2 size={14} aria-hidden /> {rascunho ? "Reabrir anúncio" : "Abrir o anúncio"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setNovoProduto({ nome: "", custo: null })} disabled={pending}>
+                      <Plus size={14} aria-hidden /> Produto ainda não cadastrado
+                    </Button>
+                  </div>
+                </>
               )}
-              <Button variant="primary" onClick={abrir} loading={pending} disabled={pending || !produtoId}>
-                <Wand2 size={14} aria-hidden /> {rascunho ? "Reabrir anúncio" : "Abrir o anúncio"}
-              </Button>
+              {iaDisponivel && (
+                <label className="mt-4 flex items-start gap-2 text-sm text-text-secondary">
+                  <input type="checkbox" className="mt-0.5 h-4 w-4 accent-accent" checked={montarAoAbrir} onChange={(e) => setMontarAoAbrir(e.target.checked)} />
+                  <span>
+                    <span className="font-medium text-text-primary">Já montar título e descrição com IA ao abrir.</span> Usa o título de melhor nota e para na capa para você revisar (gasta 2
+                    gerações de texto; a capa não).
+                  </span>
+                </label>
+              )}
+            </Card>
+          )}
+
+          {montando && (
+            <Card>
+              <p role="status" className="flex items-center gap-2 text-sm text-text-primary">
+                <Sparkles size={16} className="shrink-0 animate-pulse text-accent" aria-hidden /> Montando com IA: {montando}
+              </p>
+            </Card>
+          )}
+
+          {rascunho && atual === "titulo" && !rascunho.titulo && iaDisponivel && !montando && (
+            <Card>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <CardTitle>Montar com IA</CardTitle>
+                  <CardSubtitle>Gera os títulos, usa o de melhor nota, escreve a descrição e para na capa para você revisar. 2 gerações de texto.</CardSubtitle>
+                </div>
+                <Button variant="primary" onClick={() => void montarComIA(rascunho.id)} disabled={qual !== null}>
+                  <Sparkles size={14} aria-hidden /> Montar título e descrição
+                </Button>
+              </div>
             </Card>
           )}
 
