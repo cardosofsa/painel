@@ -99,7 +99,7 @@ jobs:
         if: steps.config.outputs.rodar == 'true'
         run: npx playwright test --project=smoke
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure() && steps.config.outputs.rodar == 'true'
         with:
           name: smoke-relatorio
