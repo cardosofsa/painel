@@ -1,3 +1,4 @@
+import { lerCorpoLimitado } from "@/lib/corpo-limitado";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { clienteServico } from "@/lib/supabase/servico";
@@ -38,8 +39,9 @@ const schema = z.object({
 const DESLIGADO = { ativo: false, opcoes: [] };
 
 export async function POST(request: NextRequest) {
-  const texto = await request.text();
-  if (texto.length > LIMITE_CORPO) return NextResponse.json({ erro: "Pedido grande demais." }, { status: 413 });
+  const lido = await lerCorpoLimitado(request, LIMITE_CORPO);
+  if (!lido.ok) return lido.motivo === "grande" ? NextResponse.json({ erro: "Pedido grande demais." }, { status: 413 }) : NextResponse.json({ erro: "Formato inválido." }, { status: 400 });
+  const texto = lido.texto;
   let corpo: unknown;
   try {
     corpo = JSON.parse(texto || "{}");

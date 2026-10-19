@@ -1,3 +1,4 @@
+import { lerCorpoLimitado } from "@/lib/corpo-limitado";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { pedidoVitrineSchema } from "@/lib/vitrine-pedido";
@@ -36,16 +37,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ erro: "Formato inválido." }, { status: 415 });
   }
 
-  const declarado = Number(request.headers.get("content-length") ?? 0);
-  if (declarado > LIMITE_CORPO) {
-    return NextResponse.json({ erro: "Pedido grande demais." }, { status: 413 });
+  // Teto real de bytes: o `content-length` é forjável, e ler tudo antes de medir já gastava a memória.
+  const lido = await lerCorpoLimitado(request, LIMITE_CORPO);
+  if (!lido.ok) {
+    return lido.motivo === "grande" ? NextResponse.json({ erro: "Pedido grande demais." }, { status: 413 }) : NextResponse.json({ erro: "Formato inválido." }, { status: 400 });
   }
-
-  const texto = await request.text();
-  // O `content-length` é forjável; o teto que vale é este, sobre o corpo já lido.
-  if (texto.length > LIMITE_CORPO) {
-    return NextResponse.json({ erro: "Pedido grande demais." }, { status: 413 });
-  }
+  const texto = lido.texto;
 
   // JSON quebrado é erro de quem chamou (400), não exceção da rota (500).
   let corpo: unknown;

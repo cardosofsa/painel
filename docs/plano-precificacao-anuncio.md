@@ -631,3 +631,9 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - Na conta de teste, com a sessão dela: a tabela e a função da 0104 respondem. Uma venda criada pela RPC não teve o total alterado nem foi apagada pela API direta (erro P0001 com a mensagem da 0106); a observação interna seguiu editável e o cancelamento pela RPC funcionou. O smoke do caixa passou com a 0106 no ar.
 - O índice da 0105 não foi exercitado (a conta de teste não emite NF-e).
 - `e2e/anuncio.spec.ts`: na primeira abertura depois de o servidor ficar parado, o formulário ainda não estava interativo quando o teste digitava; agora ele digita de novo até o botão responder.
+
+## 24. Segurança (auditoria de 19/10/2026)
+
+- **Next.js 16.4.2 e React/React DOM 19.2.9** (eram 16.4.0 e 19.2.8, afetados pelos avisos de 14/10/2026 de RCE em React Server Components e DoS em Server Actions). `eslint-config-next` 16.4.2. Tipos, lint, 1621 testes e build limpos. `npm audit` de produção: sobra só `uuid` dentro do `exceljs` (o aviso é das funções v3/v5/v6 com buffer; o exceljs usa a v4). No desenvolvimento: `braces` via `eslint-config-next` (só o lint). As duas "correções" do audit são rebaixamentos que quebram.
+- **Teto real de bytes no corpo** (`lib/corpo-limitado.ts` + teste): lê o fluxo contando bytes e cancela ao passar do limite; `content-length` só como recusa rápida. Em `csp-report`, `vitrine/pedido`, `vitrine/frete`, `mercadolivre/notificacoes` e no webhook do Asaas. Conferido com curl no build: corpo de 300 KB enviado em pedaços (sem content-length) dá 413; requisições normais seguem iguais.
+- Fica para a infraestrutura: limite de corpo e rate limiting na borda (Vercel/WAF).

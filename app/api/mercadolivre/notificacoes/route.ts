@@ -1,3 +1,4 @@
+import { lerCorpoLimitado } from "@/lib/corpo-limitado";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { clienteServico } from "@/lib/supabase/servico";
 import { credenciaisML } from "@/lib/marketplace/mercadolivre-api";
@@ -27,9 +28,11 @@ export async function POST(req: NextRequest) {
   const servico = clienteServico();
   const credenciais = credenciaisML();
   if (!servico || !credenciais) return recebido();
-  if (Number(req.headers.get("content-length") ?? 0) > TAMANHO_MAXIMO_NOTIFICACAO) return recebido();
+  // Teto real de bytes (o content-length pode faltar ou mentir); grande demais é ignorado.
+  const lido = await lerCorpoLimitado(req, TAMANHO_MAXIMO_NOTIFICACAO);
+  if (!lido.ok) return recebido();
 
-  const aviso = lerNotificacaoML(await req.text().catch(() => ""), credenciais.clientId);
+  const aviso = lerNotificacaoML(lido.texto, credenciais.clientId);
   if (!aviso.ok) return recebido();
 
   after(async () => {
