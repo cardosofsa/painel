@@ -44,6 +44,9 @@ describe("NF-e", () => {
   it("status da Focus", () => {
     expect(statusDaFocus({ status: "autorizado" }).status).toBe("autorizada");
     expect(statusDaFocus({ status: "processando_autorizacao" }).status).toBe("processando");
+    // Recusa do emissor (422) e nota que ele não conhece não ficam "processando" para sempre.
+    expect(statusDaFocus({ codigo: "requisicao_invalida", mensagem: "CFOP inválido" } as never)).toEqual({ status: "rejeitada", mensagem: "CFOP inválido" });
+    expect(statusDaFocus({ codigo: "nao_encontrado" } as never).status).toBe("rejeitada");
     expect(statusDaFocus({ status: "erro_autorizacao", mensagem_sefaz: "Rejeição: NCM inválido" })).toEqual({ status: "rejeitada", mensagem: "Rejeição: NCM inválido" });
   });
 });
