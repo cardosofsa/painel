@@ -4,6 +4,7 @@ import { agruparPorItem, casarAnuncios, diferencasEstoque, semProdutosPai, type 
 import type { ConexaoShopee } from "./tokens";
 import { apiDaConexao } from "./conexao-api";
 import { precosQueMudaram } from "./precos-historico";
+import { gravarHistoricoDeTitulo } from "./titulos-servidor";
 
 /**
  * Estoque do Sertão → anúncios da Shopee, por loja conectada. Código de SERVIDOR; funciona
@@ -61,6 +62,7 @@ export async function atualizarAnuncios(supabase: SupabaseClient, conexao: Conex
   }
   const linhas = base;
   await gravarHistoricoDePreco(supabase, conexao, precoAntes);
+  await gravarHistoricoDeTitulo(supabase, conexao.user_id, conexao.loja_id);
   await supabase.from("marketplace_conexoes").update({ anuncios_atualizados_em: new Date().toISOString() }).eq("id", conexao.id);
   return linhas.length;
 }

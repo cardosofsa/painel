@@ -14,7 +14,8 @@ import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { executarComToast } from "@/lib/acao-cliente";
 import { analisarAnuncio, ROTULO_VEREDITO } from "@/lib/analise-anuncio";
 import { ROTULO_TENDENCIA } from "@/lib/demanda";
-import { classeValor, formatBRL } from "@/lib/format";
+import { classeValor, formatBRL, formatarData } from "@/lib/format";
+import type { VersaoComparada } from "@/lib/marketplace/titulos-historico";
 import type { DadosAnalise } from "@/lib/analise-servidor";
 import type { AbaAnalise, AnaliseCapa, NarracaoAnalise } from "@/lib/ia/prompts-analise-anuncio";
 import { adicionarMemoriaMarca } from "@/app/(painel)/produtos/marca/actions";
@@ -249,6 +250,7 @@ export function AnaliseClient({ dados, iaDisponivel, saldo }: { dados: DadosAnal
               <p className="mt-3 text-xs text-text-tertiary">Usar o título leva para o rascunho do Anúncio Infinito; o anúncio na Shopee não muda.</p>
             </Card>
           </div>
+          <VersoesDoTitulo versoes={dados.versoesTitulo} />
         </TabPanel>
       )}
 
@@ -406,5 +408,61 @@ function Numero({ rotulo, valor, classe = "text-text-primary" }: { rotulo: strin
       <dt className="text-xs text-text-tertiary">{rotulo}</dt>
       <dd className={`font-mono truncate ${classe}`}>{valor}</dd>
     </div>
+  );
+}
+
+/**
+ * Fase 9: cada versão do título com as vendas do período em que ficou no ar. Comparação por dia
+ * (versões duram tempos diferentes); venda depende de muita coisa além do título, então é um
+ * indício, não uma prova.
+ */
+function VersoesDoTitulo({ versoes }: { versoes: VersaoComparada[] | null }) {
+  const lista = [...(versoes ?? [])].reverse();
+  return (
+    <Card className="mt-5">
+      <CardTitle>Versões do título × vendas</CardTitle>
+      <p className="mt-1 text-sm text-text-secondary">Vendas do produto nesta loja enquanto cada título esteve no ar, por dia. Preço, estoque e promoção também mudam as vendas: use como indício.</p>
+      {lista.length === 0 ? (
+        <p className="mt-3 text-sm text-text-tertiary">
+          {versoes === null ? "O histórico de títulos ainda não está ligado nesta conta." : "O histórico começa na próxima sincronização da loja (ou ao criar um anúncio pelo Painel)."}
+        </p>
+      ) : (
+        <ol className="mt-3 divide-y divide-border">
+          {lista.map((v) => (
+            <li key={v.desde} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_14rem] gap-2 py-3">
+              <div className="min-w-0">
+                <p className="text-sm text-text-primary break-words">{v.titulo}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-text-tertiary">
+                  <span>
+                    {formatarData(v.desde)} → {v.ate ? formatarData(v.ate) : "hoje"} · {v.dias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} dias
+                  </span>
+                  {v.atual && <StatusChip tone="positive" label="No ar" />}
+                  {v.origem === "painel" && <StatusChip tone="neutral" label="Criado pelo Painel" />}
+                </p>
+              </div>
+              <div className="flex items-start justify-between gap-3 sm:justify-end text-right">
+                <span>
+                  <span className="block font-mono text-sm text-text-primary">{v.unidadesPorDia.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}/dia</span>
+                  <span className="block text-xs text-text-tertiary">
+                    {v.unidades} un. · {formatBRL(v.receita)}
+                  </span>
+                </span>
+                <span className="w-20 shrink-0">
+                  {v.variacao !== null ? (
+                    <span className={`block font-mono text-sm font-medium ${classeValor(v.variacao)}`}>
+                      {v.variacao > 0 ? "+" : ""}
+                      {pct(v.variacao)}
+                    </span>
+                  ) : (
+                    <span className="block text-sm text-text-tertiary">—</span>
+                  )}
+                  <span className="block text-xs text-text-tertiary">{v.poucoTempo ? "pouco tempo" : "vs. anterior"}</span>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   );
 }

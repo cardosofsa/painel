@@ -7,6 +7,7 @@ import { validar, escolhasShopeeSchema, rascunhoIdSchema } from "@/lib/validacao
 import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, precoDoAnuncio, sincronizarStatus, type ContextoRascunho } from "@/lib/estudio/servidor";
 import { plataformaDa } from "@/lib/marketplace/conexao-api";
 import { regrasDoPerfil, verificarTextos } from "@/lib/conformidade/termos";
+import { vincularItemCriado } from "@/lib/marketplace/titulos-servidor";
 import { tokenDaConexao, type ConexaoShopee } from "@/lib/marketplace/tokens";
 import type { CredenciaisShopee } from "@/lib/marketplace/shopee-api";
 import {
@@ -219,6 +220,8 @@ export async function criarNaoListadoShopee(entrada: unknown) {
       }
       await gravarEstado(supabase, v.rascunho_id, estado, { itemShopee: { itemId, status: status as string, criadoEm: estado.itemShopee?.criadoEm ?? new Date().toISOString() } });
       await sincronizarStatus(supabase, v.rascunho_id, true);
+      // Fase 9: o item entra na lista da loja já ligado ao produto, com o título como 1ª versão.
+      await vincularItemCriado(supabase, { userId: ctx.userId, lojaId: ctx.perfil!.lojaId!, itemId, produtoId: p.id, sku: p.sku, titulo: base.titulo, preco: base.preco });
       return { itemId, status: status as string, naoListado: true };
     } catch (e) {
       if (itemId && e instanceof Error && /ficou com status/.test(e.message)) throw e;

@@ -605,3 +605,12 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - **Redesenho (seção 9)**: a página Anúncio virou lista principal + atalhos (Meu padrão, O que replicar) ao lado. No Infinito, progresso, IA de texto e imagens do mês ficam em três quadros fixos no topo; os concorrentes viraram uma gaveta dentro do cartão do Título (abre sozinha ao pesquisar). "Etapa X de 6" no celular e a ordem do Revisar já vinham da fase 5.
 - **Corrigido**: no `Combobox` dentro de um `<label>`, escolher uma opção reabria a lista (o clique é repassado ao campo), cobrindo o botão de baixo.
 - **E2E** `e2e/anuncio.spec.ts` (smoke, conta de teste): perfil com termo que bloqueia → rascunho → título com o termo é recusado, sem ele passa → a lista mostra o rascunho e o filtro funciona → descarta e remove o perfil. Precificação e rascunho continuam passando.
+
+## 22. Fase 9: ciclo de resultado (código pronto; falta aplicar a 0104)
+
+- **Migração 0104** (`0104_titulos_anuncio.sql`): tabela `marketplace_titulos_historico` (`anuncio_id`, `titulo`, `origem` sincronizacao|painel, `lido_em`; RLS com `conta_ativa()`, `with check` e a trava de vínculo da 0026) e RPC `vendas_por_anuncio_periodo(p_loja, p_produto, p_de, p_ate)`, `security invoker`, fora de `anon`. Testada no PGlite (2×) e em `scripts/sql/titulos-anuncio.mjs`. **Aplicação: pelo dono.**
+- **Vínculo na criação**: ao criar o item na Shopee pelo Painel, ele entra em `marketplace_anuncios` já ligado ao produto (com título e preço), e o título vira a 1ª versão do histórico (`vincularItemCriado`, nunca lança: o item já existe na Shopee).
+- **Histórico pela sincronização**: depois de cada leitura dos anúncios, grava o título que mudou em relação à última versão guardada (a 1ª sincronização depois da 0104 registra o título de hoje como ponto de partida).
+- **Análise › Título**: "Versões do título × vendas", da mais nova para a mais antiga: período, dias, unidades e receita, **unidades por dia** e a variação contra a versão anterior; "pouco tempo" abaixo de 7 dias. Puro e testado em `lib/marketplace/titulos-historico.ts`.
+- Sem a 0104 tudo continua funcionando: a sincronização e a criação seguem, e a Análise diz que o histórico ainda não está ligado (conferido no navegador com um anúncio fictício da conta de teste, apagado depois).
+- **Ressalva** (a mesma da 0102): os itens de pedido não guardam o item_id, então as vendas são do produto naquela loja.

@@ -7,6 +7,8 @@ import { regrasDaPlataforma, type PlataformaMarcaId } from "@/lib/marca/platafor
 import { mesclarFicha, normalizarFicha } from "@/lib/marca/ficha";
 import { resumoDaFicha } from "@/lib/marca/prompt-capa";
 import { termosDoPerfil, type TermosDoPerfil } from "@/lib/conformidade/termos";
+import { versoesDoTitulo } from "@/lib/marketplace/titulos-servidor";
+import type { VersaoComparada } from "@/lib/marketplace/titulos-historico";
 
 export interface DadosAnalise {
   anuncio: { id: string; lojaId: string; itemId: number; titulo: string; imagemUrl: string | null; link: string | null };
@@ -16,6 +18,8 @@ export interface DadosAnalise {
   /** Entrada da análise pura: a tela recalcula quando lê a lista de imagens. */
   entrada: EntradaAnalise;
   palavrasChave: string[];
+  /** Versões do título × vendas (0104); `null` sem a migração. */
+  versoesTitulo: VersaoComparada[] | null;
 }
 
 /** Anúncio sincronizado + tudo que a análise precisa, lido com RLS. `"sem_produto"`/`null` como no Ajuste. */
@@ -25,10 +29,11 @@ export async function carregarAnalise(supabase: SupabaseClient, anuncioId: strin
   const a = bruto as { id: string; loja_id: string; item_id: number; nome?: string | null; nome_item?: string | null; imagem_url?: string | null; link?: string | null; produto_id: string | null };
   if (!a.produto_id) return "sem_produto";
 
-  const [ajuste, produtoRes, perfilRes] = await Promise.all([
+  const [ajuste, produtoRes, perfilRes, versoesTitulo] = await Promise.all([
     carregarDadosAjuste(supabase, { anuncioId }),
     supabase.from("produtos").select("palavras_chave").eq("id", a.produto_id).maybeSingle(),
     supabase.from("perfis_marca").select("*").eq("loja_id", a.loja_id).order("nome").limit(1),
+    versoesDoTitulo(supabase, { id: a.id, lojaId: a.loja_id, produtoId: a.produto_id }).catch(() => null),
   ]);
   if (!ajuste || ajuste === "sem_produto") return ajuste;
 
@@ -79,6 +84,7 @@ export async function carregarAnalise(supabase: SupabaseClient, anuncioId: strin
     plataforma,
     entrada,
     palavrasChave,
+    versoesTitulo,
   };
 }
 
