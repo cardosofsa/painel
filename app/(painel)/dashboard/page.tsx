@@ -126,15 +126,20 @@ export default async function DashboardPage() {
         .eq("status", "pendente")
         .order("data_vencimento")
         .limit(60),
-      supabase.from("pedidos_compra").select("valor_total").gte("data_pedido", inicioMesIso),
+      buscarEmLotes((de, ate) => supabase.from("pedidos_compra").select("valor_total", { count: "exact" }).gte("data_pedido", inicioMesIso).order("id").range(de, ate)),
       supabase.from("precificacoes").select("id", { count: "exact", head: true }).gte("criado_em", inicioMesData.toISOString()),
       // O resto do calendário (os outros meses) vem sob demanda, ao navegar.
       carregarFontesPeriodo(supabase, inicioCalendario, fimCalendario),
-      supabase
-        .from("vendas")
-        .select("total, lucro, data_venda")
-        .neq("status", "cancelada")
-        .gte("data_venda", inicioVendas.toISOString()),
+      // Em lotes: o PostgREST corta em 1000 linhas e o "Vendas hoje/semana" ficava curto.
+      buscarEmLotes((de, ate) =>
+        supabase
+          .from("vendas")
+          .select("total, lucro, data_venda", { count: "exact" })
+          .neq("status", "cancelada")
+          .gte("data_venda", inicioVendas.toISOString())
+          .order("id")
+          .range(de, ate),
+      ),
       // Todas as origens (PDV, catálogo, Shopee) para o painel de vendas: este mês + o anterior.
       carregarVendasRelatorio(supabase, 62),
       // Primeiros passos: o que já está configurado. `*`: onboarding_oculto só a partir da 0065.

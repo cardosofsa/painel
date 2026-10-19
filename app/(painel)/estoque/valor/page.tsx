@@ -1,4 +1,5 @@
 import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
+import { buscarEmLotes } from "@/lib/lotes";
 import { createClient } from "@/lib/supabase/server";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { curvaAbc, giroEstoque, valorPorArmazem, valorPorCategoria, type ProdutoValor } from "@/lib/estoque-valor";
@@ -17,15 +18,18 @@ export default async function ValorEstoquePage() {
 
   const [produtosRes, gruposRes, categoriasRes, armazensRes, saldosRes, saidasRes, movsRes] = await Promise.all([
     // Só produtos principais: o estoque da variação (0084) é o do pai, derivado.
-    semVariacoesFilhas((filtrar) => {
-      const q = supabase.from("produtos").select("id, sku, nome, custo, estoque, categoria_id, armazem_id, grupo_id, variante_nome").eq("ativo", true);
-      return filtrar ? q.is("produto_pai_id", null) : q;
-    }),
+    // Em lotes: com mais de 1000 produtos o "Valor do estoque" ficava curto.
+    semVariacoesFilhas((filtrar) =>
+      buscarEmLotes((de, ate) => {
+        const q = supabase.from("produtos").select("id, sku, nome, custo, estoque, categoria_id, armazem_id, grupo_id, variante_nome", { count: "exact" }).eq("ativo", true);
+        return (filtrar ? q.is("produto_pai_id", null) : q).order("id").range(de, ate);
+      }),
+    ),
     supabase.from("produto_grupos").select("id, nome"),
     supabase.from("categorias").select("id, nome"),
     supabase.from("armazens").select("id, nome").order("criado_em"),
-    supabase.from("estoque_armazem").select("produto_id, armazem_id, quantidade"),
-    supabase.from("estoque_movimentacoes").select("produto_id, quantidade").eq("tipo", "saida").gte("data_movimentacao", desde),
+    buscarEmLotes((de, ate) => supabase.from("estoque_armazem").select("produto_id, armazem_id, quantidade", { count: "exact" }).order("produto_id").order("armazem_id").range(de, ate)),
+    buscarEmLotes((de, ate) => supabase.from("estoque_movimentacoes").select("produto_id, quantidade", { count: "exact" }).eq("tipo", "saida").gte("data_movimentacao", desde).order("id").range(de, ate)),
     supabase.from("estoque_movimentacoes").select("*").order("data_movimentacao", { ascending: false }).limit(500),
   ]);
   if (produtosRes.error) throw new Error(produtosRes.error.message);

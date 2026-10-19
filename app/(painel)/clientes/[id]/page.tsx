@@ -1,4 +1,5 @@
 import { carregarCamposCartao, semCartoes } from "@/lib/contas-cartao-servidor";
+import { buscarEmLotes } from "@/lib/lotes";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { carregarCrediario } from "@/lib/crediario-servidor";
@@ -50,13 +51,19 @@ export default async function ClienteDetalhePage({ params }: { params: Promise<{
       .select("id, nome, whatsapp, email, permite_fiado, limite_fiado, status")
       .eq("id", id)
       .maybeSingle(),
-    supabase
-      .from("vendas")
-      .select(
-        "id, numero, data_venda, forma_pagamento, status, subtotal, desconto, valor_entrega, total, custo_total, lucro, status_envio, total_parcelas_fiado, venda_itens(produto_nome, quantidade, preco_unitario, custo_unitario, garantia_dias)",
-      )
-      .eq("cliente_id", id)
-      .order("data_venda", { ascending: false }),
+    // Em lotes: "Total comprado" e "Lucro" somam esta lista, e o PostgREST cortava em 1000.
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("vendas")
+        .select(
+          "id, numero, data_venda, forma_pagamento, status, subtotal, desconto, valor_entrega, total, custo_total, lucro, status_envio, total_parcelas_fiado, venda_itens(produto_nome, quantidade, preco_unitario, custo_unitario, garantia_dias)",
+          { count: "exact" },
+        )
+        .eq("cliente_id", id)
+        .order("data_venda", { ascending: false })
+        .order("id")
+        .range(de, ate),
+    ),
     supabase.from("contas").select("id, nome, saldo, detalhe").order("nome"),
     supabase.rpc("fiado_em_uso_cliente", { p_cliente_id: id }),
     supabase.from("perfil_negocio").select("nome_negocio, logo_url, telefone, whatsapp, instagram").maybeSingle(),
