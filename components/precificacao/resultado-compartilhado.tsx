@@ -9,6 +9,7 @@ import { resultadoNoPreco } from "@/lib/raio-x";
 import { useCapturaImagem } from "@/components/ui/PreviaImagem";
 import { CartaoPrecificacao, type EmpresaCartao } from "@/components/precificacao/CartaoPrecificacao";
 import { encontrarFaixa, type ComponenteKit, type FaixaComissao, type TaxasPlataforma } from "@/lib/pricing";
+import { rotuloTaxaFaixa } from "@/lib/faixas";
 
 /** Lucro no menor e no maior preço que o vendedor aceitaria praticar — opcional, só aparece
  * no texto/imagem no formato "completo" (ver montarTextoResumo). */
@@ -340,7 +341,7 @@ export function SimuladorPreco({ custoTotal, taxas, faixas = [] }: { custoTotal:
             <div className="flex justify-between text-text-tertiary text-xs">
               <span>Comissão nesse preço</span>
               <span className="font-mono">
-                {faixa.comissaoPct}% + {formatBRL(faixa.tarifaFixa)}
+                {rotuloTaxaFaixa(faixa)}
               </span>
             </div>
           )}

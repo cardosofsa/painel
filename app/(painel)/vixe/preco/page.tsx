@@ -9,6 +9,7 @@ import type { LojaPreco } from "@/lib/vixe/preco";
 import { Card } from "@/components/ui/Card";
 import { VixePreco, type ProdutoPreco } from "@/components/vixe/VixePreco";
 import type { Metadata } from "next";
+import { faixaDaLinha, type LinhaFaixa } from "@/lib/faixas";
 
 export const metadata: Metadata = { title: "Vixe · Preço" };
 
@@ -43,7 +44,7 @@ export default async function VixePrecoPage({ searchParams }: { searchParams: Pr
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     supabase.from("canais").select("id, nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao"),
     supabase.from("lojas_canal").select("id, canal_id, nome, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo").order("nome"),
-    supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa, criado_em").order("ordem"),
+    supabase.from("faixas_comissao_canal").select("*").order("ordem"),
     supabase.from("concorrentes_preco").select("produto_id, preco"),
   ]);
   for (const r of [produtosRes, gruposRes, canaisRes, lojasRes, faixasRes, concorrentesRes]) {
@@ -63,8 +64,8 @@ export default async function VixePrecoPage({ searchParams }: { searchParams: Pr
 
   const faixas = new Map<string, FaixaComissao[]>();
   const faixasEm = new Map<string, string>();
-  for (const f of faixasRes.data ?? []) {
-    faixas.set(f.canal_id, [...(faixas.get(f.canal_id) ?? []), { min: f.preco_min, max: f.preco_max, comissaoPct: f.comissao_pct, tarifaFixa: f.tarifa_fixa }]);
+  for (const f of (faixasRes.data ?? []) as (LinhaFaixa & { canal_id: string; criado_em: string })[]) {
+    faixas.set(f.canal_id, [...(faixas.get(f.canal_id) ?? []), faixaDaLinha(f)]);
     if (!faixasEm.has(f.canal_id) || f.criado_em > faixasEm.get(f.canal_id)!) faixasEm.set(f.canal_id, f.criado_em);
   }
   const canais = new Map((canaisRes.data ?? []).map((c) => [c.id, c]));

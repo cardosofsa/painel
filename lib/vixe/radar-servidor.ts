@@ -3,6 +3,8 @@ import { buscarEmLotes } from "@/lib/lotes";
 import type { LojaOpcao } from "../precificacao-tipos";
 import { ratear, type LinhaVendida } from "./radar";
 import { hojeIsoBrasil } from "../format";
+import { faixaDaLinha, type LinhaFaixa } from "@/lib/faixas";
+import type { FaixaComissao } from "@/lib/pricing";
 
 /**
  * Dados do Vixe Radar (11.2). Código de SERVIDOR: lê as vendas e pedidos dos últimos
@@ -48,7 +50,7 @@ export async function carregarRadar(supabase: SupabaseClient, dias = 30): Promis
     buscarEmLotes((de, ate) => supabase.from("produtos").select("id, nome, sku, custo", { count: "exact" }).order("id").range(de, ate)),
     supabase.from("canais").select("id, nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao"),
     supabase.from("lojas_canal").select("id, canal_id, nome, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo"),
-    supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
+    supabase.from("faixas_comissao_canal").select("*").order("ordem"),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
     // Anúncio ligado a produto (0066). Sem a migração, o erro é ignorado: Radar sem anúncio.
     supabase.from("gastos_anuncios").select("produto_id, loja_id, periodo_inicio, periodo_fim, valor").not("produto_id", "is", null).lte("periodo_inicio", hojeDia).gte("periodo_fim", inicioDia),
@@ -96,10 +98,10 @@ export async function carregarRadar(supabase: SupabaseClient, dias = 30): Promis
   }
 
   const canais = new Map((canaisRes.data ?? []).map((c) => [c.id as string, c]));
-  const faixas = new Map<string, { min: number; max: number | null; comissaoPct: number; tarifaFixa: number }[]>();
+  const faixas = new Map<string, FaixaComissao[]>();
   for (const f of faixasRes.data ?? []) {
     const l = faixas.get(f.canal_id) ?? [];
-    l.push({ min: Number(f.preco_min), max: f.preco_max == null ? null : Number(f.preco_max), comissaoPct: Number(f.comissao_pct), tarifaFixa: Number(f.tarifa_fixa) });
+    l.push(faixaDaLinha(f as LinhaFaixa));
     faixas.set(f.canal_id, l);
   }
   const lojas = (lojasRes.data ?? []).map((l) => {

@@ -21,6 +21,7 @@ import { executarComToast } from "@/lib/acao-cliente";
 import type { DadosAjuste } from "@/lib/ajuste-servidor";
 import type { DiagnosticoPreco } from "@/lib/ia/prompts-preco";
 import { explicarAjusteIA, salvarPrecoLoja } from "../../actions";
+import { rotuloTaxaFaixa } from "@/lib/faixas";
 
 const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const ORIGEM: Record<DadosAjuste["origemPrecoAtual"], string> = { anuncio: "no ar na Shopee", loja: "da loja", cadastro: "do cadastro" };
@@ -183,7 +184,7 @@ export function AjusteClient({ dados, alvo, iaDisponivel }: { dados: DadosAjuste
             <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
               <Numero rotulo="Lucro por venda" valor={formatBRL(agora.resultado.lucroLiquido)} classe={classeValor(agora.resultado.lucroLiquido)} />
               <Numero rotulo="Margem" valor={pct(agora.resultado.margemEfetivaPct)} />
-              <Numero rotulo="Comissão" valor={agora.faixa ? `${agora.faixa.comissaoPct}% + ${formatBRL(agora.faixa.tarifaFixa)}` : `${loja.comissaoPct}% + ${formatBRL(loja.taxaFixa)}`} />
+              <Numero rotulo="Comissão" valor={agora.faixa ? rotuloTaxaFaixa(agora.faixa) : `${loja.comissaoPct}% + ${formatBRL(loja.taxaFixa)}`} />
               <Numero rotulo="Lucro no mês" valor={agora.porMes !== null ? formatBRL(agora.porMes) : "—"} classe={agora.porMes !== null ? classeValor(agora.porMes) : undefined} dica={v30 ? `${v30.unidades} vendas em 30 dias` : "Sem vendas registradas"} />
             </dl>
           </Card>

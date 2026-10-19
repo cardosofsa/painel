@@ -24,6 +24,7 @@ import { classeValor, formatBRL } from "@/lib/format";
 import { formatarFaixaLabel, pctPorModo } from "@/lib/pricing";
 import { limiteEfetivo, LIMITE_DESCRICAO_ANUNCIO } from "@/lib/ia/prompts";
 import type { EstadoPrecificacao, LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-estado";
+import { rotuloTaxaFaixa } from "@/lib/faixas";
 
 const ID_RESULTADO = "resultado-precificacao";
 const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
@@ -154,11 +155,21 @@ export function IndividualNova({
                 </FormField>
               </div>
             )}
+            {loja && loja.tipoTaxa === "faixas" && loja.faixas.length === 0 && (
+              // Canal que cobra por faixa sem faixa nenhuma: o cálculo cairia na comissão plana
+              // do canal (na Shopee, 0% + R$ 0). Avisa em vez de mostrar um lucro que não existe.
+              <p role="alert" className="mt-2 rounded-md border border-negative/40 bg-negative-soft px-3 py-2 text-sm text-negative">
+                {loja.canalNome} cobra por faixa de preço e não tem nenhuma faixa cadastrada: este preço sairia sem a comissão da plataforma.{" "}
+                <a href="/configuracoes?aba=canais-de-venda" className="underline">
+                  Cadastrar as faixas
+                </a>
+              </p>
+            )}
             {loja && (
               <p className="mt-2 text-xs text-text-tertiary">
                 {loja.tipoTaxa === "faixas" && loja.faixas.length > 0
                   ? e.faixaShopee
-                    ? `Faixa aplicada: ${formatarFaixaLabel(e.faixaShopee)} · comissão ${e.faixaShopee.comissaoPct}% + ${formatBRL(e.faixaShopee.tarifaFixa)}`
+                    ? `Faixa aplicada: ${formatarFaixaLabel(e.faixaShopee)} · ${rotuloTaxaFaixa(e.faixaShopee)}`
                     : "Comissão por faixa de preço"
                   : `Comissão ${loja.comissaoPct}% · tarifa ${formatBRL(loja.taxaFixa)}${loja.taxaExtraValor != null && loja.taxaExtraTipo ? ` · extra ${loja.taxaExtraTipo === "percentual" ? `${loja.taxaExtraValor}%` : formatBRL(loja.taxaExtraValor)}` : ""}`}
               </p>
@@ -358,7 +369,7 @@ export function IndividualNova({
           {regua && (
             <details className="mt-4 pt-4 border-t border-border group">
               <summary className="flex cursor-pointer items-center justify-between text-xs font-medium text-text-secondary list-none">
-                Faixas de comissão {e.faixaShopee ? `(nesta: ${e.faixaShopee.comissaoPct}% + ${formatBRL(e.faixaShopee.tarifaFixa)})` : ""}
+                Faixas de comissão {e.faixaShopee ? `(nesta: ${rotuloTaxaFaixa(e.faixaShopee)})` : ""}
                 <ChevronDown size={14} className="transition-transform duration-[--duracao-media] group-open:rotate-180" aria-hidden />
               </summary>
               <div className="mt-2">

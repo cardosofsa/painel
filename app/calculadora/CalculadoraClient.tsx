@@ -157,8 +157,8 @@ export function CalculadoraClient() {
                 {FAIXAS_SHOPEE.map((f) => (
                   <tr key={f.min}>
                     <td className="py-2 pr-3">{formatarFaixaLabel(f)}</td>
-                    <td className="py-2 pr-3 text-right font-mono">{f.comissaoPct}%</td>
-                    <td className="py-2 text-right font-mono">{formatBRL(f.tarifaFixa)}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{(f.comissaoBasePct ?? f.comissaoPct).toLocaleString("pt-BR")}%</td>
+                    <td className="py-2 text-right font-mono">{f.tarifaPctPreco ? `${f.tarifaPctPreco.toLocaleString("pt-BR")}% do preço` : formatBRL(f.tarifaFixa)}</td>
                   </tr>
                 ))}
               </tbody>

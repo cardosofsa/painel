@@ -7,6 +7,7 @@
 import { encontrarFaixa, zonaMortaDeFaixa, type FaixaComissao, type ResultadoPrecificacao, type TaxasPlataforma } from "./pricing";
 import { precoIdeal, precoMinimo, resultadoNoPreco } from "./raio-x";
 import type { LojaParaPreco } from "./precos-loja";
+import { rotuloTaxaFaixa } from "./faixas";
 
 export interface EntradaAjuste {
   custo: number;
@@ -124,7 +125,7 @@ export function calcularAjuste(e: EntradaAjuste): Ajuste {
     precoIdeal: idealPreco,
     precoMaximo,
     motivoMaximo,
-    faixas: [...ctx.faixas].sort((a, b) => a.min - b.min).map((f) => ({ min: f.min, max: f.max, rotulo: `${f.comissaoPct}% + R$ ${f.tarifaFixa.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` })),
+    faixas: [...ctx.faixas].sort((a, b) => a.min - b.min).map((f) => ({ min: f.min, max: f.max, rotulo: rotuloTaxaFaixa(f) })),
     zonasMortas,
     atual: e.precoAtual && e.precoAtual > 0 ? resultadoNoPreco(ctx, e.precoAtual) : null,
     escala: { de, ate: Math.max(ate, de + 1) },

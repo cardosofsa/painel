@@ -236,8 +236,13 @@ export function resolverPorMarkup(
 export interface FaixaComissao {
   min: number;
   max: number | null;
+  /** Taxa variável EFETIVA da faixa, em %: comissão + tarifa em % do preço (ver `lib/faixas.ts`). */
   comissaoPct: number;
   tarifaFixa: number;
+  /** Só para o rótulo, quando parte da tarifa é % do preço (0107): a comissão sem essa parte. */
+  comissaoBasePct?: number;
+  /** Tarifa fixa cobrada como % do preço (Shopee abaixo de R$ 9: metade do preço). */
+  tarifaPctPreco?: number;
 }
 
 /** Formata uma faixa de comissão para exibição, ex.: "R$ 80 – R$ 99,99" ou "R$ 200 ou mais". */

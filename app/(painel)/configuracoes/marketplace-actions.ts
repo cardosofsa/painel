@@ -40,9 +40,15 @@ export async function prepararLojaMarketplace(entrada: z.input<typeof entradaSch
       if (error) lancarErroSupabase(error);
       canalId = data!.id as string;
       if (plat.faixas.length) {
-        const { error: e2 } = await supabase
+        let { error: e2 } = await supabase
           .from("faixas_comissao_canal")
           .insert(plat.faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, ...f })));
+        // Sem a 0107 (coluna tarifa_fixa_pct): a % do preço entra somada na comissão, mesma conta.
+        if (e2?.code === "PGRST204" || e2?.code === "42703") {
+          ({ error: e2 } = await supabase
+            .from("faixas_comissao_canal")
+            .insert(plat.faixas.map((f, i) => ({ canal_id: canalId, ordem: i + 1, preco_min: f.preco_min, preco_max: f.preco_max, comissao_pct: f.comissao_pct + (f.tarifa_fixa_pct ?? 0), tarifa_fixa: f.tarifa_fixa }))));
+        }
         if (e2) lancarErroSupabase(e2);
       }
     }

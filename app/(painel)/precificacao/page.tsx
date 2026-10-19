@@ -4,10 +4,11 @@ import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { PrecificacaoClient } from "./PrecificacaoClient";
 import type { LojaOpcao, AnuncioSalvo, PrecificacaoHist } from "@/lib/precificacao-estado";
-import type { Concorrente } from "@/lib/pricing";
 import type { Metadata } from "next";
 import { VISOES_PRECIFICACAO } from "@/lib/precificacao-tipos";
 import type { RascunhoPendente } from "@/lib/precificacao-rascunho";
+import { faixaDaLinha, type LinhaFaixa } from "@/lib/faixas";
+import type { Concorrente, FaixaComissao } from "@/lib/pricing";
 
 export const metadata: Metadata = { title: "Precificação" };
 
@@ -38,7 +39,7 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       )
       .order("criado_em"),
     supabase.from("lojas_canal").select("id, canal_id, nome, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo").order("nome"),
-    supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),
+    supabase.from("faixas_comissao_canal").select("*").order("ordem"),
     supabase
       .from("anuncios")
       .select(
@@ -83,10 +84,10 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
 
   const canaisPorId = new Map((canaisRes.data ?? []).map((c) => [c.id, c]));
 
-  const faixasPorCanal = new Map<string, { min: number; max: number | null; comissaoPct: number; tarifaFixa: number }[]>();
-  for (const f of faixasRes.data ?? []) {
+  const faixasPorCanal = new Map<string, FaixaComissao[]>();
+  for (const f of (faixasRes.data ?? []) as (LinhaFaixa & { canal_id: string })[]) {
     const lista = faixasPorCanal.get(f.canal_id) ?? [];
-    lista.push({ min: f.preco_min, max: f.preco_max, comissaoPct: f.comissao_pct, tarifaFixa: f.tarifa_fixa });
+    lista.push(faixaDaLinha(f));
     faixasPorCanal.set(f.canal_id, lista);
   }
 
