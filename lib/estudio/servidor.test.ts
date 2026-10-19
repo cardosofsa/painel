@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { capaEmGeracao, ERRO_CONCORRENCIA, gravarEstadoVersionado } from "./servidor";
+import { baixarImagemDaConta, capaEmGeracao, ERRO_CONCORRENCIA, gravarEstadoVersionado, lerMensagem } from "./servidor";
 
 /** Uma linha de `anuncio_rascunhos` com o UPDATE condicional do PostgREST (`eq` em cada filtro). */
 function bancoFalso(linha: { id: string; atualizado_em: string; estado: unknown }) {
@@ -75,5 +75,53 @@ describe("gravação condicional do rascunho", () => {
     const db = bancoFalso({ id: "r1", atualizado_em: "x", estado: {} });
     const r = await gravarEstadoVersionado(db, "r1", {}, { numeroImagens: 3 });
     expect(r.estado.numeroImagens).toBe(3);
+  });
+});
+
+describe("baixarImagemDaConta (imagens do chat)", () => {
+  const dono = "11111111-1111-1111-1111-111111111111";
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("recusa caminho de outra conta ou que sobe de pasta, sem nem buscar", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://projeto.supabase.co");
+    const busca = vi.fn();
+    vi.stubGlobal("fetch", busca);
+    await expect(baixarImagemDaConta(dono, "22222222-2222-2222-2222-222222222222/estudio-chat-1.jpg")).rejects.toThrow(/sua conta/);
+    await expect(baixarImagemDaConta(dono, `${dono}/../outro/x.jpg`)).rejects.toThrow(/sua conta/);
+    expect(busca).not.toHaveBeenCalled();
+  });
+
+  it("busca só no Storage do projeto, sem seguir redirecionamento, e devolve a impressão digital dos bytes", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://projeto.supabase.co");
+    const busca = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/png" } }));
+    vi.stubGlobal("fetch", busca);
+    const r = await baixarImagemDaConta(dono, `${dono}/estudio-chat-1.png`);
+    const [url, opcoes] = busca.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`https://projeto.supabase.co/storage/v1/object/public/produtos/${dono}/estudio-chat-1.png`);
+    expect(opcoes.redirect).toBe("error");
+    expect(r.mime).toBe("image/png");
+    expect(r.hash).toHaveLength(64);
+  });
+
+  it("recusa o que não é imagem", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://projeto.supabase.co");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>", { headers: { "content-type": "text/html" } })));
+    await expect(baixarImagemDaConta(dono, `${dono}/estudio-chat-1.png`)).rejects.toThrow(/JPG, PNG ou WebP/);
+  });
+});
+
+describe("lerMensagem", () => {
+  it("sem as colunas da 0110, vem sem ações feitas e sem anexos", () => {
+    const m = lerMensagem({ id: "1", papel: "ia", texto: "oi", acoes: [{ tipo: "pesquisar_concorrentes" }], criado_em: "2026-01-01" });
+    expect(m.acoesFeitas).toEqual([]);
+    expect(m.anexos).toEqual([]);
+  });
+  it("lê as ações feitas e os anexos válidos", () => {
+    const m = lerMensagem({ id: "1", papel: "usuario", texto: "olha", acoes: [], acoes_feitas: [0, 2, "x"], anexos: [{ tipo: "imagem", path: "u/estudio-chat-1.jpg" }, { tipo: "imagem", path: "../x.jpg" }], criado_em: "" });
+    expect(m.acoesFeitas).toEqual([0, 2]);
+    expect(m.anexos).toEqual([{ tipo: "imagem", path: "u/estudio-chat-1.jpg" }]);
   });
 });

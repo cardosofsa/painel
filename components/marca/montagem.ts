@@ -14,7 +14,20 @@ export async function montarMontagem(urls: string[]): Promise<Blob> {
       return createImageBitmap(await r.blob());
     }),
   );
+  return juntar(imagens);
+}
 
+/**
+ * A mesma montagem a partir de arquivos que ainda estão no navegador (as imagens do chat). Não
+ * passa por `fetch`: a CSP não deixa buscar `blob:`.
+ */
+export async function montarMontagemDeArquivos(arquivos: Blob[]): Promise<Blob> {
+  if (arquivos.length === 0) throw new Error("Envie pelo menos uma imagem.");
+  const imagens = await Promise.all(arquivos.map((a) => createImageBitmap(a).catch(() => Promise.reject(new Error("Não consegui abrir uma das imagens.")))));
+  return juntar(imagens);
+}
+
+function juntar(imagens: ImageBitmap[]): Promise<Blob> {
   const colunas = imagens.length === 1 ? 1 : imagens.length <= 4 ? 2 : 3;
   const linhas = Math.ceil(imagens.length / colunas);
   const canvas = document.createElement("canvas");

@@ -13,6 +13,8 @@ const ctx: ContextoAssistente = {
   historico: [{ papel: "usuario", texto: "oi" }],
   mensagem: "quero 6 imagens e a capa sem pessoa",
   referencia: null,
+  imagens: [],
+  imagemHash: null,
 };
 
 const completo: ContextoAssistente = {
@@ -198,7 +200,47 @@ describe("referência colada (fase 2)", () => {
   it("lerAnexos guarda só o que tem a forma certa", () => {
     expect(lerAnexos([minha, { tipo: "texto", qual: "capa", texto: "x" }, { tipo: "texto", qual: "titulo", texto: "  " }, null, "lixo"])).toEqual([minha]);
     expect(lerAnexos("nada")).toEqual([]);
-    expect(lerAnexos([{ tipo: "texto", qual: "titulo", texto: "Título qualquer" }])[0].deOutraLoja).toBe(false);
+    expect(lerAnexos([{ tipo: "texto", qual: "titulo", texto: "Título qualquer" }])[0]).toMatchObject({ deOutraLoja: false });
+  });
+});
+
+describe("imagens no chat (fase 3)", () => {
+  const imagens = ["u/estudio-chat-1.jpg", "u/estudio-chat-2.jpg"];
+  const comImagens = { ...ctx, perfilNome: "Loja Chá", imagens };
+  const ler = (acoes: unknown[], c: Partial<ContextoAssistente> = comImagens) => interpretarAssistente(JSON.stringify({ resposta: "ok", acoes }), { ...ctx, ...c }).acoes;
+
+  it("o prompt avisa quantas imagens vêm e como estão numeradas", () => {
+    expect(montarPromptAssistente(comImagens)).toContain("O lojista mandou 2 imagens junto desta mensagem");
+    expect(montarPromptAssistente({ ...comImagens, imagens: [imagens[0]] })).toContain("Ela é a imagem 1.");
+    expect(montarPromptAssistente(ctx)).not.toContain("mandou 1 imagem");
+  });
+  it("no histórico, as imagens antigas viram uma nota", () => {
+    const p = montarPromptAssistente({ ...ctx, historico: [{ papel: "usuario", texto: "olha", anexos: imagens.map((path) => ({ tipo: "imagem" as const, path })) }] });
+    expect(p).toContain("Lojista: olha [mandou 2 imagens]");
+  });
+  it("as ações de imagem apontam para uma imagem desta mensagem (o número vira o caminho)", () => {
+    expect(ler([{ tipo: "usar_imagem_no_anuncio", anexo: 2 }, { tipo: "guardar_referencia_imagem", anexo: 1 }])).toEqual([
+      { tipo: "usar_imagem_no_anuncio", path: imagens[1] },
+      { tipo: "guardar_referencia_imagem", path: imagens[0] },
+    ]);
+  });
+  it("número fora da faixa, sem imagem na mensagem ou repetido é descartado", () => {
+    expect(ler([{ tipo: "usar_imagem_no_anuncio", anexo: 3 }, { tipo: "usar_imagem_no_anuncio", anexo: 0 }, { tipo: "usar_imagem_no_anuncio", anexo: "1" }])).toEqual([{ tipo: "usar_imagem_no_anuncio", path: imagens[0] }]);
+    expect(ler([{ tipo: "usar_imagem_no_anuncio", anexo: 1 }], { ...comImagens, imagens: [] })).toEqual([]);
+    expect(ler([{ tipo: "usar_imagem_no_anuncio", anexo: 1 }, { tipo: "usar_imagem_no_anuncio", anexo: 1 }])).toHaveLength(1);
+  });
+  it("referência de imagem precisa de perfil", () => {
+    expect(ler([{ tipo: "guardar_referencia_imagem", anexo: 1 }], { ...comImagens, perfilNome: null })).toEqual([]);
+  });
+  it("a chave do cache é pelos bytes da imagem, não pelo caminho", () => {
+    const a = hashAssistente({ ...comImagens, imagemHash: "abc" });
+    expect(hashAssistente({ ...comImagens, imagens: ["u/estudio-chat-9.jpg", "u/estudio-chat-8.jpg"], imagemHash: "abc" })).toBe(a);
+    expect(hashAssistente({ ...comImagens, imagemHash: "def" })).not.toBe(a);
+  });
+  it("anexo de imagem só com caminho válido", () => {
+    expect(lerAnexos([{ tipo: "imagem", path: "u/estudio-chat-1.jpg" }, { tipo: "imagem", path: "u/../x.jpg" }, { tipo: "imagem", path: "https://site.com/x.jpg" }, { tipo: "imagem" }])).toEqual([{ tipo: "imagem", path: "u/estudio-chat-1.jpg" }]);
+    expect(lerAcaoGuardada({ tipo: "usar_imagem_no_anuncio", path: "u/estudio-chat-1.jpg" })).toEqual({ tipo: "usar_imagem_no_anuncio", path: "u/estudio-chat-1.jpg" });
+    expect(lerAcaoGuardada({ tipo: "usar_imagem_no_anuncio", path: "../x.jpg" })).toBeNull();
   });
 });
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizarFicha, mesclarFicha, type FichaMarca } from "@/lib/marca/ficha";
 import { regrasDaPlataforma, type PlataformaMarcaId, type RegrasPlataforma } from "@/lib/marca/plataformas";
@@ -335,6 +336,26 @@ export async function precoDoAnuncio(supabase: SupabaseClient, produtoId: string
 /** Caminho de imagem só vale se estiver na pasta do próprio usuário (o bucket é público). */
 export function caminhoDoUsuario(userId: string, caminho: string): boolean {
   return caminho.startsWith(`${userId}/`) && !caminho.includes("..");
+}
+
+const MAX_IMAGEM_IA = 5 * 1024 * 1024;
+const TIPOS_IMAGEM_IA = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * Baixa uma imagem para mandar à IA. Só do Storage do próprio projeto, na pasta da conta (o
+ * caminho vem do navegador), sem seguir redirecionamento, com limite de tamanho e de tempo.
+ */
+export async function baixarImagemDaConta(userId: string, caminho: string): Promise<{ base64: string; mime: string; hash: string }> {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || !caminhoDoUsuario(userId, caminho)) throw erro("Envie a imagem por esta tela (só arquivos da sua conta).");
+  const url = `${new URL(base).origin}/storage/v1/object/public/produtos/${caminho.split("/").map(encodeURIComponent).join("/")}`;
+  const r = await fetch(url, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const mime = (r?.headers.get("content-type") ?? "").split(";")[0].trim();
+  if (!r?.ok) throw erro("Não consegui abrir a imagem. Envie de novo.");
+  if (!TIPOS_IMAGEM_IA.includes(mime)) throw erro("Use imagem JPG, PNG ou WebP.");
+  const bytes = Buffer.from(await r.arrayBuffer());
+  if (bytes.length > MAX_IMAGEM_IA) throw erro("Imagem grande demais para a IA (máx. 5 MB).");
+  return { base64: bytes.toString("base64"), mime, hash: createHash("sha256").update(bytes).digest("hex") };
 }
 
 /**

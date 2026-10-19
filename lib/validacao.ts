@@ -954,10 +954,20 @@ export const conversaSchema = z
         texto: z.string().trim().min(10, "Cole pelo menos uma frase de referência").max(3000, "Referência longa demais (até 3.000 caracteres)"),
       })
       .nullish(),
+    /** Imagens já enviadas ao Storage pela tela (0110) e, com mais de uma, a montagem delas que vai à IA. */
+    imagens: z.array(z.string().trim().min(1).max(300)).max(4, "Até 4 imagens por mensagem").nullish(),
+    montagem: z.string().trim().min(1).max(300).nullish(),
   })
-  .refine((v) => v.mensagem.length > 0 || !!v.referencia, { message: "Escreva uma mensagem", path: ["mensagem"] });
+  .refine((v) => v.mensagem.length > 0 || !!v.referencia || (v.imagens?.length ?? 0) > 0, { message: "Escreva uma mensagem", path: ["mensagem"] })
+  .refine((v) => (v.imagens?.length ?? 0) <= 1 || !!v.montagem, { message: "Não consegui juntar as imagens. Mande de novo.", path: ["montagem"] });
 /** Aplicar (ou marcar como feita) a ação `indice` de uma mensagem da IA. A ação é lida do banco, não do navegador. */
-export const acaoConversaSchema = z.object({ rascunho_id: z.string().uuid(), mensagem_id: z.string().uuid(), indice: z.number().int().min(0).max(7) });
+export const acaoConversaSchema = z.object({
+  rascunho_id: z.string().uuid(),
+  mensagem_id: z.string().uuid(),
+  indice: z.number().int().min(0).max(7),
+  /** Referências do perfil cheias (8): qual sai para a nova entrar. */
+  substituir: z.string().trim().max(300).nullish(),
+});
 export const titulosEstudioSchema = z.object({ rascunho_id: z.string().uuid(), pedido: z.string().trim().max(300).nullable() });
 export const escolherTituloSchema = z.object({ rascunho_id: z.string().uuid(), titulo: z.string().trim().min(3, "Título curto demais").max(200) });
 export const vereditoCapaSchema = z.object({

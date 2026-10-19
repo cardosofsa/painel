@@ -23,7 +23,9 @@ export type AcaoProposta =
   | { tipo: "gerar_descricao"; pedido: string | null }
   | { tipo: "gerar_capa"; modo: "prompt" | "imagem" }
   | { tipo: "pesquisar_concorrentes" }
-  | { tipo: "guardar_exemplo"; tipoExemplo: TipoExemplo; texto: string };
+  | { tipo: "guardar_exemplo"; tipoExemplo: TipoExemplo; texto: string }
+  | { tipo: "guardar_referencia_imagem"; path: string }
+  | { tipo: "usar_imagem_no_anuncio"; path: string };
 
 /** Ações que só levam a outra etapa ou geram ali (a tela executa); as outras gravam no servidor. */
 export const ACOES_DA_TELA = ["gerar_titulos", "gerar_descricao", "gerar_capa", "pesquisar_concorrentes"] as const;
@@ -42,7 +44,17 @@ export interface AnexoTexto {
   deOutraLoja: boolean;
   texto: string;
 }
-export type AnexoMensagem = AnexoTexto;
+export interface AnexoImagem {
+  tipo: "imagem";
+  /** Caminho no bucket `produtos`, na pasta da conta. */
+  path: string;
+}
+export type AnexoMensagem = AnexoTexto | AnexoImagem;
+/** Quantas imagens cabem numa mensagem (vão à IA numa montagem só). */
+export const MAX_IMAGENS_MENSAGEM = 4;
+
+/** Caminho de arquivo no Storage com cara de válido (`<pasta>/<arquivo>`, sem subir de pasta). A pasta da conta o servidor confere. */
+export const caminhoValido = (p: unknown): p is string => typeof p === "string" && p.length <= 300 && /^[\w-]+\/[\w.-]+$/.test(p) && !p.includes("..");
 
 export const ROTULO_REFERENCIA: Record<QualReferencia, string> = { titulo: "título", descricao: "descrição", outro: "texto" };
 const COM_ARTIGO: Record<QualReferencia, string> = { titulo: "um título", descricao: "uma descrição", outro: "um texto" };
@@ -56,6 +68,8 @@ export function lerAnexos(bruto: unknown): AnexoMensagem[] {
     const r = a as Record<string, unknown>;
     if (r.tipo === "texto" && (r.qual === "titulo" || r.qual === "descricao" || r.qual === "outro") && typeof r.texto === "string" && r.texto.trim()) {
       saida.push({ tipo: "texto", qual: r.qual, deOutraLoja: r.deOutraLoja === true, texto: r.texto.slice(0, LIMITE_REFERENCIA) });
+    } else if (r.tipo === "imagem" && caminhoValido(r.path)) {
+      saida.push({ tipo: "imagem", path: r.path });
     }
   }
   return saida;
@@ -98,6 +112,10 @@ export interface ContextoAssistente {
   mensagem: string;
   /** Texto colado junto desta mensagem. Vai para o prompt como DADO, num bloco delimitado. */
   referencia: AnexoTexto | null;
+  /** Caminhos das imagens desta mensagem, na ordem (a IA recebe uma montagem delas). Fora da chave de cache: lá vai `imagemHash`. */
+  imagens: string[];
+  /** Impressão digital dos bytes da imagem que foi à IA: a mesma imagem com a mesma pergunta sai do cache. */
+  imagemHash: string | null;
 }
 
 const TIPOS_MEMORIA = ["preferencia", "regra", "aprendizado"] as const;
@@ -134,7 +152,18 @@ function blocoPreco(p: ContextoAssistente["estado"]["preco"]): string | null {
 /** Como uma mensagem antiga aparece no histórico: o texto e uma nota do que veio junto (o conteúdo não volta). */
 function notaDosAnexos(anexos: AnexoMensagem[] | undefined): string {
   const textos = (anexos ?? []).filter((a) => a.tipo === "texto");
-  return textos.map((a) => ` [colou uma referência: ${ROTULO_REFERENCIA[a.qual]} ${a.deOutraLoja ? "de outra loja" : "dele"}]`).join("");
+  const imagens = (anexos ?? []).filter((a) => a.tipo === "imagem").length;
+  return (
+    textos.map((a) => ` [colou uma referência: ${ROTULO_REFERENCIA[a.qual]} ${a.deOutraLoja ? "de outra loja" : "dele"}]`).join("") +
+    (imagens ? ` [mandou ${imagens} ${imagens === 1 ? "imagem" : "imagens"}]` : "")
+  );
+}
+
+/** O aviso das imagens desta mensagem (elas seguem anexadas à chamada, numa montagem só). */
+function blocoImagens(n: number): string {
+  if (n === 0) return "";
+  if (n === 1) return `\nO lojista mandou 1 imagem junto desta mensagem (anexada). Olhe a imagem antes de responder. Ela é a imagem 1.\n`;
+  return `\nO lojista mandou ${n} imagens junto desta mensagem. Elas vêm anexadas numa montagem só, numeradas de 1 a ${n} da esquerda para a direita e de cima para baixo. Olhe as imagens antes de responder.\n`;
 }
 
 /**
@@ -195,7 +224,7 @@ Situação do anúncio:
 ${estado}
 ${direcao ? `\nDireção da IA deste perfil:\n${direcao}\n` : ""}${memoria ? `\nO que a loja já pediu para você lembrar:\n${memoria}\n` : ""}${historico ? `\nConversa até aqui:\n${historico}\n` : ""}
 Mensagem do lojista: "${limparCampo(c.mensagem, 2000)}"
-${blocoReferencia(c.referencia)}
+${blocoReferencia(c.referencia)}${blocoImagens(c.imagens.length)}
 Responda em JSON com:
 - "resposta": sua resposta (até ${LIMITE_RESPOSTA} caracteres). Se faltar informação, faça UMA pergunta curta. Para listar, use linhas começando com "- ".
 - "acoes": de 0 a 4 ações que você SUGERE (o lojista aprova cada uma). Cada ação é um objeto com "tipo" e os campos dele:
@@ -206,6 +235,8 @@ Responda em JSON com:
   - {"tipo":"gerar_descricao","pedido":"o que mudar na descrição, ou vazio"}  (só depois de o título estar escolhido)
   - {"tipo":"gerar_capa","modo":"prompt"|"imagem"}  ("prompt" só monta o texto, sem custo; "imagem" leva à etapa Capa, onde o lojista confirma o gasto de 1 imagem da cota)
   - {"tipo":"pesquisar_concorrentes"}
+  - {"tipo":"guardar_referencia_imagem","anexo":<número da imagem>}  (guarda a imagem mandada nesta mensagem como referência visual do perfil da loja, quando ela representa o visual que o lojista quer)
+  - {"tipo":"usar_imagem_no_anuncio","anexo":<número da imagem>}  (põe a imagem mandada nesta mensagem no anúncio, como imagem enviada pelo lojista, quando ela já é uma foto ou arte pronta do produto)
   - {"tipo":"guardar_exemplo","tipo_exemplo":"titulo"|"descricao","usar_referencia":true}  (guarda a referência colada como exemplo que a IA imita nos próximos textos; ou, no lugar de "usar_referencia", "texto":"um título ou descrição que o lojista escreveu na conversa e disse ser o jeito certo")
 
 Regras:
@@ -213,6 +244,7 @@ Regras:
 - O preço é só para consulta: comente se perguntarem, mas não proponha mudar preço.
 - Referência colada: comente o que vê (estrutura, tom, o que funciona e o que não funciona) em poucas linhas. Se ela for do próprio lojista e ele gostar dela, proponha "guardar_exemplo".
 - Referência de OUTRA loja: avise que copiar o texto de outra loja pode infringir as regras do marketplace e direitos autorais. Aproveite só a estrutura e o tom (por exemplo, numa memória curta), nunca o texto. Não proponha "guardar_exemplo" com texto de outra loja.
+- Imagens mandadas: diga o que vê que importa para a capa (fundo, luz, enquadramento, quanto o produto ocupa, cores, texto). Para levar isso à ficha, proponha "ajustar_ficha" com os campos que mudam (ex.: fundo "madeira clara", areaProdutoMinPct 70). Só proponha ações de imagem ("anexo") quando houver imagem nesta mensagem.
 - Você não abre links. Se o lojista mandar o link de um anúncio, explique isso e peça para ele colar o texto (botão "Colar referência") ou mandar um print.
 - Não invente fatos sobre o produto, preço, prazo nem concorrente. Não prometa resultado de venda.
 - Sem emoji, sem markdown, sem HTML.`;
@@ -238,6 +270,7 @@ export function esquemaAssistente() {
             modo: { type: "string" },
             tipo_exemplo: { type: "string" },
             usar_referencia: { type: "boolean" },
+            anexo: { type: "integer" },
           },
           required: ["tipo"],
         },
@@ -263,7 +296,7 @@ const pedidoDe = (v: unknown) => (typeof v === "string" && v.trim() ? truncarEmP
 const LIMITE_EXEMPLO: Record<TipoExemplo, number> = { titulo: 200, descricao: LIMITE_REFERENCIA };
 
 /** Lê a resposta e devolve só ações permitidas e válidas, conferidas contra o contexto da mensagem. Nunca lança. */
-export function interpretarAssistente(bruto: string, c: Pick<ContextoAssistente, "maxImagens" | "referencia">): RespostaAssistente {
+export function interpretarAssistente(bruto: string, c: Pick<ContextoAssistente, "maxImagens" | "referencia" | "imagens" | "perfilNome">): RespostaAssistente {
   const obj = lerObjetoJson(bruto) ?? {};
   const resposta = typeof obj.resposta === "string" ? limparResposta(obj.resposta) : "";
   const teto = Math.min(c.maxImagens ?? 9, 12);
@@ -314,6 +347,16 @@ export function interpretarAssistente(bruto: string, c: Pick<ContextoAssistente,
         if (texto.length >= 10 && texto.length <= LIMITE_EXEMPLO[tipoExemplo] && !acoes.some((x) => x.tipo === "guardar_exemplo" && x.texto === texto)) acoes.push({ tipo: "guardar_exemplo", tipoExemplo, texto });
         break;
       }
+      case "guardar_referencia_imagem":
+      case "usar_imagem_no_anuncio": {
+        // O número aponta para uma imagem DESTA mensagem; sem ela (ou fora da faixa), não há ação.
+        const n = Number(r.anexo);
+        const path = Number.isInteger(n) && n >= 1 ? c.imagens[n - 1] : undefined;
+        // Referência do perfil precisa de um perfil.
+        if (!path || (r.tipo === "guardar_referencia_imagem" && !c.perfilNome)) break;
+        if (!acoes.some((x) => x.tipo === r.tipo && "path" in x && x.path === path)) acoes.push({ tipo: r.tipo, path });
+        break;
+      }
     }
     if (acoes.length >= 4) break;
   }
@@ -357,11 +400,16 @@ export function lerAcaoGuardada(bruto: unknown): AcaoProposta | null {
       const t = texto(a.texto, 10, 5000);
       return t && (a.tipoExemplo === "titulo" || a.tipoExemplo === "descricao") ? { tipo: a.tipo, tipoExemplo: a.tipoExemplo, texto: t } : null;
     }
+    case "guardar_referencia_imagem":
+    case "usar_imagem_no_anuncio":
+      return caminhoValido(a.path) ? { tipo: a.tipo, path: a.path } : null;
   }
   return null;
 }
 
 /** Chave do cache: qualquer mudança no contexto (inclusive na direção e no histórico) muda a resposta. */
 export function hashAssistente(c: ContextoAssistente): string {
-  return hashTexto(["assistente-v2", JSON.stringify({ ...c, historico: c.historico.slice(-HISTORICO_MENSAGENS) })].join("\u0001"));
+  // As imagens entram pelos bytes (`imagemHash`), não pelo caminho: reenviar a mesma imagem cai no cache.
+  const { imagens, ...resto } = c;
+  return hashTexto(["assistente-v2", JSON.stringify({ ...resto, imagens: imagens.length, historico: c.historico.slice(-HISTORICO_MENSAGENS) })].join("\u0001"));
 }

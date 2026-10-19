@@ -24,6 +24,7 @@ import { ErroIA } from "@/lib/ia/erro";
 import { regrasDoPerfil, temBloqueio, termosParaEvitar, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
 import { montarPromptCapaCena, montarPromptCapaCompleta, type ContextoCapa } from "@/lib/marca/prompt-capa";
 import {
+  baixarImagemDaConta,
   capaEmGeracao,
   carregarContextoRascunho,
   caminhoDoUsuario,
@@ -38,7 +39,7 @@ import {
   type ContextoRascunho,
   type RascunhoAberto,
 } from "@/lib/estudio/servidor";
-import { HISTORICO_MENSAGENS, lerAcaoGuardada, lerAnexos, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type AnexoTexto, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
+import { caminhoValido, HISTORICO_MENSAGENS, lerAcaoGuardada, lerAnexos, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type AnexoTexto, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
 import { ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { resumoDaFicha } from "@/lib/marca/prompt-capa";
 import { mesclarFicha, normalizarFicha } from "@/lib/marca/ficha";
@@ -538,7 +539,7 @@ const ROTULO_ETAPA: Record<EtapaId, string> = Object.fromEntries(ETAPAS.map((e) 
 async function contextoDaConversa(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ctx: ContextoRascunho,
-  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string; referencia: AnexoTexto | null },
+  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string; referencia: AnexoTexto | null; imagens: string[]; imagemHash: string | null },
 ): Promise<ContextoAssistente> {
   const e = ctx.rascunho.estado;
   const preco = await precoDoAnuncio(supabase, ctx.produto.id, ctx.perfil?.id ?? null).catch(() => null);
@@ -569,10 +570,13 @@ async function contextoDaConversa(
     historico: extra.historico,
     mensagem: extra.mensagem,
     referencia: extra.referencia,
+    imagens: extra.imagens,
+    imagemHash: extra.imagemHash,
   };
 }
 
-const SEM_0110 = "Mandar referência no chat precisa da migração 0110. Aplique no Supabase e recarregue.";
+const SEM_0110 = "Mandar referência ou imagem no chat precisa da migração 0110. Aplique no Supabase e recarregue.";
+const MAX_REFERENCIAS_PERFIL = 8;
 const faltaColuna = (code?: string) => code === "PGRST204" || code === "42703";
 
 export async function conversar(entrada: unknown) {
@@ -581,19 +585,32 @@ export async function conversar(entrada: unknown) {
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const referencia: AnexoTexto | null = v.referencia ? { tipo: "texto", qual: v.referencia.qual, deOutraLoja: v.referencia.de_outra_loja, texto: v.referencia.texto } : null;
-    const anexos: AnexoMensagem[] = referencia ? [referencia] : [];
+    const imagens = v.imagens ?? [];
+    for (const p of [...imagens, ...(v.montagem ? [v.montagem] : [])]) {
+      if (!caminhoDoUsuario(ctx.userId, p) || !caminhoValido(p)) throw new Error("Envie as imagens por esta tela (só arquivos da sua conta).");
+    }
+    const anexos: AnexoMensagem[] = [...(referencia ? [referencia] : []), ...imagens.map((path) => ({ tipo: "imagem" as const, path }))];
     // Sem a 0110 não há onde guardar o anexo: avisa ANTES de gastar a geração.
     if (anexos.length) {
       const { error: semColuna } = await supabase.from("anuncio_rascunho_mensagens").select("anexos").limit(0);
       if (semColuna && faltaColuna(semColuna.code)) throw new Error(SEM_0110);
     }
-    const mensagem = v.mensagem || (referencia ? `Colei uma referência (${ROTULO_REFERENCIA[referencia.qual]}${referencia.deOutraLoja ? " de outra loja" : ""}).` : "");
+    const mensagem =
+      v.mensagem ||
+      (referencia ? `Colei uma referência (${ROTULO_REFERENCIA[referencia.qual]}${referencia.deOutraLoja ? " de outra loja" : ""}).` : `Mandei ${imagens.length} ${imagens.length === 1 ? "imagem" : "imagens"}.`);
+    // Uma chamada leva uma imagem: com várias, a montagem que a tela juntou.
+    const alvo = imagens.length > 1 ? v.montagem! : imagens[0];
+    const imagem = alvo ? await baixarImagemDaConta(ctx.userId, alvo) : null;
 
     // "*": `anexos` só existe depois da 0110.
     const { data: anteriores } = await supabase.from("anuncio_rascunho_mensagens").select("*").eq("rascunho_id", v.rascunho_id).order("criado_em", { ascending: false }).limit(HISTORICO_MENSAGENS);
     const historico: MensagemHistorico[] = ((anteriores ?? []) as Record<string, unknown>[]).reverse().map((m) => ({ papel: m.papel === "ia" ? "ia" : "usuario", texto: String(m.texto ?? ""), anexos: lerAnexos(m.anexos) }));
 
-    const g = await conversarIA(supabase, await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem, referencia }));
+    const g = await conversarIA(
+      supabase,
+      await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem, referencia, imagens, imagemHash: imagem?.hash ?? null }),
+      imagem ? { base64: imagem.base64, mime: imagem.mime } : undefined,
+    );
     if (!g.ok) throw new Error(g.erro);
 
     // Só depois de a IA responder: mensagem e resposta entram juntas no histórico.
@@ -691,6 +708,28 @@ export async function aplicarAcaoConversa(entrada: unknown) {
         mensagem = `Guardado como exemplo de ${acao.tipoExemplo === "titulo" ? "título" : "descrição"}${perfilId ? " deste perfil" : " (vale para a conta toda)"}. Dá para pausar ou apagar na aba Direção da IA.`;
         break;
       }
+      case "guardar_referencia_imagem": {
+        const perfil = precisaPerfil();
+        if (!caminhoDoUsuario(ctx.userId, acao.path)) throw new Error("Imagem fora da sua conta.");
+        const { data: linha, error } = await supabase.from("perfis_marca").select("referencias").eq("id", perfil).maybeSingle();
+        checar(error);
+        const atuais = ((linha?.referencias as string[] | null) ?? []).filter(Boolean);
+        if (atuais.includes(acao.path)) throw new Error("Essa imagem já está nas referências do perfil.");
+        let novas = [...atuais, acao.path];
+        if (atuais.length >= MAX_REFERENCIAS_PERFIL) {
+          if (!v.substituir || !atuais.includes(v.substituir)) throw new Error(`O perfil já tem ${MAX_REFERENCIAS_PERFIL} referências. Escolha qual sai para esta entrar.`);
+          novas = [...atuais.filter((r) => r !== v.substituir), acao.path];
+        }
+        const { error: erroGravar } = await supabase.from("perfis_marca").update({ referencias: novas, atualizado_em: new Date().toISOString() }).eq("id", perfil);
+        checar(erroGravar);
+        mensagem = `Imagem guardada nas referências do perfil (${novas.length} de ${MAX_REFERENCIAS_PERFIL}). Use "Aprender das capas" para atualizar a ficha.`;
+        break;
+      }
+      case "usar_imagem_no_anuncio":
+        // Mesma ação do "Enviar minha imagem" da Capa: aprovada, sem cota, conta no teto de 12.
+        exigir(await adicionarCapaPropria({ rascunho_id: v.rascunho_id, path: acao.path }));
+        mensagem = "Imagem adicionada ao anúncio (na etapa Capa, como enviada por você).";
+        break;
       default:
         throw new Error("Essa sugestão roda na tela do anúncio.");
     }

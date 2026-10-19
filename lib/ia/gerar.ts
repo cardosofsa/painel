@@ -594,18 +594,28 @@ export interface SugestaoConversa extends MetaGeracao {
  * Uma volta da conversa do estúdio. A IA responde e PROPÕE ações de uma lista fechada
  * (`prompts-assistente.ts`); quem chama só mostra as propostas, nada é executado aqui.
  */
-export async function conversarIA(supabase: SupabaseClient, contexto: ContextoAssistente): Promise<Resultado<SugestaoConversa>> {
+export async function conversarIA(supabase: SupabaseClient, contexto: ContextoAssistente, imagem?: { base64: string; mime: string }): Promise<Resultado<SugestaoConversa>> {
   return comResultado(async () => {
-    const { valor, ...meta } = await executarEstruturado(
-      supabase,
-      "assistente",
-      hashAssistente(contexto),
-      montarPromptAssistente(contexto),
-      esquemaAssistente(),
-      (bruto) => interpretarAssistente(bruto, contexto),
-    );
-    if (respostaVazia(valor)) throw new ErroIA("vazio", "resposta vazia");
-    return { conversa: valor, ...meta };
+    try {
+      const { valor, ...meta } = await executarEstruturado(
+        supabase,
+        "assistente",
+        hashAssistente(contexto),
+        montarPromptAssistente(contexto),
+        esquemaAssistente(),
+        (bruto) => interpretarAssistente(bruto, contexto),
+        PARAMETROS.assistente,
+        imagem,
+      );
+      if (respostaVazia(valor)) throw new ErroIA("vazio", "resposta vazia");
+      return { conversa: valor, ...meta };
+    } catch (e) {
+      // Modelo sem visão costuma recusar o pedido com imagem (ou responder vazio): diz o porquê.
+      if (imagem && e instanceof ErroIA && (e.codigo === "modelo_invalido" || e.codigo === "desconhecido" || e.codigo === "vazio")) {
+        throw new Error("A sua IA não leu a imagem. Escolha um modelo com visão em Configurações › IA, ou mande a mensagem sem imagem.");
+      }
+      throw e;
+    }
   });
 }
 

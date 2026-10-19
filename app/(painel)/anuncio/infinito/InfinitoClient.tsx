@@ -364,9 +364,12 @@ export function InfinitoClient({
     if (!rascunho) return "Abra o anúncio para conversar sobre ele.";
     setQual("conversa");
     const referencia = envio.referencia ? { qual: envio.referencia.qual, de_outra_loja: envio.referencia.deOutraLoja, texto: envio.referencia.texto } : null;
-    const r = await executarComToast(conversar({ rascunho_id: rascunho.id, mensagem: envio.texto, referencia, etapa: atual, descricao_pendente: descGerada !== null || descPendente !== null }), {
-      erro: "Não foi possível falar com a IA.",
-    });
+    const r = await executarComToast(
+      conversar({ rascunho_id: rascunho.id, mensagem: envio.texto, referencia, imagens: envio.imagens, montagem: envio.montagem, etapa: atual, descricao_pendente: descGerada !== null || descPendente !== null }),
+      {
+        erro: "Não foi possível falar com a IA.",
+      },
+    );
     setQual(null);
     if (!r.ok) return r.erro;
     setSaldoConversa({ usadas: r.dado.usadas, limite: r.dado.limite, doCache: r.dado.doCache });
@@ -379,7 +382,7 @@ export function InfinitoClient({
    * servidor, que lê a ação do banco e a marca como feita. As de gerar levam à etapa e geram
    * ali, com o chat aberto ao lado; só então a ação é marcada.
    */
-  async function aplicar(mensagemId: string, indice: number, a: AcaoProposta): Promise<string | false> {
+  async function aplicar(mensagemId: string, indice: number, a: AcaoProposta, extra?: { substituir?: string }): Promise<string | false> {
     if (!rascunho) return false;
     const marcar = () => executarComToast(marcarAcaoFeita({ rascunho_id: rascunho.id, mensagem_id: mensagemId, indice }), { erro: "Não foi possível marcar a sugestão como feita." });
     if (a.tipo === "ajustar_ficha" && !perfil) {
@@ -419,7 +422,7 @@ export function InfinitoClient({
         await carregar();
         return a.modo === "imagem" ? "Abri a Capa ao lado. Confirme lá o gasto de 1 imagem da cota." : "Abri a Capa ao lado. Use “Ver o prompt (sem custo)”.";
       default: {
-        const r = await executarComToast(aplicarAcaoConversa({ rascunho_id: rascunho.id, mensagem_id: mensagemId, indice }), { sucesso: (d) => d.mensagem, erro: "Não foi possível aplicar a sugestão." });
+        const r = await executarComToast(aplicarAcaoConversa({ rascunho_id: rascunho.id, mensagem_id: mensagemId, indice, substituir: extra?.substituir ?? null }), { sucesso: (d) => d.mensagem, erro: "Não foi possível aplicar a sugestão." });
         if (!r.ok) return false;
         await carregar();
         router.refresh();
@@ -500,6 +503,8 @@ export function InfinitoClient({
       onEnviar={enviarMensagem}
       onAplicar={aplicar}
       campoRef={campoChatRef}
+      referenciasPerfil={perfil ? perfil.referencias : null}
+      fichaDoPerfil={fichaAtiva}
     />
   ) : (
     <p className="px-4 py-3 text-sm text-text-secondary">Abra o anúncio para conversar sobre ele.</p>

@@ -11,6 +11,9 @@ const SENHA = process.env.TESTE_SENHA;
 test.skip(!BASE || !EMAIL || !SENHA, "Desligado: defina SMOKE_BASE_URL, TESTE_EMAIL e TESTE_SENHA.");
 test.setTimeout(180_000);
 
+/** PNG de 1 pixel, para anexar sem arquivo no disco. */
+const PNG_1PX = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64");
+
 async function entrar(page: Page) {
   await page.goto("/login");
   await page.waitForLoadState("networkidle");
@@ -56,6 +59,15 @@ test("o chat fica ao lado do anúncio, lembra se foi recolhido e abre em tela ch
     await conversa.getByLabel("Texto de referência").fill("Caneca de porcelana para o café da manhã. Vai ao micro-ondas.");
     await conversa.getByRole("button", { name: "Enviar mensagem" }).click();
     await expect(conversa.getByText("Referência: descrição sua").first()).toBeVisible();
+    // Imagem anexada: miniatura antes de enviar e na mensagem que vai.
+    await expect(conversa.getByRole("button", { name: "Enviar mensagem" })).toBeEnabled({ timeout: 60_000 });
+    const tirar = conversa.getByRole("button", { name: "Tirar" });
+    if (await tirar.isVisible()) await tirar.click();
+    await conversa.locator('input[type="file"]').setInputFiles({ name: "ref.png", mimeType: "image/png", buffer: PNG_1PX });
+    await expect(conversa.getByRole("list", { name: "Imagens para enviar" }).getByRole("img")).toHaveCount(1);
+    await campo.fill("Quero a capa neste estilo");
+    await conversa.getByRole("button", { name: "Enviar mensagem" }).click();
+    await expect(conversa.getByRole("button", { name: /Ampliar: imagem 1 da mensagem/ }).first()).toBeVisible();
   } else {
     await expect(conversa.getByRole("link", { name: "Configurar uma IA" })).toBeVisible();
   }
