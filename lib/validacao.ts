@@ -899,6 +899,8 @@ export const estadoRascunhoSchema = z.object({
         veredito: z.enum(["aprovada", "ajustar", "rejeitada"]).optional(),
         motivo: z.string().trim().max(240).optional(),
         criadoEm: z.string().max(40),
+        /** Imagem enviada pelo usuário (feita fora do Painel): não conta no teto de gerações com IA. */
+        propria: z.boolean().optional(),
       }),
     )
     .max(12)

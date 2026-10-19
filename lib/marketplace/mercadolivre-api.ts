@@ -16,7 +16,7 @@
 
 import { mapComLimite } from "@/lib/concorrencia";
 import type { PedidoMarketplace, StatusMarketplace } from "./shopee-planilha";
-import type { AnuncioShopee } from "./shopee-api";
+import type { AnuncioShopee, TextoAnuncio } from "./shopee-api";
 
 const API = "https://api.mercadolibre.com";
 /** Pedidos lidos ao mesmo tempo (cada um com o envio e o custo do frete). */
@@ -306,6 +306,22 @@ export async function buscarAnunciosML(tokenAcesso: string, sellerId: string): P
     for (const x of r) if (x.code === 200 && x.body) anuncios.push(...anunciosDoItemML(x.body));
   }
   return anuncios;
+}
+
+/** Título e descrição de alguns anúncios (`/items?ids=` e `/items/{id}/description`). */
+export async function buscarTextosML(tokenAcesso: string, itemIds: number[]): Promise<TextoAnuncio[]> {
+  const textos: TextoAnuncio[] = [];
+  for (let i = 0; i < itemIds.length; i += 20) {
+    const r = (await chamar(tokenAcesso, `/items?ids=${itemIds.slice(i, i + 20).map(idDoAnuncioML).join(",")}&attributes=id,title`)) as { code?: number; body?: { id: string; title?: string } }[];
+    for (const x of r) {
+      const titulo = x.code === 200 ? x.body?.title?.trim() : null;
+      if (!titulo || !x.body) continue;
+      // Descrição que falha não derruba as outras: o título já serve de exemplo.
+      const d = (await chamar(tokenAcesso, `/items/${x.body.id}/description`).catch(() => null)) as { plain_text?: string } | null;
+      textos.push({ itemId: idNumericoML(x.body.id), titulo, descricao: d?.plain_text?.trim() || null });
+    }
+  }
+  return textos;
 }
 
 export async function enviarEstoqueML(tokenAcesso: string, itemId: number, estoques: { modelId: number; quantidade: number }[]): Promise<void> {

@@ -90,3 +90,16 @@ describe("hashDescricaoEstudio", () => {
     expect(hashDescricaoEstudio({ ...ctx, pedido: "mais curta" })).not.toBe(hashDescricaoEstudio(ctx));
   });
 });
+
+describe("direção da loja (0109)", () => {
+  const estilo = { instrucoes: "Tom acolhedor, sempre em segunda pessoa.", exemplos: [{ texto: "Bolsa carteiro de lona, leve para o dia a dia.", origem: "edicao" as const }] };
+  it("entra no prompt com as instruções e o exemplo", () => {
+    const p = montarPromptDescricaoEstudio({ ...ctx, estilo });
+    expect(p).toContain("Tom acolhedor, sempre em segunda pessoa.");
+    expect(p).toContain("Bolsa carteiro de lona");
+  });
+  it("sem direção, a chave de cache é a mesma de antes; com direção, muda", () => {
+    expect(hashDescricaoEstudio({ ...ctx, estilo: { instrucoes: null, exemplos: [] } })).toBe(hashDescricaoEstudio(ctx));
+    expect(hashDescricaoEstudio({ ...ctx, estilo })).not.toBe(hashDescricaoEstudio(ctx));
+  });
+});

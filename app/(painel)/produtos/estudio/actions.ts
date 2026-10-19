@@ -15,9 +15,10 @@ import {
 } from "@/lib/validacao";
 import { z } from "zod";
 import { conversarIA, gerarDescricaoEstudioIA, gerarTitulosEstudioIA, pesquisarConcorrentesIA } from "@/lib/ia/gerar";
-import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, type AvaliacaoDescricao } from "@/lib/ia/prompts-descricao-estudio";
+import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, MINIMO_DESCRICAO, type AvaliacaoDescricao } from "@/lib/ia/prompts-descricao-estudio";
 import { avaliarVariantes, type VarianteAvaliada } from "@/lib/ia/prompts-titulos";
 import { gerarImagemGemini } from "@/lib/ia/imagem";
+import { edicaoRelevante, type TipoExemplo } from "@/lib/ia/estilo-loja";
 import { ErroIA } from "@/lib/ia/erro";
 import { regrasDoPerfil, temBloqueio, termosParaEvitar, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
 import { montarPromptCapaCena, montarPromptCapaCompleta, type ContextoCapa } from "@/lib/marca/prompt-capa";
@@ -42,6 +43,8 @@ const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O estúdio precisa da migração 0099. Aplique no Supabase e recarregue.";
 const faltaMigracao = (code?: string) => code === "PGRST205" || code === "42P01" || code === "PGRST202" || code === "42883";
 const MAX_TENTATIVAS_CAPA = 6;
+/** Teto do `estado.capas` (o schema aceita 12): geradas + enviadas. */
+const MAX_CAPAS = 12;
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;
 const TIPOS_FOTO = ["image/jpeg", "image/png", "image/webp"];
 
@@ -160,6 +163,32 @@ export async function definirNumeroImagens(entrada: unknown) {
   });
 }
 
+// ---------- Aprendizado (0109) ----------
+
+/** Quantas edições de cada tipo o perfil guarda; as mais antigas saem. */
+const EDICOES_GUARDADAS = 8;
+
+/**
+ * O texto que o vendedor corrigiu vira exemplo para as próximas gerações do perfil. É um
+ * extra: se falhar (banco sem a 0109, por exemplo), o que ele salvou continua salvo e a tela
+ * só não diz que aprendeu.
+ */
+async function aprenderComEdicao(supabase: Awaited<ReturnType<typeof createClient>>, ctx: ContextoRascunho, tipo: TipoExemplo, texto: string, antes: string | null): Promise<boolean> {
+  try {
+    const perfilId = ctx.perfil?.id ?? null;
+    const { error } = await supabase.from("marca_exemplos").insert({ perfil_id: perfilId, tipo, origem: "edicao", texto: texto.slice(0, 5000), texto_ia: antes?.slice(0, 5000) ?? null });
+    if (error) return false;
+    let antigas = supabase.from("marca_exemplos").select("id").eq("tipo", tipo).eq("origem", "edicao").order("criado_em", { ascending: false }).range(EDICOES_GUARDADAS, EDICOES_GUARDADAS + 50);
+    antigas = perfilId ? antigas.eq("perfil_id", perfilId) : antigas.is("perfil_id", null);
+    const { data } = await antigas;
+    const ids = (data ?? []).map((x) => x.id as string);
+    if (ids.length) await supabase.from("marca_exemplos").delete().in("id", ids);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------- Títulos ----------
 
 export interface TitulosDoEstudio {
@@ -187,6 +216,7 @@ export async function gerarTitulosEstudio(entrada: unknown) {
       termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       concorrentes: (ctx.rascunho.estado.concorrentes ?? []).map((c) => ({ titulo: c.titulo, faixaPreco: c.precoTexto })),
       pedido: v.pedido,
+      estilo: ctx.estilo.titulo,
     });
     if (!g.ok) throw new Error(g.erro);
 
@@ -200,7 +230,7 @@ export async function gerarTitulosEstudio(entrada: unknown) {
 
 /** O título escolhido (ou digitado) passa pela mesma conferência antes de virar o do anúncio. */
 export async function escolherTitulo(entrada: unknown) {
-  return comResultado(async (): Promise<{ violacoes: Violacao[] }> => {
+  return comResultado(async (): Promise<{ violacoes: Violacao[]; aprendeu: boolean }> => {
     const v = validar(escolherTituloSchema, entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
@@ -210,8 +240,12 @@ export async function escolherTitulo(entrada: unknown) {
     if (temBloqueio(violacoes)) throw new Error(`Este título tem “${violacoes[0].trecho}” (${violacoes[0].motivo.toLowerCase()}). Ajuste e tente de novo.`);
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, {}, { titulo: v.titulo });
     await sincronizarStatus(supabase, v.rascunho_id);
+    // Título que não é nenhuma das sugestões da IA: o vendedor escreveu ou mexeu. Vira exemplo.
+    const sugestoes = (ctx.rascunho.estado.variantes ?? []).map((x) => x.titulo);
+    const editado = sugestoes.length > 0 && !sugestoes.some((t) => !edicaoRelevante(t, v.titulo));
+    const aprendeu = editado ? await aprenderComEdicao(supabase, ctx, "titulo", v.titulo, null) : false;
     revalidatePath(PATH);
-    return { violacoes };
+    return { violacoes, aprendeu };
   });
 }
 
@@ -244,6 +278,7 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
       termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       diferenciaisConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).flatMap((c) => c.diferenciais),
       pedido: v.pedido,
+      estilo: ctx.estilo.descricao,
     });
     if (!g.ok) throw new Error(g.erro);
     const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasDoPerfil(ctx.perfil?.termos) });
@@ -253,8 +288,9 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
 
 /** Salva a descrição que o usuário aprovou, depois de conferir tamanho e termos no servidor. */
 export async function salvarDescricao(entrada: unknown) {
-  return comResultado(async (): Promise<{ avaliacao: AvaliacaoDescricao }> => {
-    const v = validar(rascunhoIdSchema.extend({ descricao: z.string().max(5000) }), entrada);
+  return comResultado(async (): Promise<{ avaliacao: AvaliacaoDescricao; aprendeu: boolean }> => {
+    // `original`: o texto com que o editor abriu (o da IA ou o salvo antes). Se mudou, vira exemplo.
+    const v = validar(rascunhoIdSchema.extend({ descricao: z.string().max(5000), original: z.string().max(5000).nullish() }), entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
@@ -266,7 +302,8 @@ export async function salvarDescricao(entrada: unknown) {
     const { error } = await supabase.from("anuncio_rascunhos").update({ descricao: v.descricao.trim(), atualizado_em: new Date().toISOString() }).eq("id", v.rascunho_id);
     checar(error);
     await sincronizarStatus(supabase, v.rascunho_id);
-    return { avaliacao };
+    const aprendeu = v.original !== undefined && edicaoRelevante(v.original, v.descricao, MINIMO_DESCRICAO) ? await aprenderComEdicao(supabase, ctx, "descricao", v.descricao.trim(), v.original ?? null) : false;
+    return { avaliacao, aprendeu };
   });
 }
 
@@ -347,7 +384,8 @@ export async function gerarCenaCapa(entrada: unknown) {
     if (!titulo) throw new Error("Escolha o título primeiro: a capa leva o título aprovado.");
 
     const capas = ctx.rascunho.estado.capas ?? [];
-    if (capas.length >= MAX_TENTATIVAS_CAPA) throw new Error(`Você já gerou ${MAX_TENTATIVAS_CAPA} capas neste rascunho. Ajuste a ficha ou o pedido antes de gerar outra.`);
+    if (capas.length >= MAX_CAPAS) throw new Error(`O anúncio já tem ${MAX_CAPAS} imagens. Remova uma antes de gerar outra.`);
+    if (capas.filter((c) => !c.propria).length >= MAX_TENTATIVAS_CAPA) throw new Error(`Você já gerou ${MAX_TENTATIVAS_CAPA} capas neste rascunho. Ajuste a ficha ou o pedido antes de gerar outra.`);
     if (capas.length > 0 && !capas[capas.length - 1].veredito) throw new Error("Dê um veredito à capa anterior (aprovar, ajustar ou rejeitar) antes de gerar outra: assim a ficha melhora e você não gasta à toa.");
 
     const violacoes = conferirTextosDaCapa(ctx, titulo, v.textoFaixa);
@@ -436,6 +474,44 @@ export async function registrarCapaFinal(entrada: unknown) {
     if (!capas[v.indice]) throw new Error("Capa não encontrada.");
     capas[v.indice] = { ...capas[v.indice], finalPath: v.finalPath };
     return gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas });
+  });
+}
+
+/**
+ * Imagem feita fora do Painel (outro gerador, foto, arte pronta), enviada pela tela. Entra já
+ * aprovada e como final: o texto, se houver, já está nela. Não gasta cota nem conta no teto de
+ * gerações com IA.
+ */
+export async function adicionarCapaPropria(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema.extend({ path: z.string().trim().min(1).max(300) }), entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    if (!caminhoDoUsuario(ctx.userId, v.path)) throw new Error("Envie a imagem por esta tela (só arquivos da sua conta).");
+    const capas = ctx.rascunho.estado.capas ?? [];
+    if (capas.length >= MAX_CAPAS) throw new Error(`O anúncio já tem ${MAX_CAPAS} imagens.`);
+    const nova = { cenaPath: v.path, finalPath: v.path, titulo: ctx.rascunho.titulo ?? "", veredito: "aprovada" as const, criadoEm: new Date().toISOString(), propria: true };
+    const estado = await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas: [...capas, nova] });
+    await sincronizarStatus(supabase, v.rascunho_id);
+    return estado;
+  });
+}
+
+/**
+ * Tira do anúncio uma imagem enviada pelo usuário (não apaga o arquivo). As geradas com IA ficam:
+ * elas contam no teto de tentativas, e removê-las abriria vaga para gerar além dele.
+ */
+export async function removerCapaPropria(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema.extend({ indice: z.number().int().min(0).max(11) }), entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const capas = [...(ctx.rascunho.estado.capas ?? [])];
+    if (!capas[v.indice]?.propria) throw new Error("Imagem não encontrada.");
+    capas.splice(v.indice, 1);
+    const estado = await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas });
+    await sincronizarStatus(supabase, v.rascunho_id);
+    return estado;
   });
 }
 
