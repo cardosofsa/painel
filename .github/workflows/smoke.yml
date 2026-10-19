@@ -79,7 +79,7 @@ jobs:
           # O teste é o do commit que foi para o ar.
           ref: ${{ github.event.deployment.sha || github.sha }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.config.outputs.rodar == 'true'
         with:
           node-version: 22
