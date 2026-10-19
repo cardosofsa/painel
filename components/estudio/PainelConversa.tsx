@@ -71,13 +71,15 @@ export function GavetaConversa({ subtitulo, onFechar, focoInicial, children }: {
         return;
       }
       if (e.key !== "Tab") return;
-      const lista = Array.from(painelRef.current?.querySelectorAll<HTMLElement>(FOCAVEIS) ?? []).filter((el) => el.offsetParent !== null);
+      // Só o que o Tab alcança: o campo de arquivo escondido (tabIndex -1) não pode ser o "último".
+      const lista = Array.from(painelRef.current?.querySelectorAll<HTMLElement>(FOCAVEIS) ?? []).filter((el) => el.offsetParent !== null && el.tabIndex >= 0);
       if (lista.length === 0) return;
       const [primeiro, ultimo] = [lista[0], lista[lista.length - 1]];
-      if (e.shiftKey && (document.activeElement === primeiro || document.activeElement === painelRef.current)) {
+      const dentro = painelRef.current?.contains(document.activeElement);
+      if (e.shiftKey && (!dentro || document.activeElement === primeiro || document.activeElement === painelRef.current)) {
         e.preventDefault();
         ultimo.focus();
-      } else if (!e.shiftKey && document.activeElement === ultimo) {
+      } else if (!e.shiftKey && (!dentro || document.activeElement === ultimo)) {
         e.preventDefault();
         primeiro.focus();
       }
