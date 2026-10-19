@@ -24,6 +24,11 @@ export interface PrecoDoAnuncio {
   situacao: SituacaoPrecoLoja | null;
   /** Zona morta: o preço logo abaixo da virada de faixa, que rende mais. */
   precoMelhor: number | null;
+  /**
+   * O perfil tem loja, mas não deu para ler o preço dela (erro de banco, loja apagada). Antes
+   * isso caía em silêncio no preço do cadastro (o do PDV), que podia ir para a Shopee.
+   */
+  erro?: string | null;
 }
 
 /** O rascunho como a tela do Anúncio Infinito o recebe (aberto por produto ou por id). */
@@ -141,17 +146,41 @@ export async function gravarEstadoVersionado(
   patch: Partial<EstadoRascunho>,
   extra: { titulo?: string | null; versao?: string; status?: string } = {},
 ): Promise<{ estado: EstadoRascunho; versao: string }> {
-  const novo = estadoRascunhoSchema.parse({ ...atual, ...patch });
-  const versao = new Date().toISOString();
-  let q = supabase
-    .from("anuncio_rascunhos")
-    .update({ estado: novo, ...(extra.titulo !== undefined ? { titulo: extra.titulo } : {}), ...(extra.status ? { status: extra.status } : {}), atualizado_em: versao })
-    .eq("id", rascunhoId);
-  if (extra.versao) q = q.eq("atualizado_em", extra.versao);
-  const { data, error } = await q.select("id");
-  if (error) throw erro("Não foi possível salvar o rascunho.");
-  if (extra.versao && !(data ?? []).length) throw erro(ERRO_CONCORRENCIA);
-  return { estado: novo, versao };
+  const gravar = async (base: EstadoRascunho, condicao: string | null) => {
+    const novo = estadoRascunhoSchema.parse({ ...base, ...patch });
+    const versao = new Date().toISOString();
+    let q = supabase
+      .from("anuncio_rascunhos")
+      .update({ estado: novo, ...(extra.titulo !== undefined ? { titulo: extra.titulo } : {}), ...(extra.status ? { status: extra.status } : {}), atualizado_em: versao })
+      .eq("id", rascunhoId);
+    if (condicao) q = q.eq("atualizado_em", condicao);
+    const { data, error } = await q.select("id");
+    if (error) throw erro("Não foi possível salvar o rascunho.");
+    return { estado: novo, versao, gravou: (data ?? []).length > 0 };
+  };
+
+  // Trava explícita (geração de capa): quem leu uma versão velha PARA, sem tentar de novo.
+  if (extra.versao) {
+    const r = await gravar(atual, extra.versao);
+    if (!r.gravou) throw erro(ERRO_CONCORRENCIA);
+    return { estado: r.estado, versao: r.versao };
+  }
+
+  // Sem trava: a mudança desta ação vai por cima do estado GRAVADO AGORA (relido), com UPDATE
+  // condicional na versão relida; se outra gravação entrou no meio, relê e tenta de novo.
+  // Antes o objeto inteiro carregado no começo da ação era regravado: duas ações ao mesmo
+  // tempo (duas abas, ou mudar algo enquanto uma geração demorava) apagavam o que a outra fez.
+  for (let tentativa = 0; tentativa < 4; tentativa++) {
+    const { data: agora, error } = await supabase.from("anuncio_rascunhos").select("estado, atualizado_em").eq("id", rascunhoId).maybeSingle();
+    // Sem conseguir reler (ex.: cliente de teste sem SELECT), cai na gravação simples de antes.
+    if (error || !agora) {
+      const r = await gravar(atual, null);
+      return { estado: r.estado, versao: r.versao };
+    }
+    const r = await gravar(lerEstado(agora.estado), agora.atualizado_em as string);
+    if (r.gravou) return { estado: r.estado, versao: r.versao };
+  }
+  throw erro(ERRO_CONCORRENCIA);
 }
 
 /** Estado gravado agora (relido), para juntar o resultado de algo demorado sem apagar o que mudou no meio. */
@@ -232,8 +261,17 @@ export async function precoDoAnuncio(supabase: SupabaseClient, produtoId: string
     supabase.from("produto_lojas").select("loja_id, preco, preco_atualizado_em, precificacoes(taxa_adicional_pct)").eq("produto_id", produtoId).eq("loja_id", lojaId).maybeSingle(),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
   ]);
-  // Sem a 0101 a coluna `preco` não existe: segue com o preço do cadastro.
-  if (precoRes.error || !loja) return doCadastro;
+  // O perfil é de uma loja: sem conseguir ler o preço DELA, não usa outro no lugar.
+  if (precoRes.error || !loja) {
+    return {
+      ...doCadastro,
+      origem: "loja",
+      lojaId,
+      lojaRotulo: loja ? `${loja.canalNome} · ${loja.nome}` : "a loja do perfil",
+      preco: null,
+      erro: loja ? "Não consegui ler o preço desta loja agora. Recarregue a página; se continuar, avise o suporte." : "A loja ligada a este perfil não foi encontrada. Confira o perfil em Configurações.",
+    };
+  }
   const aliquota = Number(negocioRes.data?.aliquota_das ?? 6) / 100;
   const gravado = precoRes.data as unknown as { loja_id: string; preco: number | null; preco_atualizado_em: string | null; precificacoes: { taxa_adicional_pct: number | null } | null } | null;
   const [linha] = precosPorLoja(

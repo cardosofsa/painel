@@ -8,6 +8,20 @@ function bancoFalso(linha: { id: string; atualizado_em: string; estado: unknown 
     linha,
     from() {
       return {
+        select() {
+          const filtros: [string, unknown][] = [];
+          const consulta = {
+            eq(col: string, val: unknown) {
+              filtros.push([col, val]);
+              return consulta;
+            },
+            async maybeSingle() {
+              const bate = filtros.every(([c, v]) => (linha as Record<string, unknown>)[c] === v);
+              return { data: bate ? { estado: linha.estado, atualizado_em: linha.atualizado_em } : null, error: null };
+            },
+          };
+          return consulta;
+        },
         update(valores: Record<string, unknown>) {
           const filtros: [string, unknown][] = [];
           const consulta = {
@@ -45,6 +59,16 @@ describe("gravação condicional do rascunho", () => {
     // Trava abandonada (passou do prazo) não bloqueia para sempre.
     expect(capaEmGeracao({ capaEmGeracao: "2026-10-18T09:50:00.000Z" }, agora)).toBe(false);
     expect(capaEmGeracao({}, agora)).toBe(false);
+  });
+
+  it("duas ações com a mesma leitura velha: as duas mudanças ficam (antes a segunda apagava a primeira)", async () => {
+    const db = bancoFalso({ id: "r1", atualizado_em: "2026-10-18T10:00:00.000Z", estado: { numeroImagens: 3 } });
+    const lidaNoComeco = { numeroImagens: 3 }; // as duas ações carregaram este estado
+    await gravarEstadoVersionado(db, "r1", lidaNoComeco, { variantes: [{ titulo: "Caneca Azul", angulo: "busca" }] });
+    await gravarEstadoVersionado(db, "r1", lidaNoComeco, { numeroImagens: 5 });
+    const final = db.linha.estado as { numeroImagens?: number; variantes?: unknown[] };
+    expect(final.numeroImagens).toBe(5);
+    expect(final.variantes).toHaveLength(1);
   });
 
   it("sem versão, grava sempre (comportamento antigo)", async () => {

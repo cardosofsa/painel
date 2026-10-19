@@ -30,6 +30,7 @@ import { FichaEditor } from "@/components/marca/FichaEditor";
 import { MemoriaMarcaCard } from "@/components/marca/MemoriaMarca";
 import { ConferirTexto } from "@/components/marca/ConferirTexto";
 import { termosDoPerfil } from "@/lib/conformidade/termos";
+import { LIMITE_DESCRICAO_ESTUDIO } from "@/lib/ia/prompts-descricao-estudio";
 import { executarComToast } from "@/lib/acao-cliente";
 import { calcularEtapas, ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { mesclarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
@@ -43,8 +44,8 @@ export type ConfigAba = "perfil" | "ficha" | "memoria" | "conferir" | "aprender"
 type Qual = "titulos" | "concorrentes" | "conversa" | "descricao" | null;
 type LojaComPlataforma = LojaParaMarca & { plataforma: PlataformaMarcaId | null };
 
-/** Teto da descrição no estúdio (o mesmo da Shopee no Painel). */
-const TETO_DESCRICAO = 3000;
+/** Teto da descrição no estúdio: o mesmo do servidor (limite da Shopee Brasil). */
+const TETO_DESCRICAO = LIMITE_DESCRICAO_ESTUDIO;
 
 const ABAS_CONFIG: { value: ConfigAba; label: string }[] = [
   { value: "perfil", label: "Perfil" },
@@ -679,7 +680,7 @@ function PrecoDoAnuncioResumo({ rascunho }: { rascunho: RascunhoAberto }) {
   if (p.preco === null) {
     return (
       <div className="mt-3 rounded-md border border-border bg-surface-2 p-3 text-sm flex flex-wrap items-center justify-between gap-2">
-        <span className="text-text-secondary">{p.origem === "loja" ? `Este produto ainda não tem preço em ${p.lojaRotulo}.` : "O produto está sem preço de venda."}</span>
+        <span className={p.erro ? "text-negative" : "text-text-secondary"}>{p.erro ?? (p.origem === "loja" ? `Este produto ainda não tem preço em ${p.lojaRotulo}.` : "O produto está sem preço de venda.")}</span>
         <Link href={precificar} className="text-accent hover:underline font-medium">
           Precificar agora
         </Link>

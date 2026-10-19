@@ -35,7 +35,7 @@ export const PLATAFORMAS: Plataforma[] = [
     id: "shopee",
     nome: "Shopee",
     disponivel: true,
-    canal: { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D", limite_titulo: 100, limite_descricao: 5000 },
+    canal: { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D", limite_titulo: 100, limite_descricao: 3000 },
     faixas: FAIXAS_SHOPEE_PADRAO,
   },
   { id: "mercadolivre", nome: "Mercado Livre", disponivel: true, canal: { nome: "Mercado Livre", tipo_taxa: "fixo", icone: "ShoppingCart", cor: "#FFE600", limite_titulo: 60, limite_descricao: 10000 }, faixas: [] },

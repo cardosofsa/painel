@@ -149,7 +149,7 @@ export async function removerCanal(id: string) {
 
 const CANAIS_PADRAO: CanalInput[] = [
   // Limites de texto conferidos em set/2026; editáveis porque as plataformas mudam.
-  { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D", limite_titulo: 100, limite_descricao: 5000 },
+  { nome: "Shopee", tipo_taxa: "faixas", icone: "ShoppingBag", cor: "#EE4D2D", limite_titulo: 100, limite_descricao: 3000 },
   { nome: "Mercado Livre", tipo_taxa: "fixo", icone: "ShoppingCart", cor: "#FFE600", limite_titulo: 60, limite_descricao: 10000 },
   { nome: "Loja Física", tipo_taxa: "fixo", icone: "Store", cor: "#64748b" },
   { nome: "Facebook", tipo_taxa: "fixo", icone: "Facebook", cor: "#1877F2" },
