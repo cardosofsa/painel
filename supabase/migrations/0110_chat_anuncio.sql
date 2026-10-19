@@ -9,7 +9,7 @@
 --                                            recarregar mostrava o botão de novo e dava para
 --                                            aplicar duas vezes.
 --   anuncio_rascunho_mensagens.anexos        o que veio junto da mensagem: texto de referência
---                                            colado ({tipo:'texto', qual, de_outra_loja, texto})
+--                                            colado ({tipo:'texto', qual, deOutraLoja, texto})
 --                                            e imagens ({tipo:'imagem', path}).
 --   marca_exemplos.origem                    passa a aceitar 'referencia': texto que o vendedor
 --                                            colou no chat e mandou guardar como exemplo.

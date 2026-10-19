@@ -28,6 +28,7 @@ export function DirecaoIA({ perfil, exemplos, semMigracao }: { perfil: PerfilMar
   const doPerfil = exemplos.filter((e) => e.perfil_id === perfil.id || e.perfil_id === null);
   const edicoes = doPerfil.filter((e) => e.origem === "edicao");
   const daLoja = doPerfil.filter((e) => e.origem === "loja");
+  const colados = doPerfil.filter((e) => e.origem === "referencia");
 
   const [lendo, setLendo] = useState(false);
   function lerLoja() {
@@ -122,6 +123,13 @@ export function DirecaoIA({ perfil, exemplos, semMigracao }: { perfil: PerfilMar
           <p className="text-sm text-text-secondary mb-3">Quando você mudar uma descrição ou digitar o seu próprio título e salvar, a sua versão aparece aqui e passa a guiar as próximas. As 8 mais recentes de cada tipo ficam.</p>
         ) : (
           <ul className="mb-3">{edicoes.map(linha)}</ul>
+        )}
+
+        {colados.length > 0 && (
+          <>
+            <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-1 mt-2">Guardados pela conversa ({colados.length})</h4>
+            <ul className="mb-3">{colados.map(linha)}</ul>
+          </>
         )}
 
         <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-1 mt-2">Anúncios da sua loja ({daLoja.length})</h4>

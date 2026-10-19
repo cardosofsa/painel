@@ -11,7 +11,7 @@
 import { hashTexto, limparCampo } from "./texto";
 
 export type TipoExemplo = "titulo" | "descricao";
-export type OrigemExemplo = "edicao" | "loja";
+export type OrigemExemplo = "edicao" | "referencia" | "loja";
 
 export interface ExemploDaLoja {
   texto: string;
@@ -21,7 +21,7 @@ export interface ExemploDaLoja {
 export interface EstiloDaLoja {
   /** Texto livre do perfil (`instrucoes_titulo` / `instrucoes_descricao`). */
   instrucoes: string | null;
-  /** Do mais importante para o menos: edições do vendedor, depois anúncios da loja. */
+  /** Do mais importante para o menos: edições do vendedor, textos que ele colou no chat, anúncios da loja. */
   exemplos: ExemploDaLoja[];
 }
 
@@ -47,7 +47,8 @@ export function blocoDeTexto(t: string, max: number): string | null {
 /** Escolhe e ordena os exemplos: edições primeiro, sem repetidos, no teto do tipo. */
 export function selecionarExemplos(exemplos: readonly ExemploDaLoja[], tipo: TipoExemplo): ExemploDaLoja[] {
   const vistos = new Set<string>();
-  const ordem = [...exemplos.filter((e) => e.origem === "edicao"), ...exemplos.filter((e) => e.origem === "loja")];
+  // O que o vendedor escreveu ou escolheu (edição, texto colado no chat) vem antes do que foi lido da loja.
+  const ordem = [...exemplos.filter((e) => e.origem === "edicao"), ...exemplos.filter((e) => e.origem === "referencia"), ...exemplos.filter((e) => e.origem === "loja")];
   const saida: ExemploDaLoja[] = [];
   for (const e of ordem) {
     const chave = e.texto.replace(/\s+/g, " ").trim().toLowerCase();

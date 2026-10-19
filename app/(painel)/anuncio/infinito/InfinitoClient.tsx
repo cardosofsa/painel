@@ -24,7 +24,7 @@ import { PainelCapa } from "@/components/estudio/PainelCapa";
 import { PainelDescricao } from "@/components/estudio/PainelDescricao";
 import { PainelPacote } from "@/components/estudio/PainelPacote";
 import { PainelShopee } from "@/components/estudio/PainelShopee";
-import { ChatAnuncio } from "@/components/estudio/ChatAnuncio";
+import { ChatAnuncio, type EnvioChat } from "@/components/estudio/ChatAnuncio";
 import { GavetaConversa, PainelConversaFixo } from "@/components/estudio/PainelConversa";
 import { usePainelConversa } from "@/lib/hooks/usePainelConversa";
 import { PerfilForm } from "@/components/marca/PerfilForm";
@@ -360,10 +360,11 @@ export function InfinitoClient({
     return r.ok;
   }
 
-  async function enviarMensagem(mensagem: string): Promise<string | null> {
+  async function enviarMensagem(envio: EnvioChat): Promise<string | null> {
     if (!rascunho) return "Abra o anúncio para conversar sobre ele.";
     setQual("conversa");
-    const r = await executarComToast(conversar({ rascunho_id: rascunho.id, mensagem, etapa: atual, descricao_pendente: descGerada !== null || descPendente !== null }), {
+    const referencia = envio.referencia ? { qual: envio.referencia.qual, de_outra_loja: envio.referencia.deOutraLoja, texto: envio.referencia.texto } : null;
+    const r = await executarComToast(conversar({ rascunho_id: rascunho.id, mensagem: envio.texto, referencia, etapa: atual, descricao_pendente: descGerada !== null || descPendente !== null }), {
       erro: "Não foi possível falar com a IA.",
     });
     setQual(null);

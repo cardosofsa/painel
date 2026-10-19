@@ -38,7 +38,7 @@ import {
   type ContextoRascunho,
   type RascunhoAberto,
 } from "@/lib/estudio/servidor";
-import { HISTORICO_MENSAGENS, lerAcaoGuardada, type AcaoProposta, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
+import { HISTORICO_MENSAGENS, lerAcaoGuardada, lerAnexos, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type AnexoTexto, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
 import { ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { resumoDaFicha } from "@/lib/marca/prompt-capa";
 import { mesclarFicha, normalizarFicha } from "@/lib/marca/ficha";
@@ -538,7 +538,7 @@ const ROTULO_ETAPA: Record<EtapaId, string> = Object.fromEntries(ETAPAS.map((e) 
 async function contextoDaConversa(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ctx: ContextoRascunho,
-  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string },
+  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string; referencia: AnexoTexto | null },
 ): Promise<ContextoAssistente> {
   const e = ctx.rascunho.estado;
   const preco = await precoDoAnuncio(supabase, ctx.produto.id, ctx.perfil?.id ?? null).catch(() => null);
@@ -568,24 +568,37 @@ async function contextoDaConversa(
     memoria: ctx.memoria,
     historico: extra.historico,
     mensagem: extra.mensagem,
+    referencia: extra.referencia,
   };
 }
+
+const SEM_0110 = "Mandar referência no chat precisa da migração 0110. Aplique no Supabase e recarregue.";
+const faltaColuna = (code?: string) => code === "PGRST204" || code === "42703";
 
 export async function conversar(entrada: unknown) {
   return comResultado(async (): Promise<TurnoDaConversa> => {
     const v = validar(conversaSchema, entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const referencia: AnexoTexto | null = v.referencia ? { tipo: "texto", qual: v.referencia.qual, deOutraLoja: v.referencia.de_outra_loja, texto: v.referencia.texto } : null;
+    const anexos: AnexoMensagem[] = referencia ? [referencia] : [];
+    // Sem a 0110 não há onde guardar o anexo: avisa ANTES de gastar a geração.
+    if (anexos.length) {
+      const { error: semColuna } = await supabase.from("anuncio_rascunho_mensagens").select("anexos").limit(0);
+      if (semColuna && faltaColuna(semColuna.code)) throw new Error(SEM_0110);
+    }
+    const mensagem = v.mensagem || (referencia ? `Colei uma referência (${ROTULO_REFERENCIA[referencia.qual]}${referencia.deOutraLoja ? " de outra loja" : ""}).` : "");
 
-    const { data: anteriores } = await supabase.from("anuncio_rascunho_mensagens").select("papel, texto").eq("rascunho_id", v.rascunho_id).order("criado_em", { ascending: false }).limit(HISTORICO_MENSAGENS);
-    const historico = ((anteriores ?? []) as MensagemHistorico[]).reverse();
+    // "*": `anexos` só existe depois da 0110.
+    const { data: anteriores } = await supabase.from("anuncio_rascunho_mensagens").select("*").eq("rascunho_id", v.rascunho_id).order("criado_em", { ascending: false }).limit(HISTORICO_MENSAGENS);
+    const historico: MensagemHistorico[] = ((anteriores ?? []) as Record<string, unknown>[]).reverse().map((m) => ({ papel: m.papel === "ia" ? "ia" : "usuario", texto: String(m.texto ?? ""), anexos: lerAnexos(m.anexos) }));
 
-    const g = await conversarIA(supabase, await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem: v.mensagem }));
+    const g = await conversarIA(supabase, await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem, referencia }));
     if (!g.ok) throw new Error(g.erro);
 
     // Só depois de a IA responder: mensagem e resposta entram juntas no histórico.
     const { error } = await supabase.from("anuncio_rascunho_mensagens").insert([
-      { rascunho_id: v.rascunho_id, papel: "usuario", texto: v.mensagem, acoes: [] },
+      { rascunho_id: v.rascunho_id, papel: "usuario", texto: mensagem, acoes: [], ...(anexos.length ? { anexos } : {}) },
       { rascunho_id: v.rascunho_id, papel: "ia", texto: g.dado.conversa.resposta || "Certo.", acoes: g.dado.conversa.acoes },
     ]);
     checar(error);
@@ -669,6 +682,13 @@ export async function aplicarAcaoConversa(entrada: unknown) {
         const dados = mesclarFicha(normalizarFicha(ativa?.dados), acao.campos);
         exigir(await salvarFichaMarca({ perfil_id: perfil, tipo_imagem: acao.tipoImagem, dados, origem: "ajuste_ia", nota: "Ajuste proposto na conversa" }));
         mensagem = "Ficha atualizada (nova versão; dá para voltar na aba Ficha de arte)";
+        break;
+      }
+      case "guardar_exemplo": {
+        const { error } = await supabase.from("marca_exemplos").insert({ perfil_id: perfilId, tipo: acao.tipoExemplo, origem: "referencia", texto: acao.texto });
+        if (error && (error.code === "23514" || faltaMigracao(error.code))) throw new Error("Guardar exemplo pelo chat precisa das migrações 0109 e 0110. Aplique no Supabase e recarregue.");
+        checar(error);
+        mensagem = `Guardado como exemplo de ${acao.tipoExemplo === "titulo" ? "título" : "descrição"}${perfilId ? " deste perfil" : " (vale para a conta toda)"}. Dá para pausar ou apagar na aba Direção da IA.`;
         break;
       }
       default:

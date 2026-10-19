@@ -50,6 +50,12 @@ test("o chat fica ao lado do anúncio, lembra se foi recolhido e abre em tela ch
   const campo = conversa.getByLabel("Mensagem para a IA");
   if (await campo.isVisible()) {
     await expect(conversa.getByText(/Cada mensagem usa/)).toBeVisible();
+    // Referência colada: a mensagem aparece na hora, marcada como referência (dê a IA certo ou não).
+    await conversa.getByRole("button", { name: "Colar referência" }).click();
+    await conversa.getByRole("radio", { name: "Uma descrição" }).click();
+    await conversa.getByLabel("Texto de referência").fill("Caneca de porcelana para o café da manhã. Vai ao micro-ondas.");
+    await conversa.getByRole("button", { name: "Enviar mensagem" }).click();
+    await expect(conversa.getByText("Referência: descrição sua").first()).toBeVisible();
   } else {
     await expect(conversa.getByRole("link", { name: "Configurar uma IA" })).toBeVisible();
   }

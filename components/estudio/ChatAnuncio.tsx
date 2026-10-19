@@ -2,14 +2,14 @@
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, MessageCircle, Send } from "lucide-react";
+import { AlertTriangle, Check, ClipboardPaste, MessageCircle, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { inputClass } from "@/components/ui/Modal";
 import { ROTULO_CAMPO, ROTULO_TIPO_IMAGEM, valorLegivel, type FichaMarca } from "@/lib/marca/ficha";
 import { LIMITE_MENSAGEM_CHAT } from "@/lib/validacao";
 import type { EtapaId } from "@/lib/anuncio/etapas";
-import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
+import { LIMITE_REFERENCIA, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type QualReferencia } from "@/lib/ia/prompts-assistente";
 import type { MensagemDoChat } from "@/lib/estudio/servidor";
 
 export function descreverAcao(a: AcaoProposta): { rotulo: string; botao: string } {
@@ -32,7 +32,15 @@ export function descreverAcao(a: AcaoProposta): { rotulo: string; botao: string 
         : { rotulo: "Montar o prompt da capa (sem custo)", botao: "Ir para a capa" };
     case "pesquisar_concorrentes":
       return { rotulo: "Pesquisar concorrentes na web (1 geração de texto)", botao: "Pesquisar" };
+    case "guardar_exemplo":
+      return { rotulo: `Guardar como exemplo de ${a.tipoExemplo === "titulo" ? "título" : "descrição"} (a IA imita o tom e a estrutura): “${a.texto.length > 160 ? `${a.texto.slice(0, 160)}…` : a.texto}”`, botao: "Guardar exemplo" };
   }
+}
+
+/** O que vai junto da mensagem. */
+export interface EnvioChat {
+  texto: string;
+  referencia: { qual: QualReferencia; deOutraLoja: boolean; texto: string } | null;
 }
 
 /** O campo padrão sem a altura fixa: o texto cresce até ~6 linhas. */
@@ -50,7 +58,7 @@ const SUGESTOES: Partial<Record<EtapaId, string[]>> = {
 };
 
 /** A mensagem que está indo (aparece na hora) ou que falhou (volta para o campo, com o erro). */
-type Pendente = { texto: string; erro: string | null };
+type Pendente = { envio: EnvioChat; erro: string | null };
 
 /**
  * Chat do anúncio. A IA responde e SUGERE ações; cada uma é um botão que você aprova. Nada caro
@@ -76,12 +84,14 @@ export function ChatAnuncio({
   /** Frase do custo antes de enviar ("Cada mensagem usa 1 geração de texto…"). */
   custo: string | null;
   /** Devolve `null` se deu certo, ou a mensagem de erro. */
-  onEnviar: (texto: string) => Promise<string | null>;
+  onEnviar: (envio: EnvioChat) => Promise<string | null>;
   /** Aplica e devolve a nota para mostrar abaixo da ação (ou `false` se falhou). */
   onAplicar: (mensagemId: string, indice: number, a: AcaoProposta) => Promise<string | false>;
   campoRef?: React.RefObject<HTMLTextAreaElement | null>;
 }) {
   const [pendente, setPendente] = useState<Pendente | null>(null);
+  // Referência sendo colada (painel aberto acima do campo) ou `null`.
+  const [referencia, setReferencia] = useState<EnvioChat["referencia"]>(null);
   // "Feito" desta sessão (sem a 0110 ele não volta do banco) e a nota de cada ação aplicada.
   const [feitas, setFeitas] = useState<Map<string, string>>(new Map());
   const [aplicando, setAplicando] = useState<string | null>(null);
@@ -95,17 +105,21 @@ export function ChatAnuncio({
     if (el && noFim.current) el.scrollTop = el.scrollHeight;
   }, [mensagens.length, pendente]);
 
-  async function enviar(t = texto) {
-    const limpo = t.trim();
-    if (!limpo || enviando || !iaDisponivel) return;
+  const referenciaCurta = !!referencia && referencia.texto.trim().length < 10;
+  const podeEnviar = !!iaDisponivel && (texto.trim().length > 0 || !!referencia) && !referenciaCurta;
+
+  async function enviar(envio: EnvioChat = { texto: texto.trim(), referencia: referencia ? { ...referencia, texto: referencia.texto.trim() } : null }) {
+    if (enviando || !iaDisponivel || (!envio.texto && !envio.referencia)) return;
     noFim.current = true;
-    setPendente({ texto: limpo, erro: null });
+    setPendente({ envio, erro: null });
     onTexto("");
-    const erro = await onEnviar(limpo);
+    setReferencia(null);
+    const erro = await onEnviar(envio);
     if (erro) {
-      // Nada se perde: o texto volta para o campo, e o erro fica ao lado com "Tentar de novo".
-      onTexto(limpo);
-      setPendente({ texto: limpo, erro });
+      // Nada se perde: texto e referência voltam para o campo, e o erro fica ao lado com "Tentar de novo".
+      onTexto(envio.texto);
+      setReferencia(envio.referencia);
+      setPendente({ envio, erro });
     } else {
       setPendente(null);
     }
@@ -144,7 +158,7 @@ export function ChatAnuncio({
               <ul className="flex flex-wrap gap-2" aria-label="Sugestões para começar">
                 {sugestoes.map((s) => (
                   <li key={s}>
-                    <button type="button" className="rounded-full border border-border bg-surface-1 px-3 py-1 text-xs text-text-primary hover:bg-surface-2" onClick={() => void enviar(s)}>
+                    <button type="button" className="rounded-full border border-border bg-surface-1 px-3 py-1 text-xs text-text-primary hover:bg-surface-2" onClick={() => void enviar({ texto: s, referencia: null })}>
                       {s}
                     </button>
                   </li>
@@ -155,7 +169,7 @@ export function ChatAnuncio({
         )}
 
         {mensagens.map((m) => (
-          <Bolha key={m.id} papel={m.papel} texto={m.texto}>
+          <Bolha key={m.id} papel={m.papel} texto={m.texto} anexos={m.anexos}>
             {m.papel === "ia" && m.acoes.length > 0 && (
               <ul className="mt-2 space-y-1.5" aria-label="Sugestões da IA">
                 {m.acoes.map((a, i) => {
@@ -188,14 +202,14 @@ export function ChatAnuncio({
 
         {pendente && (
           <>
-            <Bolha papel="usuario" texto={pendente.texto} />
+            <Bolha papel="usuario" texto={pendente.envio.texto} anexos={pendente.envio.referencia ? [{ tipo: "texto", ...pendente.envio.referencia }] : []} />
             {pendente.erro ? (
               <div role="alert" className="rounded-md border border-negative/40 p-2 text-xs text-negative">
                 <p className="flex gap-1.5">
                   <AlertTriangle size={14} className="shrink-0" aria-hidden /> {pendente.erro}
                 </p>
                 <div className="mt-2 flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => void enviar(pendente.texto)}>
+                  <Button size="sm" variant="secondary" onClick={() => void enviar(pendente.envio)}>
                     Tentar de novo
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setPendente(null)}>
@@ -228,6 +242,7 @@ export function ChatAnuncio({
           </p>
         ) : (
           <>
+            {referencia && <PainelReferencia valor={referencia} onMudar={setReferencia} />}
             <label htmlFor="chat-anuncio-campo" className="sr-only">
               Mensagem para a IA
             </label>
@@ -247,12 +262,19 @@ export function ChatAnuncio({
                     void enviar();
                   }
                 }}
-                placeholder="Escreva para a IA (Shift+Enter quebra a linha)"
+                placeholder={referencia ? "O que você quer saber dessa referência? (opcional)" : "Escreva para a IA (Shift+Enter quebra a linha)"}
               />
-              <Button type="submit" variant="primary" aria-label="Enviar mensagem" loading={enviando} disabled={enviando || texto.trim().length === 0}>
+              <Button type="submit" variant="primary" aria-label="Enviar mensagem" loading={enviando} disabled={enviando || !podeEnviar}>
                 <Send size={14} aria-hidden />
               </Button>
             </div>
+            {!referencia && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                <Button type="button" size="sm" variant="ghost" onClick={() => setReferencia({ qual: "descricao", deOutraLoja: false, texto: "" })}>
+                  <ClipboardPaste size={14} aria-hidden /> Colar referência
+                </Button>
+              </div>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 text-xs text-text-tertiary">
               <span>{custo}</span>
               {perto && (
@@ -268,17 +290,107 @@ export function ChatAnuncio({
   );
 }
 
-function Bolha({ papel, texto, children }: { papel: "usuario" | "ia"; texto: string; children?: ReactNode }) {
+/** Escolha curta em botões (rádio acessível pelo teclado com Tab e espaço). */
+function Escolha<T extends string | boolean>({ rotulo, opcoes, valor, onMudar }: { rotulo: string; opcoes: { valor: T; texto: string }[]; valor: T; onMudar: (v: T) => void }) {
+  return (
+    <div role="radiogroup" aria-label={rotulo} className="flex flex-wrap items-center gap-1">
+      <span className="mr-1 text-xs text-text-secondary">{rotulo}:</span>
+      {opcoes.map((o) => (
+        <button
+          key={String(o.valor)}
+          type="button"
+          role="radio"
+          aria-checked={valor === o.valor}
+          onClick={() => onMudar(o.valor)}
+          className={`rounded-full border px-2.5 py-0.5 text-xs ${valor === o.valor ? "border-accent bg-accent-soft text-text-primary" : "border-border text-text-secondary hover:bg-surface-2"}`}
+        >
+          {o.texto}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * "Colar referência": um título ou uma descrição que você gosta (seu ou de outra loja). Vai à
+ * IA como exemplo, nunca como ordem. Link não é lido: cole o texto.
+ */
+function PainelReferencia({ valor, onMudar }: { valor: NonNullable<EnvioChat["referencia"]>; onMudar: (v: EnvioChat["referencia"]) => void }) {
+  return (
+    <fieldset className="mb-2 space-y-2 rounded-md border border-border bg-surface-2 p-2">
+      <legend className="sr-only">Referência colada</legend>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-text-primary" aria-hidden>
+          Referência colada
+        </span>
+        <button type="button" className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary" onClick={() => onMudar(null)}>
+          <X size={12} aria-hidden /> Tirar
+        </button>
+      </div>
+      <Escolha
+        rotulo="O que é"
+        valor={valor.qual}
+        onMudar={(qual) => onMudar({ ...valor, qual })}
+        opcoes={[
+          { valor: "titulo", texto: "Um título" },
+          { valor: "descricao", texto: "Uma descrição" },
+          { valor: "outro", texto: "Outro texto" },
+        ]}
+      />
+      <Escolha
+        rotulo="De quem é"
+        valor={valor.deOutraLoja}
+        onMudar={(deOutraLoja) => onMudar({ ...valor, deOutraLoja })}
+        opcoes={[
+          { valor: false, texto: "Meu" },
+          { valor: true, texto: "De outra loja" },
+        ]}
+      />
+      <label className="sr-only" htmlFor="chat-anuncio-referencia">
+        Texto de referência
+      </label>
+      <textarea
+        id="chat-anuncio-referencia"
+        className={`${CAMPO} h-28 resize-y py-2`}
+        value={valor.texto}
+        maxLength={LIMITE_REFERENCIA}
+        autoFocus
+        onChange={(e) => onMudar({ ...valor, texto: e.target.value })}
+        placeholder="Cole aqui o texto (link não é lido: copie o texto do anúncio)"
+      />
+      <p className="flex flex-wrap justify-between gap-x-3 text-xs text-text-tertiary">
+        <span>{valor.deOutraLoja ? "De outra loja: a IA aproveita a estrutura e o tom, não o texto." : "Seu: a IA pode guardar como exemplo, se você aprovar."}</span>
+        <span>
+          {valor.texto.length.toLocaleString("pt-BR")}/{LIMITE_REFERENCIA.toLocaleString("pt-BR")}
+        </span>
+      </p>
+    </fieldset>
+  );
+}
+
+function Bolha({ papel, texto, anexos = [], children }: { papel: "usuario" | "ia"; texto: string; anexos?: AnexoMensagem[]; children?: ReactNode }) {
   const minha = papel === "usuario";
   return (
     <div className={minha ? "text-right" : ""}>
-      <div className={`inline-flex max-w-full items-start gap-1 ${minha ? "flex-row-reverse" : ""}`}>
-        <p className={`rounded-lg px-3 py-2 text-sm text-left whitespace-pre-line break-words ${minha ? "bg-accent-soft text-text-primary" : "bg-surface-2 text-text-primary"}`}>
-          <span className="sr-only">{minha ? "Você disse: " : "A IA respondeu: "}</span>
-          {texto}
-        </p>
-        <BotaoCopiar texto={texto} rotulo={minha ? "sua mensagem" : "resposta da IA"} compacto />
-      </div>
+      {texto && (
+        <div className={`inline-flex max-w-full items-start gap-1 ${minha ? "flex-row-reverse" : ""}`}>
+          <p className={`rounded-lg px-3 py-2 text-sm text-left whitespace-pre-line break-words ${minha ? "bg-accent-soft text-text-primary" : "bg-surface-2 text-text-primary"}`}>
+            <span className="sr-only">{minha ? "Você disse: " : "A IA respondeu: "}</span>
+            {texto}
+          </p>
+          <BotaoCopiar texto={texto} rotulo={minha ? "sua mensagem" : "resposta da IA"} compacto />
+        </div>
+      )}
+      {anexos.map((a, i) =>
+        a.tipo === "texto" ? (
+          <details key={i} className="mt-1 ml-auto max-w-[90%] rounded-md border border-border bg-surface-1 px-2 py-1 text-left text-xs">
+            <summary className="cursor-pointer text-text-secondary">
+              Referência: {ROTULO_REFERENCIA[a.qual]} {a.deOutraLoja ? "de outra loja" : "sua"}
+            </summary>
+            <p className="mt-1 whitespace-pre-line break-words text-text-primary">{a.texto}</p>
+          </details>
+        ) : null,
+      )}
       {children && <div className="text-left">{children}</div>}
     </div>
   );

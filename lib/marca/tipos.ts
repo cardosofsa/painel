@@ -26,7 +26,7 @@ export interface ExemploMarca {
   id: string;
   perfil_id: string | null;
   tipo: "titulo" | "descricao";
-  origem: "edicao" | "loja";
+  origem: "edicao" | "referencia" | "loja";
   texto: string;
   texto_ia: string | null;
   referencia: string | null;

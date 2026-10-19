@@ -20,13 +20,14 @@ function Cabecalho({ tituloId, subtitulo, fechar }: { tituloId: string; subtitul
 }
 
 /**
- * Tela larga (≥ 1280 px): o chat fica fixo à direita, com a altura da janela e rolagem própria.
+ * Tela larga (≥ 1280 px): o chat fica fixo à direita, com a altura da janela (menos a barra do
+ * topo, que também é fixa: `top-20`) e rolagem própria.
  * A coluna central encolhe para caber.
  */
 export function PainelConversaFixo({ subtitulo, onRecolher, children }: { subtitulo: string | null; onRecolher: () => void; children: ReactNode }) {
   const tituloId = useId();
   return (
-    <aside aria-labelledby={tituloId} className="sticky top-4 flex h-[calc(100dvh-2rem)] min-h-[24rem] flex-col overflow-hidden rounded-lg border border-border bg-surface-1 shadow-elev-1">
+    <aside aria-labelledby={tituloId} className="sticky top-20 flex h-[calc(100dvh-6rem)] min-h-[24rem] flex-col overflow-hidden rounded-lg border border-border bg-surface-1 shadow-elev-1">
       <Cabecalho
         tituloId={tituloId}
         subtitulo={subtitulo}

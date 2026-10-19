@@ -10,6 +10,11 @@ describe("selecionarExemplos", () => {
     expect(r.map((e) => e.origem)).toEqual(["edicao", "loja"]);
   });
 
+  it("o texto guardado pela conversa vem depois das edições e antes da loja", () => {
+    const r = selecionarExemplos([loja("Chá de hortelã 50g folhas"), { texto: "Chá que o lojista colou no chat", origem: "referencia" }, edicao("Chá de camomila do jeito que eu escrevo")], "titulo");
+    expect(r.map((e) => e.origem)).toEqual(["edicao", "referencia", "loja"]);
+  });
+
   it("tira repetidos (ignorando caixa e espaço) e textos curtos demais", () => {
     const r = selecionarExemplos([loja("Chá de Hortelã 50g"), loja("chá de  hortelã 50g"), loja("curto")], "titulo");
     expect(r).toHaveLength(1);

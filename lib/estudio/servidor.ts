@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizarFicha, mesclarFicha, type FichaMarca } from "@/lib/marca/ficha";
 import { regrasDaPlataforma, type PlataformaMarcaId, type RegrasPlataforma } from "@/lib/marca/plataformas";
 import { estadoRascunhoSchema, type EstadoRascunho } from "@/lib/validacao";
-import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
+import { lerAnexos, type AcaoProposta, type AnexoMensagem } from "@/lib/ia/prompts-assistente";
 import { statusDoRascunho } from "@/lib/anuncio/etapas";
 import { termosDoPerfil, type TermosDoPerfil } from "@/lib/conformidade/termos";
 import { precosPorLoja, type SituacaoPrecoLoja } from "@/lib/precos-loja";
@@ -59,6 +59,8 @@ export interface MensagemDoChat {
   acoes: AcaoProposta[];
   /** Índices das ações já aplicadas (0110). Sem a migração vem vazio: a tela marca só na memória. */
   acoesFeitas: number[];
+  /** Referência colada e imagens (0110). */
+  anexos: AnexoMensagem[];
   criado_em: string;
 }
 
@@ -71,6 +73,7 @@ export function lerMensagem(m: Record<string, unknown>): MensagemDoChat {
     texto: typeof m.texto === "string" ? m.texto : "",
     acoes: Array.isArray(m.acoes) ? (m.acoes as AcaoProposta[]) : [],
     acoesFeitas: feitas,
+    anexos: lerAnexos(m.anexos),
     criado_em: String(m.criado_em ?? ""),
   };
 }

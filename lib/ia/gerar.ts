@@ -602,7 +602,7 @@ export async function conversarIA(supabase: SupabaseClient, contexto: ContextoAs
       hashAssistente(contexto),
       montarPromptAssistente(contexto),
       esquemaAssistente(),
-      (bruto) => interpretarAssistente(bruto, contexto.maxImagens),
+      (bruto) => interpretarAssistente(bruto, contexto),
     );
     if (respostaVazia(valor)) throw new ErroIA("vazio", "resposta vazia");
     return { conversa: valor, ...meta };

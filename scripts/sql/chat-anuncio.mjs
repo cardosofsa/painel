@@ -45,7 +45,7 @@ await como(u, `update anuncio_rascunho_mensagens set acoes_feitas = array_append
 confere("marca a ação como feita", (await como(u, `select acoes_feitas from anuncio_rascunho_mensagens where id = $1`, [msg.id]))[0].acoes_feitas.join() === "0");
 await espera("mais de 8 ações feitas é recusado", () => como(u, `update anuncio_rascunho_mensagens set acoes_feitas = '{0,1,2,3,4,5,6,7,8}' where id = $1`, [msg.id]), "violates check");
 
-const anexos = JSON.stringify([{ tipo: "texto", qual: "descricao", de_outra_loja: false, texto: "a".repeat(3000) }, { tipo: "imagem", path: `${u}/estudio-chat-1.jpg` }]);
+const anexos = JSON.stringify([{ tipo: "texto", qual: "descricao", deOutraLoja: false, texto: "a".repeat(3000) }, { tipo: "imagem", path: `${u}/estudio-chat-1.jpg` }]);
 await como(u, `insert into anuncio_rascunho_mensagens (rascunho_id, papel, texto, anexos) values ($1, 'usuario', 'Olha esta', $2::jsonb)`, [rascunho, anexos]);
 confere("grava anexos de texto e imagem", (await como(u, `select count(*)::int n from anuncio_rascunho_mensagens where jsonb_array_length(anexos) = 2`))[0].n === 1);
 await espera("anexos que não são lista são recusados", () => como(u, `insert into anuncio_rascunho_mensagens (rascunho_id, papel, texto, anexos) values ($1, 'usuario', 'x', '{}'::jsonb)`, [rascunho]), "violates check");

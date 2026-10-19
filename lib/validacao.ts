@@ -939,13 +939,23 @@ export const rascunhoIdSchema = z.object({ rascunho_id: z.string().uuid() });
 export const abrirRascunhoSchema = z.object({ produto_id: z.string().uuid(), perfil_id: z.string().uuid().nullable() });
 /** Teto de uma mensagem do chat do anúncio. */
 export const LIMITE_MENSAGEM_CHAT = 2000;
-export const conversaSchema = z.object({
-  rascunho_id: z.string().uuid(),
-  mensagem: z.string().trim().min(1, "Escreva uma mensagem").max(LIMITE_MENSAGEM_CHAT, `Mensagem longa demais (até ${LIMITE_MENSAGEM_CHAT.toLocaleString("pt-BR")} caracteres)`),
-  /** Etapa aberta na tela e se há descrição gerada sem salvar: só contexto para a IA. */
-  etapa: z.enum(["loja", "produto", "titulo", "capa", "descricao", "revisar"]).nullish(),
-  descricao_pendente: z.boolean().nullish(),
-});
+export const conversaSchema = z
+  .object({
+    rascunho_id: z.string().uuid(),
+    mensagem: z.string().trim().max(LIMITE_MENSAGEM_CHAT, `Mensagem longa demais (até ${LIMITE_MENSAGEM_CHAT.toLocaleString("pt-BR")} caracteres)`),
+    /** Etapa aberta na tela e se há descrição gerada sem salvar: só contexto para a IA. */
+    etapa: z.enum(["loja", "produto", "titulo", "capa", "descricao", "revisar"]).nullish(),
+    descricao_pendente: z.boolean().nullish(),
+    /** Texto colado como referência (0110): vai à IA como dado, num bloco delimitado. */
+    referencia: z
+      .object({
+        qual: z.enum(["titulo", "descricao", "outro"]),
+        de_outra_loja: z.boolean(),
+        texto: z.string().trim().min(10, "Cole pelo menos uma frase de referência").max(3000, "Referência longa demais (até 3.000 caracteres)"),
+      })
+      .nullish(),
+  })
+  .refine((v) => v.mensagem.length > 0 || !!v.referencia, { message: "Escreva uma mensagem", path: ["mensagem"] });
 /** Aplicar (ou marcar como feita) a ação `indice` de uma mensagem da IA. A ação é lida do banco, não do navegador. */
 export const acaoConversaSchema = z.object({ rascunho_id: z.string().uuid(), mensagem_id: z.string().uuid(), indice: z.number().int().min(0).max(7) });
 export const titulosEstudioSchema = z.object({ rascunho_id: z.string().uuid(), pedido: z.string().trim().max(300).nullable() });
