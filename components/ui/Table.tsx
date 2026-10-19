@@ -34,19 +34,34 @@ export function Th({
   align = "left",
   /** Some no celular. Para coluna de apoio numa tabela larga (armazém, código de barras). */
   secundaria = false,
+  ordem,
+  onOrdenar,
 }: {
   children?: ReactNode;
   align?: "left" | "right" | "center";
   secundaria?: boolean;
+  /** Coluna ordenável: a direção atual (`null` = ordenada por outra coluna). */
+  ordem?: "asc" | "desc" | null;
+  onOrdenar?: () => void;
 }) {
   return (
     <th
       scope="col"
+      aria-sort={onOrdenar ? (ordem === "asc" ? "ascending" : ordem === "desc" ? "descending" : "none") : undefined}
       className={`text-xs uppercase tracking-wide text-text-tertiary font-medium px-3 py-2.5 border-b border-border whitespace-nowrap ${
         alignClass[align]
       } ${secundaria ? "hidden sm:table-cell" : ""}`}
     >
-      {children}
+      {onOrdenar ? (
+        <button type="button" onClick={onOrdenar} className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-text-primary ${ordem ? "text-text-primary" : ""}`}>
+          {children}
+          <span aria-hidden="true" className={ordem ? "" : "opacity-30"}>
+            {ordem === "asc" ? "↑" : "↓"}
+          </span>
+        </button>
+      ) : (
+        children
+      )}
     </th>
   );
 }

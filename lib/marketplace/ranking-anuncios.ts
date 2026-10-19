@@ -33,6 +33,8 @@ export interface PedidoRanking {
 }
 
 export interface AnuncioCadastrado {
+  /** Id em `marketplace_anuncios` (para Analisar e Ajuste de Preço). */
+  id?: string;
   loja_id: string;
   sku_principal: string | null;
   nome_item: string | null;
@@ -45,6 +47,8 @@ export interface LinhaRanking {
   chave: string;
   nome: string;
   lojaId: string;
+  /** Um anúncio cadastrado deste item (`marketplace_anuncios.id`), quando há. */
+  anuncioId: string | null;
   imagemUrl: string | null;
   link: string | null;
   pedidos: number;
@@ -114,6 +118,7 @@ export function rankearAnuncios(
           chave,
           nome: tituloLimpo(nome, nomeItem),
           lojaId: loja,
+          anuncioId: null,
           imagemUrl: null,
           link: null,
           pedidos: 0,
@@ -144,6 +149,7 @@ export function rankearAnuncios(
   for (const an of anuncios) {
     const a = obter(an.loja_id, an.sku_principal, an.nome ?? "", an.nome_item);
     if (!a) continue;
+    a.linha.anuncioId ??= an.id ?? null;
     a.linha.imagemUrl ??= an.imagem_url;
     a.linha.link ??= an.link;
   }
@@ -228,4 +234,114 @@ export function resumirRanking(linhas: readonly LinhaRanking[]): ResumoRanking {
     unidades: comVenda.reduce((s, l) => s + l.unidades, 0),
     pedidos: comVenda.reduce((s, l) => s + l.pedidos, 0),
   };
+}
+
+// ---------- Filtros, comparação e ordenação da tela ----------
+
+/** Abaixo disso a margem é "baixa" (10%). */
+export const MARGEM_BAIXA = 0.1;
+/** A partir disso, "muitos cancelamentos" (10% dos pedidos). */
+export const CANCELAMENTO_ALTO = 0.1;
+/** Variação do faturamento contra o período anterior para "em queda" / "em alta" (30%). */
+export const VARIACAO_FORTE = 0.3;
+
+export type Situacao = "todos" | "vendendo" | "parados" | "prejuizo" | "margem_baixa" | "cancelamentos" | "em_queda" | "em_alta" | "sem_custo";
+
+export interface ComparacaoAnterior {
+  /** Faturamento do mesmo anúncio no período anterior de mesmo tamanho; null = não dá para comparar. */
+  receitaAnterior: number | null;
+  /** (atual - anterior) / anterior; null sem venda antes ou sem comparação. */
+  variacao: number | null;
+  /** Vendeu no período e não tinha vendido no anterior. */
+  novo: boolean;
+}
+
+/** Junta a cada linha o faturamento do período anterior. `anterior = null`: a janela carregada não cobre. */
+export function compararComAnterior(atual: readonly LinhaRanking[], anterior: readonly LinhaRanking[] | null): Map<string, ComparacaoAnterior> {
+  const antes = new Map((anterior ?? []).map((l) => [l.chave, l.receita]));
+  const saida = new Map<string, ComparacaoAnterior>();
+  for (const l of atual) {
+    if (!anterior) {
+      saida.set(l.chave, { receitaAnterior: null, variacao: null, novo: false });
+      continue;
+    }
+    const r = antes.get(l.chave) ?? 0;
+    saida.set(l.chave, { receitaAnterior: r2(r), variacao: r > 0 ? (l.receita - r) / r : null, novo: r <= 0 && l.receita > 0 });
+  }
+  return saida;
+}
+
+/** Em quais situações (filtros) a linha entra. "todos" sempre. */
+export function situacoesDa(l: LinhaRanking, c?: ComparacaoAnterior): Set<Situacao> {
+  const s = new Set<Situacao>(["todos"]);
+  s.add(l.receita > 0 ? "vendendo" : "parados");
+  if (l.receita > 0 && l.lucro < 0) s.add("prejuizo");
+  if (l.margem !== null && l.margem >= 0 && l.margem < MARGEM_BAIXA) s.add("margem_baixa");
+  if (l.taxaProblema !== null && l.taxaProblema >= CANCELAMENTO_ALTO) s.add("cancelamentos");
+  if (l.custoIncompleto) s.add("sem_custo");
+  if (c?.variacao != null && c.variacao <= -VARIACAO_FORTE) s.add("em_queda");
+  // Parou de vender (tinha venda antes e agora não) também é queda.
+  if (c && c.receitaAnterior != null && c.receitaAnterior > 0 && l.receita <= 0) s.add("em_queda");
+  if ((c?.variacao != null && c.variacao >= VARIACAO_FORTE) || c?.novo) s.add("em_alta");
+  return s;
+}
+
+export interface FiltrosRanking {
+  busca: string;
+  situacao: Situacao;
+  classe: "" | "A" | "B" | "C";
+}
+
+const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+export function filtrarRanking(linhas: readonly LinhaRanking[], f: FiltrosRanking, comparacao?: Map<string, ComparacaoAnterior>): LinhaRanking[] {
+  const termos = semAcento(f.busca).split(/\s+/).filter(Boolean);
+  return linhas.filter((l) => {
+    if (f.classe && l.classe !== f.classe) return false;
+    if (f.situacao !== "todos" && !situacoesDa(l, comparacao?.get(l.chave)).has(f.situacao)) return false;
+    if (termos.length) {
+      const alvo = semAcento(l.nome);
+      if (!termos.every((t) => alvo.includes(t))) return false;
+    }
+    return true;
+  });
+}
+
+/** Quantos anúncios caem em cada situação (para os chips), já com a busca e a classe aplicadas. */
+export function contarSituacoes(linhas: readonly LinhaRanking[], comparacao?: Map<string, ComparacaoAnterior>): Record<Situacao, number> {
+  const c: Record<Situacao, number> = { todos: 0, vendendo: 0, parados: 0, prejuizo: 0, margem_baixa: 0, cancelamentos: 0, em_queda: 0, em_alta: 0, sem_custo: 0 };
+  for (const l of linhas) for (const s of situacoesDa(l, comparacao?.get(l.chave))) c[s]++;
+  return c;
+}
+
+export type ColunaOrdem = "posicao" | "nome" | "pedidos" | "unidades" | "receita" | "lucro" | "margem" | "taxaProblema" | "variacao";
+
+/** Ordena pela coluna clicada. Vazios (sem margem, sem comparação) vão sempre para o fim. */
+export function ordenarRanking(linhas: readonly LinhaRanking[], coluna: ColunaOrdem, direcao: "asc" | "desc", comparacao?: Map<string, ComparacaoAnterior>): LinhaRanking[] {
+  const valor = (l: LinhaRanking): number | string | null => {
+    switch (coluna) {
+      case "nome":
+        return semAcento(l.nome);
+      case "posicao":
+        return l.posicao || null;
+      case "margem":
+        return l.margem;
+      case "taxaProblema":
+        return l.taxaProblema;
+      case "variacao":
+        return comparacao?.get(l.chave)?.variacao ?? null;
+      default:
+        return l[coluna];
+    }
+  };
+  const sinal = direcao === "asc" ? 1 : -1;
+  return [...linhas].sort((a, b) => {
+    const va = valor(a);
+    const vb = valor(b);
+    if (va === null && vb === null) return a.nome.localeCompare(b.nome, "pt-BR");
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    const d = typeof va === "string" ? va.localeCompare(vb as string, "pt-BR") : va - (vb as number);
+    return d * sinal || b.receita - a.receita || a.nome.localeCompare(b.nome, "pt-BR");
+  });
 }
