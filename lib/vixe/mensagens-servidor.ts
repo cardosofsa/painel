@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buscarEmLotes } from "@/lib/lotes";
 import { hojeIsoBrasil } from "@/lib/format";
 import { ROTULO_ETAPA, type Etapa } from "@/lib/pedidos-central";
 import { crediarioDoPerfil } from "@/lib/crediario-servidor";
@@ -60,7 +61,8 @@ export async function carregarAvisosWhatsapp(supabase: SupabaseClient, agora = n
     // `*`: Pix e multa/juros (0065) entram na cobrança quando existem.
     supabase.from("perfil_negocio").select("*").maybeSingle(),
     supabase.from("pedidos_vitrine").select("id, numero, cliente_nome, cliente_whatsapp, total, status, criado_em, venda_id").gte("criado_em", desde.toISOString()).limit(500),
-    supabase.from("vendas").select("*, clientes(nome, whatsapp)").gte("data_venda", desde.toISOString()).order("data_venda", { ascending: false }).limit(1000),
+    // Em lotes: o faturamento e o lucro do resumo do dia somam esta lista.
+    buscarEmLotes((de, ate) => supabase.from("vendas").select("*, clientes(nome, whatsapp)", { count: "exact" }).gte("data_venda", desde.toISOString()).order("data_venda", { ascending: false }).order("id").range(de, ate), { maximo: 10000 }),
     supabase
       .from("venda_parcelas")
       .select("id, numero, total_parcelas, valor, data_vencimento, vendas!inner(numero, status, clientes(nome, whatsapp))")

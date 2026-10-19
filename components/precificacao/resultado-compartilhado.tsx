@@ -4,10 +4,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { formatBRL } from "@/lib/format";
+import { classeValor, formatBRL, numeroOuNulo } from "@/lib/format";
+import { resultadoNoPreco } from "@/lib/raio-x";
 import { useCapturaImagem } from "@/components/ui/PreviaImagem";
 import { CartaoPrecificacao, type EmpresaCartao } from "@/components/precificacao/CartaoPrecificacao";
-import { resultadoParaPreco, type ComponenteKit, type TaxasPlataforma } from "@/lib/pricing";
+import { encontrarFaixa, type ComponenteKit, type FaixaComissao, type TaxasPlataforma } from "@/lib/pricing";
 
 /** Lucro no menor e no maior preço que o vendedor aceitaria praticar — opcional, só aparece
  * no texto/imagem no formato "completo" (ver montarTextoResumo). */
@@ -232,7 +233,7 @@ export function DetalhamentoPrecificacao({
           {componentes && componentes.length > 0 && (
             <div className="pl-3 space-y-0.5">
               {componentes.map((c, i) => (
-                <div key={i} className="flex justify-between text-[11px] text-text-tertiary">
+                <div key={i} className="flex justify-between text-xs text-text-tertiary">
                   <span>
                     {c.nome}
                     {c.quantidade > 1 ? ` × ${c.quantidade}` : ""}
@@ -245,7 +246,7 @@ export function DetalhamentoPrecificacao({
           <div className="flex justify-between text-text-secondary">
             <span>
               Taxa variável
-              <span className="text-[10px] text-text-tertiary ml-1">({(taxaVariavelPct * 100).toFixed(1)}%)</span>
+              <span className="text-xs text-text-tertiary ml-1">({(taxaVariavelPct * 100).toFixed(1)}%)</span>
             </span>
             <span className="font-mono text-text-primary">{formatBRL(taxaVariavelValor)}</span>
           </div>
@@ -259,7 +260,7 @@ export function DetalhamentoPrecificacao({
             <div className="flex justify-between text-text-secondary">
               <span>
                 Taxa adicional
-                <span className="text-[10px] text-text-tertiary ml-1">({(taxaAdicionalPct * 100).toFixed(1)}%)</span>
+                <span className="text-xs text-text-tertiary ml-1">({(taxaAdicionalPct * 100).toFixed(1)}%)</span>
               </span>
               <span className="font-mono text-text-primary">{formatBRL(taxaAdicionalValor)}</span>
             </div>
@@ -273,7 +274,7 @@ export function DetalhamentoPrecificacao({
           <div className="flex justify-between text-text-secondary">
             <span>
               Imposto
-              <span className="text-[10px] text-text-tertiary ml-1">({(impostoPct * 100).toFixed(1)}%)</span>
+              <span className="text-xs text-text-tertiary ml-1">({(impostoPct * 100).toFixed(1)}%)</span>
             </span>
             <span className="font-mono text-text-primary">{formatBRL(impostoValor)}</span>
           </div>
@@ -283,9 +284,16 @@ export function DetalhamentoPrecificacao({
   );
 }
 
-export function SimuladorPreco({ custoTotal, taxas }: { custoTotal: number; taxas: TaxasPlataforma }) {
+/**
+ * "Simular preço diferente". Com `faixas` (loja de comissão por faixa), o preço digitado é
+ * calculado com a comissão DA FAIXA DELE: antes usava a comissão do preço recomendado, e
+ * simular R$ 85 numa Shopee que estava em R$ 79,99 mostrava lucro de 20% + R$ 4 quando a
+ * plataforma cobraria 14% + R$ 16.
+ */
+export function SimuladorPreco({ custoTotal, taxas, faixas = [] }: { custoTotal: number; taxas: TaxasPlataforma; faixas?: FaixaComissao[] }) {
   const [ativo, setAtivo] = useState(false);
-  const [precoSimulado, setPrecoSimulado] = useState<number | "">("");
+  const [texto, setTexto] = useState("");
+  const precoSimulado = numeroOuNulo(texto);
 
   if (!ativo) {
     return (
@@ -295,7 +303,8 @@ export function SimuladorPreco({ custoTotal, taxas }: { custoTotal: number; taxa
     );
   }
 
-  const resultado = precoSimulado === "" || custoTotal <= 0 ? null : resultadoParaPreco(Number(precoSimulado), custoTotal, taxas);
+  const resultado = precoSimulado === null || precoSimulado <= 0 || custoTotal <= 0 ? null : resultadoNoPreco({ custo: custoTotal, taxas, faixas }, precoSimulado);
+  const faixa = resultado && faixas.length ? encontrarFaixa(faixas, precoSimulado!) : null;
 
   return (
     <div className="border border-border rounded-md p-3 space-y-2">
@@ -304,7 +313,7 @@ export function SimuladorPreco({ custoTotal, taxas }: { custoTotal: number; taxa
         <button
           onClick={() => {
             setAtivo(false);
-            setPrecoSimulado("");
+            setTexto("");
           }}
           className="text-xs text-text-tertiary hover:text-negative"
         >
@@ -312,21 +321,29 @@ export function SimuladorPreco({ custoTotal, taxas }: { custoTotal: number; taxa
         </button>
       </div>
       <input
-        type="number"
-        step="0.01"
+        inputMode="decimal"
+        aria-label="Preço hipotético (R$)"
         placeholder="Preço hipotético (R$)"
-        value={precoSimulado}
-        onChange={(e) => setPrecoSimulado(e.target.value === "" ? "" : Number(e.target.value))}
-        className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary outline-none focus:border-accent text-sm"
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        className="w-full h-9 px-3 bg-surface-1 border border-border rounded-md tabular text-text-primary focus:border-accent text-sm"
       />
       {resultado && (
         <div className="text-sm space-y-1 pt-1">
           <div className="flex justify-between">
             <span className="text-text-secondary">Lucro líquido simulado</span>
-            <span className={`font-mono ${resultado.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
+            <span className={`font-mono ${classeValor(resultado.lucroLiquido)}`}>
               {formatBRL(resultado.lucroLiquido)} ({(resultado.margemEfetivaPct * 100).toFixed(1)}%)
             </span>
           </div>
+          {faixa && (
+            <div className="flex justify-between text-text-tertiary text-xs">
+              <span>Comissão nesse preço</span>
+              <span className="font-mono">
+                {faixa.comissaoPct}% + {formatBRL(faixa.tarifaFixa)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between text-text-tertiary text-xs">
             <span>Markup sobre o custo simulado</span>
             <span className="font-mono">{(resultado.markupSobreCustoPct * 100).toFixed(1)}%</span>

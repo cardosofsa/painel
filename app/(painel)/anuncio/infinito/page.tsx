@@ -6,6 +6,8 @@ import { plataformaDoCanal } from "@/lib/marca/plataformas";
 import { rotuloProduto } from "@/lib/produtos";
 import type { FichaSalva, LojaParaMarca, MemoriaMarca, PerfilMarca } from "@/lib/marca/tipos";
 import { saldoImagensIA } from "../../produtos/estudio-actions";
+import { lerRascunhoAberto } from "@/lib/estudio/servidor";
+import { saldoIAParaTela } from "@/lib/ia/gerar";
 import { InfinitoClient, type ConfigAba } from "./InfinitoClient";
 import type { Metadata } from "next";
 
@@ -13,10 +15,12 @@ export const metadata: Metadata = { title: "Anúncio Infinito" };
 
 const ABAS_CONFIG: ConfigAba[] = ["perfil", "ficha", "memoria", "conferir", "aprender"];
 
-export default async function InfinitoPage({ searchParams }: { searchParams: Promise<{ produto?: string; config?: string }> }) {
-  const { produto, config } = await searchParams;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function InfinitoPage({ searchParams }: { searchParams: Promise<{ produto?: string; config?: string; rascunho?: string; loja?: string }> }) {
+  const { produto, config, rascunho, loja } = await searchParams;
   const supabase = await createClient();
-  const [produtosRes, perfisRes, memoriaRes, fichasRes, lojasRes, iaDisponivel, saldo] = await Promise.all([
+  const [produtosRes, perfisRes, memoriaRes, fichasRes, lojasRes, iaDisponivel, saldo, rascunhoAberto, saldoTexto] = await Promise.all([
     soMercadorias(
       (f) => {
         const q = supabase.from("produtos").select("id, sku, nome, variante_nome");
@@ -24,12 +28,16 @@ export default async function InfinitoPage({ searchParams }: { searchParams: Pro
       },
       { incluirFilhas: true },
     ),
-    supabase.from("perfis_marca").select("id, nome, plataforma, loja_id, nicho, link_loja, logo_path, referencias, termos_proibidos").order("nome"),
+    supabase.from("perfis_marca").select("*").order("nome"),
     supabase.from("marca_memoria").select("id, perfil_id, tipo, texto, origem, ativo").order("criado_em", { ascending: false }).limit(300),
     supabase.from("marca_fichas").select("id, perfil_id, tipo_imagem, versao, dados, ativa, origem, nota, criado_em").order("criado_em", { ascending: false }).limit(400),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),
     iaDisponivelParaConta(supabase),
     saldoImagensIA(),
+    // "Continuar" e recarregar abrem o rascunho pelo id, no servidor: antes a tela voltava
+    // para a etapa Loja e "Abrir" criava um rascunho novo e vazio se o perfil não batesse.
+    rascunho && UUID.test(rascunho) ? lerRascunhoAberto(supabase, rascunho).catch(() => null) : Promise.resolve(null),
+    saldoIAParaTela(supabase),
   ]);
 
   const produtos = (produtosRes.data ?? []).map((p) => ({ id: p.id as string, rotulo: rotuloProduto(p), sku: (p.sku as string | null) ?? null }));
@@ -41,6 +49,10 @@ export default async function InfinitoPage({ searchParams }: { searchParams: Pro
     <InfinitoClient
       produtos={produtos}
       produtoInicial={produto && produtos.some((p) => p.id === produto) ? produto : null}
+      rascunhoInicial={rascunhoAberto}
+      // Vindo da Precificação (`?produto=&loja=`): o perfil daquela loja, e o rascunho abre sozinho.
+      perfilInicial={loja ? (((perfisRes.data ?? []) as PerfilMarca[]).find((p) => p.loja_id === loja)?.id ?? null) : null}
+      saldoTexto={saldoTexto}
       configInicial={ABAS_CONFIG.find((a) => a === config) ?? null}
       perfis={(perfisRes.data ?? []) as PerfilMarca[]}
       memorias={(memoriaRes.data ?? []) as MemoriaMarca[]}

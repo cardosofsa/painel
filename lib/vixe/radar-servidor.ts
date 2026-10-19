@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buscarEmLotes } from "@/lib/lotes";
 import type { LojaOpcao } from "../precificacao-tipos";
 import { ratear, type LinhaVendida } from "./radar";
 import { hojeIsoBrasil } from "../format";
@@ -21,19 +22,30 @@ export async function carregarRadar(supabase: SupabaseClient, dias = 30): Promis
   const inicioDia = hojeIsoBrasil(new Date(inicio));
   const hojeDia = hojeIsoBrasil();
   const [vendasRes, mktRes, produtosRes, canaisRes, lojasRes, faixasRes, perfilRes, anunciosRes] = await Promise.all([
-    supabase
-      .from("vendas")
-      .select("*, venda_itens(produto_id, quantidade, preco_unitario, custo_unitario)")
-      .neq("status", "cancelada")
-      .gte("data_venda", inicio)
-      .limit(5000),
-    supabase
-      .from("pedidos_marketplace")
-      .select("*, pedidos_marketplace_itens(produto_id, quantidade, preco_unitario, custo_unitario)")
-      .in("status", ["a_enviar", "enviado", "concluido"])
-      .gte("criado_em_plataforma", inicio)
-      .limit(5000),
-    supabase.from("produtos").select("id, nome, sku, custo"),
+    // Em lotes: receita e lucro por produto somam estas listas, e o PostgREST cortava em 1000.
+    buscarEmLotes(
+      (de, ate) =>
+        supabase
+          .from("vendas")
+          .select("*, venda_itens(produto_id, quantidade, preco_unitario, custo_unitario)", { count: "exact" })
+          .neq("status", "cancelada")
+          .gte("data_venda", inicio)
+          .order("id")
+          .range(de, ate),
+      { maximo: 20000 },
+    ),
+    buscarEmLotes(
+      (de, ate) =>
+        supabase
+          .from("pedidos_marketplace")
+          .select("*, pedidos_marketplace_itens(produto_id, quantidade, preco_unitario, custo_unitario)", { count: "exact" })
+          .in("status", ["a_enviar", "enviado", "concluido"])
+          .gte("criado_em_plataforma", inicio)
+          .order("id")
+          .range(de, ate),
+      { maximo: 20000 },
+    ),
+    buscarEmLotes((de, ate) => supabase.from("produtos").select("id, nome, sku, custo", { count: "exact" }).order("id").range(de, ate)),
     supabase.from("canais").select("id, nome, tipo_taxa, comissao_pct_padrao, taxa_fixa_padrao, taxa_extra_valor_padrao, taxa_extra_tipo_padrao"),
     supabase.from("lojas_canal").select("id, canal_id, nome, comissao_pct, taxa_fixa, taxa_extra_valor, taxa_extra_tipo"),
     supabase.from("faixas_comissao_canal").select("canal_id, preco_min, preco_max, comissao_pct, tarifa_fixa").order("ordem"),

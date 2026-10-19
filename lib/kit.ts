@@ -6,7 +6,7 @@
  * A tela compara com vender os mesmos itens separados, no preço de cada um.
  */
 
-import { resolverComFaixas, resultadoParaPrecoComFaixas, type FaixaComissao, type ResultadoPrecificacao, type TaxasPlataforma } from "./pricing";
+import { fecharPreco, resolverComFaixas, resultadoParaPrecoComFaixas, type FaixaComissao, type ResultadoPrecificacao, type TaxasPlataforma } from "./pricing";
 import type { LojaOpcao } from "./precificacao-tipos";
 
 /**
@@ -100,7 +100,7 @@ export function calcularKit(e: EntradaKit): ResultadoKit {
   const { base, faixas } = taxasDoKit(e);
 
   let resultado: ResultadoPrecificacao;
-  if (e.modo === "margem") resultado = resolverComFaixas(custoKit, "margem", e.parametro / 100, base, faixas).resultado;
+  if (e.modo === "margem") resultado = fecharPreco(resolverComFaixas(custoKit, "margem", e.parametro / 100, base, faixas).resultado, "margem", { taxasBase: base, faixas });
   else {
     const preco = e.modo === "desconto" ? precoAvulso * (1 - Math.min(100, Math.max(0, e.parametro)) / 100) : e.parametro;
     resultado = resultadoParaPrecoComFaixas(r2(preco), custoKit, base, faixas);

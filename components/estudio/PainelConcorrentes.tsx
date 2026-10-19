@@ -1,16 +1,18 @@
 "use client";
 
-import { ExternalLink, Globe, ShieldAlert } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ExternalLink, Globe, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { textoConcorrente } from "@/lib/copiar";
-import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import type { Concorrente } from "@/lib/ia/prompts-concorrentes";
 
 /**
  * Concorrentes encontrados na web. É uma LISTA PARA CONFERIR: nada é copiado para o anúncio.
  * "Confirmado" = o endereço bate com uma página que a busca de fato consultou; "citado" = o
  * modelo o apontou, abra e confira antes de confiar.
+ *
+ * Fica numa gaveta dentro do cartão do Título (é para ele que serve), fechada por padrão.
  */
 export function PainelConcorrentes({
   concorrentes,
@@ -25,17 +27,25 @@ export function PainelConcorrentes({
   ocupado: boolean;
   onPesquisar: () => void;
 }) {
+  const [aberto, setAberto] = useState(false);
+  // Pesquisa pedida (pelo botão ou pelo assistente): abre a gaveta para o resultado aparecer.
+  if (ocupado && !aberto) setAberto(true);
   return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>2. Concorrentes na web</CardTitle>
-          <CardSubtitle>A IA pesquisa anúncios parecidos para você ver o que eles destacam. Serve de referência, nunca para copiar.</CardSubtitle>
-        </div>
-      </CardHeader>
+    <section className="mt-4 border-t border-border pt-3">
+      <button type="button" className="flex w-full items-center gap-2 rounded-md py-1 text-left" aria-expanded={aberto} aria-controls="gaveta-concorrentes" onClick={() => setAberto((v) => !v)}>
+        <Globe size={15} className="shrink-0 text-accent" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-text-primary">
+            Concorrentes na web{concorrentes.length > 0 && <span className="ml-1.5 font-normal text-text-secondary">({concorrentes.length})</span>}
+          </span>
+          <span className="block text-xs text-text-secondary">O que anúncios parecidos destacam. Referência para o título, nunca para copiar.</span>
+        </span>
+        <ChevronDown size={16} className={`shrink-0 text-text-tertiary transition-transform duration-[--duracao-media] ${aberto ? "rotate-180" : ""}`} aria-hidden />
+      </button>
 
+      <div id="gaveta-concorrentes" hidden={!aberto} className="mt-3">
       <Button variant="secondary" onClick={onPesquisar} loading={ocupado} disabled={ocupado || !iaDisponivel}>
-        <Globe size={14} /> {concorrentes.length ? "Pesquisar de novo" : "Pesquisar concorrentes"}
+        <Globe size={14} aria-hidden /> {concorrentes.length ? "Pesquisar de novo" : "Pesquisar concorrentes"}
       </Button>
       <p className="text-xs text-text-tertiary mt-2 flex gap-1.5">
         <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
@@ -67,6 +77,7 @@ export function PainelConcorrentes({
           ))}
         </ul>
       )}
-    </Card>
+      </div>
+    </section>
   );
 }

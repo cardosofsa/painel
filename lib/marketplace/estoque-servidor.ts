@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { agruparPorItem, casarAnuncios, diferencasEstoque, semProdutosPai, type AnuncioSalvo, type DiferencaEstoque } from "./estoque-shopee";
 import type { ConexaoShopee } from "./tokens";
 import { apiDaConexao } from "./conexao-api";
+import { precosQueMudaram } from "./precos-historico";
+import { gravarHistoricoDeTitulo } from "./titulos-servidor";
 
 /**
  * Estoque do Sertão → anúncios da Shopee, por loja conectada. Código de SERVIDOR; funciona
@@ -26,6 +28,9 @@ export async function atualizarAnuncios(supabase: SupabaseClient, conexao: Conex
     idsPai,
   );
   const agoraIso = new Date().toISOString();
+  // Preço de antes de cada anúncio, para o histórico (0102) gravar só o que mudou.
+  const { data: anteriores } = await supabase.from("marketplace_anuncios").select("id, preco_atual").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id);
+  const precoAntes = new Map(((anteriores ?? []) as { id: string; preco_atual: number | null }[]).map((a) => [a.id, a.preco_atual != null ? Number(a.preco_atual) : null]));
   const precos = new Map(anuncios.map((a) => [`${a.itemId}:${a.modelId}`, a.preco ?? null]));
   const base = casarAnuncios(anuncios, produtos, vinculosRes.data ?? []).map((l) => ({ ...l, user_id: conexao.user_id, loja_id: conexao.loja_id, atualizado_em: agoraIso }));
   // Colunas que dependem de migração (mapeamento 0093, preço 0071): sem elas a coluna não
@@ -56,8 +61,25 @@ export async function atualizarAnuncios(supabase: SupabaseClient, conexao: Conex
     }
   }
   const linhas = base;
+  await gravarHistoricoDePreco(supabase, conexao, precoAntes);
+  await gravarHistoricoDeTitulo(supabase, conexao.user_id, conexao.loja_id);
   await supabase.from("marketplace_conexoes").update({ anuncios_atualizados_em: new Date().toISOString() }).eq("id", conexao.id);
   return linhas.length;
+}
+
+/**
+ * Grava no histórico (0102) o preço dos anúncios que mudaram nesta leitura. Sem a migração
+ * (ou sem a coluna de preço) não faz nada: o histórico é um extra, não pode parar a
+ * sincronização. `user_id` explícito: o cron usa a service key.
+ */
+async function gravarHistoricoDePreco(supabase: SupabaseClient, conexao: ConexaoShopee, precoAntes: Map<string, number | null>) {
+  const { data, error } = await supabase.from("marketplace_anuncios").select("id, preco_atual").eq("user_id", conexao.user_id).eq("loja_id", conexao.loja_id);
+  if (error) return;
+  const mudaram = precosQueMudaram(precoAntes, ((data ?? []) as { id: string; preco_atual: number | null }[]).map((a) => ({ id: a.id, preco: a.preco_atual != null ? Number(a.preco_atual) : null })));
+  for (let i = 0; i < mudaram.length; i += 500) {
+    const { error: erro } = await supabase.from("marketplace_precos_historico").insert(mudaram.slice(i, i + 500).map((m) => ({ ...m, user_id: conexao.user_id })));
+    if (erro) return;
+  }
 }
 
 /**

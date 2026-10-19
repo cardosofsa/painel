@@ -32,6 +32,9 @@ export interface PrecificacaoHist {
   anuncio?: { tipo: "percentual" | "valor"; valor: number; margem_alvo_pct: number | null } | null;
   estrategia?: DiagnosticoPreco | null;
   imagem_url?: string | null;
+  /** 0100; ausentes antes da migração e em linhas antigas. */
+  modo_calculo?: "margem" | "lucro" | "preco" | "markup" | null;
+  parametro?: number | null;
 }
 
 export interface LojaOpcao {
@@ -80,6 +83,9 @@ export interface ProdutoOpcao {
   nome: string;
   custo: number;
   preco_venda: number;
+  /** "Valor do produto" e insumos do cadastro (0029): `custo = custo_base + insumos`. */
+  custo_base?: number | null;
+  insumos?: ComponenteKit[] | null;
   /** Palavras-chave guardadas no produto (0037), reaproveitadas no título. */
   palavras_chave?: string[] | null;
   /** Foto do produto, usada na imagem compartilhada da precificação. */

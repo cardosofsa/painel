@@ -3,7 +3,7 @@
  * conferência, leitura das respostas, erros) está em `shopee-criar-puro.ts`.
  */
 
-import { getLoja, postLoja, assinar, type CredenciaisShopee } from "./shopee-api";
+import { getLoja, postLoja, assinar, fetchShopee, TEMPO_SHOPEE_ARQUIVO_MS, type CredenciaisShopee } from "./shopee-api";
 import {
   lerAtributos,
   lerCanais,
@@ -39,7 +39,7 @@ export async function enviarImagem(c: CredenciaisShopee, token: string, shopId: 
   const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
   const form = new FormData();
   form.append("image", new Blob([bytes as BlobPart], { type: mime }), nome);
-  const r = await fetch(`${c.host}${caminho}?${q}`, { method: "POST", body: form, cache: "no-store" });
+  const r = await fetchShopee(`${c.host}${caminho}?${q}`, { method: "POST", body: form, cache: "no-store" }, TEMPO_SHOPEE_ARQUIVO_MS);
   const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (!r.ok || j.error) throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
   const id = lerIdImagem((j.response ?? {}) as Record<string, unknown>);

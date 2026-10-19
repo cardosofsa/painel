@@ -1,9 +1,11 @@
 import {
+  fecharPreco,
   resolverComFaixas,
   resolverPorLucro,
   resolverPorMargem,
   resolverPorMarkup,
   resultadoParaPreco,
+  encontrarFaixa,
   type FaixaComissao,
   type ModoCalculo,
   type ResultadoPrecificacao,
@@ -53,6 +55,8 @@ export interface ResultadoVariacao {
    */
   taxas: TaxasPlataforma;
   faixa: FaixaComissao | null;
+  /** A tabela de faixas usada (vazia sem faixas), para simular outro preço com a mesma regra. */
+  faixas: FaixaComissao[];
 }
 
 /** Taxas da loja de comissão fixa (ou de faixas sem nenhuma faixa cadastrada), ou as digitadas à mão. */
@@ -85,17 +89,21 @@ export function calcularVariacao(cfg: ConfigVariacoes, v: VariacaoLinha): Result
       taxaExtraValor: cfg.loja.taxaExtraValor ?? undefined,
       taxaExtraTipo: cfg.loja.taxaExtraTipo,
     };
-    const { resultado, faixa } = resolverComFaixas(custo, cfg.modo, parametro, base, cfg.loja.faixas);
+    const semFechar = resolverComFaixas(custo, cfg.modo, parametro, base, cfg.loja.faixas).resultado;
+    const resultado = fecharPreco(semFechar, cfg.modo, { taxasBase: base, faixas: cfg.loja.faixas });
+    // A faixa do preço FECHADO: o centavo a mais nunca atravessa o piso, mas o rótulo lê dele.
+    const faixa = encontrarFaixa(cfg.loja.faixas, resultado.viavel ? resultado.precoVenda : semFechar.precoVenda);
     return {
       custo,
       resultado,
       faixa,
+      faixas: cfg.loja.faixas,
       taxas: { ...base, taxaVariavelPct: faixa.comissaoPct / 100, taxaFixa: faixa.tarifaFixa },
     };
   }
 
   const taxas = taxasSemFaixa(cfg);
-  const resultado =
+  const semFechar =
     cfg.modo === "margem"
       ? resolverPorMargem(custo, parametro, taxas)
       : cfg.modo === "markup"
@@ -103,5 +111,5 @@ export function calcularVariacao(cfg: ConfigVariacoes, v: VariacaoLinha): Result
         : cfg.modo === "lucro"
           ? resolverPorLucro(custo, parametro, taxas)
           : resultadoParaPreco(parametro, custo, taxas);
-  return { custo, resultado, faixa: null, taxas };
+  return { custo, resultado: fecharPreco(semFechar, cfg.modo, { taxas }), faixa: null, faixas: [], taxas };
 }

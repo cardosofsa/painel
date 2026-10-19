@@ -19,6 +19,9 @@ import {
   pctPorModo,
   zonaMortaDeFaixa,
   encontrarFaixa,
+  composicaoDoProduto,
+  fecharPreco,
+  margemAtingida,
   precoEmCentavos,
   ID_CUSTO_PRODUTO,
   type FaixaComissao,
@@ -36,6 +39,8 @@ import {
   criarProdutosDeAnuncio,
 } from "@/app/(painel)/precificacao/actions";
 import { executarComToast } from "@/lib/acao-cliente";
+import { numeroDoCampo } from "@/lib/campo-numero";
+import { lojaUsadaNaPrecificacao, modoAoReabrir, precoIdeal as precoIdealRaioX, resultadoNoPreco as resultadoNoPrecoRaioX } from "@/lib/raio-x";
 import type {
   PrecificacaoHist,
   VisaoPrecificacao,
@@ -82,14 +87,24 @@ export function usePrecificacao({
   concorrentesPorProduto,
   empresa = null,
   visaoInicial = "individual",
-}: PrecificacaoProps) {
+  rascunhoAtual,
+  inicial,
+}: PrecificacaoProps & {
+  /** `?produto=&loja=` (vindo de "Precificar agora" no Anúncio ou do bloco Preços por loja). */
+  inicial?: { produtoId: string | null; lojaId: string | null };
+  /** Rascunho em uso (0100): é apagado quando a precificação é salva. Funções porque o
+   * hook do rascunho roda depois deste e lê o id no momento de salvar. */
+  rascunhoAtual?: { id: () => string | null; aoSalvar: () => void };
+}) {
   const [pending, startTransition] = useTransition();
-  const { confirm, ConfirmDialog } = useConfirm();
+  const { confirm, escolher, ConfirmDialog } = useConfirm();
   const [visao, setVisao] = useState<VisaoPrecificacao>(visaoInicial);
   const [subAbaHistorico, setSubAbaHistorico] = useState<"precificacoes" | "produtos">("precificacoes");
   const [anuncioExpandidoHistorico, setAnuncioExpandidoHistorico] = useState<string | null>(null);
-  const [produtoId, setProdutoId] = useState<string | null>(null);
-  const [nomeProduto, setNomeProduto] = useState("");
+  const produtoInicial = inicial?.produtoId ? (produtos.find((p) => p.id === inicial.produtoId) ?? null) : null;
+  const lojaInicial = inicial?.lojaId && lojas.some((l) => l.id === inicial.lojaId) ? inicial.lojaId : null;
+  const [produtoId, setProdutoId] = useState<string | null>(produtoInicial?.id ?? null);
+  const [nomeProduto, setNomeProduto] = useState(produtoInicial?.nome ?? "");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [descricaoAnuncio, setDescricaoAnuncio] = useState("");
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
@@ -104,8 +119,8 @@ export function usePrecificacao({
   const [precoMinimo, setPrecoMinimo] = useState<number | "">("");
   const [precoMaximo, setPrecoMaximo] = useState<number | "">("");
   const [impostoPct, setImpostoPct] = useState(aliquotaDasPadrao);
-  const [modoTaxas, setModoTaxas] = useState<"manual" | "loja">("manual");
-  const [lojaId, setLojaId] = useState<string | null>(null);
+  const [modoTaxas, setModoTaxas] = useState<"manual" | "loja">(lojaInicial ? "loja" : "manual");
+  const [lojaId, setLojaId] = useState<string | null>(lojaInicial);
   const [taxaFixa, setTaxaFixa] = useState(4);
   const [taxaVariavelPct, setTaxaVariavelPct] = useState(20);
   const [taxaAdicionalPct, setTaxaAdicionalPct] = useState(0);
@@ -114,13 +129,14 @@ export function usePrecificacao({
   const [filtroHistoricoDataFim, setFiltroHistoricoDataFim] = useState("");
   const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
-  const [custoProduto, setCustoProduto] = useState(0);
-  const [componentes, setComponentes] = useState<ComponenteKit[]>([]);
+  const [custoProduto, setCustoProduto] = useState(() => (produtoInicial ? composicaoDoProduto(produtoInicial).custoBase : 0));
+  const [componentes, setComponentes] = useState<ComponenteKit[]>(() => (produtoInicial ? composicaoDoProduto(produtoInicial).insumos : []));
 
   const [concorrentes, setConcorrentes] = useState<Concorrente[]>([]);
   const [novoConcorrenteNome, setNovoConcorrenteNome] = useState("");
   const [novoConcorrentePreco, setNovoConcorrentePreco] = useState<number | "">("");
   const [novoConcorrenteLink, setNovoConcorrenteLink] = useState("");
+  const [adicionandoConcorrente, setAdicionandoConcorrente] = useState(false);
 
   const custoInsumos = componentes.reduce((acc, c) => acc + c.quantidade * c.custoUnitario, 0);
   const custoTotal = custoProduto + custoInsumos;
@@ -163,28 +179,21 @@ export function usePrecificacao({
   const { resultado, faixaShopee } = useMemo(() => {
     const parametro =
       modo === "margem" ? margemPct / 100 : modo === "markup" ? markupPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo;
-    // Margem, lucro e markup: o preço vai PARA CIMA ao centavo, para não gravar abaixo da
-    // meta. O que aparece na tela e o que vai para o banco é sempre o preço em centavos,
-    // com lucro e taxas recalculados nele.
-    const paraCima = modo !== "preco";
-
+    // O que aparece na tela e o que vai para o banco é sempre o preço fechado no centavo
+    // (`fecharPreco`), com lucro e taxas recalculados nele.
     if (usaFaixas && lojaSelecionada) {
       const faixas = lojaSelecionada.faixas;
       const { resultado: bruto, faixa } = resolverComFaixas(custoTotal, modo, parametro, taxasBaseFaixas, faixas);
       if (!bruto.viavel) return { resultado: bruto, faixaShopee: faixa as FaixaComissao | null };
-      const preco = precoEmCentavos(bruto.precoVenda, paraCima, faixas);
-      return {
-        resultado: resultadoParaPrecoComFaixas(preco, custoTotal, taxasBaseFaixas, faixas),
-        faixaShopee: encontrarFaixa(faixas, preco) as FaixaComissao | null,
-      };
+      const r = fecharPreco(bruto, modo, { taxasBase: taxasBaseFaixas, faixas });
+      return { resultado: r, faixaShopee: encontrarFaixa(faixas, r.precoVenda) as FaixaComissao | null };
     }
     let r;
     if (modo === "margem") r = resolverPorMargem(custoTotal, margemPct / 100, taxas);
     else if (modo === "markup") r = resolverPorMarkup(custoTotal, markupPct / 100, taxas);
     else if (modo === "lucro") r = resolverPorLucro(custoTotal, lucroDesejado, taxas);
     else r = resultadoParaPreco(precoFixo, custoTotal, taxas);
-    if (r.viavel) r = resultadoParaPreco(precoEmCentavos(r.precoVenda, paraCima), custoTotal, taxas);
-    return { resultado: r, faixaShopee: null as FaixaComissao | null };
+    return { resultado: fecharPreco(r, modo, { taxas }), faixaShopee: null as FaixaComissao | null };
   }, [usaFaixas, lojaSelecionada, custoTotal, modo, margemPct, markupPct, lucroDesejado, precoFixo, taxas, taxasBaseFaixas]);
 
   /** Lucro no menor e no maior preço que o usuário aceitaria vender — cada ponta pode cair
@@ -235,9 +244,9 @@ export function usePrecificacao({
   const taxaExtraValorEfetivo = modoTaxas === "loja" ? (lojaSelecionada?.taxaExtraValor ?? null) : null;
   const taxaExtraTipoEfetivo = modoTaxas === "loja" ? (lojaSelecionada?.taxaExtraTipo ?? null) : null;
 
-  function atualizarComponente(id: string, campo: keyof ComponenteKit, valor: string) {
+  function atualizarComponente(id: string, campo: keyof ComponenteKit, valor: string | number) {
     setComponentes((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, [campo]: campo === "nome" ? valor : Number(valor) || 0 } : c)),
+      prev.map((c) => (c.id === id ? { ...c, [campo]: campo === "nome" ? String(valor) : numeroDoCampo(valor) } : c)),
     );
   }
 
@@ -331,9 +340,13 @@ export function usePrecificacao({
       link: novoConcorrenteLink.trim() || null,
     };
     if (produtoId) {
+      // Clique duplo gravava o mesmo concorrente duas vezes: o botão só destrava na resposta.
+      if (adicionandoConcorrente) return;
+      setAdicionandoConcorrente(true);
       // Só limpa os campos depois que o servidor confirmou: antes eles eram esvaziados
       // primeiro e uma falha levava embora nome, preço e link digitados.
       const r = await executarComToast(criarConcorrente(produtoId, dados), { erro: "Erro ao salvar concorrente" });
+      setAdicionandoConcorrente(false);
       if (r.ok) {
         setConcorrentes((prev) => [...prev, r.dado]);
         limparCamposConcorrente();
@@ -428,34 +441,61 @@ export function usePrecificacao({
     };
   }
 
+  /** Escolher o produto traz o custo dele (valor + insumos do cadastro) e larga o que veio
+   * do produto anterior: antes só o nome mudava e a conta seguia com o custo antigo. */
   function selecionarSugestao(produto: ProdutoOpcao) {
     setNomeProduto(produto.nome);
     setProdutoId(produto.id);
     setSugestoesAbertas(false);
+    const { custoBase, insumos } = composicaoDoProduto(produto);
+    setCustoProduto(custoBase);
+    setComponentes(insumos);
+    extras.setImagemPropria(null);
   }
 
   function duplicarHistorico(h: PrecificacaoHist) {
     setNomeProduto(h.produto_nome);
     setNomeAnuncio(h.titulo_anuncio ?? "");
     setDescricaoAnuncio(h.descricao_anuncio ?? "");
-    setProdutoId(null);
-    if (h.loja_id && lojas.some((l) => l.id === h.loja_id)) {
-      setModoTaxas("loja");
-      setLojaId(h.loja_id);
-    } else {
-      setModoTaxas("manual");
-      setLojaId(null);
-      setTaxaVariavelPct(h.taxa_variavel_pct * 100);
+    // Mantém o vínculo com o produto (antes ia para null e salvar de novo criava uma
+    // precificação solta, fora do resumo por canal do produto).
+    setProdutoId(h.produto_id && produtos.some((p) => p.id === h.produto_id) ? h.produto_id : null);
+    const loja = h.loja_id ? lojas.find((l) => l.id === h.loja_id) : undefined;
+    // A loja só entra no cálculo se foi ela que deu as taxas; senão volta manual, com a loja
+    // marcando o canal, como estava quando foi salva.
+    const daLoja = lojaUsadaNaPrecificacao(h, loja);
+    setModoTaxas(daLoja ? "loja" : "manual");
+    setLojaId(loja ? loja.id : null);
+    if (!daLoja) {
+      setTaxaVariavelPct(Math.round(h.taxa_variavel_pct * 100000) / 1000);
       setTaxaFixa(h.taxa_fixa);
     }
-    setTaxaAdicionalPct(h.taxa_adicional_pct * 100);
-    setImpostoPct(h.imposto_pct * 100);
-    if (h.margem_pct !== null) {
-      setModo("margem");
-      setMargemPct(h.margem_pct * 100);
+    setTaxaAdicionalPct(Math.round(h.taxa_adicional_pct * 100000) / 1000);
+    setImpostoPct(Math.round(h.imposto_pct * 100000) / 1000);
+    const usaFaixasH = daLoja && loja!.tipoTaxa === "faixas" && loja!.faixas.length > 0;
+    const taxasH: TaxasPlataforma = {
+      impostoPct: h.imposto_pct,
+      taxaAdicionalPct: h.taxa_adicional_pct,
+      taxaVariavelPct: h.taxa_variavel_pct,
+      taxaFixa: h.taxa_fixa,
+      taxaExtraValor: h.taxa_extra_valor ?? undefined,
+      taxaExtraTipo: h.taxa_extra_tipo,
+    };
+    if (h.modo_calculo && h.parametro != null) {
+      // 0100: o modo e o número digitado estão gravados, sem adivinhar.
+      const p = Number(h.parametro);
+      setModo(h.modo_calculo);
+      if (h.modo_calculo === "margem") setMargemPct(Math.round(p * 100000) / 1000);
+      else if (h.modo_calculo === "markup") setMarkupPct(Math.round(p * 100000) / 1000);
+      else if (h.modo_calculo === "lucro") setLucroDesejado(p);
+      else setPrecoFixo(p);
     } else {
-      setModo("preco");
-      setPrecoFixo(h.preco_calculado);
+      const reabrir = modoAoReabrir(h.margem_pct, h.preco_calculado, (m) =>
+        precoIdealRaioX({ custo: h.custo, taxas: taxasH, faixas: usaFaixasH ? loja!.faixas : [], margemAlvo: m }),
+      );
+      setModo(reabrir.modo);
+      if (reabrir.modo === "margem") setMargemPct(reabrir.margemPct);
+      else setPrecoFixo(reabrir.preco);
     }
     const salvos = h.componentes ?? [];
     const doProduto = salvos.find((c) => c.id === ID_CUSTO_PRODUTO);
@@ -516,8 +556,41 @@ export function usePrecificacao({
     });
   }
 
-  function aplicarPrecoDoHistorico(h: PrecificacaoHist) {
+  async function aplicarPrecoDoHistorico(h: PrecificacaoHist) {
     if (!h.produto_id) return;
+    // O custo pode ter mudado desde a precificação: aplicar o preço antigo às cegas gravava
+    // um preço calculado para outro custo, às vezes já no prejuízo.
+    const produto = produtos.find((p) => p.id === h.produto_id);
+    const custoHoje = produto ? Number(produto.custo) : h.custo;
+    if (h.custo > 0 && Math.abs(custoHoje - h.custo) / h.custo > 0.01) {
+      const loja = h.loja_id ? lojas.find((l) => l.id === h.loja_id) : undefined;
+      const faixas = loja && lojaUsadaNaPrecificacao(h, loja) && loja.tipoTaxa === "faixas" ? loja.faixas : [];
+      const taxasH: TaxasPlataforma = {
+        impostoPct: h.imposto_pct,
+        taxaAdicionalPct: h.taxa_adicional_pct,
+        taxaVariavelPct: h.taxa_variavel_pct,
+        taxaFixa: h.taxa_fixa,
+        taxaExtraValor: h.taxa_extra_valor ?? undefined,
+        taxaExtraTipo: h.taxa_extra_tipo,
+      };
+      const hoje = resultadoNoPrecoRaioX({ custo: custoHoje, taxas: taxasH, faixas }, h.preco_calculado);
+      const escolha = await escolher({
+        title: "O custo mudou desde esta precificação",
+        message: `O custo foi de ${formatBRL(h.custo)} para ${formatBRL(custoHoje)}. Com o custo de hoje, vender a ${formatBRL(h.preco_calculado)} dá lucro de ${formatBRL(hoje.lucroLiquido)} (${(hoje.margemEfetivaPct * 100).toFixed(1)}%).`,
+        confirmLabel: "Aplicar mesmo assim",
+        alternativaLabel: "Recalcular",
+      });
+      if (escolha === "cancelar") return;
+      if (escolha === "alternativa") {
+        duplicarHistorico(h);
+        if (produto) {
+          const { custoBase, insumos } = composicaoDoProduto(produto);
+          setCustoProduto(custoBase);
+          setComponentes(insumos);
+        }
+        return;
+      }
+    }
     startTransition(async () => {
       await executarComToast(atualizarPrecoProduto(h.produto_id!, h.preco_calculado), {
         sucesso: "Preço do produto atualizado",
@@ -577,15 +650,23 @@ export function usePrecificacao({
           taxa_fixa: taxaFixaEfetiva,
           taxa_adicional_pct: taxaAdicionalPct / 100,
           imposto_pct: impostoPct / 100,
-          margem_pct: modo === "margem" ? margemPct / 100 : null,
+          margem_pct: margemAtingida(resultado),
           preco_calculado: resultado.precoVenda,
           lucro: resultado.lucroLiquido,
           origem: "individual",
+          modo_calculo: modo,
+          parametro: modo === "margem" ? margemPct / 100 : modo === "markup" ? markupPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo,
           ...extras.extrasParaSalvar(),
-        }),
-        { sucesso: "Anúncio salvo no histórico", erro: "Erro ao salvar precificação" },
+        }, rascunhoAtual?.id() ?? null),
+        { sucesso: "Precificação salva no histórico", erro: "Erro ao salvar precificação" },
       );
       if (!r.ok) return;
+      rascunhoAtual?.aoSalvar();
+      if (r.dado.precoNaLoja && lojaSelecionada) {
+        // O preço foi para a loja (0101): o do cadastro é o do PDV/catálogo e não muda aqui.
+        toast.success(`Preço de ${formatBRL(resultado.precoVenda)} gravado em ${lojaSelecionada.canalNome} · ${lojaSelecionada.nome}`);
+        return;
+      }
 
       // Só oferece atualizar o preço do produto depois que o histórico gravou: antes, uma
       // falha ao salvar caía no mesmo `catch` e o usuário nem chegava a ser perguntado.
@@ -605,7 +686,80 @@ export function usePrecificacao({
     });
   }
 
+  /** "Precificar" no bloco Preços por loja: passa a calcular com as taxas daquela loja. */
+  function precificarNaLoja(id: string) {
+    setModoTaxas("loja");
+    setLojaId(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ---------- Rascunho (0100): o que foi digitado, num objeto que vai e volta do banco ----------
+
+  const instantaneo = {
+    v: 1 as const,
+    produtoId,
+    nomeProduto,
+    nomeAnuncio,
+    descricaoAnuncio,
+    modo,
+    margemPct,
+    markupPct,
+    lucroDesejado,
+    precoFixo,
+    precoMinimo,
+    precoMaximo,
+    impostoPct,
+    modoTaxas,
+    lojaId,
+    taxaFixa,
+    taxaVariavelPct,
+    taxaAdicionalPct,
+    custoProduto,
+    componentes,
+    // Com produto, os concorrentes já ficam salvos nele; sem produto, só existem aqui.
+    concorrentes: produtoId ? [] : concorrentes,
+    extras: extras.extrasDoRascunho,
+  };
+  /** Tem algo digitado que valha guardar (tela vazia não vira rascunho). */
+  const temConteudo = !!nomeProduto.trim() || custoProduto > 0 || componentes.length > 0;
+  const tituloRascunho = [nomeProduto.trim() || "Sem nome", lojaSelecionada ? `${lojaSelecionada.canalNome} ${lojaSelecionada.nome}` : null].filter(Boolean).join(" · ");
+
+  function aplicarInstantaneo(d: Partial<typeof instantaneo>) {
+    const num = (x: unknown, padrao: number) => (typeof x === "number" && Number.isFinite(x) ? x : padrao);
+    const numOuVazio = (x: unknown) => (x === "" ? "" : typeof x === "number" && Number.isFinite(x) ? x : "");
+    setProdutoId(typeof d.produtoId === "string" && produtos.some((p) => p.id === d.produtoId) ? d.produtoId : null);
+    setNomeProduto(typeof d.nomeProduto === "string" ? d.nomeProduto : "");
+    setNomeAnuncio(typeof d.nomeAnuncio === "string" ? d.nomeAnuncio : "");
+    setDescricaoAnuncio(typeof d.descricaoAnuncio === "string" ? d.descricaoAnuncio : "");
+    setModo(d.modo === "margem" || d.modo === "markup" || d.modo === "lucro" || d.modo === "preco" ? d.modo : "margem");
+    setMargemPct(num(d.margemPct, 28));
+    setMarkupPct(num(d.markupPct, 50));
+    setLucroDesejado(num(d.lucroDesejado, 30));
+    setPrecoFixo(num(d.precoFixo, 99.9));
+    setPrecoMinimo(numOuVazio(d.precoMinimo));
+    setPrecoMaximo(numOuVazio(d.precoMaximo));
+    setImpostoPct(num(d.impostoPct, aliquotaDasPadrao));
+    const loja = typeof d.lojaId === "string" && lojas.some((l) => l.id === d.lojaId) ? d.lojaId : null;
+    setLojaId(loja);
+    setModoTaxas(d.modoTaxas === "loja" && loja ? "loja" : "manual");
+    setTaxaFixa(num(d.taxaFixa, 4));
+    setTaxaVariavelPct(num(d.taxaVariavelPct, 20));
+    setTaxaAdicionalPct(num(d.taxaAdicionalPct, 0));
+    setCustoProduto(num(d.custoProduto, 0));
+    setComponentes(Array.isArray(d.componentes) ? d.componentes.filter((c) => c && typeof c.id === "string") : []);
+    if (Array.isArray(d.concorrentes) && d.concorrentes.length) setConcorrentes(d.concorrentes);
+    if (d.extras) extras.aplicarExtrasDoRascunho(d.extras);
+    setVisao("individual");
+  }
+
   return {
+    // rascunho
+    instantaneo,
+    temConteudo,
+    tituloRascunho,
+    aplicarInstantaneo,
+    precificarNaLoja,
+
     // navegação de abas
     visao,
     setVisao,
@@ -684,6 +838,7 @@ export function usePrecificacao({
     novoConcorrenteLink,
     setNovoConcorrenteLink,
     adicionarConcorrente,
+    adicionandoConcorrente,
     removerConcorrente,
     analiseConcorrencia,
 

@@ -4,8 +4,10 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { comResultado } from "@/lib/acao";
 import { validar, escolhasShopeeSchema, rascunhoIdSchema } from "@/lib/validacao";
-import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, type ContextoRascunho } from "@/lib/estudio/servidor";
+import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, precoDoAnuncio, sincronizarStatus, type ContextoRascunho } from "@/lib/estudio/servidor";
 import { plataformaDa } from "@/lib/marketplace/conexao-api";
+import { regrasDoPerfil, verificarTextos } from "@/lib/conformidade/termos";
+import { vincularItemCriado } from "@/lib/marketplace/titulos-servidor";
 import { tokenDaConexao, type ConexaoShopee } from "@/lib/marketplace/tokens";
 import type { CredenciaisShopee } from "@/lib/marketplace/shopee-api";
 import {
@@ -165,10 +167,13 @@ export async function criarNaoListadoShopee(entrada: unknown) {
 
     const capas = (est.capas ?? []).filter((x) => x.veredito === "aprovada" && x.finalPath).slice(0, MAX_IMAGENS);
     const p = ctx.produto;
+    // O preço da LOJA do perfil (0101), não mais o do cadastro (que é o do PDV).
+    const precoAnuncio = await precoDoAnuncio(supabase, p.id, ctx.perfil?.id ?? null);
+    if (precoAnuncio.origem === "loja" && precoAnuncio.preco === null) throw new Error(`Este produto ainda não tem preço em ${precoAnuncio.lojaRotulo}. Precifique em Precificação › Preços por loja antes de criar.`);
     const base = {
       titulo: ctx.rascunho.titulo ?? "",
       descricao: ctx.rascunho.descricao ?? "",
-      preco: p.precoVenda,
+      preco: precoAnuncio.preco,
       pesoG: p.pesoG,
       dimensoesCm: { altura: p.alturaCm, largura: p.larguraCm, comprimento: p.comprimentoCm },
       categoryId: est.shopee?.categoryId ?? null,
@@ -180,6 +185,15 @@ export async function criarNaoListadoShopee(entrada: unknown) {
     };
     const falta = conferirEntradaCriacao({ ...base, imagens: capas.map((x) => x.finalPath as string) });
     if (falta.length) throw new Error(falta.join(" "));
+    // Termo que bloqueia (da base, de um preset ligado como "bloquear" ou da lista do perfil) não vai para a Shopee.
+    const barrados = verificarTextos(
+      [
+        { campo: "Título", texto: base.titulo, tipo: "texto" },
+        { campo: "Descrição", texto: base.descricao, tipo: "texto" },
+      ],
+      regrasDoPerfil(ctx.perfil?.termos),
+    ).filter((x) => x.gravidade === "bloquear");
+    if (barrados.length) throw new Error(`${barrados[0].campo} tem “${barrados[0].trecho}” (${barrados[0].motivo.toLowerCase()}). Ajuste antes de criar na Shopee.`);
 
     let itemId: number | null = null;
     try {
@@ -205,6 +219,9 @@ export async function criarNaoListadoShopee(entrada: unknown) {
         }
       }
       await gravarEstado(supabase, v.rascunho_id, estado, { itemShopee: { itemId, status: status as string, criadoEm: estado.itemShopee?.criadoEm ?? new Date().toISOString() } });
+      await sincronizarStatus(supabase, v.rascunho_id, true);
+      // Fase 9: o item entra na lista da loja já ligado ao produto, com o título como 1ª versão.
+      await vincularItemCriado(supabase, { userId: ctx.userId, lojaId: ctx.perfil!.lojaId!, itemId, produtoId: p.id, sku: p.sku, titulo: base.titulo, preco: base.preco });
       return { itemId, status: status as string, naoListado: true };
     } catch (e) {
       if (itemId && e instanceof Error && /ficou com status/.test(e.message)) throw e;

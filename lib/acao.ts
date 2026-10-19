@@ -43,6 +43,8 @@
  * reclama de valor de retorno ignorado. É a única armadilha deste desenho.
  */
 
+import { mensagemParaUsuario } from "./erros";
+
 export type Resultado<T = void> = { ok: true; dado: T } | { ok: false; erro: string };
 
 /**
@@ -64,7 +66,9 @@ export async function comResultado<T>(fn: () => Promise<T>): Promise<Resultado<T
       throw e;
     }
 
-    if (e instanceof Error) return { ok: false, erro: e.message };
+    // Rede de proteção: um `throw new Error(error.message)` esquecido não leva o texto cru do
+    // banco (tabela, coluna, constraint, em inglês) para o toast.
+    if (e instanceof Error) return { ok: false, erro: mensagemParaUsuario(e.message) };
 
     console.error("[acao] erro que não é Error:", e);
     return { ok: false, erro: "Não foi possível concluir a operação. Tente de novo." };

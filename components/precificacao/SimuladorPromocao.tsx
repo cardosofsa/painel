@@ -16,7 +16,7 @@ const TOM: Record<SituacaoPromocao, string> = {
   ganha: "bg-positive-soft text-positive",
 };
 
-const num = (t: string) => numeroOuNulo(t.replace(",", ".")) ?? 0;
+const num = (t: string) => numeroOuNulo(t) ?? 0;
 const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 /**
@@ -101,7 +101,7 @@ export function SimuladorPromocao({ historico, lojas, produtos }: { historico: P
           Preço {formatBRL(entrada.preco)} · custo de hoje {formatBRL(custo)}
           {faixas.length ? " · comissão por faixa de preço" : ""}
         </p>
-        <div className="grid grid-cols-2 gap-x-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
           <FormField label="Desconto (%)">
             <input className={inputClass} inputMode="decimal" value={desconto} onChange={(e) => setDesconto(e.target.value)} />
           </FormField>

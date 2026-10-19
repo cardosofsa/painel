@@ -85,10 +85,12 @@ export function useFilaOffline(userId: string | null, operadorId: string | null 
     };
   }, [recarregar, sincronizar]);
 
-  async function enfileirar(dados: VendaInput, resumo: VendaOffline["resumo"]): Promise<boolean> {
+  /** `chave`/`feitaEm`: as da tentativa online, quando houve. Se o servidor gravou e só a resposta
+   * se perdeu, o reenvio com a mesma chave devolve a venda que já existe em vez de criar outra. */
+  async function enfileirar(dados: VendaInput, resumo: VendaOffline["resumo"], chave: string = crypto.randomUUID(), feitaEm: string = new Date().toISOString()): Promise<boolean> {
     if (!userId) return false;
     try {
-      await guardarVendaOffline({ chave: crypto.randomUUID(), userId, feitaEm: new Date().toISOString(), dados: dados as unknown as Record<string, unknown>, resumo, erro: null, operadorId: operadorId && operadorId !== "dono" ? operadorId : null });
+      await guardarVendaOffline({ chave, userId, feitaEm, dados: dados as unknown as Record<string, unknown>, resumo, erro: null, operadorId: operadorId && operadorId !== "dono" ? operadorId : null });
       await recarregar();
       return true;
     } catch {

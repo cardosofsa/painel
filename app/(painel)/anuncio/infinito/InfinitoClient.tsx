@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, Circle, MessageCircle, Plus, Settings, Sparkles, Wand2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Circle, MessageCircle, Plus, Settings, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
+import { formatBRL } from "@/lib/format";
 import { AberturaMarca } from "@/components/anuncio/AberturaMarca";
 import { TrilhoEtapas } from "@/components/anuncio/TrilhoEtapas";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +13,9 @@ import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card"
 import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FormField, Modal } from "@/components/ui/Modal";
+import { useConfirm } from "@/components/ui/ConfirmModal";
+import { ModalSaida } from "@/components/ui/ModalSaida";
+import { useProtegerSaida } from "@/lib/hooks/useProtegerSaida";
 import { Tabs } from "@/components/ui/Tabs";
 import { PainelTitulos } from "@/components/estudio/PainelTitulos";
 import { PainelConcorrentes } from "@/components/estudio/PainelConcorrentes";
@@ -25,6 +29,7 @@ import { AprenderCapas } from "@/components/marca/AprenderCapas";
 import { FichaEditor } from "@/components/marca/FichaEditor";
 import { MemoriaMarcaCard } from "@/components/marca/MemoriaMarca";
 import { ConferirTexto } from "@/components/marca/ConferirTexto";
+import { termosDoPerfil } from "@/lib/conformidade/termos";
 import { executarComToast } from "@/lib/acao-cliente";
 import { calcularEtapas, ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { mesclarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
@@ -32,7 +37,7 @@ import { regrasDaPlataforma, type PlataformaMarcaId } from "@/lib/marca/platafor
 import { urlPublicaImagem, type FichaSalva, type LojaParaMarca, type MemoriaMarca, type PerfilMarca } from "@/lib/marca/tipos";
 import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { adicionarMemoriaMarca, salvarFichaMarca } from "../../produtos/marca/actions";
-import { abrirRascunho, conversar, definirNumeroImagens, escolherTitulo, gerarDescricaoEstudio, gerarTitulosEstudio, pesquisarConcorrentesEstudio, salvarDescricao, type RascunhoAberto, type TitulosDoEstudio } from "../../produtos/estudio/actions";
+import { abrirRascunho, abrirRascunhoPorId, conversar, descartarRascunho, marcarPublicado, definirNumeroImagens, escolherTitulo, gerarDescricaoEstudio, gerarTitulosEstudio, pesquisarConcorrentesEstudio, salvarDescricao, type RascunhoAberto, type TitulosDoEstudio } from "../../produtos/estudio/actions";
 
 export type ConfigAba = "perfil" | "ficha" | "memoria" | "conferir" | "aprender";
 type Qual = "titulos" | "concorrentes" | "conversa" | "descricao" | null;
@@ -58,6 +63,9 @@ const ABAS_CONFIG: { value: ConfigAba; label: string }[] = [
 export function InfinitoClient({
   produtos,
   produtoInicial,
+  rascunhoInicial,
+  perfilInicial = null,
+  saldoTexto,
   configInicial,
   perfis,
   memorias,
@@ -69,6 +77,10 @@ export function InfinitoClient({
 }: {
   produtos: { id: string; rotulo: string; sku: string | null }[];
   produtoInicial: string | null;
+  rascunhoInicial: RascunhoAberto | null;
+  perfilInicial?: string | null;
+  /** Saldo de IA de texto lido no servidor, para aparecer antes de gastar. */
+  saldoTexto: { origem: "propria" | "sistema"; usadas: number; limite: number } | null;
   configInicial: ConfigAba | null;
   perfis: PerfilMarca[];
   memorias: MemoriaMarca[];
@@ -81,12 +93,14 @@ export function InfinitoClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [qual, setQual] = useState<Qual>(null);
-  const [produtoId, setProdutoId] = useState<string | null>(produtoInicial);
-  const [perfilId, setPerfilId] = useState(perfis[0]?.id ?? "");
-  const [lojaDecidida, setLojaDecidida] = useState(!!produtoInicial);
-  const [rascunho, setRascunho] = useState<RascunhoAberto | null>(null);
+  const [produtoId, setProdutoId] = useState<string | null>(rascunhoInicial?.produtoId ?? produtoInicial);
+  const [perfilId, setPerfilId] = useState(rascunhoInicial ? (rascunhoInicial.perfilId ?? "") : (perfilInicial ?? perfis[0]?.id ?? ""));
+  const [lojaDecidida, setLojaDecidida] = useState(!!produtoInicial || !!rascunhoInicial);
+  const [rascunho, setRascunho] = useState<RascunhoAberto | null>(rascunhoInicial);
   // O par produto/perfil que de fato está aberto: trocar o seletor depois não muda o rascunho.
-  const [aberto, setAberto] = useState<{ produto: string; perfil: string } | null>(null);
+  const [aberto, setAberto] = useState<{ produto: string; perfil: string } | null>(
+    rascunhoInicial ? { produto: rascunhoInicial.produtoId, perfil: rascunhoInicial.perfilId ?? "" } : null,
+  );
   const [manual, setManual] = useState<EtapaId | null>(null);
   const [titulos, setTitulos] = useState<TitulosDoEstudio | null>(null);
   const [descGerada, setDescGerada] = useState<{ texto: string; palavras: string[]; versao: number; meta: string } | null>(null);
@@ -98,9 +112,34 @@ export function InfinitoClient({
   const [abaConfig, setAbaConfig] = useState<ConfigAba>(configInicial ?? "perfil");
   const [cfgPerfil, setCfgPerfil] = useState<string>(perfis[0]?.id ?? "novo");
   const [conversaAberta, setConversaAberta] = useState(false);
+  const [shopeeAberto, setShopeeAberto] = useState(false);
+  // Erro de IA fica na tela (com "Tentar de novo") até dar certo: antes era só um toast que sumia.
+  const [falhaIA, setFalhaIA] = useState<{ etapa: EtapaId; mensagem: string; repetir: () => void } | null>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
+  // O que foi digitado e ainda não está no rascunho: o resto já fica no banco a cada ação.
+  const [descPendente, setDescPendente] = useState<string | null>(null);
+  const [tituloPendente, setTituloPendente] = useState<string | null>(null);
+  const protecao = useProtegerSaida({
+    sujo: !!rascunho && (descPendente !== null || tituloPendente !== null),
+    salvarRascunho: async () => {
+      if (!rascunho) return true;
+      if (tituloPendente) {
+        const r = await executarComToast(escolherTitulo({ rascunho_id: rascunho.id, titulo: tituloPendente.trim() }), { erro: "Não foi possível salvar o título." });
+        if (!r.ok) return false;
+        setTituloPendente(null);
+      }
+      if (descPendente) {
+        const r = await executarComToast(salvarDescricao({ rascunho_id: rascunho.id, descricao: descPendente }), { erro: "Não foi possível salvar a descrição." });
+        if (!r.ok) return false;
+        setDescPendente(null);
+      }
+      return true;
+    },
+  });
 
   const perfil = perfis.find((p) => p.id === aberto?.perfil) ?? null;
   const plataforma = regrasDaPlataforma(perfil?.plataforma ?? "shopee");
+  const termosPerfil = useMemo(() => termosDoPerfil(perfil), [perfil]);
   const limiteTitulo = plataforma.limiteTitulo ?? 120;
   const limiteDescricao = Math.min(plataforma.limiteDescricao ?? TETO_DESCRICAO, TETO_DESCRICAO);
 
@@ -117,6 +156,7 @@ export function InfinitoClient({
     descricao: rascunho?.descricao ?? null,
     capaAprovada,
     itemCriadoNaShopee: !!estado?.itemShopee,
+    publicado: rascunho?.status === "publicado",
   });
   const etapaLiberada = (id: EtapaId) => calculo.etapas.find((e) => e.id === id)?.liberada ?? false;
   const atual: EtapaId = manual && etapaLiberada(manual) ? manual : calculo.atual;
@@ -124,15 +164,36 @@ export function InfinitoClient({
   const proxima = ETAPAS[indice + 1];
   const anterior = ETAPAS[indice - 1];
 
-  async function carregar(par: { produto: string; perfil: string } | null = aberto): Promise<boolean> {
-    if (!par) return false;
+  /** Relê o rascunho aberto PELO ID (depois de cada ação). Pelo par produto/perfil, com dois
+   * rascunhos do mesmo produto, a tela pulava para o mais recente. */
+  async function carregar(): Promise<boolean> {
+    if (!rascunho) return false;
+    const r = await executarComToast(abrirRascunhoPorId({ rascunho_id: rascunho.id }), { erro: "Não foi possível atualizar o anúncio." });
+    if (r.ok) setRascunho(r.dado);
+    return r.ok;
+  }
+
+  async function abrirPar(par: { produto: string; perfil: string }): Promise<boolean> {
     const r = await executarComToast(abrirRascunho({ produto_id: par.produto, perfil_id: par.perfil || null }), { erro: "Não foi possível abrir o anúncio." });
     if (r.ok) {
       setRascunho(r.dado);
       setAberto(par);
+      // O id na URL: recarregar ou voltar para a página abre ESTE rascunho.
+      if (r.dado.id !== rascunho?.id) router.replace(`/anuncio/infinito?rascunho=${r.dado.id}`, { scroll: false });
     }
     return r.ok;
   }
+
+  // `?produto=` (atalho "Criar anúncio deste produto"): abre o rascunho sem pedir mais um clique.
+  const autoAbrir = useRef(!rascunhoInicial && !!produtoInicial);
+  useEffect(() => {
+    if (!autoAbrir.current || !produtoInicial) return;
+    autoAbrir.current = false;
+    startTransition(async () => {
+      await abrirPar({ produto: produtoInicial, perfil: perfilInicial ?? perfis[0]?.id ?? "" });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só na primeira montagem
+  }, []);
 
   function abrir() {
     if (!produtoId) return;
@@ -140,7 +201,7 @@ export function InfinitoClient({
     setDescGerada(null);
     setObservacao(null);
     startTransition(async () => {
-      const ok = await carregar({ produto: produtoId, perfil: perfilId });
+      const ok = await abrirPar({ produto: produtoId, perfil: perfilId });
       if (ok) setManual(null);
     });
   }
@@ -152,6 +213,7 @@ export function InfinitoClient({
     setQual("titulos");
     const r = await executarComToast(gerarTitulosEstudio({ rascunho_id: rascunho.id, pedido }), { erro: "Não foi possível gerar os títulos." });
     setQual(null);
+    setFalhaIA(r.ok ? null : { etapa: "titulo", mensagem: r.erro, repetir: () => void gerarTitulos(pedido) });
     if (r.ok) setTitulos(r.dado);
     return r.ok;
   }
@@ -161,6 +223,7 @@ export function InfinitoClient({
     setQual("descricao");
     const r = await executarComToast(gerarDescricaoEstudio({ rascunho_id: rascunho.id, pedido }), { erro: "Não foi possível gerar a descrição." });
     setQual(null);
+    setFalhaIA(r.ok ? null : { etapa: "descricao", mensagem: r.erro, repetir: () => void gerarDescricao(pedido) });
     if (r.ok) {
       setVersaoDesc((n) => n + 1);
       setDescGerada({ texto: r.dado.descricao, palavras: r.dado.palavrasChave, versao: versaoDesc + 1, meta: r.dado.doCache ? "Resposta guardada (não gastou cota)." : `Geração ${r.dado.usadas} de ${r.dado.limite} de hoje. Edite à vontade e salve.` });
@@ -192,6 +255,7 @@ export function InfinitoClient({
     setQual("concorrentes");
     const r = await executarComToast(pesquisarConcorrentesEstudio({ rascunho_id: rascunho.id }), { erro: "Não foi possível pesquisar." });
     setQual(null);
+    setFalhaIA(r.ok ? null : { etapa: "titulo", mensagem: r.erro, repetir: () => void pesquisar() });
     if (r.ok) {
       setObservacao(r.dado.pesquisa.observacao || null);
       await carregar();
@@ -256,6 +320,28 @@ export function InfinitoClient({
     }
   }
 
+  async function descartar() {
+    if (!rascunho) return;
+    const ok = await confirm({
+      title: "Descartar este anúncio?",
+      message: `O rascunho de “${rascunho.titulo || rascunho.produto.nome}” e a conversa dele serão apagados. Capas já geradas continuam na cota do mês.${estado?.itemShopee ? " O item já criado na Shopee NÃO é apagado." : ""}`,
+      confirmLabel: "Descartar",
+    });
+    if (!ok) return;
+    startTransition(async () => {
+      const r = await executarComToast(descartarRascunho({ rascunho_id: rascunho.id }), { sucesso: "Anúncio descartado", erro: "Não foi possível descartar." });
+      if (r.ok) router.push("/anuncio");
+    });
+  }
+
+  function publiqueiManualmente() {
+    if (!rascunho) return;
+    startTransition(async () => {
+      const r = await executarComToast(marcarPublicado({ rascunho_id: rascunho.id }), { sucesso: "Marcado como publicado", erro: "Não foi possível marcar." });
+      if (r.ok) await carregar();
+    });
+  }
+
   function abrirConfig(aba: ConfigAba) {
     setAbaConfig(aba);
     setConfigAberta(true);
@@ -269,6 +355,7 @@ export function InfinitoClient({
         { ok: !!rascunho.descricao, texto: "Descrição salva" },
         { ok: !!estado?.numeroImagens, texto: estado?.numeroImagens ? `Quantidade de imagens combinada: ${estado.numeroImagens}` : "Quantidade de imagens (diga ao assistente)" },
         { ok: capaAprovada, texto: "Capa 1 aprovada" },
+        { ok: !!rascunho.preco.preco, texto: rascunho.preco.preco ? `Preço definido${rascunho.preco.origem === "loja" ? ` para ${rascunho.preco.lojaRotulo}` : " (do cadastro)"}` : "Preço da loja definido" },
       ]
     : [];
 
@@ -283,9 +370,13 @@ export function InfinitoClient({
   return (
     <>
       <Link href="/anuncio" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary mb-2">
-        <ArrowLeft size={14} /> Anúncio
+        <ArrowLeft size={14} aria-hidden /> Anúncio
       </Link>
-      <AberturaMarca eyebrow="Anúncio Infinito" titulo={rascunho ? rascunho.produto.nome || "Seu anúncio" : "Monte um anúncio novo"} texto={`${calculo.feitas} de ${ETAPAS.length} etapas feitas. Você aprova cada passo e vê o custo antes de gastar.`}>
+      <AberturaMarca
+        eyebrow="Anúncio Infinito"
+        titulo={rascunho ? rascunho.produto.nome || "Seu anúncio" : "Monte um anúncio novo"}
+        texto="Você aprova cada passo e vê o custo antes de gastar."
+      >
         <Button variant="secondary" onClick={() => abrirConfig("perfil")}>
           <Settings size={14} aria-hidden /> Configurações
         </Button>
@@ -294,14 +385,42 @@ export function InfinitoClient({
         </Button>
       </AberturaMarca>
 
+      <FaixaSaldo feitas={calculo.feitas} total={ETAPAS.length} saldo={saldoTexto} imagens={imagensUsadas} />
+
       {!iaDisponivel && <p className="text-sm text-text-secondary mb-4">Sem IA configurada, só dá para digitar o título e ver os prompts. Configure uma IA em Configurações para gerar.</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-[14rem_minmax(0,1fr)] gap-6 items-start">
         <div className="lg:sticky lg:top-4">
           <TrilhoEtapas etapas={calculo.etapas} atual={atual} onEscolher={setManual} />
+          {rascunho && (
+            <Button variant="ghost" size="sm" className="mt-2 text-text-secondary" onClick={descartar} disabled={pending}>
+              <Trash2 size={14} aria-hidden /> Descartar este anúncio
+            </Button>
+          )}
         </div>
 
         <div className="space-y-4 min-w-0">
+          <p className="lg:hidden text-xs font-medium text-text-secondary" aria-live="polite">
+            Etapa {indice + 1} de {ETAPAS.length}: {ETAPAS[indice]?.rotulo}
+          </p>
+          {falhaIA && falhaIA.etapa === atual && (
+            <Card className="border-negative/40">
+              <div role="alert" className="flex flex-wrap items-start justify-between gap-3">
+                <p className="text-sm text-negative flex gap-2 min-w-0">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden /> {falhaIA.mensagem}
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={falhaIA.repetir} disabled={qual !== null}>
+                    Tentar de novo
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setFalhaIA(null)}>
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {atual === "loja" && (
             <Card>
               <CardHeader>
@@ -360,9 +479,13 @@ export function InfinitoClient({
                   <CardSubtitle>{perfilId ? `Perfil: ${perfis.find((p) => p.id === perfilId)?.nome ?? ""}.` : "Sem perfil (padrão neutro)."} Depois de abrir, o anúncio fica salvo e você pode sair e voltar.</CardSubtitle>
                 </div>
               </CardHeader>
+              {produtos.length === 0 ? (
+                <EmptyState icon={Sparkles} title="Nenhum produto cadastrado" description="Cadastre o produto em Produtos e volte aqui para montar o anúncio dele." />
+              ) : (
               <FormField label="Produto">
                 <Combobox itens={produtos.map((p) => ({ id: p.id, rotulo: p.rotulo, detalhe: p.sku ?? undefined, busca: p.sku ?? undefined }))} valor={produtoId} onChange={setProdutoId} placeholder="Buscar produto…" />
               </FormField>
+              )}
               <Button variant="primary" onClick={abrir} loading={pending} disabled={pending || !produtoId}>
                 <Wand2 size={14} aria-hidden /> {rascunho ? "Reabrir anúncio" : "Abrir o anúncio"}
               </Button>
@@ -371,8 +494,9 @@ export function InfinitoClient({
 
           {rascunho && atual === "titulo" && (
             <>
-              <PainelTitulos titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher} />
-              <PainelConcorrentes concorrentes={estado?.concorrentes ?? []} observacao={observacao} iaDisponivel={iaDisponivel} ocupado={qual === "concorrentes"} onPesquisar={pesquisar} />
+              <PainelTitulos key={`titulos-${rascunho.id}`} onPendente={setTituloPendente} usados={rascunho.titulosUsados} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher}>
+                <PainelConcorrentes concorrentes={estado?.concorrentes ?? []} observacao={observacao} iaDisponivel={iaDisponivel} ocupado={qual === "concorrentes"} onPesquisar={pesquisar} />
+              </PainelTitulos>
             </>
           )}
 
@@ -395,11 +519,13 @@ export function InfinitoClient({
 
           {rascunho && atual === "descricao" && (
             <PainelDescricao
+              key={`descricao-${rascunho.id}`}
+              onPendente={setDescPendente}
               salva={rascunho.descricao}
               geradaTexto={descGerada?.texto ?? null}
               versao={versaoDesc}
               limite={limiteDescricao}
-              termos={perfil?.termos_proibidos ?? []}
+              termos={termosPerfil}
               titulo={rascunho.titulo}
               iaDisponivel={iaDisponivel}
               ocupado={qual === "descricao"}
@@ -412,7 +538,8 @@ export function InfinitoClient({
           {rascunho && atual === "revisar" && (
             <>
               <Card>
-                <CardTitle>Antes de enviar</CardTitle>
+                <CardTitle>Pronto para publicar?</CardTitle>
+                <PrecoDoAnuncioResumo rascunho={rascunho} />
                 <ul className="space-y-1.5 text-sm mt-3">
                   {checklist.map((i) => (
                     <li key={i.texto} className={`flex gap-2 ${i.ok ? "text-text-primary" : "text-text-secondary"}`}>
@@ -421,10 +548,36 @@ export function InfinitoClient({
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-text-tertiary mt-3">Os termos que as plataformas costumam barrar são conferidos no título e nos textos da capa. A revisão final é sempre sua.</p>
+                <p className="text-xs text-text-tertiary mt-3">Título, descrição e textos da capa passam pela conferência de termos: o que as plataformas costumam barrar e o que você marcou para bloquear não deixa salvar nem criar na Shopee. A revisão final é sempre sua.</p>
+                {rascunho.anuncioLojaId && (
+                  <Link href={`/anuncio/analise/${rascunho.anuncioLojaId}`} className="mt-3 inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
+                    <Sparkles size={14} aria-hidden /> Analisar o anúncio que está na loja
+                  </Link>
+                )}
+                {rascunho.status === "publicado" ? (
+                  <p className="mt-3 text-sm text-positive flex gap-1.5">
+                    <Check size={14} className="mt-0.5" aria-hidden /> Publicado.
+                  </p>
+                ) : (
+                  !estado?.itemShopee && (
+                    <Button className="mt-3" size="sm" variant="secondary" onClick={publiqueiManualmente} loading={pending} disabled={!rascunho.titulo || !rascunho.descricao}>
+                      <Check size={14} aria-hidden /> Publiquei manualmente
+                    </Button>
+                  )
+                )}
               </Card>
               <PainelPacote rascunho={rascunho} palavrasChave={[...rascunho.produto.palavrasChave, ...(titulos?.palavrasChave ?? []), ...(descGerada?.palavras ?? [])]} />
-              <PainelShopee key={`shopee-${rascunho.id}`} rascunho={rascunho} onMudou={() => void carregar()} />
+              {/* Criar pela API é opcional: o Pacote acima já basta para publicar à mão. */}
+              <Card>
+                <button type="button" className="w-full flex items-center justify-between text-left" aria-expanded={shopeeAberto} onClick={() => setShopeeAberto((v) => !v)}>
+                  <span>
+                    <CardTitle>Criar na Shopee pelo Painel (opcional)</CardTitle>
+                    <CardSubtitle>Cria como não listado: você revisa e publica no Seller Centre.</CardSubtitle>
+                  </span>
+                  <ArrowRight size={16} className={`text-text-tertiary transition-transform duration-[--duracao-media] ${shopeeAberto ? "rotate-90" : ""}`} aria-hidden />
+                </button>
+              </Card>
+              {(shopeeAberto || !!estado?.itemShopee) && <PainelShopee key={`shopee-${rascunho.id}`} rascunho={rascunho} onMudou={() => void carregar()} />}
             </>
           )}
 
@@ -472,14 +625,96 @@ export function InfinitoClient({
           {!cfgNovo && cfgPerfilAtual && abaConfig === "aprender" && (
             <AprenderCapas key={`aprender-${cfgPerfilAtual.id}-${cfgPerfilAtual.referencias.join("|")}`} perfil={cfgPerfilAtual} fichas={fichas} iaDisponivel={iaDisponivel} />
           )}
-          {abaConfig === "conferir" && <ConferirTexto termosDoPerfil={cfgPerfilAtual?.termos_proibidos ?? []} />}
+          {abaConfig === "conferir" && <ConferirTexto termosDoPerfil={termosDoPerfil(cfgPerfilAtual)} />}
         </div>
       </Modal>
 
       {/* Assistente: conversa do anúncio aberto. */}
+      {ConfirmDialog}
+      <ModalSaida protecao={protecao} />
+
       <Modal open={conversaAberta && !!rascunho} onClose={() => setConversaAberta(false)} title="Pergunte à IA" width="max-w-xl">
         {rascunho && <ConversaAssistente mensagens={rascunho.mensagens} texto={texto} onTexto={setTexto} enviando={qual === "conversa"} iaDisponivel={iaDisponivel} meta={meta} onEnviar={enviarMensagem} onAplicar={aplicar} />}
       </Modal>
     </>
+  );
+}
+
+/**
+ * Progresso e saldo, sempre à vista no topo (antes era uma frase dentro da abertura): quanto do
+ * anúncio está feito e quanto de IA ainda dá para gastar, antes de gastar.
+ */
+function FaixaSaldo({ feitas, total, saldo, imagens }: { feitas: number; total: number; saldo: { origem: "propria" | "sistema"; usadas: number; limite: number } | null; imagens: number | null }) {
+  const textoIA = !saldo ? null : saldo.origem === "propria" ? "a sua chave (sem cota do Painel)" : saldo.limite > 0 ? `${saldo.usadas} de ${saldo.limite} hoje` : "do sistema";
+  const acabou = !!saldo && saldo.origem === "sistema" && saldo.limite > 0 && saldo.usadas >= saldo.limite;
+  return (
+    <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 shadow-elev-1">
+        <span className="block text-xs text-text-tertiary">Progresso</span>
+        <span className="mt-1 flex items-center gap-3">
+          <span className="font-mono text-sm font-semibold text-text-primary whitespace-nowrap">
+            {feitas} de {total}
+          </span>
+          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={feitas} aria-label="Etapas feitas">
+            <span className="block h-full rounded-full bg-accent transition-[width] duration-[--duracao-media]" style={{ width: `${(feitas / total) * 100}%` }} />
+          </span>
+        </span>
+      </div>
+      <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 shadow-elev-1">
+        <span className="block text-xs text-text-tertiary">IA de texto</span>
+        <span className={`mt-1 block truncate text-sm font-medium ${acabou ? "text-negative" : "text-text-primary"}`}>{textoIA ?? "sem IA configurada"}</span>
+      </div>
+      <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 shadow-elev-1">
+        <span className="block text-xs text-text-tertiary">Imagens geradas no mês</span>
+        <span className="mt-1 block font-mono text-sm font-medium text-text-primary">{imagens ?? "—"}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Preço que vai para o anúncio, com lucro e margem da loja e o alerta de prejuízo ou zona morta. */
+function PrecoDoAnuncioResumo({ rascunho }: { rascunho: RascunhoAberto }) {
+  const p = rascunho.preco;
+  const precificar = `/precificacao?produto=${rascunho.produtoId}${p.lojaId ? `&loja=${p.lojaId}` : ""}`;
+  if (p.preco === null) {
+    return (
+      <div className="mt-3 rounded-md border border-border bg-surface-2 p-3 text-sm flex flex-wrap items-center justify-between gap-2">
+        <span className="text-text-secondary">{p.origem === "loja" ? `Este produto ainda não tem preço em ${p.lojaRotulo}.` : "O produto está sem preço de venda."}</span>
+        <Link href={precificar} className="text-accent hover:underline font-medium">
+          Precificar agora
+        </Link>
+      </div>
+    );
+  }
+  const pct = p.margemPct !== null ? `${(p.margemPct * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : null;
+  return (
+    <div className="mt-3 rounded-md border border-border p-3">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="font-mono text-2xl font-semibold text-text-primary">{formatBRL(p.preco)}</span>
+        {p.lucro !== null && (
+          <span className="text-sm text-text-secondary">
+            Lucro <span className={p.lucro < 0 ? "text-negative font-medium" : "text-text-primary font-medium"}>{formatBRL(p.lucro)}</span>
+            {pct && <> · margem {pct}</>}
+          </span>
+        )}
+        <span className="text-xs text-text-tertiary">{p.origem === "loja" ? p.lojaRotulo : "preço do cadastro (o perfil não tem loja)"}</span>
+      </div>
+      {p.situacao === "prejuizo" && (
+        <p role="alert" className="mt-2 text-sm text-negative flex gap-1.5">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden /> Neste preço cada venda dá prejuízo.{" "}
+          <Link href={precificar} className="underline">
+            Ajustar o preço
+          </Link>
+        </p>
+      )}
+      {p.situacao === "zona_morta" && p.precoMelhor !== null && (
+        <p role="alert" className="mt-2 text-sm text-negative flex gap-1.5">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden /> Zona morta: a {formatBRL(p.precoMelhor)} você recebe mais por venda.{" "}
+          <Link href={precificar} className="underline">
+            Ajustar o preço
+          </Link>
+        </p>
+      )}
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
+import { useConfirm } from "@/components/ui/ConfirmModal";
 import { executarComToast } from "@/lib/acao-cliente";
 import type { MemoriaMarca } from "@/lib/marca/tipos";
 import { adicionarMemoriaMarca, alternarMemoriaMarca, removerMemoriaMarca } from "@/app/(painel)/produtos/marca/actions";
@@ -18,6 +19,7 @@ const ROTULO_TIPO = { preferencia: "Preferência", regra: "Regra", aprendizado: 
  */
 export function MemoriaMarcaCard({ perfilId, memorias }: { perfilId: string; memorias: MemoriaMarca[] }) {
   const [pending, startTransition] = useTransition();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [tipo, setTipo] = useState<MemoriaMarca["tipo"]>("preferencia");
   const [texto, setTexto] = useState("");
   const [escopo, setEscopo] = useState<"perfil" | "conta">("perfil");
@@ -44,8 +46,14 @@ export function MemoriaMarcaCard({ perfilId, memorias }: { perfilId: string; mem
           {ROTULO_TIPO[m.tipo]} · {m.origem === "ia" ? "sugerido pela IA e aprovado por você" : "escrito por você"}
         </span>
       </div>
-      <IconButton aria-label="Apagar" onClick={() => startTransition(async () => void (await executarComToast(removerMemoriaMarca(m.id), { erro: "Não foi possível apagar." })))}>
-        <Trash2 size={14} />
+      <IconButton
+        aria-label="Apagar"
+        onClick={async () => {
+          if (!(await confirm({ title: "Apagar da memória?", message: `“${m.texto.slice(0, 120)}” deixa de valer para a IA. Se só quiser pausar, desmarque a caixa ao lado.`, confirmLabel: "Apagar" }))) return;
+          startTransition(async () => void (await executarComToast(removerMemoriaMarca(m.id), { erro: "Não foi possível apagar." })));
+        }}
+      >
+        <Trash2 size={14} aria-hidden />
       </IconButton>
     </li>
   );
@@ -86,6 +94,7 @@ export function MemoriaMarcaCard({ perfilId, memorias }: { perfilId: string; mem
           <Plus size={14} /> Guardar
         </Button>
       </div>
+      {ConfirmDialog}
     </Card>
   );
 }

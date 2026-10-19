@@ -52,6 +52,13 @@ export async function emitirNfe(vendaId: string) {
     if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
     const { token, config } = await configuracao(supabase, auth.user.id);
 
+    // Uma NF-e por venda. Antes cada clique criava outra (ref nova), inclusive com a primeira
+    // ainda em processamento na Sefaz: duas notas para a mesma venda.
+    const { data: ativas } = await supabase.from("notas_fiscais").select("id, status, numero").eq("venda_id", id).eq("tipo", "nfe").in("status", ["processando", "autorizada"]).limit(1);
+    const ativa = (ativas ?? [])[0] as { id: string; status: string; numero: string | null } | undefined;
+    if (ativa?.status === "autorizada") throw new Error(`Esta venda já tem NF-e autorizada${ativa.numero ? ` (nº ${ativa.numero})` : ""}.`);
+    if (ativa) return consultarEGravar(supabase, id, token, config);
+
     const { data: venda } = await supabase.from("vendas").select("*, venda_itens(produto_id, produto_nome, produto_sku, quantidade, preco_unitario)").eq("id", id).maybeSingle();
     if (!venda) throw new Error("Venda não encontrada.");
     const ids = (venda.venda_itens as { produto_id: string | null }[]).map((i) => i.produto_id).filter((x): x is string => !!x);
@@ -84,6 +91,8 @@ export async function emitirNfe(vendaId: string) {
 
     const ref = `sertao-${String(venda.numero).replace(/\W/g, "")}-${id.slice(0, 8)}-${Date.now().toString(36)}`;
     const { data: nota, error: erroNota } = await supabase.from("notas_fiscais").insert({ venda_id: id, tipo: "nfe", status: "processando", ambiente: config.ambiente, ref }).select("id").single();
+    // 0105: índice único de NF-e ativa por venda. Outra aba emitiu no mesmo instante.
+    if (erroNota?.code === "23505") throw new Error("Esta venda já tem uma NF-e sendo emitida. Aguarde e use “Atualizar”.");
     if (erroNota) lancarErroSupabase(erroNota);
 
     const resposta = await emitirNfeFocus(token, config.ambiente as Ambiente, ref, montarNfe(vendaFiscal, config, empresa, destinatario));
@@ -126,13 +135,18 @@ export async function atualizarNfe(vendaId: string) {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) throw new Error("Sessão expirada. Entre de novo.");
     const { token, config } = await configuracao(supabase, auth.user.id);
-    const { data: nota } = await supabase.from("notas_fiscais").select("*").eq("venda_id", id).eq("tipo", "nfe").order("criado_em", { ascending: false }).limit(1).maybeSingle();
-    if (!nota?.ref) throw new Error("Nenhuma NF-e emitida para esta venda.");
-    const j = await consultarNfeFocus(token, (nota.ambiente as Ambiente) ?? config.ambiente, nota.ref as string);
-    const s = statusDaFocus(j as never);
-    await gravarNota(supabase, nota.id as string, (nota.ambiente as Ambiente) ?? config.ambiente, j, s);
-    if (s.status === "autorizada") await avancarParaEnviar(supabase, id);
-    revalidar();
-    return { status: s.status, mensagem: s.mensagem, danfe: urlFocus((nota.ambiente as Ambiente) ?? config.ambiente, j?.caminho_danfe) };
+    return consultarEGravar(supabase, id, token, config);
   });
+}
+
+/** Consulta a última NF-e da venda no emissor (pela mesma ref) e grava a situação. */
+async function consultarEGravar(supabase: Supa, id: string, token: string, config: ConfigFiscal) {
+  const { data: nota } = await supabase.from("notas_fiscais").select("*").eq("venda_id", id).eq("tipo", "nfe").order("criado_em", { ascending: false }).limit(1).maybeSingle();
+  if (!nota?.ref) throw new Error("Nenhuma NF-e emitida para esta venda.");
+  const j = await consultarNfeFocus(token, (nota.ambiente as Ambiente) ?? config.ambiente, nota.ref as string);
+  const s = statusDaFocus(j as never);
+  await gravarNota(supabase, nota.id as string, (nota.ambiente as Ambiente) ?? config.ambiente, j, s);
+  if (s.status === "autorizada") await avancarParaEnviar(supabase, id);
+  revalidar();
+  return { status: s.status, mensagem: s.mensagem, danfe: urlFocus((nota.ambiente as Ambiente) ?? config.ambiente, j?.caminho_danfe) };
 }

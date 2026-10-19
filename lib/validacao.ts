@@ -138,6 +138,9 @@ export const precificacaoSchema = z.object({
   preco_calculado: dinheiro.positive("O preço precisa ser maior que zero"),
   lucro: z.number().finite().min(-10_000_000).max(10_000_000),
   origem: z.enum(["individual", "em_massa"]),
+  // 0100; opcionais: o modo de cálculo e o número digitado (margem/markup em fração).
+  modo_calculo: z.enum(["margem", "lucro", "preco", "markup"]).nullable().optional(),
+  parametro: z.number().finite().min(-10_000_000).max(10_000_000).nullable().optional(),
   // 0045; opcionais: a calculadora em massa não manda.
   anuncio: z
     .object({ tipo: z.enum(["percentual", "valor"]), valor: z.number().finite().min(0).max(1_000_000), margem_alvo_pct: fracao.nullable() })
@@ -825,6 +828,8 @@ const linkLoja = z
   .max(300, "Link longo demais")
   .regex(/^https?:\/\//i, "O link precisa começar com http:// ou https://");
 
+const listaDeTermos = z.array(z.string().trim().min(2, "Termo curto demais").max(60, "Termo longo demais")).max(100, "Até 100 termos");
+
 /** Perfil de marca: plataforma primeiro, nicho livre (opcional), link da loja e termos que ele não quer ver. */
 export const perfilMarcaSchema = z.object({
   id: z.string().uuid().nullable(),
@@ -835,7 +840,11 @@ export const perfilMarcaSchema = z.object({
   link_loja: linkLoja.nullable(),
   logo_path: z.string().trim().max(300).nullable(),
   referencias: z.array(z.string().trim().min(1).max(300)).max(8, "Até 8 imagens de referência"),
-  termos_proibidos: z.array(z.string().trim().min(2, "Termo curto demais").max(60, "Termo longo demais")).max(100, "Até 100 termos"),
+  termos_proibidos: listaDeTermos,
+  // 0103: ids dos presets ligados, se eles bloqueiam e os termos que bloqueiam.
+  presets: z.array(z.string().regex(/^[a-z0-9_-]{1,40}$/, "Conjunto inválido")).max(20).default([]),
+  presets_gravidade: z.enum(["revisar", "bloquear"]).default("revisar"),
+  termos_bloqueados: listaDeTermos.default([]),
 });
 export type PerfilMarcaInput = z.input<typeof perfilMarcaSchema>;
 
@@ -902,6 +911,8 @@ export const estadoRascunhoSchema = z.object({
       canais: z.array(z.number().int().positive()).max(30),
     })
     .optional(),
+  /** Quando uma geração de capa começou: trava outra geração em paralelo (outra aba, clique duplo). */
+  capaEmGeracao: z.string().max(40).optional(),
   /** O item que o Painel criou na Shopee (para não criar duas vezes e para poder remover). */
   itemShopee: z
     .object({ itemId: z.number().int().positive(), status: z.string().trim().max(30), criadoEm: z.string().max(40), erro: z.string().trim().max(300).optional() })
@@ -1129,3 +1140,32 @@ export const exportarListaSchema = z.object({
   ids: z.array(uuid).max(5000, "Selecione no máximo 5.000 itens para exportar"),
 });
 export type ExportarListaInput = z.infer<typeof exportarListaSchema>;
+
+/** Rascunho da Precificação (0100). `dados` é o estado da tela; o tamanho o banco também limita. */
+export const rascunhoPrecificacaoSchema = z.object({
+  id: z.string().uuid().nullable(),
+  visao: z.enum(["individual", "variacoes", "kits", "massa"]),
+  produto_id: uuidOpcional,
+  titulo: z.string().trim().max(200),
+  dados: z.record(z.string(), z.unknown()).refine((d) => JSON.stringify(d).length <= 200_000, "Rascunho grande demais."),
+});
+export type RascunhoPrecificacaoInput = z.infer<typeof rascunhoPrecificacaoSchema>;
+
+/** Preço de um produto numa loja (0101). */
+export const precoLojaSchema = z.object({
+  produto_id: z.string().uuid(),
+  loja_id: z.string().uuid(),
+  preco: z.number().finite().positive("O preço precisa ser maior que zero").max(10_000_000),
+  precificacao_id: z.string().uuid().nullable().optional(),
+});
+
+/** Pedido de explicação do Ajuste de Preço: só ids e o preço da régua; o resto o servidor lê. */
+export const explicarAjusteSchema = z
+  .object({
+    anuncio_id: z.string().uuid().nullish(),
+    produto_id: z.string().uuid().nullish(),
+    loja_id: z.string().uuid().nullish(),
+    preco: z.number().finite().positive().max(10_000_000),
+    objetivo: z.enum(["volume", "margem"]),
+  })
+  .refine((x) => !!x.anuncio_id || !!x.produto_id, "Informe o anúncio ou o produto.");

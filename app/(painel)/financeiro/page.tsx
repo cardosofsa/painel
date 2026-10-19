@@ -125,7 +125,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
   // 0092: campos de cartão em consulta à parte (sem a migração, tudo segue como conta comum).
   const camposCartaoPromessa = carregarCamposCartao(supabase);
   // 0095: extrato das contas em aberto com fornecedores (só soma por fornecedor). Sem a migração, nenhum.
-  const contaAbertaPromessa = supabase.from("fornecedor_lancamentos").select("fornecedor_id, tipo, valor").limit(20000);
+  const contaAbertaPromessa = buscarEmLotes((de, ate) => supabase.from("fornecedor_lancamentos").select("fornecedor_id, tipo, valor", { count: "exact" }).order("id").range(de, ate));
 
   const [
     contasRes,
@@ -159,15 +159,25 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       .limit(100),
     supabase.from("despesas_fixas").select("id, nome, metodo, valor, dia_vencimento, conta_id, criado_em").order("dia_vencimento"),
     carregarContasPagarReceber(supabase),
-    supabase
-      .from("movimentacoes_financeiras")
-      .select("data_movimentacao, valor")
-      .gte("data_movimentacao", isoDate(inicio30Dias)),
-    supabase
-      .from("movimentacoes_financeiras")
-      .select("valor, categoria")
-      .eq("tipo", "saida")
-      .gte("data_movimentacao", isoDate(inicioMes)),
+    // Em lotes: o PostgREST corta em 1000 linhas e o gráfico de 30 dias e as despesas por
+    // categoria ficavam curtos em conta com muito lançamento.
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("movimentacoes_financeiras")
+        .select("data_movimentacao, valor", { count: "exact" })
+        .gte("data_movimentacao", isoDate(inicio30Dias))
+        .order("id")
+        .range(de, ate),
+    ),
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("movimentacoes_financeiras")
+        .select("valor, categoria", { count: "exact" })
+        .eq("tipo", "saida")
+        .gte("data_movimentacao", isoDate(inicioMes))
+        .order("id")
+        .range(de, ate),
+    ),
     // Totais somados no banco. O card "Saldo Líquido Realizado" somava o array de 100
     // lançamentos que a tela recebia, então o número ficava errado a partir do 101º — e
     // `numeric` do Postgres é exato, sem o acúmulo de centavos do float do JavaScript.

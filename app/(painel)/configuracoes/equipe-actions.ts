@@ -1,5 +1,7 @@
 "use server";
 
+import { buscarEmLotes } from "@/lib/lotes";
+import { lancarErroSupabase } from "@/lib/erros";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -23,7 +25,7 @@ const operadorSchema = z.object({
 function erroDoBanco(error: { code?: string; message: string }): never {
   if (error.code === "PGRST202") throw new Error("Operadores precisam da migração 0063.");
   if (error.code === "23505") throw new Error("Já existe um operador com esse nome.");
-  throw new Error(error.message);
+  lancarErroSupabase(error);
 }
 
 export async function salvarOperador(dados: z.input<typeof operadorSchema>) {
@@ -74,7 +76,18 @@ export async function calcularComissoes(inicio: string, fim: string) {
     const supabase = await createClient();
     const [{ data: ops, error: e1 }, { data: vendas, error: e2 }] = await Promise.all([
       supabase.from("operadores").select("id, nome, comissao_pct, comissao_base"),
-      supabase.from("vendas").select("operador_id, total, lucro").not("operador_id", "is", null).neq("status", "cancelada").gte("data_venda", `${i}T00:00:00-03:00`).lte("data_venda", `${f}T23:59:59-03:00`).limit(20000),
+      // Em lotes: comissão é dinheiro, e o PostgREST cortava em 1000 vendas.
+      buscarEmLotes((de, ate) =>
+        supabase
+          .from("vendas")
+          .select("operador_id, total, lucro", { count: "exact" })
+          .not("operador_id", "is", null)
+          .neq("status", "cancelada")
+          .gte("data_venda", `${i}T00:00:00-03:00`)
+          .lte("data_venda", `${f}T23:59:59-03:00`)
+          .order("id")
+          .range(de, ate),
+      ),
     ]);
     if (e1 || e2) throw new Error("Comissões precisam da migração 0063.");
     return (ops ?? [])

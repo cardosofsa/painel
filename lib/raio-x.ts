@@ -6,6 +6,8 @@
  */
 
 import {
+  encontrarFaixa,
+  fecharPreco,
   precoEmCentavos,
   resolverComFaixas,
   resolverPorLucro,
@@ -75,7 +77,10 @@ function taxasBase(t: TaxasPlataforma): Omit<TaxasPlataforma, "taxaVariavelPct" 
 }
 
 export function precoIdeal(e: Pick<EntradaRaioX, "custo" | "taxas" | "faixas" | "margemAlvo">): ResultadoPrecificacao {
-  return e.faixas.length ? resolverComFaixas(e.custo, "margem", e.margemAlvo, taxasBase(e.taxas), e.faixas).resultado : resolverPorMargem(e.custo, e.margemAlvo, e.taxas);
+  // Fechado no centavo como a calculadora: sem isso o "Ideal" saía R$ 73,8912 e não batia com o preço salvo.
+  if (!e.faixas.length) return fecharPreco(resolverPorMargem(e.custo, e.margemAlvo, e.taxas), "margem", { taxas: e.taxas });
+  const base = taxasBase(e.taxas);
+  return fecharPreco(resolverComFaixas(e.custo, "margem", e.margemAlvo, base, e.faixas).resultado, "margem", { taxasBase: base, faixas: e.faixas });
 }
 
 export function resultadoNoPreco(e: Pick<EntradaRaioX, "custo" | "taxas" | "faixas">, preco: number): ResultadoPrecificacao {
@@ -157,6 +162,39 @@ export function perdaMensal(r: ResultadoRaioX): number {
   return r.diferencaPorVenda !== null ? -r.diferencaPorVenda : 0;
 }
 
+/**
+ * A loja da precificação foi usada no cálculo, ou só marcava o canal? Faixas: ver
+ * `usaFaixasNaPrecificacao`. Comissão fixa: a comissão e a tarifa gravadas batem com as da loja.
+ */
+export function lojaUsadaNaPrecificacao(
+  p: Pick<PrecificacaoRaioX, "preco_calculado" | "taxa_variavel_pct" | "taxa_fixa">,
+  loja: (Pick<LojaRaioX, "tipoTaxa" | "faixas"> & { comissaoPct: number; taxaFixa: number }) | undefined,
+): boolean {
+  if (!loja) return false;
+  if (loja.tipoTaxa === "faixas" && loja.faixas.length) return usaFaixasNaPrecificacao(p, loja);
+  return Math.abs(loja.comissaoPct / 100 - Number(p.taxa_variavel_pct)) < 0.0005 && Math.abs(loja.taxaFixa - Number(p.taxa_fixa)) < 0.005;
+}
+
+/**
+ * Como reabrir uma precificação salva ("Duplicar"). O banco não guarda o modo de cálculo,
+ * então tenta a margem gravada arredondada a 0,1 ponto: se ela reproduz o MESMO preço com as
+ * mesmas taxas, a precificação era por margem e volta como margem (mudar o custo depois
+ * recalcula). Senão volta como preço fixo, que reproduz o preço exato. Antes, tudo que não
+ * era margem virava preço fixo e a margem gravada podia ser a meta ou a atingida.
+ */
+export function modoAoReabrir(
+  margemPct: number | null,
+  preco: number,
+  precoNaMargem: (margem: number) => ResultadoPrecificacao,
+): { modo: "margem"; margemPct: number } | { modo: "preco"; preco: number } {
+  if (margemPct !== null && Number.isFinite(margemPct)) {
+    const pct = Math.round(margemPct * 1000) / 10;
+    const r = precoNaMargem(pct / 100);
+    if (r.viavel && Math.abs(r.precoVenda - preco) < 0.005) return { modo: "margem", margemPct: pct };
+  }
+  return { modo: "preco", preco };
+}
+
 // ---------- Montagem da lista (a partir das precificações salvas) ----------
 
 export interface PrecificacaoRaioX {
@@ -184,7 +222,25 @@ export interface LojaRaioX {
   id: string;
   nome: string;
   canalNome: string;
+  /** Sem valor, vale "faixas" quando há faixas (compatível com quem não manda o tipo). */
+  tipoTaxa?: "faixas" | "fixo";
   faixas: FaixaComissao[];
+}
+
+/**
+ * As faixas valem para esta precificação? Só se a loja cobra por faixa E a precificação foi
+ * feita com elas. Precificação manual (comissão digitada, com a loja só marcando o canal)
+ * grava a comissão digitada, não a da faixa: aplicar a tabela por cima dela trocava a regra
+ * de quem precificou e inventava um "ideal" que a pessoa nunca escolheu. O sinal é a
+ * comissão gravada bater com a da faixa do preço gravado.
+ */
+export function usaFaixasNaPrecificacao(
+  p: Pick<PrecificacaoRaioX, "preco_calculado" | "taxa_variavel_pct" | "taxa_fixa">,
+  loja: Pick<LojaRaioX, "tipoTaxa" | "faixas"> | undefined,
+): boolean {
+  if (!loja || !loja.faixas.length || (loja.tipoTaxa ?? "faixas") !== "faixas") return false;
+  const faixa = encontrarFaixa(loja.faixas, Number(p.preco_calculado));
+  return Math.abs(faixa.comissaoPct / 100 - Number(p.taxa_variavel_pct)) < 0.0005 && Math.abs(faixa.tarifaFixa - Number(p.taxa_fixa)) < 0.005;
 }
 
 export interface FontesRaioX {
@@ -230,7 +286,7 @@ export function montarItensRaioX(
     vistos.add(chave);
 
     const loja = p.loja_id ? lojaPorId.get(p.loja_id) : undefined;
-    const faixas = loja?.faixas ?? [];
+    const faixas = usaFaixasNaPrecificacao(p, loja) ? loja!.faixas : [];
     const custoHoje = p.produto_id ? (custoAtual.get(p.produto_id) ?? Number(p.custo)) : Number(p.custo);
     const kProdLoja = p.produto_id ? `${p.produto_id}|${p.loja_id ?? ""}` : null;
     const precos: Partial<Record<FontePreco, number>> = {};

@@ -57,6 +57,7 @@ async function token(corpo: Record<string, string>): Promise<TokensML> {
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams(corpo),
     cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
   });
   const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (!r.ok || !j.access_token) throw new Error(`Mercado Livre: ${String(j.message || j.error || r.status)}`);

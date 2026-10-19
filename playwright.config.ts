@@ -46,10 +46,10 @@ export default defineConfig({
     extraHTTPHeaders: bypass ? { "x-vercel-protection-bypass": bypass } : undefined,
   },
   projects: [
-    ...(smokeUrl ? [] : [{ name: "publico", testIgnore: /smoke\.spec\.ts$/, use: chromium }]),
+    ...(smokeUrl ? [] : [{ name: "publico", testIgnore: /(smoke|rascunho|prototipo|precificacao|anuncio)\.spec\.ts$/, use: chromium }]),
     // O smoke cria e cancela uma venda de verdade: um teste por vez, na ordem, sem retry
     // (repetir no meio do fluxo deixaria venda pendurada).
-    { name: "smoke", testMatch: /smoke\.spec\.ts$/, retries: 0, timeout: 120_000, use: chromium },
+    { name: "smoke", testMatch: /(smoke|rascunho|prototipo|precificacao|anuncio)\.spec\.ts$/, retries: 0, timeout: 120_000, use: chromium },
   ],
   webServer: smokeUrl
     ? undefined

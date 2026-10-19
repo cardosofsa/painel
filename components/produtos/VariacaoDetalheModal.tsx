@@ -9,6 +9,7 @@ import { EditorInsumos } from "@/components/precificacao/EditorInsumos";
 import { CamposEnvio, type DimensoesEnvio } from "@/components/produtos/CamposEnvio";
 import { executarComToast } from "@/lib/acao-cliente";
 import { formatBRL, numeroOuNulo } from "@/lib/format";
+import { numeroDoCampo } from "@/lib/campo-numero";
 import { custoDeInsumos, type ComponenteKit } from "@/lib/pricing";
 import { custoPadrao, custoVariacao, estoqueDerivado, type VariacaoSalva } from "@/lib/variacoes";
 import { atualizarVariacao } from "@/app/(painel)/produtos/variacao-actions";
@@ -63,8 +64,8 @@ export function VariacaoDetalheModal({
   // O pai e a própria variação não podem ser insumo dela (o banco também recusa).
   const opcoes = produtosParaInsumo.filter((p) => p.id !== pai.id && p.id !== variacao.id);
 
-  function atualizarInsumo(id: string, campo: keyof ComponenteKit, valor: string) {
-    setInsumos((l) => l.map((c) => (c.id === id ? { ...c, [campo]: campo === "nome" ? valor : Number(valor.replace(",", ".")) || 0 } : c)));
+  function atualizarInsumo(id: string, campo: keyof ComponenteKit, valor: string | number) {
+    setInsumos((l) => l.map((c) => (c.id === id ? { ...c, [campo]: campo === "nome" ? String(valor) : numeroDoCampo(valor) } : c)));
   }
   function adicionarInsumo() {
     setInsumos((l) => [...l, { id: crypto.randomUUID(), nome: "Embalagem", quantidade: 1, custoUnitario: 0 }]);

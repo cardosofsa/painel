@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { traduzirErroSupabase, traduzirErroAuth, traduzirErroIA, ERROS_LINK, trocarFiadoPorCrediario } from "./erros";
+import { traduzirErroSupabase, traduzirErroAuth, traduzirErroIA, ERROS_LINK, trocarFiadoPorCrediario, mensagemParaUsuario, mensagemTecnica } from "./erros";
 import { formatBRL } from "./format";
 
 // O fallback loga o original no servidor de propósito; silenciar para o output do teste
@@ -178,3 +178,27 @@ describe("valores do limite do crediário", () => {
   });
 });
 
+
+describe("mensagemParaUsuario (rede de proteção do comResultado)", () => {
+  it("frase nossa em pt-BR passa direto", () => {
+    expect(mensagemParaUsuario("Estoque insuficiente para Camisa Azul P")).toBe("Estoque insuficiente para Camisa Azul P");
+    expect(mensagemParaUsuario("Shopee: não respondeu em 30 s. Tente de novo em instantes.")).toContain("Shopee");
+  });
+  it("texto cru do banco não chega na tela", () => {
+    for (const m of [
+      'duplicate key value violates unique constraint "x_key"',
+      'relation "produto_grupos" does not exist',
+      'column "nome_item" of relation "marketplace_anuncios" does not exist',
+      "Could not find the 'preco' column of 'produto_lojas' in the schema cache",
+      'null value in column "nome" violates not-null constraint',
+      "TypeError: Cannot read properties of undefined (reading 'id')",
+    ]) {
+      expect(mensagemTecnica(m)).toBe(true);
+      expect(mensagemParaUsuario(m)).toMatch(/^Não foi possível concluir/);
+    }
+  });
+  it("falha de rede vira o aviso de conexão; vazio vira genérico", () => {
+    expect(mensagemParaUsuario("fetch failed")).toMatch(/conexão/);
+    expect(mensagemParaUsuario("  ")).toMatch(/^Não foi possível/);
+  });
+});

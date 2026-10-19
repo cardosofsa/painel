@@ -66,18 +66,70 @@ export function presetPorId(id: string): Preset | undefined {
   return PRESETS.find((p) => p.id === id);
 }
 
-/** Regras em vigor: as da base, as dos presets ligados e os termos do próprio usuário. */
-export function regrasAtivas(presetsLigados: readonly string[], termosDoUsuario: readonly string[]): RegraTermo[] {
+/** Os termos de um perfil de marca (0103): presets ligados e as duas listas do usuário. */
+export interface TermosDoPerfil {
+  presets: string[];
+  /** Os termos dos presets ligados só pedem revisão ou bloqueiam. */
+  presetsGravidade: GravidadeTermo;
+  /** `perfis_marca.termos_proibidos`: pedem revisão. */
+  revisar: string[];
+  /** `perfis_marca.termos_bloqueados`: bloqueiam (o título não vai para o anúncio nem para a Shopee). */
+  bloquear: string[];
+}
+
+export const TERMOS_VAZIOS: TermosDoPerfil = { presets: [], presetsGravidade: "revisar", revisar: [], bloquear: [] };
+
+const listaDeTextos = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+
+/** Lê a linha de `perfis_marca` sem confiar nela: antes da 0103 as colunas novas não vêm. */
+export function termosDoPerfil(linha: { presets?: unknown; presets_gravidade?: unknown; termos_proibidos?: unknown; termos_bloqueados?: unknown } | null | undefined): TermosDoPerfil {
+  if (!linha) return TERMOS_VAZIOS;
+  return {
+    presets: listaDeTextos(linha.presets).filter((id) => presetPorId(id)),
+    presetsGravidade: linha.presets_gravidade === "bloquear" ? "bloquear" : "revisar",
+    revisar: listaDeTextos(linha.termos_proibidos),
+    bloquear: listaDeTextos(linha.termos_bloqueados),
+  };
+}
+
+/** Tudo o que a IA deve evitar: os termos do usuário (as duas listas) e os dos presets ligados. */
+export function termosParaEvitar(t: TermosDoPerfil | null | undefined): string[] {
+  if (!t) return [];
+  const todos = [...t.bloquear, ...t.revisar, ...t.presets.flatMap((id) => presetPorId(id)?.termos ?? [])];
+  return [...new Map(todos.map((x) => [normalizar(x.trim()), x.trim()])).values()].filter((x) => x.length >= 2);
+}
+
+/**
+ * Regras em vigor: as da base, as dos presets ligados e os termos do próprio usuário. Um termo
+ * repetido vale pela primeira regra (a conferência não repete o mesmo termo no mesmo campo),
+ * então o que bloqueia entra antes do que só pede revisão.
+ */
+export function regrasAtivas(
+  presetsLigados: readonly string[],
+  termosDoUsuario: readonly string[],
+  opcoes: { presetsGravidade?: GravidadeTermo; bloquear?: readonly string[] } = {},
+): RegraTermo[] {
   const regras = [...REGRAS_BASE];
+  const doUsuario = (lista: readonly string[], gravidade: GravidadeTermo, motivo: string) => {
+    for (const t of lista) {
+      const termo = t.trim();
+      if (termo.length >= 2) regras.push({ termo, escopo: "ambos", gravidade, motivo, origem: "usuario" });
+    }
+  };
+  doUsuario(opcoes.bloquear ?? [], "bloquear", "Termo que você marcou para bloquear");
+  const gravidadePreset = opcoes.presetsGravidade ?? "revisar";
   for (const id of presetsLigados) {
     const p = presetPorId(id);
-    if (p) regras.push(...p.termos.map((termo): RegraTermo => ({ termo, escopo: "ambos", gravidade: "revisar", motivo: p.motivo, origem: "preset" })));
+    if (p) regras.push(...p.termos.map((termo): RegraTermo => ({ termo, escopo: "ambos", gravidade: gravidadePreset, motivo: p.motivo, origem: "preset" })));
   }
-  for (const t of termosDoUsuario) {
-    const termo = t.trim();
-    if (termo.length >= 2) regras.push({ termo, escopo: "ambos", gravidade: "revisar", motivo: "Termo que você marcou como proibido", origem: "usuario" });
-  }
+  doUsuario(termosDoUsuario, "revisar", "Termo que você marcou como proibido");
   return regras;
+}
+
+/** As regras de um perfil (ou só as da base, sem perfil). */
+export function regrasDoPerfil(t: TermosDoPerfil | null | undefined): RegraTermo[] {
+  const x = t ?? TERMOS_VAZIOS;
+  return regrasAtivas(x.presets, x.revisar, { presetsGravidade: x.presetsGravidade, bloquear: x.bloquear });
 }
 
 export interface ItemTexto {

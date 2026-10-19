@@ -1,6 +1,8 @@
 import {
+  fecharPreco,
   resolverComFaixas,
   resolverPorMargem,
+  encontrarFaixa,
   type FaixaComissao,
   type ResultadoPrecificacao,
 } from "./pricing";
@@ -52,7 +54,8 @@ export interface ResultadoLinhaMassa {
 
 let proximoId = 1;
 
-export function linhaVazia(): LinhaEmMassa {
+/** `impostoPct`: a alíquota do regime tributário (Configurações), como nas outras abas. */
+export function linhaVazia(impostoPct = 6): LinhaEmMassa {
   proximoId += 1;
   return {
     id: `linha-${proximoId}`,
@@ -63,7 +66,7 @@ export function linhaVazia(): LinhaEmMassa {
     lojaId: null,
     comissaoPct: 20,
     taxaFixa: 4,
-    impostoPct: 6,
+    impostoPct,
     margemPct: 25,
     precoAtual: 0,
   };
@@ -97,26 +100,22 @@ export function calcularResultadosEmMassa(linhas: LinhaEmMassa[], lojas: LojaMas
 
     // Sem faixa cadastrada, usa a comissão da loja (igual ao kit), não 0%.
     if (loja?.tipoTaxa === "faixas" && loja.faixas.length > 0) {
-      const r = resolverComFaixas(
-        l.custo,
-        "margem",
-        l.margemPct / 100,
-        { impostoPct: l.impostoPct / 100, taxaAdicionalPct: 0, ...extra },
-        loja.faixas,
-      );
-      resultado = r.resultado;
-      faixa = r.faixa;
+      const taxasBase = { impostoPct: l.impostoPct / 100, taxaAdicionalPct: 0, ...extra };
+      const r = resolverComFaixas(l.custo, "margem", l.margemPct / 100, taxasBase, loja.faixas);
+      resultado = fecharPreco(r.resultado, "margem", { taxasBase, faixas: loja.faixas });
+      faixa = r.resultado.viavel ? encontrarFaixa(loja.faixas, resultado.precoVenda) : r.faixa;
     } else {
-      resultado = resolverPorMargem(l.custo, l.margemPct / 100, {
+      const taxas = {
         impostoPct: l.impostoPct / 100,
         taxaFixa: loja ? loja.taxaFixa : l.taxaFixa,
         taxaVariavelPct: (loja ? loja.comissaoPct : l.comissaoPct) / 100,
         taxaAdicionalPct: 0,
         ...extra,
-      });
+      };
+      resultado = fecharPreco(resolverPorMargem(l.custo, l.margemPct / 100, taxas), "margem", { taxas });
     }
 
-    const diferenca = resultado.precoVenda - l.precoAtual;
+    const diferenca = Math.round((resultado.precoVenda - l.precoAtual) * 100) / 100;
     return { linha: l, loja, faixa, resultado, diferenca, precisaSubir: l.precoAtual > 0 && diferenca > 0.01 };
   });
 }

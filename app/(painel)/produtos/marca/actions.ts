@@ -9,10 +9,16 @@ import { lancarErroSupabase } from "@/lib/erros";
 import { validar, perfilMarcaSchema, memoriaMarcaSchema, salvarFichaSchema, PLATAFORMAS_MARCA_IDS } from "@/lib/validacao";
 import { gerarFichaPelasCapasIA } from "@/lib/ia/gerar";
 import { regrasDaPlataforma } from "@/lib/marca/plataformas";
+import { presetPorId } from "@/lib/conformidade/termos";
 
 const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O padrão da loja precisa da migração 0098. Aplique no Supabase e recarregue.";
+const SEM_0103 = "Conjuntos ligados e termos que bloqueiam precisam da migração 0103. Aplique no Supabase e recarregue (ou tire esses termos para salvar o resto).";
+const faltaColuna = (code?: string) => code === "PGRST204" || code === "42703";
 const faltaMigracao = (code?: string) => code === "PGRST205" || code === "42P01" || code === "PGRST202" || code === "42883";
+
+/** Sem repetidos, ignorando caixa. */
+const semRepetidos = (lista: string[]) => [...new Map(lista.map((t) => [t.toLowerCase(), t])).values()];
 
 async function sessao() {
   const supabase = await createClient();
@@ -49,20 +55,23 @@ export async function salvarPerfilMarca(entrada: unknown) {
       link_loja: v.link_loja?.trim() || null,
       logo_path: v.logo_path || null,
       referencias: v.referencias,
-      // Sem repetidos, ignorando caixa.
-      termos_proibidos: [...new Map(v.termos_proibidos.map((t) => [t.toLowerCase(), t])).values()],
+      termos_proibidos: semRepetidos(v.termos_proibidos),
       atualizado_em: new Date().toISOString(),
     };
-    if (v.id) {
-      const { error } = await supabase.from("perfis_marca").update(dados).eq("id", v.id);
-      checar(error);
-      revalidatePath(PATH);
-      return { id: v.id };
+    const termos = { presets: [...new Set(v.presets)].filter((id) => presetPorId(id)), presets_gravidade: v.presets_gravidade, termos_bloqueados: semRepetidos(v.termos_bloqueados) };
+    const usaTermos = termos.presets.length > 0 || termos.termos_bloqueados.length > 0;
+    const gravar = (linha: typeof dados & Partial<typeof termos>) =>
+      v.id ? supabase.from("perfis_marca").update(linha).eq("id", v.id).select("id").single() : supabase.from("perfis_marca").insert(linha).select("id").single();
+
+    let r = await gravar({ ...dados, ...termos });
+    // Sem a 0103 as colunas de termos não existem: grava o resto, a não ser que ele tenha usado algo delas.
+    if (r.error && faltaColuna(r.error.code)) {
+      if (usaTermos) throw new Error(SEM_0103);
+      r = await gravar(dados);
     }
-    const { data, error } = await supabase.from("perfis_marca").insert(dados).select("id").single();
-    checar(error);
+    checar(r.error);
     revalidatePath(PATH);
-    return { id: data!.id as string };
+    return { id: (r.data?.id as string | undefined) ?? v.id ?? "" };
   });
 }
 

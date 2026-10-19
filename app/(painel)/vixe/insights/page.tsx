@@ -1,4 +1,5 @@
 import { semVariacoesFilhas } from "@/lib/variacoes-consulta";
+import { buscarEmLotes } from "@/lib/lotes";
 import { createClient } from "@/lib/supabase/server";
 import { podeVencer } from "@/lib/repasse-marketplace";
 import { acessoAtual } from "@/lib/supabase/acesso-servidor";
@@ -37,26 +38,33 @@ export default async function VixeInsightsPage() {
 
   const [vendasRes, itensRes, produtosRes, gruposRes, cprRes, parcelasRes, perfilRes] = await Promise.all([
     verVendas
-      ? supabase.from("vendas").select("data_venda, total, lucro").neq("status", "cancelada").gte("data_venda", inicio).limit(5000)
+      ? buscarEmLotes((de, ate) => supabase.from("vendas").select("data_venda, total, lucro", { count: "exact" }).neq("status", "cancelada").gte("data_venda", inicio).order("id").range(de, ate), { maximo: 20000 })
       : vazio,
     verVendas || verEstoque
-      ? supabase
-          .from("venda_itens")
-          .select("produto_id, produto_nome, quantidade, preco_unitario, custo_unitario, vendas!inner(data_venda, status)")
-          .gte("vendas.data_venda", inicio)
-          .neq("vendas.status", "cancelada")
-          .limit(20000)
+      ? buscarEmLotes(
+          (de, ate) =>
+            supabase
+              .from("venda_itens")
+              .select("produto_id, produto_nome, quantidade, preco_unitario, custo_unitario, vendas!inner(data_venda, status)", { count: "exact" })
+              .gte("vendas.data_venda", inicio)
+              .neq("vendas.status", "cancelada")
+              .order("id")
+              .range(de, ate),
+          { maximo: 50000 },
+        )
       : vazio,
     // Valor e ruptura só do produto principal: o estoque da variação (0084) é derivado dele.
     verEstoque
-      ? semVariacoesFilhas((filtrar) => {
-          const q = supabase.from("produtos").select("id, nome, estoque, custo, grupo_id, variante_nome").eq("ativo", true);
-          return filtrar ? q.is("produto_pai_id", null) : q;
-        })
+      ? semVariacoesFilhas((filtrar) =>
+          buscarEmLotes((de, ate) => {
+            const q = supabase.from("produtos").select("id, nome, estoque, custo, grupo_id, variante_nome", { count: "exact" }).eq("ativo", true);
+            return (filtrar ? q.is("produto_pai_id", null) : q).order("id").range(de, ate);
+          }),
+        )
       : vazio,
     supabase.from("produto_grupos").select("id, nome"),
-    verFinanceiro ? supabase.from("contas_a_pagar_receber").select("*").eq("status", "pendente") : vazio,
-    verFinanceiro ? supabase.from("venda_parcelas").select("venda_id, valor, data_vencimento").eq("status", "pendente") : vazio,
+    verFinanceiro ? buscarEmLotes((de, ate) => supabase.from("contas_a_pagar_receber").select("*", { count: "exact" }).eq("status", "pendente").order("id").range(de, ate)) : vazio,
+    verFinanceiro ? buscarEmLotes((de, ate) => supabase.from("venda_parcelas").select("venda_id, valor, data_vencimento", { count: "exact" }).eq("status", "pendente").order("id").range(de, ate)) : vazio,
     supabase.from("perfil_negocio").select("nome_negocio, whatsapp").maybeSingle(),
   ]);
   const falhas = [vendasRes, itensRes, produtosRes, cprRes, parcelasRes].filter((r) => r.error).map((r) => r.error!.message);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
@@ -8,6 +8,7 @@ import { textoPalavrasChave } from "@/lib/copiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
 import type { TitulosDoEstudio } from "@/app/(painel)/produtos/estudio/actions";
+import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
 /**
  * Títulos: cinco variantes, cada uma com nota (sem IA), contagem de caracteres e conferência de
@@ -22,7 +23,16 @@ export function PainelTitulos({
   ocupado,
   onGerar,
   onEscolher,
+  onPendente,
+  usados = [],
+  children,
 }: {
+  /** Gaveta embaixo do cartão (os concorrentes, que servem ao título). */
+  children?: ReactNode;
+  /** Títulos já usados nas precificações deste produto. */
+  usados?: string[];
+  /** O título digitado e ainda não usado (ou `null`), para a proteção de saída da tela. */
+  onPendente?: (texto: string | null) => void;
   titulo: string | null;
   limite: number;
   resultado: TitulosDoEstudio | null;
@@ -38,7 +48,7 @@ export function PainelTitulos({
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>1. Título</CardTitle>
+          <CardTitle>{numeroDaEtapa("titulo")}. Título</CardTitle>
           <CardSubtitle>A porta de entrada: é o que aparece na busca. Limite da plataforma: {limite} caracteres.</CardSubtitle>
         </div>
       </CardHeader>
@@ -56,7 +66,7 @@ export function PainelTitulos({
       <div className="flex flex-wrap gap-2 mb-3">
         <input className={`${inputClass} flex-1 min-w-[12rem]`} value={pedido} maxLength={300} onChange={(e) => setPedido(e.target.value)} placeholder="Pedido opcional: mais curto, destacar o kit…" aria-label="Pedido para os títulos" />
         <Button variant="secondary" onClick={() => onGerar(pedido.trim() || null)} loading={ocupado} disabled={ocupado || !iaDisponivel}>
-          <Sparkles size={14} /> {resultado ? "Gerar outros" : "Gerar 5 títulos"}
+          <Sparkles size={14} aria-hidden /> {resultado ? "Gerar outros" : "Gerar 5 títulos"}
         </Button>
       </div>
       {!iaDisponivel && <p className="text-xs text-text-tertiary mb-3">Configure uma IA em Configurações para gerar títulos. Você pode digitar o seu abaixo.</p>}
@@ -87,7 +97,7 @@ export function PainelTitulos({
                     {v.violacoes.map((x) => (
                       <li key={x.termo} className="flex gap-1.5 text-xs text-text-secondary">
                         <AlertTriangle size={12} className={`mt-0.5 shrink-0 ${x.gravidade === "bloquear" ? "text-negative" : ""}`} aria-hidden />
-                        {x.gravidade === "bloquear" ? "Evite" : "Revise"}: “{x.trecho}” — {x.motivo.toLowerCase()}.
+                        {x.gravidade === "bloquear" ? "Bloqueia" : "Revise"}: “{x.trecho}” — {x.motivo.toLowerCase()}.
                       </li>
                     ))}
                   </ul>
@@ -105,12 +115,40 @@ export function PainelTitulos({
         </>
       )}
 
+      {usados.filter((t) => t !== titulo).length > 0 && (
+        <div className="mb-3">
+          <h4 className="text-xs font-medium text-text-secondary mb-1.5">Títulos que você já usou</h4>
+          <ul className="space-y-1.5">
+            {usados
+              .filter((t) => t !== titulo)
+              .map((t) => (
+                <li key={t} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+                  <span className="text-sm text-text-primary min-w-0 break-words">
+                    {t} <span className="text-xs text-text-tertiary">({t.length}/{limite})</span>
+                  </span>
+                  <Button size="sm" variant="ghost" disabled={ocupado || t.length > limite} onClick={() => onEscolher(t)}>
+                    Usar este
+                  </Button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        <input className={`${inputClass} flex-1 min-w-[12rem]`} value={manual} maxLength={200} onChange={(e) => setManual(e.target.value)} placeholder="Ou digite o seu título" aria-label="Título digitado" />
-        <Button variant="ghost" onClick={() => onEscolher(manual.trim())} disabled={ocupado || manual.trim().length < 3}>
+        <input className={`${inputClass} flex-1 min-w-[12rem]`} value={manual} maxLength={200} onChange={(e) => {
+            setManual(e.target.value);
+            onPendente?.(e.target.value.trim() ? e.target.value : null);
+          }}
+          placeholder="Ou digite o seu título" aria-label="Título digitado" />
+        <Button variant="ghost" onClick={() => {
+            onPendente?.(null);
+            onEscolher(manual.trim());
+          }} disabled={ocupado || manual.trim().length < 3}>
           Usar o meu
         </Button>
       </div>
+      {children}
     </Card>
   );
 }

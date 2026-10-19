@@ -122,7 +122,7 @@ export function ConversaAssistente({
       >
         <input className={`${inputClass} flex-1`} value={texto} maxLength={500} onChange={(e) => onTexto(e.target.value)} placeholder={iaDisponivel ? "Escreva para o assistente" : "Configure uma IA em Configurações"} disabled={!iaDisponivel} aria-label="Mensagem para o assistente" />
         <Button type="submit" variant="primary" loading={enviando} disabled={enviando || !iaDisponivel || texto.trim().length === 0}>
-          <Send size={14} /> Enviar
+          <Send size={14} aria-hidden /> Enviar
         </Button>
       </form>
       {meta && <p className="text-xs text-text-tertiary mt-1.5">{meta}</p>}

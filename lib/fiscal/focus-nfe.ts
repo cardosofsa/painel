@@ -141,8 +141,11 @@ export function montarNfe(v: VendaFiscal, c: ConfigFiscal, e: EmpresaFiscal, d: 
 export type StatusNota = "processando" | "autorizada" | "rejeitada" | "cancelada";
 
 /** Resposta da Focus → status do Sertão. */
-export function statusDaFocus(j: { status?: string; mensagem_sefaz?: string; mensagem?: string } | null): { status: StatusNota; mensagem: string | null } {
+export function statusDaFocus(j: { status?: string; mensagem_sefaz?: string; mensagem?: string; codigo?: string } | null): { status: StatusNota; mensagem: string | null } {
   const s = j?.status ?? "";
+  // Erro do próprio emissor (422 na emissão, "nao_encontrado" na consulta): vem só com `codigo`.
+  // Antes caía em "processando" e a nota ficava presa assim para sempre.
+  if (!s && j?.codigo) return { status: "rejeitada", mensagem: j.mensagem ?? `O emissor recusou (${j.codigo}).` };
   if (s === "autorizado") return { status: "autorizada", mensagem: j?.mensagem_sefaz ?? null };
   if (s === "cancelado") return { status: "cancelada", mensagem: j?.mensagem_sefaz ?? null };
   if (s === "erro_autorizacao" || s === "denegado") return { status: "rejeitada", mensagem: j?.mensagem_sefaz ?? j?.mensagem ?? "Rejeitada pela Sefaz." };

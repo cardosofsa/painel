@@ -148,6 +148,10 @@ export function conferirEntradaCriacao(e: EntradaCriacao): string[] {
   if (e.descricao.trim().length < 100) falta.push("Salve a descrição (mínimo de 100 caracteres).");
   if (!e.preco || e.preco <= 0) falta.push("O produto precisa de um preço de venda.");
   if (!e.pesoG || e.pesoG <= 0) falta.push("Preencha o peso do produto (a Shopee exige para o frete).");
+  // Sem estes dois, o item nascia esgotado ou com frete calculado errado, e só se descobria no Seller Centre.
+  const { altura, largura, comprimento } = e.dimensoesCm;
+  if (!(altura && altura > 0 && largura && largura > 0 && comprimento && comprimento > 0)) falta.push("Preencha altura, largura e comprimento da embalagem no produto (os canais de frete calculam por elas).");
+  if (!(Math.floor(e.estoque) > 0)) falta.push("O produto está sem estoque: dê entrada antes, senão o anúncio nasce esgotado.");
   if (!e.categoryId) falta.push("Escolha a categoria da Shopee.");
   const preenchidos = new Set(e.atributos.filter((a) => a.valorId != null || (a.texto ?? "").trim()).map((a) => a.id));
   for (const o of e.obrigatorios) if (!preenchidos.has(o.id)) falta.push(`Preencha o atributo obrigatório “${o.nome}”.`);

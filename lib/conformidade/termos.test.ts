@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PRESETS, REGRAS_BASE, normalizar, regrasAtivas, temBloqueio, verificarTextos } from "./termos";
+import { PRESETS, REGRAS_BASE, TERMOS_VAZIOS, normalizar, regrasAtivas, regrasDoPerfil, temBloqueio, termosDoPerfil, termosParaEvitar, verificarTextos } from "./termos";
 
 const imagem = (texto: string, campo = "Capa 1") => ({ campo, texto, tipo: "imagem" as const });
 const texto = (t: string, campo = "Título") => ({ campo, texto: t, tipo: "texto" as const });
@@ -66,5 +66,41 @@ describe("resultado", () => {
       expect(p.termos.length).toBeGreaterThan(0);
       expect(p.motivo).toBeTruthy();
     }
+  });
+});
+
+describe("termos do perfil (0103)", () => {
+  it("termo marcado para bloquear bloqueia; o de revisar só pede revisão", () => {
+    const regras = regrasDoPerfil({ ...TERMOS_VAZIOS, revisar: ["artesanal"], bloquear: ["original"] });
+    const v = verificarTextos([texto("Bolsa original artesanal")], regras);
+    expect(v.find((x) => x.termo === "original")).toMatchObject({ gravidade: "bloquear", origem: "usuario" });
+    expect(v.find((x) => x.termo === "artesanal")?.gravidade).toBe("revisar");
+    expect(temBloqueio(v)).toBe(true);
+  });
+  it("o mesmo termo nas duas listas vale como bloqueio", () => {
+    const v = verificarTextos([texto("Peça original")], regrasDoPerfil({ ...TERMOS_VAZIOS, revisar: ["Original"], bloquear: ["original"] }));
+    expect(v).toHaveLength(1);
+    expect(v[0].gravidade).toBe("bloquear");
+  });
+  it("presets ligados seguem a gravidade escolhida", () => {
+    const so = verificarTextos([texto("Chá que emagrece")], regrasDoPerfil({ ...TERMOS_VAZIOS, presets: ["saude"] }));
+    expect(so[0].gravidade).toBe("revisar");
+    const bloq = verificarTextos([texto("Chá que emagrece")], regrasDoPerfil({ ...TERMOS_VAZIOS, presets: ["saude"], presetsGravidade: "bloquear" }));
+    expect(bloq[0]).toMatchObject({ gravidade: "bloquear", origem: "preset" });
+  });
+  it("sem perfil, só a base", () => {
+    expect(regrasDoPerfil(null)).toHaveLength(REGRAS_BASE.length);
+  });
+  it("lê a linha do banco sem confiar nela (antes da 0103 as colunas não vêm)", () => {
+    expect(termosDoPerfil({ termos_proibidos: ["x1"] })).toEqual({ ...TERMOS_VAZIOS, revisar: ["x1"] });
+    expect(termosDoPerfil({ presets: ["saude", "nao-existe", 3], presets_gravidade: "outra", termos_bloqueados: null })).toEqual({ ...TERMOS_VAZIOS, presets: ["saude"] });
+    expect(termosDoPerfil(null)).toEqual(TERMOS_VAZIOS);
+  });
+  it("a IA recebe tudo o que é para evitar, sem repetir", () => {
+    const t = termosParaEvitar({ presets: ["saude"], presetsGravidade: "revisar", revisar: ["Original", "detox"], bloquear: ["original"] });
+    expect(t.filter((x) => normalizar(x) === "original")).toHaveLength(1);
+    expect(t).toContain("emagrece");
+    expect(t.filter((x) => x === "detox")).toHaveLength(1);
+    expect(termosParaEvitar(null)).toEqual([]);
   });
 });

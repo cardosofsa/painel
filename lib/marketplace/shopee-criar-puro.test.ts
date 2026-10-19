@@ -83,6 +83,15 @@ describe("conferirEntradaCriacao", () => {
     expect(conferirEntradaCriacao({ ...entrada, atributos: [] })).toEqual(["Preencha o atributo obrigatório “Material”."]);
     expect(conferirEntradaCriacao({ ...entrada, atributos: [{ id: 1, texto: "   " }] })).toHaveLength(1);
   });
+  it("cobra estoque e as três medidas da embalagem", () => {
+    const semEstoque = conferirEntradaCriacao({ ...entrada, estoque: 0 });
+    expect(semEstoque).toHaveLength(1);
+    expect(semEstoque[0]).toContain("sem estoque");
+    expect(conferirEntradaCriacao({ ...entrada, estoque: 0.4 })).toHaveLength(1);
+    const semMedida = conferirEntradaCriacao({ ...entrada, dimensoesCm: { altura: 20, largura: null, comprimento: 10 } });
+    expect(semMedida).toHaveLength(1);
+    expect(semMedida[0]).toContain("altura, largura e comprimento");
+  });
 });
 
 describe("leitura das respostas", () => {

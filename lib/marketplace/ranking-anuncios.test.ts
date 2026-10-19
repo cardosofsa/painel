@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankearAnuncios, resumirRanking, type AnuncioCadastrado, type PedidoRanking } from "./ranking-anuncios";
+import { compararComAnterior, contarSituacoes, filtrarRanking, ordenarRanking, rankearAnuncios, resumirRanking, situacoesDa, type AnuncioCadastrado, type PedidoRanking } from "./ranking-anuncios";
 
 const INI = new Date("2026-10-01T00:00:00Z");
 const FIM = new Date("2026-10-31T23:59:59Z");
@@ -96,5 +96,63 @@ describe("rankearAnuncios", () => {
     const peds = [pedido({ lucro: 1, itens: [item("A", "A", 5, 10)] }), pedido({ lucro: 20, itens: [item("B", "B", 1, 40)] })];
     expect(rankearAnuncios(peds, [], INI, FIM, "unidades")[0].nome).toBe("A");
     expect(rankearAnuncios(peds, [], INI, FIM, "margem")[0].nome).toBe("B");
+  });
+});
+
+describe("filtros, comparação e ordenação", () => {
+  const ANT_INI = new Date("2026-09-01T00:00:00Z");
+  const ANT_FIM = new Date("2026-09-30T23:59:59Z");
+  const pedidos = [
+    pedido({ lucro: 30, itens: [item("A", "Caneca Azul Porcelana", 2, 50)] }),
+    pedido({ lucro: -5, itens: [item("B", "Garrafa Térmica", 1, 40)] }),
+    pedido({ lucro: 2, itens: [item("C", "Copo Vidro", 1, 40)] }),
+    pedido({ status: "cancelado", itens: [item("C", "Copo Vidro", 1, 40)] }),
+    // Período anterior
+    pedido({ criado_em_plataforma: "2026-09-10T12:00:00Z", lucro: 10, itens: [item("A", "Caneca Azul Porcelana", 1, 50)] }),
+    pedido({ criado_em_plataforma: "2026-09-10T12:00:00Z", lucro: 50, itens: [item("D", "Prato Fundo", 4, 50)] }),
+  ];
+  const anuncios = [anuncio("D", "Prato Fundo"), { ...anuncio("A", "Caneca Azul Porcelana"), id: "an-a" }];
+  const atual = rankearAnuncios(pedidos, anuncios, INI, FIM);
+  const anterior = rankearAnuncios(pedidos, anuncios, ANT_INI, ANT_FIM);
+  const comp = compararComAnterior(atual, anterior);
+  const linha = (nome: string) => atual.find((l) => l.nome === nome)!;
+
+  it("guarda o id do anúncio cadastrado", () => {
+    expect(linha("Caneca Azul Porcelana").anuncioId).toBe("an-a");
+    expect(linha("Garrafa Térmica").anuncioId).toBeNull();
+  });
+
+  it("compara com o período anterior: alta, novo, e o que parou de vender é queda", () => {
+    expect(comp.get(linha("Caneca Azul Porcelana").chave)).toMatchObject({ receitaAnterior: 50, variacao: 1, novo: false });
+    expect(comp.get(linha("Garrafa Térmica").chave)).toMatchObject({ receitaAnterior: 0, variacao: null, novo: true });
+    expect(situacoesDa(linha("Prato Fundo"), comp.get(linha("Prato Fundo").chave)).has("em_queda")).toBe(true);
+    expect(situacoesDa(linha("Garrafa Térmica"), comp.get(linha("Garrafa Térmica").chave)).has("em_alta")).toBe(true);
+    // Sem janela para comparar: nada de alta/queda.
+    expect(compararComAnterior(atual, null).get(linha("Caneca Azul Porcelana").chave)).toEqual({ receitaAnterior: null, variacao: null, novo: false });
+  });
+
+  it("situações: prejuízo, margem baixa, cancelamentos, parado", () => {
+    expect(situacoesDa(linha("Garrafa Térmica")).has("prejuizo")).toBe(true);
+    expect(situacoesDa(linha("Copo Vidro")).has("margem_baixa")).toBe(true);
+    expect(situacoesDa(linha("Copo Vidro")).has("cancelamentos")).toBe(true);
+    expect(situacoesDa(linha("Prato Fundo")).has("parados")).toBe(true);
+    const c = contarSituacoes(atual, comp);
+    expect(c).toMatchObject({ todos: 4, vendendo: 3, parados: 1, prejuizo: 1, em_alta: 3, em_queda: 1 });
+  });
+
+  it("busca sem acento e por várias palavras, classe e situação juntas", () => {
+    expect(filtrarRanking(atual, { busca: "termica", situacao: "todos", classe: "" }).map((l) => l.nome)).toEqual(["Garrafa Térmica"]);
+    expect(filtrarRanking(atual, { busca: "azul caneca", situacao: "todos", classe: "" })).toHaveLength(1);
+    expect(filtrarRanking(atual, { busca: "", situacao: "vendendo", classe: "A" }).every((l) => l.classe === "A")).toBe(true);
+    expect(filtrarRanking(atual, { busca: "", situacao: "em_queda", classe: "" }, comp).map((l) => l.nome)).toEqual(["Prato Fundo"]);
+  });
+
+  it("ordena pela coluna; vazios sempre no fim", () => {
+    expect(ordenarRanking(atual, "lucro", "asc").map((l) => l.nome)[0]).toBe("Garrafa Térmica");
+    const porMargem = ordenarRanking(atual, "margem", "asc");
+    expect(porMargem[porMargem.length - 1].nome).toBe("Prato Fundo");
+    expect(ordenarRanking(atual, "nome", "asc").map((l) => l.nome)).toEqual(["Caneca Azul Porcelana", "Copo Vidro", "Garrafa Térmica", "Prato Fundo"]);
+    const porVariacao = ordenarRanking(atual, "variacao", "desc", comp);
+    expect(porVariacao[0].nome).toBe("Caneca Azul Porcelana");
   });
 });

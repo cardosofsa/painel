@@ -24,12 +24,12 @@ export function VariacoesSalvas({
   return (
     <Card padding="nenhum" className="overflow-hidden">
       <div className="px-5 pt-5 pb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-text-primary">Variações Salvas</h2>
+        <h2 className="text-base font-semibold text-text-primary">Variações salvas</h2>
         <div className="flex items-center gap-3">
-          <button onClick={onExportarCsv} className="text-xs text-accent hover:underline" disabled={anuncios.length === 0}>
+          <button type="button" onClick={onExportarCsv} className="text-xs text-accent hover:underline" disabled={anuncios.length === 0}>
             Exportar
           </button>
-          <button onClick={onVerHistorico} className="text-xs text-accent hover:underline">
+          <button type="button" onClick={onVerHistorico} className="text-xs text-accent hover:underline">
             Ver histórico completo →
           </button>
         </div>
@@ -39,6 +39,8 @@ export function VariacoesSalvas({
           <div key={a.id} className="p-4">
             <div className="flex items-center justify-between">
               <button
+                type="button"
+                aria-expanded={expandido === a.id}
                 onClick={() => setExpandido((v) => (v === a.id ? null : a.id))}
                 className="text-sm font-medium text-text-primary hover:text-accent text-left"
               >
@@ -47,7 +49,7 @@ export function VariacoesSalvas({
                   ({a.variacoes.length} variações · {formatarData(a.criado_em)})
                 </span>
               </button>
-              <button onClick={() => onExcluir(a)} className="text-xs text-negative hover:underline shrink-0">
+              <button type="button" onClick={() => onExcluir(a)} className="text-xs text-negative hover:underline shrink-0">
                 Remover
               </button>
             </div>

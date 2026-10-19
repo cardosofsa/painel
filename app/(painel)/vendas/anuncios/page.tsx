@@ -10,7 +10,8 @@ export const metadata: Metadata = { title: "Ranking de anúncios" };
 /** Janela carregada; os chips da tela recortam daqui. */
 const DIAS_JANELA = 180;
 
-export default async function RankingAnunciosPage() {
+export default async function RankingAnunciosPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const parametros = await searchParams;
   const supabase = await createClient();
   const [dados, anunciosRes, lojasRes] = await Promise.all([
     carregarPedidosMarketplace(supabase, DIAS_JANELA),
@@ -37,6 +38,7 @@ export default async function RankingAnunciosPage() {
   const anuncios: AnuncioCadastrado[] = anunciosRes.error
     ? []
     : ((anunciosRes.data ?? []) as Record<string, unknown>[]).map((a) => ({
+        id: String(a.id),
         loja_id: String(a.loja_id),
         sku_principal: (a.sku_principal as string | null) ?? null,
         nome_item: (a.nome_item as string | null) ?? null,
@@ -56,6 +58,7 @@ export default async function RankingAnunciosPage() {
       agoraIso={new Date().toISOString()}
       diasJanela={DIAS_JANELA}
       semDados={!dados.disponivel}
+      parametros={parametros}
     />
   );
 }

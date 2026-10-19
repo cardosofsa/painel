@@ -7,7 +7,7 @@ import { formatBRL } from "@/lib/format";
 import type { EstadoPrecificacao } from "@/lib/precificacao-estado";
 
 /** Preços de anúncios concorrentes, usados na Estratégia Sugerida. Extraído de
- * `PrecificacaoClient.tsx` — ver comentário em `PainelEntradas.tsx`. */
+ * `PrecificacaoClient.tsx`; recebe o `estado` inteiro de `usePrecificacao()`. */
 export function PainelConcorrentes({ estado }: { estado: EstadoPrecificacao }) {
   const {
     produtoId,
@@ -19,6 +19,7 @@ export function PainelConcorrentes({ estado }: { estado: EstadoPrecificacao }) {
     novoConcorrentePreco,
     setNovoConcorrentePreco,
     adicionarConcorrente,
+    adicionandoConcorrente,
     removerConcorrente,
   } = estado;
 
@@ -50,7 +51,7 @@ export function PainelConcorrentes({ estado }: { estado: EstadoPrecificacao }) {
           placeholder="Preço"
           className={`${campoBase} w-28 tabular`}
         />
-        <Button variant="secondary" onClick={adicionarConcorrente}>
+        <Button variant="secondary" onClick={adicionarConcorrente} loading={adicionandoConcorrente}>
           Adicionar
         </Button>
       </div>

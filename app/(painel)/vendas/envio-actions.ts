@@ -1,5 +1,6 @@
 "use server";
 
+import { lancarErroSupabase } from "@/lib/erros";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -39,7 +40,7 @@ interface Falha {
 async function porConexao(ids: string[]) {
   const supabase = await createClient();
   const { data: pedidos, error } = await supabase.from("pedidos_marketplace").select("id, loja_id, numero, rastreio").in("id", ids);
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
   const lojas = [...new Set((pedidos ?? []).map((p) => p.loja_id as string))];
   const { data: conexoes } = lojas.length ? await supabase.from("marketplace_conexoes").select("*").in("loja_id", lojas) : { data: [] };
   const conexaoDa = new Map(((conexoes ?? []) as ConexaoShopee[]).map((c) => [c.loja_id, c]));
@@ -58,7 +59,7 @@ async function registrar(supabase: Awaited<ReturnType<typeof createClient>>, env
   // Sem a 0054 o estado não fica guardado, mas o envio já foi feito na Shopee: segue (a
   // sincronização traz o PROCESSED; só "Para Retirada" depende da migração).
   if (error?.code === "PGRST202") return;
-  if (error) throw new Error(error.message);
+  if (error) lancarErroSupabase(error);
 }
 
 function revalidar() {

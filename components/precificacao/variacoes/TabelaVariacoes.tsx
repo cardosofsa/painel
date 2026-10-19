@@ -1,21 +1,30 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, Copy, ImageIcon, MessageCircle, Plus, X } from "lucide-react";
+import { Button, IconButton } from "@/components/ui/Button";
+import { Card, CardEyebrow } from "@/components/ui/Card";
 import { StatusChip } from "@/components/ui/Badge";
-import { Table, Thead, Th, Tr, Td } from "@/components/ui/Table";
+import { CampoNumero } from "@/components/ui/CampoNumero";
 import { campoBase } from "@/components/ui/Modal";
 import { PriceBreakdownChart } from "@/components/charts/dinamicos";
 import { DetalhamentoPrecificacao, SimuladorPreco, type ResumoExport } from "@/components/precificacao/resultado-compartilhado";
-import { formatBRL, formatarMargemPct, classeValor } from "@/lib/format";
+import { classeValor, formatBRL } from "@/lib/format";
 import type { ModoCalculo } from "@/lib/pricing";
 import type { ResultadoVariacao, VariacaoLinha } from "@/lib/precificacao-variacoes";
 
-const NUM = `${campoBase} text-right tabular`;
+const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+const NUM = `${campoBase} h-9 text-right tabular`;
 
-/** Tabela editável de variações, com o detalhamento de cada uma ao expandir. */
-export function TabelaVariacoes({
+function rotuloDoModo(modo: ModoCalculo): string {
+  return modo === "margem" ? "Margem (%)" : modo === "markup" ? "Markup (%)" : modo === "lucro" ? "Lucro (R$)" : "Preço (R$)";
+}
+
+/**
+ * Variações como cartões: o que se digita à esquerda (nome, quantas unidades, custo, valor
+ * próprio) e o resultado à direita (preço, lucro e margem). Ao abrir, o detalhamento.
+ */
+export function ListaVariacoes({
   variacoes,
   modo,
   parametroPadrao,
@@ -29,9 +38,6 @@ export function TabelaVariacoes({
   onAdicionar,
   onRemover,
   onAtualizar,
-  onSalvar,
-  salvando,
-  podeSalvar,
 }: {
   variacoes: VariacaoLinha[];
   modo: ModoCalculo;
@@ -46,192 +52,203 @@ export function TabelaVariacoes({
   onAdicionar: () => void;
   onRemover: (id: string) => void;
   onAtualizar: (id: string, campo: keyof VariacaoLinha, valor: string) => void;
-  onSalvar: () => void;
-  salvando: boolean;
-  podeSalvar: boolean;
 }) {
   const [expandida, setExpandida] = useState<string | null>(null);
-  const rotuloParametro =
-    modo === "margem" ? "Margem %" : modo === "markup" ? "Markup %" : modo === "lucro" ? "Lucro (R$)" : "Preço (R$)";
+  const rotuloParametro = rotuloDoModo(modo);
 
   return (
-    <Card padding="nenhum" className="overflow-hidden">
-      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-text-primary">Variações</h3>
-        <button onClick={onAdicionar} className="text-sm text-accent hover:underline">
-          + Adicionar Variação
-        </button>
+    <div className="space-y-3">
+      {variacoes.map((v) => {
+        const r = calcular(v);
+        const { custo, resultado, taxas } = r;
+        const aberta = expandida === v.id;
+        const proprio = v.parametroOverride !== null;
+        return (
+          <div key={v.id} className={`rounded-lg border bg-surface-1 transition-colors duration-[--duracao-rapida] ${resultado.viavel ? "border-border" : "border-negative/40"}`}>
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_12.5rem] gap-3 p-3">
+              <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1.4fr)_5rem_minmax(0,1fr)_minmax(0,1fr)] gap-2 items-end">
+                <Campo rotulo="Variação" className="col-span-2 sm:col-span-1">
+                  <input value={v.nome} onChange={(e) => onAtualizar(v.id, "nome", e.target.value)} className={`${campoBase} h-9`} aria-label="Nome da variação" />
+                </Campo>
+                <Campo rotulo="Unidades">
+                  <CampoNumero value={v.multiplicador} onChange={(n) => onAtualizar(v.id, "multiplicador", String(n))} min={1} casas={0} padrao={1} className={NUM} aria-label={`Unidades em ${v.nome}`} />
+                </Campo>
+                <Campo rotulo="Custo (R$)">
+                  <CampoNumero value={v.custoManual ?? custo} onChange={(n) => onAtualizar(v.id, "custoManual", String(n))} min={0} casas={2} className={NUM} aria-label={`Custo de ${v.nome}`} />
+                </Campo>
+                <Campo rotulo={proprio ? `${rotuloParametro} · próprio` : rotuloParametro} className="col-span-2 sm:col-span-1">
+                  <CampoNumero
+                    value={v.parametroOverride ?? parametroPadrao}
+                    // Igual ao padrão = sem valor próprio (segue o "Como quer lucrar").
+                    onChange={(n) => onAtualizar(v.id, "parametroOverride", n === parametroPadrao ? "" : String(n))}
+                    min={0}
+                    casas={2}
+                    className={`${NUM} ${proprio ? "border-accent" : ""}`}
+                    aria-label={`${rotuloParametro} de ${v.nome}`}
+                  />
+                </Campo>
+              </div>
+
+              <div className="flex items-end justify-between gap-2 md:border-l md:border-border md:pl-3">
+                <div className="min-w-0">
+                  <div className="font-mono text-xl font-semibold text-text-primary leading-tight">{resultado.viavel ? formatBRL(resultado.precoVenda) : "—"}</div>
+                  <div className="text-xs text-text-secondary whitespace-nowrap">
+                    {resultado.viavel ? (
+                      <>
+                        lucro <span className={`font-mono ${classeValor(resultado.lucroLiquido)}`}>{formatBRL(resultado.lucroLiquido)}</span> · {pct(resultado.margemEfetivaPct)}
+                      </>
+                    ) : (
+                      <span className="text-negative">inviável</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex shrink-0">
+                  <IconButton onClick={() => setExpandida(aberta ? null : v.id)} aria-label={aberta ? `Recolher detalhes de ${v.nome}` : `Ver detalhes de ${v.nome}`} aria-expanded={aberta}>
+                    <ChevronDown size={14} className={`transition-transform duration-[--duracao-media] ${aberta ? "rotate-180" : ""}`} />
+                  </IconButton>
+                  <IconButton onClick={() => onRemover(v.id)} aria-label={`Remover a variação ${v.nome}`} disabled={variacoes.length <= 1}>
+                    <X size={14} />
+                  </IconButton>
+                </div>
+              </div>
+            </div>
+
+            {aberta && (
+              <div className="border-t border-border bg-surface-2/40 p-4 grid grid-cols-1 lg:grid-cols-2 gap-5 animate-surgir">
+                <div className="text-sm space-y-1.5">
+                  <DetalhamentoPrecificacao
+                    aberto
+                    onToggle={() => {}}
+                    componentes={null}
+                    custoTotal={resultado.custoTotal}
+                    taxaVariavelValor={resultado.taxaVariavelValor}
+                    taxaVariavelPct={taxas.taxaVariavelPct}
+                    taxaFixa={taxas.taxaFixa}
+                    taxaAdicionalValor={resultado.taxaAdicionalValor}
+                    taxaAdicionalPct={taxaAdicionalPct / 100}
+                    taxaExtraCalculada={resultado.taxaExtraCalculada}
+                    impostoValor={resultado.impostoValor}
+                    impostoPct={impostoPct / 100}
+                  />
+                  <div className="flex justify-between font-medium pt-1.5 border-t border-border">
+                    <span className="text-text-primary">Lucro líquido</span>
+                    <span className={`font-mono ${classeValor(resultado.lucroLiquido)}`}>
+                      {formatBRL(resultado.lucroLiquido)} ({pct(resultado.margemEfetivaPct)})
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-text-tertiary text-xs">
+                    <span>Markup sobre o custo</span>
+                    <span className="font-mono">{pct(resultado.markupSobreCustoPct)}</span>
+                  </div>
+                  <div className="pt-1">
+                    <SimuladorPreco custoTotal={resultado.custoTotal} taxas={taxas} faixas={r.faixas} />
+                  </div>
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-text-secondary mb-2">Para onde vai o dinheiro</span>
+                  <PriceBreakdownChart
+                    data={[
+                      { nome: "Custo", valor: resultado.custoTotal },
+                      { nome: "Taxas", valor: taxas.taxaFixa + resultado.taxaVariavelValor + resultado.taxaAdicionalValor + resultado.taxaExtraCalculada },
+                      { nome: "Imposto", valor: resultado.impostoValor },
+                      { nome: "Lucro", valor: resultado.lucroLiquido },
+                    ]}
+                  />
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => onCopiar(resumoDe(v))} disabled={!resultado.viavel}>
+                      <Copy size={14} aria-hidden /> Copiar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onWhatsapp(resumoDe(v))} disabled={!resultado.viavel}>
+                      <MessageCircle size={14} aria-hidden /> WhatsApp
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onImagem(resumoDe(v))} disabled={!resultado.viavel}>
+                      <ImageIcon size={14} aria-hidden /> Imagem
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={onAdicionar}
+        className="w-full rounded-lg border border-dashed border-border px-3 py-2.5 text-sm text-accent hover:border-accent hover:bg-accent-soft transition-colors duration-[--duracao-rapida] flex items-center justify-center gap-1.5"
+      >
+        <Plus size={14} aria-hidden /> Adicionar variação
+      </button>
+    </div>
+  );
+}
+
+function Campo({ rotulo, className = "", children }: { rotulo: string; className?: string; children: ReactNode }) {
+  return (
+    <label className={`flex flex-col gap-1 min-w-0 ${className}`}>
+      <span className="text-xs text-text-tertiary truncate">{rotulo}</span>
+      {children}
+    </label>
+  );
+}
+
+/**
+ * Resumo fixo à direita: a "escada de preços" (cada variação, o preço por unidade e quanto o
+ * cliente economiza em relação à unidade avulsa) e o salvar.
+ */
+export function EscadaPrecos({
+  variacoes,
+  calcular,
+  canal,
+  acoes,
+}: {
+  variacoes: VariacaoLinha[];
+  calcular: (v: VariacaoLinha) => ResultadoVariacao;
+  canal: string | null;
+  /** Botões de salvar e o indicador do rascunho. */
+  acoes: ReactNode;
+}) {
+  const linhas = variacoes.map((v) => ({ v, r: calcular(v).resultado }));
+  const unidade = linhas.find((l) => l.v.multiplicador === 1 && l.r.viavel);
+  const inviaveis = linhas.filter((l) => !l.r.viavel).length;
+  const lucroMin = linhas.filter((l) => l.r.viavel).reduce((m, l) => Math.min(m, l.r.lucroLiquido), Infinity);
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2">
+        <CardEyebrow>Escada de preços</CardEyebrow>
+        <StatusChip label={inviaveis ? `${inviaveis} inviável(is)` : "Todas viáveis"} tone={inviaveis ? "negative" : "positive"} />
       </div>
-      <Table>
-        <Thead>
-          <tr>
-            <Th>Nome</Th>
-            <Th align="right">Multiplicador</Th>
-            <Th align="right">Custo (R$)</Th>
-            <Th align="right">{rotuloParametro}</Th>
-            <Th align="right">Preço Sugerido</Th>
-            <Th align="right">Lucro</Th>
-            <Th align="right">Margem</Th>
-            <Th></Th>
-            <Th></Th>
-          </tr>
-        </Thead>
-        <tbody>
-          {variacoes.map((v) => {
-            const r = calcular(v);
-            const { custo, resultado, taxas } = r;
-            const aberta = expandida === v.id;
-            return (
-              <Fragment key={v.id}>
-                <Tr>
-                  <Td>
-                    <input
-                      value={v.nome}
-                      onChange={(e) => onAtualizar(v.id, "nome", e.target.value)}
-                      className={`${campoBase} w-40`}
-                      aria-label="Nome da variação"
-                    />
-                  </Td>
-                  <Td align="right">
-                    <input
-                      type="number"
-                      min={1}
-                      value={v.multiplicador}
-                      onChange={(e) => onAtualizar(v.id, "multiplicador", e.target.value)}
-                      className={`${NUM} w-20`}
-                      aria-label="Multiplicador"
-                    />
-                  </Td>
-                  <Td align="right">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={v.custoManual ?? custo}
-                      onChange={(e) => onAtualizar(v.id, "custoManual", e.target.value)}
-                      className={`${NUM} w-28`}
-                      aria-label="Custo"
-                    />
-                  </Td>
-                  <Td align="right">
-                    <input
-                      type="number"
-                      step={modo === "margem" || modo === "markup" ? "0.1" : "0.01"}
-                      value={v.parametroOverride ?? parametroPadrao}
-                      onChange={(e) => onAtualizar(v.id, "parametroOverride", e.target.value)}
-                      className={`${NUM} w-24`}
-                      aria-label={rotuloParametro}
-                    />
-                  </Td>
-                  <Td align="right" mono className="text-accent">
-                    {formatBRL(resultado.precoVenda)}
-                  </Td>
-                  <Td align="right" mono>
-                    {formatBRL(resultado.lucroLiquido)}
-                  </Td>
-                  <Td align="right" mono className={classeValor(resultado.lucroLiquido)}>
-                    {formatarMargemPct(resultado.lucroLiquido, resultado.precoVenda)}
-                  </Td>
-                  <Td align="right">
-                    <button
-                      onClick={() => setExpandida(aberta ? null : v.id)}
-                      className="text-text-tertiary hover:text-text-primary"
-                      aria-label={aberta ? "Recolher detalhes" : "Ver detalhes"}
-                    >
-                      {aberta ? "▲" : "▾"}
-                    </button>
-                  </Td>
-                  <Td align="right">
-                    <button
-                      onClick={() => onRemover(v.id)}
-                      className="text-text-tertiary hover:text-negative px-1"
-                      aria-label="Remover variação"
-                    >
-                      ×
-                    </button>
-                  </Td>
-                </Tr>
-                {aberta && (
-                  <tr>
-                    <td colSpan={9} className="bg-surface-2/40 px-5 py-4">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                        <Card className={resultado.viavel ? "" : "border-negative/30 bg-negative-soft"}>
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-medium text-text-tertiary uppercase">Resultado — {v.nome}</span>
-                            <StatusChip label={resultado.viavel ? "Viável" : "Inviável"} tone={resultado.viavel ? "positive" : "negative"} />
-                          </div>
-                          <div className="text-center py-4">
-                            <div className="text-xs text-text-tertiary mb-1">Preço de Venda Recomendado</div>
-                            <div className="font-mono text-4xl font-semibold text-accent">{formatBRL(resultado.precoVenda)}</div>
-                          </div>
-                          <div className="pt-4 border-t border-border text-sm space-y-1.5">
-                            <DetalhamentoPrecificacao
-                              aberto
-                              onToggle={() => {}}
-                              componentes={null}
-                              custoTotal={resultado.custoTotal}
-                              taxaVariavelValor={resultado.taxaVariavelValor}
-                              taxaVariavelPct={taxas.taxaVariavelPct}
-                              taxaFixa={taxas.taxaFixa}
-                              taxaAdicionalValor={resultado.taxaAdicionalValor}
-                              taxaAdicionalPct={taxaAdicionalPct / 100}
-                              taxaExtraCalculada={resultado.taxaExtraCalculada}
-                              impostoValor={resultado.impostoValor}
-                              impostoPct={impostoPct / 100}
-                            />
-                            <div className="flex justify-between font-medium pt-1.5 border-t border-border">
-                              <span className="text-text-primary">Lucro líquido</span>
-                              <span className={`font-mono ${resultado.lucroLiquido >= 0 ? "text-positive" : "text-negative"}`}>
-                                {formatBRL(resultado.lucroLiquido)} ({(resultado.margemEfetivaPct * 100).toFixed(1)}%)
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-text-tertiary text-xs">
-                              <span>Markup sobre custo</span>
-                              <span className="font-mono">{(resultado.markupSobreCustoPct * 100).toFixed(1)}%</span>
-                            </div>
-                          </div>
-                          <div className="mt-3">
-                            <SimuladorPreco custoTotal={resultado.custoTotal} taxas={taxas} />
-                          </div>
-                          <div className="flex gap-2 mt-4">
-                            <Button variant="secondary" className="flex-1" onClick={() => onCopiar(resumoDe(v))}>
-                              Copiar
-                            </Button>
-                            <Button variant="secondary" className="flex-1" onClick={() => onWhatsapp(resumoDe(v))}>
-                              Enviar WhatsApp
-                            </Button>
-                          </div>
-                          <Button variant="secondary" className="w-full mt-2" onClick={() => onImagem(resumoDe(v))}>
-                            Imagem
-                          </Button>
-                        </Card>
-                        <Card>
-                          <span className="text-xs font-medium text-text-tertiary uppercase block mb-2">Composição do Preço</span>
-                          <PriceBreakdownChart
-                            data={[
-                              { nome: "Custo", valor: resultado.custoTotal },
-                              {
-                                nome: "Taxas da plataforma",
-                                valor: taxas.taxaFixa + resultado.taxaVariavelValor + resultado.taxaAdicionalValor + resultado.taxaExtraCalculada,
-                              },
-                              { nome: "Imposto", valor: resultado.impostoValor },
-                              { nome: "Lucro líquido", valor: Math.max(0, resultado.lucroLiquido) },
-                            ]}
-                          />
-                        </Card>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </Table>
-      <div className="p-4 border-t border-border">
-        <Button variant="primary" onClick={onSalvar} loading={salvando} disabled={!podeSalvar}>
-          Salvar Anúncio
-        </Button>
-      </div>
+      {canal && <div className="mt-0.5 text-xs text-text-tertiary">{canal}</div>}
+      <ul className="mt-3 divide-y divide-border">
+        {linhas.map(({ v, r }) => {
+          const porUnidade = r.viavel && v.multiplicador > 0 ? r.precoVenda / v.multiplicador : 0;
+          const economia = unidade && v.multiplicador > 1 && porUnidade > 0 ? 1 - porUnidade / unidade.r.precoVenda : null;
+          return (
+            <li key={v.id} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-text-primary truncate">{v.nome || "Sem nome"}</div>
+                <div className="text-xs text-text-tertiary">
+                  {r.viavel ? (
+                    <>
+                      {v.multiplicador > 1 ? `${formatBRL(porUnidade)}/un` : "por unidade"}
+                      {economia !== null && economia > 0.0005 && <span className="text-positive"> · {pct(economia)} mais barato</span>}
+                      {economia !== null && economia < -0.0005 && <span className="text-negative"> · {pct(-economia)} mais caro</span>}
+                    </>
+                  ) : (
+                    <span className="text-negative">inviável</span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="font-mono text-sm font-semibold text-text-primary">{r.viavel ? formatBRL(r.precoVenda) : "—"}</div>
+                {r.viavel && <div className={`font-mono text-xs ${classeValor(r.lucroLiquido)}`}>{formatBRL(r.lucroLiquido)}</div>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {Number.isFinite(lucroMin) && lucroMin < 0 && <p className="mt-2 text-xs text-negative">Alguma variação dá prejuízo: confira o custo ou a margem dela.</p>}
+      <div className="mt-4 pt-4 border-t border-border">{acoes}</div>
     </Card>
   );
 }

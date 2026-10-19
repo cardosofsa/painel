@@ -146,7 +146,19 @@ export function useExtrasPrecificacao(ctx: {
     setEstrategia(null);
   }
 
+  /** Para o rascunho: o que o usuário digitou aqui (a estratégia da IA não entra: os números mudam). */
+  const extrasDoRascunho = { anuncioTipo, anuncioValor, margemAlvoAnuncio, imagemPropria };
+  function aplicarExtrasDoRascunho(e: Partial<typeof extrasDoRascunho>) {
+    if (e.anuncioTipo === "percentual" || e.anuncioTipo === "valor") setAnuncioTipo(e.anuncioTipo);
+    if (e.anuncioValor === "" || typeof e.anuncioValor === "number") setAnuncioValor(e.anuncioValor);
+    if (typeof e.margemAlvoAnuncio === "number") setMargemAlvoAnuncio(e.margemAlvoAnuncio);
+    if (e.imagemPropria === null || typeof e.imagemPropria === "string") setImagemPropria(e.imagemPropria);
+    setEstrategia(null);
+  }
+
   return {
+    extrasDoRascunho,
+    aplicarExtrasDoRascunho,
     anuncioTipo,
     setAnuncioTipo,
     anuncioValor,

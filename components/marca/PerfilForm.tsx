@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
@@ -11,7 +11,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { executarComToast } from "@/lib/acao-cliente";
 import { listaDePlataformas, regrasDaPlataforma, type PlataformaMarcaId } from "@/lib/marca/plataformas";
-import { PRESETS } from "@/lib/conformidade/termos";
+import { PRESETS, termosDoPerfil, type GravidadeTermo } from "@/lib/conformidade/termos";
 import { urlPublicaImagem, type LojaParaMarca, type PerfilMarca } from "@/lib/marca/tipos";
 import { removerPerfilMarca, salvarPerfilMarca } from "@/app/(painel)/produtos/marca/actions";
 
@@ -48,7 +48,10 @@ export function PerfilForm({
   const [logo, setLogo] = useState<string | null>(perfil?.logo_path ?? null);
   const [referencias, setReferencias] = useState<string[]>(perfil?.referencias ?? []);
   const [termos, setTermos] = useState<string[]>(perfil?.termos_proibidos ?? []);
-  const [novoTermo, setNovoTermo] = useState("");
+  const inicial = termosDoPerfil(perfil);
+  const [bloqueados, setBloqueados] = useState<string[]>(inicial.bloquear);
+  const [presets, setPresets] = useState<string[]>(inicial.presets);
+  const [gravidade, setGravidade] = useState<GravidadeTermo>(inicial.presetsGravidade);
 
   const regras = regrasDaPlataforma(plataforma);
 
@@ -75,22 +78,6 @@ export function PerfilForm({
     }
   }
 
-  function adicionarTermo(texto: string) {
-    const t = texto.trim();
-    if (t.length < 2) return;
-    setTermos((atual) => (atual.some((x) => x.toLowerCase() === t.toLowerCase()) ? atual : [...atual, t]));
-    setNovoTermo("");
-  }
-
-  function adicionarPreset(id: string) {
-    const p = PRESETS.find((x) => x.id === id);
-    if (!p) return;
-    setTermos((atual) => {
-      const tem = new Set(atual.map((x) => x.toLowerCase()));
-      return [...atual, ...p.termos.filter((t) => !tem.has(t.toLowerCase()))].slice(0, 100);
-    });
-  }
-
   function salvar() {
     startTransition(async () => {
       const r = await executarComToast(
@@ -104,6 +91,9 @@ export function PerfilForm({
           logo_path: logo,
           referencias,
           termos_proibidos: termos,
+          presets,
+          presets_gravidade: gravidade,
+          termos_bloqueados: bloqueados,
         }),
         { sucesso: "Perfil salvo", erro: "Não foi possível salvar o perfil." },
       );
@@ -209,45 +199,63 @@ export function PerfilForm({
         </div>
       </div>
 
-      <FormField label="Termos que você não quer ver nos textos e nas imagens" dica="Além das regras gerais de marketplace (contato, link, promoção na imagem). Serve para qualquer nicho.">
-        <div className="flex gap-2">
-          <input
-            className={inputClass}
-            value={novoTermo}
-            maxLength={60}
-            onChange={(e) => setNovoTermo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                adicionarTermo(novoTermo);
-              }
-            }}
-            placeholder="Digite e tecle Enter"
-          />
-          <Button type="button" variant="secondary" onClick={() => adicionarTermo(novoTermo)} disabled={novoTermo.trim().length < 2}>
-            <Plus size={14} /> Adicionar
-          </Button>
+      <div className="mb-4 rounded-lg border border-border">
+        <div className="px-4 pt-3 pb-1">
+          <h3 className="text-sm font-semibold text-text-primary">Termos que você não quer ver</h3>
+          <p className="text-xs text-text-secondary mt-0.5">Além das regras gerais de marketplace (contato, link, promoção na imagem), que sempre valem. Conferidos no título, na descrição e nos textos da capa.</p>
         </div>
-        {termos.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {termos.map((t) => (
-              <span key={t} className="inline-flex items-center gap-1 rounded-full bg-surface-2 border border-border px-2.5 py-1 text-xs text-text-primary">
-                {t}
-                <button type="button" aria-label={`Remover ${t}`} onClick={() => setTermos((a) => a.filter((x) => x !== t))} className="text-text-secondary hover:text-text-primary">
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
+        <ListaTermos
+          titulo="Bloqueiam"
+          dica="Título ou descrição com eles não é salvo no anúncio nem enviado à Shopee."
+          termos={bloqueados}
+          onTermos={setBloqueados}
+          tom="negative"
+        />
+        <ListaTermos titulo="Pedem revisão" dica="Aparecem como aviso. Você decide se mantém." termos={termos} onTermos={setTermos} tom="neutro" />
+        {PRESETS.length > 0 && (
+          <div className="border-t border-border px-4 py-3">
+            <span className="block text-xs font-medium text-text-secondary mb-2">Conjuntos prontos (ligue o que faz sentido para o que você vende)</span>
+            <div className="space-y-2">
+              {PRESETS.map((p) => {
+                const ligado = presets.includes(p.id);
+                return (
+                  <label key={p.id} className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors duration-[--duracao-rapida] ${ligado ? "border-accent bg-accent-soft" : "border-border hover:bg-surface-2"}`}>
+                    <input type="checkbox" className="mt-0.5 h-4 w-4 accent-accent" checked={ligado} onChange={() => setPresets((a) => (ligado ? a.filter((x) => x !== p.id) : [...a, p.id]))} />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-text-primary">{p.nome}</span>
+                      <span className="block text-xs text-text-secondary">{p.descricao} {p.termos.length} termos, como “{p.termos.slice(0, 3).join("”, “")}”.</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {presets.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-text-secondary">Os termos dos conjuntos ligados:</span>
+                <div className="inline-grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1" role="radiogroup" aria-label="Gravidade dos conjuntos ligados">
+                  {(
+                    [
+                      ["revisar", "Pedem revisão"],
+                      ["bloquear", "Bloqueiam"],
+                    ] as const
+                  ).map(([id, rotulo]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={gravidade === id}
+                      onClick={() => setGravidade(id)}
+                      className={`rounded-md px-3 py-1 text-xs font-medium transition-colors duration-[--duracao-rapida] ${gravidade === id ? "bg-surface-1 text-text-primary shadow-elev-1" : "text-text-secondary hover:text-text-primary"}`}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
-        <div className="mt-2 flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
-            <Button key={p.id} type="button" size="sm" variant="ghost" onClick={() => adicionarPreset(p.id)} title={p.descricao}>
-              <Plus size={12} /> {p.nome}
-            </Button>
-          ))}
-        </div>
-      </FormField>
+      </div>
 
       <div className="flex flex-wrap gap-2 mt-2">
         <Button variant="primary" onClick={salvar} loading={pending} disabled={pending || enviando || nome.trim().length === 0}>
@@ -261,5 +269,57 @@ export function PerfilForm({
       </div>
       {ConfirmDialog}
     </Card>
+  );
+}
+
+/** Uma lista de termos do perfil: campo para digitar (Enter adiciona) e as etiquetas com remover. */
+function ListaTermos({ titulo, dica, termos, onTermos, tom }: { titulo: string; dica: string; termos: string[]; onTermos: (f: (a: string[]) => string[]) => void; tom: "negative" | "neutro" }) {
+  const [novo, setNovo] = useState("");
+  const id = useId();
+  function adicionar() {
+    const t = novo.trim();
+    if (t.length < 2) return;
+    onTermos((a) => (a.some((x) => x.toLowerCase() === t.toLowerCase()) || a.length >= 100 ? a : [...a, t]));
+    setNovo("");
+  }
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <label htmlFor={id} className="flex items-center gap-2 text-xs font-medium text-text-secondary">
+        <span className={`h-2 w-2 rounded-full ${tom === "negative" ? "bg-negative" : "bg-text-tertiary"}`} aria-hidden="true" />
+        {titulo}
+        <span className="font-normal text-text-tertiary">· {dica}</span>
+      </label>
+      <div className="mt-1.5 flex gap-2">
+        <input
+          id={id}
+          className={inputClass}
+          value={novo}
+          maxLength={60}
+          onChange={(e) => setNovo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              adicionar();
+            }
+          }}
+          placeholder="Digite e tecle Enter"
+        />
+        <Button type="button" variant="secondary" onClick={adicionar} disabled={novo.trim().length < 2}>
+          <Plus size={14} aria-hidden /> Adicionar
+        </Button>
+      </div>
+      {termos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {termos.map((t) => (
+            <span key={t} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-text-primary ${tom === "negative" ? "border-negative bg-negative-soft" : "border-border bg-surface-2"}`}>
+              {t}
+              <button type="button" aria-label={`Remover ${t}`} onClick={() => onTermos((a) => a.filter((x) => x !== t))} className="text-text-secondary hover:text-text-primary">
+                <X size={12} aria-hidden />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

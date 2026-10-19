@@ -12,7 +12,7 @@ import { GradeProdutos } from "./GradeProdutos";
 import { Carrinho, calcularDesconto, calcularSubtotal, type EstadoCarrinho } from "./Carrinho";
 import { CheckoutModal, type DadosCheckout } from "./CheckoutModal";
 import { ReciboModal } from "./ReciboModal";
-import { registrarVenda, type VendaInput } from "./actions";
+import { registrarVenda, registrarVendaOffline, type VendaInput } from "./actions";
 import { useFilaOffline } from "./useFilaOffline";
 import { ehErroDeRede } from "@/lib/pdv-offline";
 import {
@@ -63,6 +63,8 @@ export function PdvClient({
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const offline = useFilaOffline(userId, operadorId);
+  // Chave e hora da venda em andamento (ver `confirmarVenda`).
+  const tentativaVenda = useRef<{ chave: string; feitaEm: string } | null>(null);
   // Estoque na tela já descontando o que foi vendido sem internet e ainda não subiu.
   const produtosNaTela = useMemo(
     () => (offline.reservado.size ? produtos.map((p) => ({ ...p, estoque: Math.max(0, p.estoque - (offline.reservado.get(p.id) ?? 0)) })) : produtos),
@@ -179,6 +181,7 @@ export function PdvClient({
       confirmLabel: "Esvaziar",
     });
     if (!ok) return;
+    tentativaVenda.current = null;
     setEstado(CARRINHO_VAZIO);
     setCarrinhoAberto(false);
   }
@@ -216,14 +219,27 @@ export function PdvClient({
       troca_devolucao_id: creditoUsado > 0 ? (credito?.id ?? null) : null,
       valor_recebido: dados.valor_recebido,
     };
+    // Chave da venda, gerada ANTES de enviar e mantida até a venda dar certo. Antes, a venda ia
+    // sem chave: se o servidor gravava e só a resposta se perdia (rede caiu), ela entrava na
+    // fila sem internet e era gravada de novo ao reenviar. Com a mesma chave na tentativa
+    // online e na fila, `registrar_venda_offline` devolve a venda que já existe (0060).
+    const tentativa = (tentativaVenda.current ??= { chave: crypto.randomUUID(), feitaEm: new Date().toISOString() });
+    const venderDeNovo = () => (tentativaVenda.current = null);
+
     // Sem internet: guarda no aparelho e segue vendendo (sobe quando a conexão voltar).
     async function guardarOffline() {
       if (creditoUsado > 0) return void toast.error("Sem internet: venda com crédito de troca precisa de conexão para conferir o crédito.");
-      const ok = await offline.enfileirar(venda, {
-        total: subtotal - desconto + estado.valorEntrega,
-        itens: estado.itens.map((i) => ({ produto_id: i.produto_id, nome: i.nome, quantidade: i.quantidade })),
-      });
+      const ok = await offline.enfileirar(
+        venda,
+        {
+          total: subtotal - desconto + estado.valorEntrega,
+          itens: estado.itens.map((i) => ({ produto_id: i.produto_id, nome: i.nome, quantidade: i.quantidade })),
+        },
+        tentativa.chave,
+        tentativa.feitaEm,
+      );
       if (!ok) return void toast.error("Sem internet e não foi possível guardar a venda neste aparelho.");
+      venderDeNovo();
       toast.success("Sem internet: venda guardada neste aparelho. Ela sobe sozinha quando a conexão voltar.");
       setEstado(CARRINHO_VAZIO);
       setCheckoutAberto(false);
@@ -234,14 +250,21 @@ export function PdvClient({
     startTransition(async () => {
       let r: Awaited<ReturnType<typeof registrarVenda>>;
       try {
-        r = await registrarVenda(venda);
+        // Com crédito de troca a venda não vai para a fila (precisa conferir o crédito na hora),
+        // então segue pela RPC de sempre; o resto vai pela idempotente, com a chave.
+        r = creditoUsado > 0 ? await registrarVenda(venda) : await registrarVendaOffline(tentativa.chave, tentativa.feitaEm, venda);
       } catch (e) {
         if (ehErroDeRede(e)) return void (await guardarOffline());
         console.error("[pdv] venda:", e);
         return void toast.error("Erro ao registrar a venda");
       }
-      if (!r.ok) return void toast.error(r.erro);
+      // Recusa do banco (estoque, limite de fiado): nada foi gravado, a próxima tentativa é nova.
+      if (!r.ok) {
+        venderDeNovo();
+        return void toast.error(r.erro);
+      }
       if (r.ok) {
+        venderDeNovo();
         const venda = r.dado;
         const cliente = clientes.find((c) => c.id === dados.cliente_id) ?? null;
         // Rótulo pro comprovante local — a RPC compõe o rótulo completo em

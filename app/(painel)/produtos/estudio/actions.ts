@@ -12,7 +12,6 @@ import {
   rascunhoIdSchema,
   titulosEstudioSchema,
   vereditoCapaSchema,
-  type EstadoRascunho,
 } from "@/lib/validacao";
 import { z } from "zod";
 import { conversarIA, gerarDescricaoEstudioIA, gerarTitulosEstudioIA, pesquisarConcorrentesIA } from "@/lib/ia/gerar";
@@ -20,10 +19,24 @@ import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, type AvaliacaoDescricao } f
 import { avaliarVariantes, type VarianteAvaliada } from "@/lib/ia/prompts-titulos";
 import { gerarImagemGemini } from "@/lib/ia/imagem";
 import { ErroIA } from "@/lib/ia/erro";
-import { regrasAtivas, temBloqueio, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
+import { regrasDoPerfil, temBloqueio, termosParaEvitar, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
 import { montarPromptCapaCena, montarPromptCapaCompleta, type ContextoCapa } from "@/lib/marca/prompt-capa";
-import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, lerEstado, usuarioDaSessao, type ContextoRascunho } from "@/lib/estudio/servidor";
+import {
+  capaEmGeracao,
+  carregarContextoRascunho,
+  caminhoDoUsuario,
+  gravarEstado,
+  gravarEstadoVersionado,
+  lerEstadoAtual,
+  lerRascunhoAberto,
+  sincronizarStatus,
+  usuarioDaSessao,
+  type ContextoRascunho,
+  type RascunhoAberto,
+} from "@/lib/estudio/servidor";
 import type { MensagemHistorico, AcaoProposta } from "@/lib/ia/prompts-assistente";
+
+export type { RascunhoAberto } from "@/lib/estudio/servidor";
 
 const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O estúdio precisa da migração 0099. Aplique no Supabase e recarregue.";
@@ -38,17 +51,6 @@ function checar(erro: { message: string; code?: string } | null) {
   lancarErroSupabase(erro);
 }
 
-export interface RascunhoAberto {
-  id: string;
-  titulo: string | null;
-  descricao: string | null;
-  /** Dados do produto que a tela precisa (preço, palavras-chave, foto). */
-  produto: { nome: string; precoVenda: number | null; palavrasChave: string[]; imagemUrl: string | null; pesoG: number | null; temMedidas: boolean };
-  status: string;
-  estado: EstadoRascunho;
-  mensagens: { id: string; papel: "usuario" | "ia"; texto: string; acoes: AcaoProposta[]; criado_em: string }[];
-}
-
 /** Abre o rascunho mais recente do produto (e do perfil) ou cria um novo. */
 export async function abrirRascunho(entrada: unknown) {
   return comResultado(async (): Promise<RascunhoAberto> => {
@@ -61,23 +63,52 @@ export async function abrirRascunho(entrada: unknown) {
     const { data: achados, error } = await consulta;
     checar(error);
 
-    let r = achados?.[0];
-    if (!r) {
-      const { data, error: erroNovo } = await supabase.from("anuncio_rascunhos").insert({ produto_id: v.produto_id, perfil_id: v.perfil_id }).select("id, titulo, descricao, status, estado").single();
+    let id = achados?.[0]?.id as string | undefined;
+    if (!id) {
+      const { data, error: erroNovo } = await supabase.from("anuncio_rascunhos").insert({ produto_id: v.produto_id, perfil_id: v.perfil_id }).select("id").single();
       checar(erroNovo);
-      r = data!;
+      id = data!.id as string;
     }
-    const { data: p } = await supabase.from("produtos").select("nome, preco_venda, palavras_chave, imagem_url, peso_g, altura_cm, largura_cm, comprimento_cm").eq("id", v.produto_id).maybeSingle();
-    const { data: msgs } = await supabase.from("anuncio_rascunho_mensagens").select("id, papel, texto, acoes, criado_em").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60);
-    return {
-      id: r.id,
-      titulo: r.titulo ?? null,
-      descricao: r.descricao ?? null,
-      produto: { nome: (p?.nome as string | undefined) ?? "", precoVenda: p?.preco_venda != null ? Number(p.preco_venda) : null, palavrasChave: (p?.palavras_chave as string[] | null) ?? [], imagemUrl: (p?.imagem_url as string | null) ?? null, pesoG: p?.peso_g != null ? Number(p.peso_g) : null, temMedidas: !!(p?.altura_cm && p?.largura_cm && p?.comprimento_cm) },
-      status: r.status,
-      estado: lerEstado(r.estado),
-      mensagens: ((msgs ?? []) as RascunhoAberto["mensagens"]).map((m) => ({ ...m, acoes: Array.isArray(m.acoes) ? m.acoes : [] })),
-    };
+    const aberto = await lerRascunhoAberto(supabase, id);
+    if (!aberto) throw new Error("Rascunho não encontrado.");
+    return aberto;
+  });
+}
+
+/** Reabre um rascunho pelo id (link "Continuar", recarregar a página). */
+export async function abrirRascunhoPorId(entrada: unknown) {
+  return comResultado(async (): Promise<RascunhoAberto> => {
+    const v = validar(rascunhoIdSchema, entrada);
+    const supabase = await createClient();
+    await usuarioDaSessao(supabase);
+    const aberto = await lerRascunhoAberto(supabase, v.rascunho_id);
+    if (!aberto) throw new Error("Rascunho não encontrado.");
+    return aberto;
+  });
+}
+
+/** Apaga o rascunho (e a conversa dele). Não mexe em item já criado na Shopee. */
+export async function descartarRascunho(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema, entrada);
+    const supabase = await createClient();
+    await usuarioDaSessao(supabase);
+    const { error } = await supabase.from("anuncio_rascunhos").delete().eq("id", v.rascunho_id);
+    checar(error);
+    revalidatePath(PATH);
+    revalidatePath("/anuncio");
+  });
+}
+
+/** "Publiquei manualmente": fecha a última etapa sem a API da Shopee. */
+export async function marcarPublicado(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema, entrada);
+    const supabase = await createClient();
+    await usuarioDaSessao(supabase);
+    const { error } = await supabase.from("anuncio_rascunhos").update({ status: "publicado", atualizado_em: new Date().toISOString() }).eq("id", v.rascunho_id);
+    checar(error);
+    revalidatePath("/anuncio");
   });
 }
 
@@ -115,13 +146,13 @@ export async function gerarTitulosEstudio(entrada: unknown) {
       nicho: ctx.perfil?.nicho ?? null,
       palavrasChave: ctx.produto.palavrasChave,
       memoria: ctx.memoria,
-      termosProibidos: ctx.perfil?.termosProibidos ?? [],
+      termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       concorrentes: (ctx.rascunho.estado.concorrentes ?? []).map((c) => ({ titulo: c.titulo, faixaPreco: c.precoTexto })),
       pedido: v.pedido,
     });
     if (!g.ok) throw new Error(g.erro);
 
-    const regras = regrasAtivas([], ctx.perfil?.termosProibidos ?? []);
+    const regras = regrasDoPerfil(ctx.perfil?.termos);
     const principal = g.dado.titulos.palavrasChave[0] ?? ctx.produto.nome;
     const variantes = avaliarVariantes(g.dado.titulos.variantes, { limite, termoPrincipal: principal, regras });
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { variantes: variantes.map((x) => ({ titulo: x.titulo, angulo: x.angulo })) });
@@ -137,9 +168,10 @@ export async function escolherTitulo(entrada: unknown) {
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = ctx.plataforma.limiteTitulo ?? 120;
     if (v.titulo.length > limite) throw new Error(`O título passa de ${limite} caracteres (limite de ${ctx.plataforma.nome}).`);
-    const violacoes = verificarTextos([{ campo: "Título", texto: v.titulo, tipo: "texto" }], regrasAtivas([], ctx.perfil?.termosProibidos ?? []));
-    if (temBloqueio(violacoes)) throw new Error(`Este título tem algo que as plataformas costumam barrar: “${violacoes[0].trecho}”. Ajuste e tente de novo.`);
+    const violacoes = verificarTextos([{ campo: "Título", texto: v.titulo, tipo: "texto" }], regrasDoPerfil(ctx.perfil?.termos));
+    if (temBloqueio(violacoes)) throw new Error(`Este título tem “${violacoes[0].trecho}” (${violacoes[0].motivo.toLowerCase()}). Ajuste e tente de novo.`);
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, {}, { titulo: v.titulo });
+    await sincronizarStatus(supabase, v.rascunho_id);
     revalidatePath(PATH);
     return { violacoes };
   });
@@ -163,7 +195,6 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
-    const termos = ctx.perfil?.termosProibidos ?? [];
     const g = await gerarDescricaoEstudioIA(supabase, {
       produto: { nome: ctx.produto.nome, variante: ctx.produto.variante, categoria: ctx.produto.categoria, componentes: [] },
       titulo: ctx.rascunho.titulo,
@@ -172,12 +203,12 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
       nicho: ctx.perfil?.nicho ?? null,
       palavrasChave: ctx.produto.palavrasChave,
       memoria: ctx.memoria,
-      termosProibidos: termos,
+      termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       diferenciaisConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).flatMap((c) => c.diferenciais),
       pedido: v.pedido,
     });
     if (!g.ok) throw new Error(g.erro);
-    const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasAtivas([], termos) });
+    const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasDoPerfil(ctx.perfil?.termos) });
     return { descricao: g.dado.descricao.descricao, palavrasChave: g.dado.descricao.palavrasChave, avaliacao, usadas: g.dado.usadas, limite: g.dado.limite, doCache: g.dado.doCache };
   });
 }
@@ -189,12 +220,14 @@ export async function salvarDescricao(entrada: unknown) {
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
-    const avaliacao = avaliarDescricao(v.descricao, { limite, regras: regrasAtivas([], ctx.perfil?.termosProibidos ?? []) });
+    const avaliacao = avaliarDescricao(v.descricao, { limite, regras: regrasDoPerfil(ctx.perfil?.termos) });
     if (avaliacao.curta) throw new Error("A descrição está curta demais: escreva pelo menos 100 caracteres.");
     if (avaliacao.longa) throw new Error(`A descrição passa de ${limite} caracteres.`);
-    if (avaliacao.violacoes.some((x) => x.gravidade === "bloquear")) throw new Error(`Há algo que as plataformas costumam barrar na descrição: “${avaliacao.violacoes[0].trecho}”. Ajuste e tente de novo.`);
+    const barrado = avaliacao.violacoes.find((x) => x.gravidade === "bloquear");
+    if (barrado) throw new Error(`A descrição tem “${barrado.trecho}” (${barrado.motivo.toLowerCase()}). Ajuste e tente de novo.`);
     const { error } = await supabase.from("anuncio_rascunhos").update({ descricao: v.descricao.trim(), atualizado_em: new Date().toISOString() }).eq("id", v.rascunho_id);
     checar(error);
+    await sincronizarStatus(supabase, v.rascunho_id);
     return { avaliacao };
   });
 }
@@ -235,7 +268,7 @@ function conferirTextosDaCapa(ctx: ContextoRascunho, titulo: string, textoFaixa:
     ...(ctx.fichaCapa1.selos ?? []).map((s) => ({ campo: "Selo", texto: s, tipo: "imagem" as const })),
     ...(textoFaixa ? [{ campo: "Faixa", texto: textoFaixa, tipo: "imagem" as const }] : []),
   ];
-  return verificarTextos(itens, regrasAtivas([], ctx.perfil?.termosProibidos ?? []));
+  return verificarTextos(itens, regrasDoPerfil(ctx.perfil?.termos));
 }
 
 /** Modo A: o prompt, sem IA e sem custo. */
@@ -282,6 +315,19 @@ export async function gerarCenaCapa(entrada: unknown) {
     const violacoes = conferirTextosDaCapa(ctx, titulo, v.textoFaixa);
     if (temBloqueio(violacoes)) throw new Error(`Há texto que as plataformas costumam barrar na capa: “${violacoes[0].trecho}”. Corrija antes de gerar.`);
 
+    // Trava ANTES de gastar: duas requisições ao mesmo tempo (clique duplo, duas abas) liam o
+    // mesmo estado, passavam nas regras acima e gastavam duas imagens. A trava é gravada só se
+    // ninguém gravou desde a leitura (`versao`); a que perde a corrida para aqui, sem custo.
+    if (capaEmGeracao(ctx.rascunho.estado)) throw new Error("Já tem uma capa sendo gerada para este anúncio. Espere ela terminar.");
+    await gravarEstadoVersionado(supabase, v.rascunho_id, ctx.rascunho.estado, { capaEmGeracao: new Date().toISOString() }, { versao: ctx.rascunho.atualizadoEm });
+    const soltarTrava = async () => {
+      try {
+        await gravarEstado(supabase, v.rascunho_id, await lerEstadoAtual(supabase, v.rascunho_id), { capaEmGeracao: undefined });
+      } catch {
+        // A trava expira sozinha em 3 minutos.
+      }
+    };
+
     // A foto de referência só pode vir do Storage da PRÓPRIA conta.
     let foto: { base64: string; mime: string } | null = null;
     const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/produtos/${ctx.userId}/`;
@@ -296,6 +342,7 @@ export async function gerarCenaCapa(entrada: unknown) {
 
     const prompt = montarPromptCapaCena({ ...contextoDaCapa(ctx, titulo, v.textoFaixa), temFotoReferencia: !!foto });
     const { data: reserva, error: erroReserva } = await supabase.rpc("ia_reservar_imagem", { p_tipo: "livre", p_produto_id: ctx.produto.id }).maybeSingle<{ id: string; usadas: number; limite: number | null }>();
+    if (erroReserva || !reserva) await soltarTrava();
     if (erroReserva && faltaMigracao(erroReserva.code)) throw new Error("As imagens com IA precisam da migração 0072.");
     if (erroReserva) lancarErroSupabase(erroReserva);
     if (!reserva) throw new Error("Não foi possível reservar a geração. Tente de novo.");
@@ -310,13 +357,16 @@ export async function gerarCenaCapa(entrada: unknown) {
       const { data: ok, error: erroConcluir } = await supabase.rpc("ia_concluir_imagem", { p_id: reserva.id, p_caminho: caminho });
       if (erroConcluir || !ok) throw new Error("A geração foi cancelada. Tente de novo.");
 
-      const novas = [...capas, { cenaPath: caminho, titulo, criadoEm: new Date().toISOString() }];
-      await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas: novas, ...(v.textoFaixa ? { textoFaixa: v.textoFaixa } : {}) });
+      // Relê antes de juntar: a geração demora e o título ou a conversa podem ter mudado no meio.
+      const agora = await lerEstadoAtual(supabase, v.rascunho_id);
+      const novas = [...(agora.capas ?? []), { cenaPath: caminho, titulo, criadoEm: new Date().toISOString() }];
+      await gravarEstado(supabase, v.rascunho_id, agora, { capas: novas, capaEmGeracao: undefined, ...(v.textoFaixa ? { textoFaixa: v.textoFaixa } : {}) });
       const { data } = supabase.storage.from("produtos").getPublicUrl(caminho);
       return { indice: novas.length - 1, cenaPath: caminho, url: data.publicUrl, usadas: reserva.usadas, limite: reserva.limite, tentativas: novas.length };
     } catch (e) {
       await supabase.rpc("ia_cancelar_imagem", { p_id: reserva.id });
       if (caminho) await supabase.storage.from("produtos").remove([caminho]);
+      await soltarTrava();
       if (e instanceof ErroIA && e.codigo === "sem_chave") throw new Error("As imagens com IA ainda não estão ligadas neste sistema (falta a chave do Gemini).");
       throw e;
     }
@@ -331,7 +381,9 @@ export async function vereditoCapa(entrada: unknown) {
     const capas = [...(ctx.rascunho.estado.capas ?? [])];
     if (!capas[v.indice]) throw new Error("Capa não encontrada.");
     capas[v.indice] = { ...capas[v.indice], veredito: v.veredito, ...(v.motivo ? { motivo: v.motivo } : {}) };
-    return gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas });
+    const estado = await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas });
+    await sincronizarStatus(supabase, v.rascunho_id);
+    return estado;
   });
 }
 

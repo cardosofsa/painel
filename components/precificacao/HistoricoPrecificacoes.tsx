@@ -17,7 +17,7 @@ import { ExportarPrecificacoesModal, ExportarVariacoesModal } from "@/components
 
 /**
  * A aba "Histórico" inteira: sub-abas Precificações / Produtos com Variações. Extraído de
- * `PrecificacaoClient.tsx` — ver comentário em `PainelEntradas.tsx`.
+ * `PrecificacaoClient.tsx`; recebe o `estado` inteiro de `usePrecificacao()`.
  */
 export function HistoricoPrecificacoes({
   estado,

@@ -1,26 +1,27 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { executarComToast } from "@/lib/acao-cliente";
-import { carregarHistoricoPrecificacoes } from "./actions";
+import { carregarHistoricoPrecificacoes, descartarRascunhoPrecificacao } from "./actions";
+import { useRascunhoPrecificacao, type RascunhoPendente, type VisaoRascunho } from "@/lib/precificacao-rascunho";
+import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useProtegerSaida } from "@/lib/hooks/useProtegerSaida";
+import { ModalSaida } from "@/components/ui/ModalSaida";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal, inputClass } from "@/components/ui/Modal";
 import { RowMenu } from "@/components/ui/RowMenu";
-import { Download, History } from "lucide-react";
+import { Calculator, Download, History, ScanSearch } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Combobox } from "@/components/ui/Combobox";
 import { ExportarPrecificacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 import { formatBRL, formatarData } from "@/lib/format";
 import { CalculadoraEmMassa } from "@/components/precificacao/CalculadoraEmMassa";
 import { VariacoesView } from "@/components/precificacao/VariacoesView";
 import { KitsView } from "@/components/precificacao/KitsView";
-import { PainelEntradas } from "@/components/precificacao/PainelEntradas";
-import { PainelTaxas } from "@/components/precificacao/PainelTaxas";
-import { PainelModo } from "@/components/precificacao/PainelModo";
-import { PainelConcorrentes } from "@/components/precificacao/PainelConcorrentes";
-import { PainelResultado } from "@/components/precificacao/PainelResultado";
-import { PainelEstrategiaVixe } from "@/components/precificacao/PainelEstrategiaVixe";
-import { PainelAnuncio } from "@/components/precificacao/PainelAnuncio";
+import { IndividualNova } from "@/components/precificacao/IndividualNova";
 import { HistoricoPrecificacoes } from "@/components/precificacao/HistoricoPrecificacoes";
 import { RaioXView } from "@/components/precificacao/RaioXView";
 import { SimuladorPromocao } from "@/components/precificacao/SimuladorPromocao";
@@ -66,7 +67,18 @@ export function PrecificacaoClient({
   iaDisponivel,
   empresa,
   visaoInicial,
+  rascunhosPendentes = [],
+  precosLoja = null,
+  inicial,
+  anunciosLoja = [],
 }: {
+  /** Anúncios sincronizados (um por item), para "Analisar anúncio". */
+  anunciosLoja?: { id: string; nome: string }[];
+  /** Preço de cada produto em cada loja (0101); `null` sem a migração. */
+  precosLoja?: { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[] | null;
+  inicial?: { produtoId: string | null; lojaId: string | null };
+  /** Rascunhos guardados no banco (0100), das quatro abas, o mais recente primeiro. */
+  rascunhosPendentes?: RascunhoPendente[];
   empresa: { nome: string | null; logoUrl: string | null } | null;
   historico: PrecificacaoHist[];
   produtos: ProdutoOpcao[];
@@ -79,6 +91,8 @@ export function PrecificacaoClient({
   visaoInicial?: VisaoPrecificacao;
 }) {
   const [exportandoSalvas, setExportandoSalvas] = useState(false);
+  const [analisando, setAnalisando] = useState(false);
+  const router = useRouter();
   // O histórico abre num pop-up (antes era uma aba).
   const [historicoAberto, setHistoricoAberto] = useState(false);
   // Linhas mais antigas buscadas sob demanda (a página traz só as 50 mais recentes).
@@ -90,7 +104,56 @@ export function PrecificacaoClient({
     const ids = new Set(historico.map((h) => h.id));
     return [...historico, ...maisAntigas.filter((h) => !ids.has(h.id))];
   }, [historico, maisAntigas]);
-  const estado = usePrecificacao({ historico: historicoCompleto, produtos, aliquotaDasPadrao, lojas, anuncios, concorrentesPorProduto, empresa, visaoInicial });
+  // O hook do rascunho roda depois do estado e precisa dele; o estado lê o rascunho só na hora de salvar.
+  const rascRef = useRef<ReturnType<typeof useRascunhoPrecificacao> | null>(null);
+  const estado = usePrecificacao({
+    historico: historicoCompleto,
+    produtos,
+    aliquotaDasPadrao,
+    lojas,
+    anuncios,
+    concorrentesPorProduto,
+    empresa,
+    visaoInicial,
+    rascunhoAtual: { id: () => rascRef.current?.rascunhoId ?? null, aoSalvar: () => rascRef.current?.aoSalvarPrecificacao() },
+    inicial,
+  });
+  const rasc = useRascunhoPrecificacao({ instantaneo: estado.instantaneo, temConteudo: estado.temConteudo, titulo: estado.tituloRascunho, produtoId: estado.produtoId });
+  useEffect(() => {
+    rascRef.current = rasc;
+  });
+
+  // Variações, Kits e Em Massa guardam o próprio rascunho e contam aqui se estão sujas:
+  // a proteção de saída cobre a tela inteira, não só a aba visível.
+  const [abasSujas, setAbasSujas] = useState<Partial<Record<VisaoRascunho, boolean>>>({});
+  const salvadores = useRef<Partial<Record<VisaoRascunho, () => Promise<boolean>>>>({});
+  const relatar = useCallback((v: VisaoRascunho, sujo: boolean, salvar: (() => Promise<boolean>) | undefined) => {
+    salvadores.current[v] = salvar;
+    setAbasSujas((a) => (!!a[v] === sujo ? a : { ...a, [v]: sujo }));
+  }, []);
+  const algumaSuja = rasc.sujo || Object.values(abasSujas).some(Boolean);
+  async function salvarTodosRascunhos() {
+    const pendentes = [...(rasc.sujo ? [rasc.salvarRascunho] : []), ...Object.entries(abasSujas).flatMap(([v, sujo]) => (sujo && salvadores.current[v as VisaoRascunho] ? [salvadores.current[v as VisaoRascunho]!] : []))];
+    const r = await Promise.all(pendentes.map((f) => f()));
+    return r.every(Boolean);
+  }
+  // Sem a 0100 não há onde guardar: o modal oferece só ficar ou sair.
+  const protecao = useProtegerSaida({ sujo: algumaSuja, salvarRascunho: rasc.semMigracao ? undefined : salvarTodosRascunhos });
+  const pendentePorAba = (v: VisaoRascunho) => rascunhosPendentes.find((r) => (r.visao ?? "individual") === v) ?? null;
+  const [pendente, setPendente] = useState<RascunhoPendente | null>(pendentePorAba("individual"));
+
+  function continuarRascunho(r: RascunhoPendente) {
+    estado.aplicarInstantaneo(r.dados);
+    rasc.adotar(r);
+    setPendente(null);
+  }
+
+  async function descartarPendente(r: RascunhoPendente) {
+    const ok = await estado.confirm({ title: "Descartar o rascunho?", message: `“${r.titulo || "Sem nome"}” será apagado. Não dá para desfazer.`, confirmLabel: "Descartar" });
+    if (!ok) return;
+    const res = await executarComToast(descartarRascunhoPrecificacao(r.id), { sucesso: "Rascunho descartado", erro: "Não foi possível descartar." });
+    if (res.ok) setPendente(null);
+  }
 
   function carregarMais(tudo: boolean) {
     const ultima = historicoCompleto[historicoCompleto.length - 1];
@@ -103,6 +166,17 @@ export function PrecificacaoClient({
     });
   }
   const { visao, setVisao } = estado;
+  // Abas montadas uma vez continuam montadas (escondidas): trocar de aba não perde o digitado.
+  const [montadas, setMontadas] = useState<ReadonlySet<VisaoPrecificacao>>(() => new Set<VisaoPrecificacao>(["individual", visao]));
+  if (!montadas.has(visao)) setMontadas(new Set(montadas).add(visao));
+  // A aba fica na URL (voltar, recarregar, mandar o link). Sem passar pelo roteador: nada a buscar no servidor.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("visao") === visao) return;
+    url.searchParams.set("visao", visao);
+    window.history.replaceState(window.history.state, "", url);
+  }, [visao]);
+  const mostrar = (v: VisaoPrecificacao) => montadas.has(v);
 
   function acoesLigarProduto(h: PrecificacaoHist) {
     return [
@@ -117,9 +191,14 @@ export function PrecificacaoClient({
       <PageHeader
         title="Calculadora de Precificação"
         actions={
-          <Button variant="secondary" size="sm" onClick={() => setHistoricoAberto(true)}>
-            <History size={14} /> Histórico
-          </Button>
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setAnalisando(true)} disabled={anunciosLoja.length === 0} title={anunciosLoja.length === 0 ? "Conecte e sincronize uma loja para analisar os anúncios" : undefined}>
+              <ScanSearch size={14} aria-hidden /> Analisar anúncio
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setHistoricoAberto(true)}>
+              <History size={14} aria-hidden /> Histórico
+            </Button>
+          </>
         }
       />
 
@@ -128,79 +207,97 @@ export function PrecificacaoClient({
           o <Tabs>. Duas telas do mesmo app navegavam de jeitos visualmente diferentes. */}
       <Tabs tabs={ABAS_PRECIFICACAO} value={visao} onChange={setVisao} className="mb-5" />
 
-      {visao === "massa" && <CalculadoraEmMassa produtos={produtos} lojas={lojas} historico={historico} onVerHistorico={() => setHistoricoAberto(true)} empresa={empresa} />}
-
-      {visao === "kits" && <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} empresa={empresa} />}
-
-      {visao === "variacoes" && (
-        <VariacoesView
+      <div hidden={visao !== "individual"}>
+        {pendente && <AvisoRascunho pendente={pendente} onContinuar={() => continuarRascunho(pendente)} onDescartar={() => void descartarPendente(pendente)} />}
+        <IndividualNova
+          estado={estado}
           produtos={produtos}
           lojas={lojas}
-          anuncios={anuncios}
-          aliquotaDasPadrao={aliquotaDasPadrao}
-          confirm={estado.confirm}
-          onVerHistorico={() => setHistoricoAberto(true)}
           iaDisponivel={iaDisponivel}
-          empresa={empresa}
+          precosLoja={precosLoja}
+          onSalvarRascunho={() => void rasc.salvarRascunho()}
+          salvandoRascunho={rasc.salvando}
+          indicadorRascunho={<IndicadorRascunho sujo={rasc.sujo} salvando={rasc.salvando} salvoEm={rasc.salvoEm} semMigracao={rasc.semMigracao} />}
         />
-      )}
 
-      {visao === "individual" && (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <div className="lg:col-span-2 space-y-5">
-              <PainelEntradas estado={estado} produtos={produtos} iaDisponivel={iaDisponivel} />
-              <PainelTaxas estado={estado} lojas={lojas} iaDisponivel={iaDisponivel} />
-              <PainelModo estado={estado} />
-              <PainelConcorrentes estado={estado} />
-            </div>
-
-            <div className="space-y-5">
-              <PainelResultado estado={estado} produtoVinculado={estado.produtoVinculado} lojas={lojas} />
-              <PainelEstrategiaVixe estado={estado} iaDisponivel={iaDisponivel} />
-              <PainelAnuncio estado={estado} />
+        <Card className="mt-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-text-primary">Precificações salvas</h2>
+            <div className="flex items-center gap-3">
+              {/* Exporta as mesmas que o cartão lista (as individuais); antes levava também as em massa. */}
+              <Button variant="secondary" size="sm" onClick={() => setExportandoSalvas(true)} disabled={!historico.some((h) => h.origem === "individual")}>
+                <Download size={14} aria-hidden /> Exportar
+              </Button>
+              <IconButton onClick={() => setHistoricoAberto(true)} aria-label="Ver histórico completo" title="Ver histórico completo">
+                <History size={14} />
+              </IconButton>
             </div>
           </div>
-
-          <Card className="mt-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-semibold text-text-primary">Precificações Salvas</h2>
-              <div className="flex items-center gap-3">
-                {/* Exporta as mesmas que o cartão lista (as individuais); antes levava também as em massa. */}
-                <Button variant="secondary" size="sm" onClick={() => setExportandoSalvas(true)} disabled={!historico.some((h) => h.origem === "individual")}>
-                  <Download size={14} /> Exportar
-                </Button>
-                <IconButton onClick={() => setHistoricoAberto(true)} aria-label="Ver histórico completo" title="Ver histórico completo">
-                  <History size={14} />
-                </IconButton>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {historico
-                .filter((h) => h.origem === "individual")
-                .slice(0, 5)
-                .map((h) => (
-                  <div key={h.id} className="flex items-center justify-between border border-border rounded-md px-3 py-2 text-sm">
-                    <div>
-                      <div className="text-text-primary">{h.produto_nome}</div>
-                      <div className="text-xs text-text-tertiary">{formatarData(h.criado_em)}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
-                      <RowMenu actions={acoesLigarProduto(h)} />
-                    </div>
+          <div className="space-y-2">
+            {historico
+              .filter((h) => h.origem === "individual")
+              .slice(0, 5)
+              .map((h) => (
+                <div key={h.id} className="flex items-center justify-between gap-3 border border-border rounded-md px-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <div className="text-text-primary truncate">{h.produto_nome}</div>
+                    <div className="text-xs text-text-tertiary">{formatarData(h.criado_em)}</div>
                   </div>
-                ))}
-              {historico.filter((h) => h.origem === "individual").length === 0 && (
-                <p className="text-sm text-text-tertiary text-center py-4">Nenhuma precificação salva ainda.</p>
-              )}
-            </div>
-          </Card>
-        </>
-      )}
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-accent">{formatBRL(h.preco_calculado)}</span>
+                    <RowMenu actions={acoesLigarProduto(h)} />
+                  </div>
+                </div>
+              ))}
+            {!historico.some((h) => h.origem === "individual") && <EmptyState icon={Calculator} title="Nenhuma precificação salva ainda" description="Escolha o produto, onde vende e como quer lucrar, e use “Salvar precificação”." />}
+          </div>
+        </Card>
+      </div>
 
-      {visao === "raio-x" && <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />}
-      {visao === "promocao" && <SimuladorPromocao historico={historicoCompleto} lojas={lojas} produtos={produtos} />}
+      {mostrar("variacoes") && (
+        <div hidden={visao !== "variacoes"}>
+          <VariacoesView
+            produtos={produtos}
+            lojas={lojas}
+            anuncios={anuncios}
+            aliquotaDasPadrao={aliquotaDasPadrao}
+            confirm={estado.confirm}
+            onVerHistorico={() => setHistoricoAberto(true)}
+            empresa={empresa}
+            rascunhoPendente={pendentePorAba("variacoes")}
+            relatar={relatar}
+          />
+        </div>
+      )}
+      {mostrar("kits") && (
+        <div hidden={visao !== "kits"}>
+          <KitsView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} empresa={empresa} confirm={estado.confirm} rascunhoPendente={pendentePorAba("kits")} relatar={relatar} />
+        </div>
+      )}
+      {mostrar("massa") && (
+        <div hidden={visao !== "massa"}>
+          <CalculadoraEmMassa
+            produtos={produtos}
+            lojas={lojas}
+            aliquotaDasPadrao={aliquotaDasPadrao}
+            historico={historico}
+            onVerHistorico={() => setHistoricoAberto(true)}
+            empresa={empresa}
+            rascunhoPendente={pendentePorAba("massa")}
+            relatar={relatar}
+          />
+        </div>
+      )}
+      {mostrar("raio-x") && (
+        <div hidden={visao !== "raio-x"}>
+          <RaioXView lojas={lojas} produtos={produtos} onAbrir={estado.duplicarHistorico} empresa={empresa} />
+        </div>
+      )}
+      {mostrar("promocao") && (
+        <div hidden={visao !== "promocao"}>
+          <SimuladorPromocao historico={historicoCompleto} lojas={lojas} produtos={produtos} />
+        </div>
+      )}
 
       <Modal open={historicoAberto} onClose={() => setHistoricoAberto(false)} title="Histórico de precificações" width="max-w-5xl">
         <HistoricoPrecificacoes
@@ -234,6 +331,20 @@ export function PrecificacaoClient({
       )}
       {estado.modaisExportacao}
       {estado.ConfirmDialog}
+      <ModalSaida protecao={protecao} />
+      <Modal open={analisando} onClose={() => setAnalisando(false)} title="Analisar um anúncio da loja">
+        <p className="text-sm text-text-secondary mb-3">Título, imagens, preço e estratégia de um anúncio sincronizado.</p>
+        <Combobox
+          itens={anunciosLoja.map((a) => ({ id: a.id, rotulo: a.nome }))}
+          valor={null}
+          onChange={(id) => {
+            if (!id) return;
+            setAnalisando(false);
+            router.push(`/anuncio/analise/${id}`);
+          }}
+          placeholder="Buscar anúncio pelo título…"
+        />
+      </Modal>
     </>
   );
 }

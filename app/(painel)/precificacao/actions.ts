@@ -12,10 +12,15 @@ import {
   vincularProdutoPrecificacaoSchema,
   paginaHistoricoSchema,
   precoPraticadoSchema,
+  rascunhoPrecificacaoSchema,
+  precoLojaSchema,
+  explicarAjusteSchema,
   type PrecoPraticadoInput,
 } from "@/lib/validacao";
 import { ID_CUSTO_PRODUTO, type ComponenteKit } from "@/lib/pricing";
-import { gerarComIA } from "@/lib/ia/gerar";
+import { gerarComIA, gerarDiagnosticoPrecoIA } from "@/lib/ia/gerar";
+import { carregarDadosAjuste } from "@/lib/ajuste-servidor";
+import { calcularAjuste, noPreco, psicologicoAcima } from "@/lib/ajuste-preco";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { truncarEmPalavra } from "@/lib/ia/texto";
 import { comResultado } from "@/lib/acao";
@@ -40,27 +45,34 @@ export interface PrecificacaoInput {
   preco_calculado: number;
   lucro: number;
   origem: "individual" | "em_massa";
+  /** 0100 (opcionais). */
+  modo_calculo?: "margem" | "lucro" | "preco" | "markup" | null;
+  parametro?: number | null;
   /** 0045 (opcionais). */
   anuncio?: { tipo: "percentual" | "valor"; valor: number; margem_alvo_pct: number | null } | null;
   estrategia?: { diagnostico: string; estrategias: { tipo: string; titulo: string; detalhe: string }[]; precoSugerido: number | null; motivoPreco: string | null } | null;
   imagem_url?: string | null;
 }
 
-export async function salvarPrecificacao(dados: PrecificacaoInput) {
+export async function salvarPrecificacao(dados: PrecificacaoInput, rascunhoId: string | null = null) {
   return comResultado(async () => {
     const supabase = await createClient();
     const v = validar(precificacaoSchema, dados);
     let { data, error } = await supabase.from("precificacoes").insert(v).select("id").single();
-    // Sem a 0045 as colunas novas não existem (PGRST204): grava o resto, como antes.
+    // Sem a 0045 ou a 0100 as colunas novas não existem (PGRST204): grava o resto, como antes.
     if (error?.code === "PGRST204") {
       const base: Record<string, unknown> = { ...v };
-      for (const c of ["anuncio", "estrategia", "imagem_url"]) delete base[c];
+      for (const c of ["anuncio", "estrategia", "imagem_url", "modo_calculo", "parametro"]) delete base[c];
       ({ data, error } = await supabase.from("precificacoes").insert(base).select("id").single());
     }
     if (error) lancarErroSupabase(error);
+    // O rascunho cumpriu o papel: a precificação foi salva de verdade.
+    if (rascunhoId && /^[0-9a-f-]{36}$/i.test(rascunhoId)) await supabase.from("precificacao_rascunhos").delete().eq("id", rascunhoId);
+    // O preço vai para AQUELA loja (0101); `produtos.preco_venda` fica para PDV e catálogo.
+    const precoNaLoja = v.produto_id && v.loja_id && data?.id ? await gravarPrecoLoja(supabase, v.produto_id, v.loja_id, v.preco_calculado, data.id as string) : false;
     revalidatePath("/precificacao");
     revalidatePath("/produtos");
-    return { id: (data?.id as string | undefined) ?? null };
+    return { id: (data?.id as string | undefined) ?? null, precoNaLoja };
   });
 }
 
@@ -420,5 +432,121 @@ export async function salvarPrecoPraticado(input: PrecoPraticadoInput) {
     const { error } = await supabase.from("precos_praticados").insert({ chave: d.chave, produto_id: d.produto_id, loja_id: d.loja_id, preco: d.preco, observacao: d.observacao ?? null });
     if (error?.code === "PGRST205" || error?.code === "42P01") throw new Error("Guardar o preço praticado precisa da migração 0071.");
     if (error) lancarErroSupabase(error);
+  });
+}
+
+// ---------- Rascunho da Precificação (0100) ----------
+
+const semTabela = (code?: string) => code === "PGRST205" || code === "42P01";
+
+/**
+ * Grava (cria ou atualiza) o rascunho. Sem a migração 0100 devolve `semMigracao: true` em vez
+ * de erro: o salvamento automático só para, sem toast a cada 5 segundos.
+ */
+export async function salvarRascunhoPrecificacao(entrada: unknown) {
+  return comResultado(async (): Promise<{ id: string | null; semMigracao: boolean; salvoEm: string }> => {
+    const v = validar(rascunhoPrecificacaoSchema, entrada);
+    const supabase = await createClient();
+    const linha = { visao: v.visao, produto_id: v.produto_id, titulo: v.titulo, dados: v.dados, atualizado_em: new Date().toISOString() };
+    const r = v.id
+      ? await supabase.from("precificacao_rascunhos").update(linha).eq("id", v.id).select("id, atualizado_em").maybeSingle()
+      : await supabase.from("precificacao_rascunhos").insert(linha).select("id, atualizado_em").single();
+    if (semTabela(r.error?.code)) return { id: null, semMigracao: true, salvoEm: linha.atualizado_em };
+    if (r.error) lancarErroSupabase(r.error);
+    // Atualizar um rascunho apagado em outra aba não acha a linha: cria de novo.
+    if (!r.data) {
+      const novo = await supabase.from("precificacao_rascunhos").insert(linha).select("id, atualizado_em").single();
+      if (novo.error) lancarErroSupabase(novo.error);
+      return { id: novo.data!.id as string, semMigracao: false, salvoEm: linha.atualizado_em };
+    }
+    return { id: r.data.id as string, semMigracao: false, salvoEm: linha.atualizado_em };
+  });
+}
+
+export async function descartarRascunhoPrecificacao(id: string) {
+  return comResultado(async () => {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Rascunho inválido.");
+    const supabase = await createClient();
+    const { error } = await supabase.from("precificacao_rascunhos").delete().eq("id", id);
+    if (error && !semTabela(error.code)) lancarErroSupabase(error);
+  });
+}
+
+// ---------- Preço por loja (0101) ----------
+
+/**
+ * Grava o preço de um produto numa loja (cria a ligação produto–loja se não existir).
+ * Sem a 0101 as colunas não existem: devolve `false` e nada muda (o código segue como antes).
+ */
+async function gravarPrecoLoja(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  produtoId: string,
+  lojaId: string,
+  preco: number,
+  precificacaoId: string | null,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("produto_lojas")
+    .upsert(
+      { produto_id: produtoId, loja_id: lojaId, preco: Math.round(preco * 100) / 100, precificacao_id: precificacaoId, preco_atualizado_em: new Date().toISOString() },
+      { onConflict: "produto_id,loja_id" },
+    );
+  if (error?.code === "PGRST204" || error?.code === "42703") return false;
+  if (error) lancarErroSupabase(error);
+  return true;
+}
+
+/** Define o preço de uma loja sem nova precificação (Ajuste de Preço, "usar este preço"). */
+export async function salvarPrecoLoja(entrada: { produto_id: string; loja_id: string; preco: number; precificacao_id?: string | null }) {
+  return comResultado(async () => {
+    const v = validar(precoLojaSchema, entrada);
+    const supabase = await createClient();
+    const ok = await gravarPrecoLoja(supabase, v.produto_id, v.loja_id, v.preco, v.precificacao_id ?? null);
+    if (!ok) throw new Error("O preço por loja precisa da migração 0101 no banco.");
+    revalidatePath("/precificacao");
+    revalidatePath("/produtos");
+    revalidatePath("/anuncio");
+  });
+}
+
+// ---------- Ajuste de Preço: a IA explica e prioriza (fase 6) ----------
+
+/**
+ * A IA só NARRA: os números (custo, taxas, faixa, mínimo, zona morta, concorrentes) são lidos e
+ * calculados aqui, no servidor, a partir de ids. Do navegador vêm só os ids e o preço da régua.
+ */
+export async function explicarAjusteIA(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(explicarAjusteSchema, entrada);
+    const supabase = await createClient();
+    const dados = await carregarDadosAjuste(supabase, v.anuncio_id ? { anuncioId: v.anuncio_id } : { produtoId: v.produto_id!, lojaId: v.loja_id ?? null });
+    if (!dados || dados === "sem_produto" || !dados.loja) throw new Error("Não foi possível carregar o anúncio.");
+    const e = { custo: dados.produto.custo, loja: dados.loja, impostoPct: dados.impostoPct, margemAlvo: dados.margemAlvo, precoAtual: v.preco, concorrentes: dados.concorrentes, vendas30d: dados.vendas?.d30.unidades ?? 0 };
+    const a = calcularAjuste(e);
+    const { resultado, faixa } = noPreco(e, v.preco);
+    const zona = a.zonasMortas.find((z) => v.preco >= z.inicio && v.preco <= z.fim);
+    const media = dados.concorrentes.length ? dados.concorrentes.reduce((x, y) => x + y, 0) / dados.concorrentes.length : null;
+    const r = await gerarDiagnosticoPrecoIA(supabase, {
+      produtoNome: dados.produto.nome,
+      canal: `${dados.loja.canalNome} · ${dados.loja.nome}`,
+      objetivo: v.objetivo,
+      custo: dados.produto.custo,
+      preco: v.preco,
+      lucro: resultado.lucroLiquido,
+      margemPct: resultado.margemEfetivaPct,
+      comissaoPct: faixa ? faixa.comissaoPct : dados.loja.comissaoPct,
+      tarifa: faixa ? faixa.tarifaFixa : dados.loja.taxaFixa,
+      impostoPct: dados.impostoPct,
+      precoMinimoViavel: a.precoMinimo,
+      zonaMorta: zona ? { inicio: zona.inicio, fim: zona.fim, precoMelhor: Math.round((zona.inicio - 0.01) * 100) / 100, ganhoLiquido: 0 } : null,
+      concorrencia:
+        media !== null
+          ? { min: Math.min(...dados.concorrentes), max: Math.max(...dados.concorrentes), media, diferencaPct: (v.preco - media) / media, quantidade: dados.concorrentes.length }
+          : null,
+      precoPsicologico: psicologicoAcima(v.preco),
+      instrucaoExtra: dados.vendas ? `Vendas: ${dados.vendas.d30.unidades} unidades em 30 dias e ${dados.vendas.d90.unidades} em 90; tendência ${dados.tendencia}; estoque ${dados.produto.estoque}.` : null,
+    });
+    if (!r.ok) throw new Error(r.erro);
+    return r.dado;
   });
 }
