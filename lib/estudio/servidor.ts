@@ -1,13 +1,15 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizarFicha, mesclarFicha, type FichaMarca } from "@/lib/marca/ficha";
 import { regrasDaPlataforma, type PlataformaMarcaId, type RegrasPlataforma } from "@/lib/marca/plataformas";
 import { estadoRascunhoSchema, type EstadoRascunho } from "@/lib/validacao";
-import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
+import { lerAnexos, type AcaoProposta, type AnexoMensagem } from "@/lib/ia/prompts-assistente";
 import { statusDoRascunho } from "@/lib/anuncio/etapas";
 import { termosDoPerfil, type TermosDoPerfil } from "@/lib/conformidade/termos";
 import { precosPorLoja, type SituacaoPrecoLoja } from "@/lib/precos-loja";
 import { carregarLojaParaPreco } from "@/lib/precos-loja-servidor";
+import type { EstiloDaLoja, OrigemExemplo, TipoExemplo } from "@/lib/ia/estilo-loja";
 
 /**
  * O preço que o anúncio usa (0101): o da loja do perfil, com lucro e margem calculados com as
@@ -42,12 +44,39 @@ export interface RascunhoAberto {
   produto: { nome: string; precoVenda: number | null; palavrasChave: string[]; imagemUrl: string | null; pesoG: number | null; temMedidas: boolean; estoque: number };
   status: string;
   estado: EstadoRascunho;
-  mensagens: { id: string; papel: "usuario" | "ia"; texto: string; acoes: AcaoProposta[]; criado_em: string }[];
+  mensagens: MensagemDoChat[];
   preco: PrecoDoAnuncio;
   /** Títulos já usados nas precificações deste produto (`precificacoes.titulo_anuncio`). */
   titulosUsados: string[];
   /** O anúncio sincronizado deste produto na loja (o criado por este rascunho, se houver), para a Análise. */
   anuncioLojaId: string | null;
+}
+
+/** Uma mensagem do chat do anúncio como a tela recebe. */
+export interface MensagemDoChat {
+  id: string;
+  papel: "usuario" | "ia";
+  texto: string;
+  acoes: AcaoProposta[];
+  /** Índices das ações já aplicadas (0110). Sem a migração vem vazio: a tela marca só na memória. */
+  acoesFeitas: number[];
+  /** Referência colada e imagens (0110). */
+  anexos: AnexoMensagem[];
+  criado_em: string;
+}
+
+/** Linha crua de `anuncio_rascunho_mensagens` (lida com `*`: as colunas da 0110 podem não existir). */
+export function lerMensagem(m: Record<string, unknown>): MensagemDoChat {
+  const feitas = Array.isArray(m.acoes_feitas) ? (m.acoes_feitas as unknown[]).filter((n): n is number => Number.isInteger(n)) : [];
+  return {
+    id: String(m.id),
+    papel: m.papel === "ia" ? "ia" : "usuario",
+    texto: typeof m.texto === "string" ? m.texto : "",
+    acoes: Array.isArray(m.acoes) ? (m.acoes as AcaoProposta[]) : [],
+    acoesFeitas: feitas,
+    anexos: lerAnexos(m.anexos),
+    criado_em: String(m.criado_em ?? ""),
+  };
 }
 
 /**
@@ -62,7 +91,11 @@ export interface ContextoRascunho {
   perfil: { id: string; nome: string; plataforma: PlataformaMarcaId; lojaId: string | null; nicho: string | null; termos: TermosDoPerfil; logoPath: string | null } | null;
   plataforma: RegrasPlataforma;
   memoria: string[];
+  /** A mesma memória com o id (para o chat poder propor pausar uma frase). */
+  memoriaItens: { id: string; texto: string }[];
   fichaCapa1: FichaMarca;
+  /** Instruções de base e exemplos da loja (0109), por tipo de texto. Vazio sem a migração. */
+  estilo: Record<TipoExemplo, EstiloDaLoja>;
 }
 
 const erro = (msg: string) => new Error(msg);
@@ -99,12 +132,20 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
   ]);
   const p = produtoRes.data as { id: string; nome: string; sku: string | null; estoque: number | null; variante_nome: string | null; imagem_url: string | null; palavras_chave: string[] | null; preco_venda: number | null; peso_g: number | null; altura_cm: number | null; largura_cm: number | null; comprimento_cm: number | null; categorias: { nome: string } | null } | null;
   if (!p) throw erro("Produto não encontrado.");
-  const perfil = perfilRes.data as { id: string; nome: string; plataforma: PlataformaMarcaId; loja_id: string | null; nicho: string | null; termos_proibidos: string[] | null; logo_path: string | null; presets?: unknown; presets_gravidade?: unknown; termos_bloqueados?: unknown } | null;
+  const perfil = perfilRes.data as { id: string; nome: string; plataforma: PlataformaMarcaId; loja_id: string | null; nicho: string | null; termos_proibidos: string[] | null; logo_path: string | null; presets?: unknown; presets_gravidade?: unknown; termos_bloqueados?: unknown; instrucoes_titulo?: string | null; instrucoes_descricao?: string | null } | null;
+  const doPerfil = perfil ? `perfil_id.is.null,perfil_id.eq.${perfil.id}` : "perfil_id.is.null";
 
-  const [memoriaRes, fichasRes] = await Promise.all([
-    supabase.from("marca_memoria").select("texto, perfil_id").eq("ativo", true).or(perfil ? `perfil_id.is.null,perfil_id.eq.${perfil.id}` : "perfil_id.is.null").order("criado_em", { ascending: false }).limit(20),
+  const [memoriaRes, fichasRes, exemplosRes] = await Promise.all([
+    supabase.from("marca_memoria").select("id, texto, perfil_id").eq("ativo", true).or(doPerfil).order("criado_em", { ascending: false }).limit(20),
     perfil ? supabase.from("marca_fichas").select("tipo_imagem, dados").eq("perfil_id", perfil.id).eq("ativa", true).in("tipo_imagem", ["geral", "capa_1"]) : Promise.resolve({ data: [] }),
+    // Sem a 0109 a tabela não existe: o erro vira lista vazia e a IA gera como antes.
+    supabase.from("marca_exemplos").select("tipo, origem, texto").eq("ativo", true).or(doPerfil).order("criado_em", { ascending: false }).limit(60),
   ]);
+  const exemplos = ((exemplosRes.error ? [] : exemplosRes.data) ?? []) as { tipo: TipoExemplo; origem: OrigemExemplo; texto: string }[];
+  const estiloDo = (tipo: TipoExemplo, instrucoes: string | null | undefined): EstiloDaLoja => ({
+    instrucoes: instrucoes?.trim() || null,
+    exemplos: exemplos.filter((e) => e.tipo === tipo).map((e) => ({ texto: e.texto, origem: e.origem })),
+  });
   const fichas = (fichasRes.data ?? []) as { tipo_imagem: string; dados: unknown }[];
   const geral = normalizarFicha(fichas.find((f) => f.tipo_imagem === "geral")?.dados);
   const capa1 = normalizarFicha(fichas.find((f) => f.tipo_imagem === "capa_1")?.dados);
@@ -116,7 +157,9 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
     perfil: perfil ? { id: perfil.id, nome: perfil.nome, plataforma: perfil.plataforma, lojaId: perfil.loja_id, nicho: perfil.nicho, termos: termosDoPerfil(perfil), logoPath: perfil.logo_path } : null,
     plataforma: regrasDaPlataforma(perfil?.plataforma ?? "shopee"),
     memoria: ((memoriaRes.data ?? []) as { texto: string }[]).map((m) => m.texto),
+    memoriaItens: ((memoriaRes.data ?? []) as { id: string; texto: string }[]).map((m) => ({ id: m.id, texto: m.texto })),
     fichaCapa1: mesclarFicha(geral, capa1),
+    estilo: { titulo: estiloDo("titulo", perfil?.instrucoes_titulo), descricao: estiloDo("descricao", perfil?.instrucoes_descricao) },
   };
 }
 
@@ -205,7 +248,8 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
   if (!r) return null;
   const [{ data: p }, { data: msgs }, preco, { data: titulosRes }] = await Promise.all([
     supabase.from("produtos").select("nome, preco_venda, palavras_chave, imagem_url, peso_g, altura_cm, largura_cm, comprimento_cm, estoque").eq("id", r.produto_id).maybeSingle(),
-    supabase.from("anuncio_rascunho_mensagens").select("id, papel, texto, acoes, criado_em").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60),
+    // "*": `acoes_feitas` e `anexos` só existem depois da 0110.
+    supabase.from("anuncio_rascunho_mensagens").select("*").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60),
     precoDoAnuncio(supabase, r.produto_id, r.perfil_id ?? null),
     supabase.from("precificacoes").select("titulo_anuncio").eq("produto_id", r.produto_id).not("titulo_anuncio", "is", null).order("criado_em", { ascending: false }).limit(30),
   ]);
@@ -232,7 +276,7 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
     },
     status: r.status ?? "rascunho",
     estado: lerEstado(r.estado),
-    mensagens: ((msgs ?? []) as RascunhoAberto["mensagens"]).map((m) => ({ ...m, acoes: Array.isArray(m.acoes) ? m.acoes : [] })),
+    mensagens: ((msgs ?? []) as Record<string, unknown>[]).map(lerMensagem),
     preco,
     titulosUsados,
     anuncioLojaId: ((noAr ?? []) as { id: string }[])[0]?.id ?? null,
@@ -295,6 +339,26 @@ export async function precoDoAnuncio(supabase: SupabaseClient, produtoId: string
 /** Caminho de imagem só vale se estiver na pasta do próprio usuário (o bucket é público). */
 export function caminhoDoUsuario(userId: string, caminho: string): boolean {
   return caminho.startsWith(`${userId}/`) && !caminho.includes("..");
+}
+
+const MAX_IMAGEM_IA = 5 * 1024 * 1024;
+const TIPOS_IMAGEM_IA = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * Baixa uma imagem para mandar à IA. Só do Storage do próprio projeto, na pasta da conta (o
+ * caminho vem do navegador), sem seguir redirecionamento, com limite de tamanho e de tempo.
+ */
+export async function baixarImagemDaConta(userId: string, caminho: string): Promise<{ base64: string; mime: string; hash: string }> {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || !caminhoDoUsuario(userId, caminho)) throw erro("Envie a imagem por esta tela (só arquivos da sua conta).");
+  const url = `${new URL(base).origin}/storage/v1/object/public/produtos/${caminho.split("/").map(encodeURIComponent).join("/")}`;
+  const r = await fetch(url, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const mime = (r?.headers.get("content-type") ?? "").split(";")[0].trim();
+  if (!r?.ok) throw erro("Não consegui abrir a imagem. Envie de novo.");
+  if (!TIPOS_IMAGEM_IA.includes(mime)) throw erro("Use imagem JPG, PNG ou WebP.");
+  const bytes = Buffer.from(await r.arrayBuffer());
+  if (bytes.length > MAX_IMAGEM_IA) throw erro("Imagem grande demais para a IA (máx. 5 MB).");
+  return { base64: bytes.toString("base64"), mime, hash: createHash("sha256").update(bytes).digest("hex") };
 }
 
 /**

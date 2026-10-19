@@ -649,6 +649,9 @@ export const anuncioSchema = z.object({
       z.object({
         nome_variacao: z.string().trim().max(200),
         multiplicador: z.number().finite("Multiplicador inválido").min(0).max(10_000),
+        unidade: z.enum(["un", "cx", "kg", "l"]).optional(),
+        custo_embalagem: dinheiro.optional(),
+        custo_insumos: dinheiro.optional(),
         custo: dinheiro,
         taxa_variavel_pct: fracao,
         taxa_fixa: dinheiro,
@@ -899,6 +902,8 @@ export const estadoRascunhoSchema = z.object({
         veredito: z.enum(["aprovada", "ajustar", "rejeitada"]).optional(),
         motivo: z.string().trim().max(240).optional(),
         criadoEm: z.string().max(40),
+        /** Imagem enviada pelo usuário (feita fora do Painel): não conta no teto de gerações com IA. */
+        propria: z.boolean().optional(),
       }),
     )
     .max(12)
@@ -935,7 +940,39 @@ export type EscolhasShopee = z.infer<typeof escolhasShopeeSchema>;
 
 export const rascunhoIdSchema = z.object({ rascunho_id: z.string().uuid() });
 export const abrirRascunhoSchema = z.object({ produto_id: z.string().uuid(), perfil_id: z.string().uuid().nullable() });
-export const conversaSchema = z.object({ rascunho_id: z.string().uuid(), mensagem: z.string().trim().min(1, "Escreva uma mensagem").max(500, "Mensagem longa demais (até 500 caracteres)") });
+/** Teto de uma mensagem do chat do anúncio. */
+export const LIMITE_MENSAGEM_CHAT = 2000;
+export const conversaSchema = z
+  .object({
+    rascunho_id: z.string().uuid(),
+    mensagem: z.string().trim().max(LIMITE_MENSAGEM_CHAT, `Mensagem longa demais (até ${LIMITE_MENSAGEM_CHAT.toLocaleString("pt-BR")} caracteres)`),
+    /** Etapa aberta na tela e se há descrição gerada sem salvar: só contexto para a IA. */
+    etapa: z.enum(["loja", "produto", "titulo", "capa", "descricao", "revisar"]).nullish(),
+    descricao_pendente: z.boolean().nullish(),
+    /** Texto colado como referência (0110): vai à IA como dado, num bloco delimitado. */
+    referencia: z
+      .object({
+        qual: z.enum(["titulo", "descricao", "outro"]),
+        de_outra_loja: z.boolean(),
+        texto: z.string().trim().min(10, "Cole pelo menos uma frase de referência").max(3000, "Referência longa demais (até 3.000 caracteres)"),
+      })
+      .nullish(),
+    /** Imagens já enviadas ao Storage pela tela (0110) e, com mais de uma, a montagem delas que vai à IA. */
+    imagens: z.array(z.string().trim().min(1).max(300)).max(4, "Até 4 imagens por mensagem").nullish(),
+    montagem: z.string().trim().min(1).max(300).nullish(),
+    /** "O que você já sabe do meu padrão?": a IA recebe também os exemplos e resume. */
+    resumo_padrao: z.boolean().nullish(),
+  })
+  .refine((v) => v.mensagem.length > 0 || !!v.referencia || (v.imagens?.length ?? 0) > 0, { message: "Escreva uma mensagem", path: ["mensagem"] })
+  .refine((v) => (v.imagens?.length ?? 0) <= 1 || !!v.montagem, { message: "Não consegui juntar as imagens. Mande de novo.", path: ["montagem"] });
+/** Aplicar (ou marcar como feita) a ação `indice` de uma mensagem da IA. A ação é lida do banco, não do navegador. */
+export const acaoConversaSchema = z.object({
+  rascunho_id: z.string().uuid(),
+  mensagem_id: z.string().uuid(),
+  indice: z.number().int().min(0).max(7),
+  /** Referências do perfil cheias (8): qual sai para a nova entrar. */
+  substituir: z.string().trim().max(300).nullish(),
+});
 export const titulosEstudioSchema = z.object({ rascunho_id: z.string().uuid(), pedido: z.string().trim().max(300).nullable() });
 export const escolherTituloSchema = z.object({ rascunho_id: z.string().uuid(), titulo: z.string().trim().min(3, "Título curto demais").max(200) });
 export const vereditoCapaSchema = z.object({

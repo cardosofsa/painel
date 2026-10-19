@@ -7,6 +7,7 @@ import { lancarErroSupabase } from "@/lib/erros";
 import {
   validar,
   abrirRascunhoSchema,
+  acaoConversaSchema,
   conversaSchema,
   escolherTituloSchema,
   rascunhoIdSchema,
@@ -15,26 +16,35 @@ import {
 } from "@/lib/validacao";
 import { z } from "zod";
 import { conversarIA, gerarDescricaoEstudioIA, gerarTitulosEstudioIA, pesquisarConcorrentesIA } from "@/lib/ia/gerar";
-import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, type AvaliacaoDescricao } from "@/lib/ia/prompts-descricao-estudio";
+import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, MINIMO_DESCRICAO, type AvaliacaoDescricao } from "@/lib/ia/prompts-descricao-estudio";
 import { avaliarVariantes, type VarianteAvaliada } from "@/lib/ia/prompts-titulos";
 import { gerarImagemGemini } from "@/lib/ia/imagem";
+import { edicaoRelevante, type TipoExemplo } from "@/lib/ia/estilo-loja";
 import { ErroIA } from "@/lib/ia/erro";
 import { regrasDoPerfil, temBloqueio, termosParaEvitar, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
 import { montarPromptCapaCena, montarPromptCapaCompleta, type ContextoCapa } from "@/lib/marca/prompt-capa";
 import {
+  baixarImagemDaConta,
   capaEmGeracao,
   carregarContextoRascunho,
   caminhoDoUsuario,
   gravarEstado,
   gravarEstadoVersionado,
   lerEstadoAtual,
+  lerMensagem,
   lerRascunhoAberto,
+  precoDoAnuncio,
   sincronizarStatus,
   usuarioDaSessao,
   type ContextoRascunho,
   type RascunhoAberto,
 } from "@/lib/estudio/servidor";
-import type { MensagemHistorico, AcaoProposta } from "@/lib/ia/prompts-assistente";
+import { aplicarInstrucao, caminhoValido, HISTORICO_MENSAGENS, lerAcaoGuardada, lerAnexos, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type AnexoTexto, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
+import { ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
+import { resumoDaFicha } from "@/lib/marca/prompt-capa";
+import { mesclarFicha, normalizarFicha } from "@/lib/marca/ficha";
+import { adicionarMemoriaMarca, alternarMemoriaMarca, salvarDirecaoMarca, salvarFichaMarca } from "../marca/actions";
+import { LIMITE_INSTRUCOES } from "@/lib/ia/estilo-loja";
 
 export type { RascunhoAberto } from "@/lib/estudio/servidor";
 
@@ -42,6 +52,8 @@ const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O estúdio precisa da migração 0099. Aplique no Supabase e recarregue.";
 const faltaMigracao = (code?: string) => code === "PGRST205" || code === "42P01" || code === "PGRST202" || code === "42883";
 const MAX_TENTATIVAS_CAPA = 6;
+/** Teto do `estado.capas` (o schema aceita 12): geradas + enviadas. */
+const MAX_CAPAS = 12;
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;
 const TIPOS_FOTO = ["image/jpeg", "image/png", "image/webp"];
 
@@ -160,6 +172,32 @@ export async function definirNumeroImagens(entrada: unknown) {
   });
 }
 
+// ---------- Aprendizado (0109) ----------
+
+/** Quantas edições de cada tipo o perfil guarda; as mais antigas saem. */
+const EDICOES_GUARDADAS = 8;
+
+/**
+ * O texto que o vendedor corrigiu vira exemplo para as próximas gerações do perfil. É um
+ * extra: se falhar (banco sem a 0109, por exemplo), o que ele salvou continua salvo e a tela
+ * só não diz que aprendeu.
+ */
+async function aprenderComEdicao(supabase: Awaited<ReturnType<typeof createClient>>, ctx: ContextoRascunho, tipo: TipoExemplo, texto: string, antes: string | null): Promise<boolean> {
+  try {
+    const perfilId = ctx.perfil?.id ?? null;
+    const { error } = await supabase.from("marca_exemplos").insert({ perfil_id: perfilId, tipo, origem: "edicao", texto: texto.slice(0, 5000), texto_ia: antes?.slice(0, 5000) ?? null });
+    if (error) return false;
+    let antigas = supabase.from("marca_exemplos").select("id").eq("tipo", tipo).eq("origem", "edicao").order("criado_em", { ascending: false }).range(EDICOES_GUARDADAS, EDICOES_GUARDADAS + 50);
+    antigas = perfilId ? antigas.eq("perfil_id", perfilId) : antigas.is("perfil_id", null);
+    const { data } = await antigas;
+    const ids = (data ?? []).map((x) => x.id as string);
+    if (ids.length) await supabase.from("marca_exemplos").delete().in("id", ids);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------- Títulos ----------
 
 export interface TitulosDoEstudio {
@@ -187,6 +225,7 @@ export async function gerarTitulosEstudio(entrada: unknown) {
       termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       concorrentes: (ctx.rascunho.estado.concorrentes ?? []).map((c) => ({ titulo: c.titulo, faixaPreco: c.precoTexto })),
       pedido: v.pedido,
+      estilo: ctx.estilo.titulo,
     });
     if (!g.ok) throw new Error(g.erro);
 
@@ -200,7 +239,7 @@ export async function gerarTitulosEstudio(entrada: unknown) {
 
 /** O título escolhido (ou digitado) passa pela mesma conferência antes de virar o do anúncio. */
 export async function escolherTitulo(entrada: unknown) {
-  return comResultado(async (): Promise<{ violacoes: Violacao[] }> => {
+  return comResultado(async (): Promise<{ violacoes: Violacao[]; aprendeu: boolean }> => {
     const v = validar(escolherTituloSchema, entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
@@ -210,8 +249,12 @@ export async function escolherTitulo(entrada: unknown) {
     if (temBloqueio(violacoes)) throw new Error(`Este título tem “${violacoes[0].trecho}” (${violacoes[0].motivo.toLowerCase()}). Ajuste e tente de novo.`);
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, {}, { titulo: v.titulo });
     await sincronizarStatus(supabase, v.rascunho_id);
+    // Título que não é nenhuma das sugestões da IA: o vendedor escreveu ou mexeu. Vira exemplo.
+    const sugestoes = (ctx.rascunho.estado.variantes ?? []).map((x) => x.titulo);
+    const editado = sugestoes.length > 0 && !sugestoes.some((t) => !edicaoRelevante(t, v.titulo));
+    const aprendeu = editado ? await aprenderComEdicao(supabase, ctx, "titulo", v.titulo, null) : false;
     revalidatePath(PATH);
-    return { violacoes };
+    return { violacoes, aprendeu };
   });
 }
 
@@ -244,6 +287,7 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
       termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       diferenciaisConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).flatMap((c) => c.diferenciais),
       pedido: v.pedido,
+      estilo: ctx.estilo.descricao,
     });
     if (!g.ok) throw new Error(g.erro);
     const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasDoPerfil(ctx.perfil?.termos) });
@@ -253,8 +297,9 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
 
 /** Salva a descrição que o usuário aprovou, depois de conferir tamanho e termos no servidor. */
 export async function salvarDescricao(entrada: unknown) {
-  return comResultado(async (): Promise<{ avaliacao: AvaliacaoDescricao }> => {
-    const v = validar(rascunhoIdSchema.extend({ descricao: z.string().max(5000) }), entrada);
+  return comResultado(async (): Promise<{ avaliacao: AvaliacaoDescricao; aprendeu: boolean }> => {
+    // `original`: o texto com que o editor abriu (o da IA ou o salvo antes). Se mudou, vira exemplo.
+    const v = validar(rascunhoIdSchema.extend({ descricao: z.string().max(5000), original: z.string().max(5000).nullish() }), entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
@@ -266,7 +311,8 @@ export async function salvarDescricao(entrada: unknown) {
     const { error } = await supabase.from("anuncio_rascunhos").update({ descricao: v.descricao.trim(), atualizado_em: new Date().toISOString() }).eq("id", v.rascunho_id);
     checar(error);
     await sincronizarStatus(supabase, v.rascunho_id);
-    return { avaliacao };
+    const aprendeu = v.original !== undefined && edicaoRelevante(v.original, v.descricao, MINIMO_DESCRICAO) ? await aprenderComEdicao(supabase, ctx, "descricao", v.descricao.trim(), v.original ?? null) : false;
+    return { avaliacao, aprendeu };
   });
 }
 
@@ -347,7 +393,8 @@ export async function gerarCenaCapa(entrada: unknown) {
     if (!titulo) throw new Error("Escolha o título primeiro: a capa leva o título aprovado.");
 
     const capas = ctx.rascunho.estado.capas ?? [];
-    if (capas.length >= MAX_TENTATIVAS_CAPA) throw new Error(`Você já gerou ${MAX_TENTATIVAS_CAPA} capas neste rascunho. Ajuste a ficha ou o pedido antes de gerar outra.`);
+    if (capas.length >= MAX_CAPAS) throw new Error(`O anúncio já tem ${MAX_CAPAS} imagens. Remova uma antes de gerar outra.`);
+    if (capas.filter((c) => !c.propria).length >= MAX_TENTATIVAS_CAPA) throw new Error(`Você já gerou ${MAX_TENTATIVAS_CAPA} capas neste rascunho. Ajuste a ficha ou o pedido antes de gerar outra.`);
     if (capas.length > 0 && !capas[capas.length - 1].veredito) throw new Error("Dê um veredito à capa anterior (aprovar, ajustar ou rejeitar) antes de gerar outra: assim a ficha melhora e você não gasta à toa.");
 
     const violacoes = conferirTextosDaCapa(ctx, titulo, v.textoFaixa);
@@ -439,6 +486,44 @@ export async function registrarCapaFinal(entrada: unknown) {
   });
 }
 
+/**
+ * Imagem feita fora do Painel (outro gerador, foto, arte pronta), enviada pela tela. Entra já
+ * aprovada e como final: o texto, se houver, já está nela. Não gasta cota nem conta no teto de
+ * gerações com IA.
+ */
+export async function adicionarCapaPropria(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema.extend({ path: z.string().trim().min(1).max(300) }), entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    if (!caminhoDoUsuario(ctx.userId, v.path)) throw new Error("Envie a imagem por esta tela (só arquivos da sua conta).");
+    const capas = ctx.rascunho.estado.capas ?? [];
+    if (capas.length >= MAX_CAPAS) throw new Error(`O anúncio já tem ${MAX_CAPAS} imagens.`);
+    const nova = { cenaPath: v.path, finalPath: v.path, titulo: ctx.rascunho.titulo ?? "", veredito: "aprovada" as const, criadoEm: new Date().toISOString(), propria: true };
+    const estado = await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas: [...capas, nova] });
+    await sincronizarStatus(supabase, v.rascunho_id);
+    return estado;
+  });
+}
+
+/**
+ * Tira do anúncio uma imagem enviada pelo usuário (não apaga o arquivo). As geradas com IA ficam:
+ * elas contam no teto de tentativas, e removê-las abriria vaga para gerar além dele.
+ */
+export async function removerCapaPropria(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(rascunhoIdSchema.extend({ indice: z.number().int().min(0).max(11) }), entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const capas = [...(ctx.rascunho.estado.capas ?? [])];
+    if (!capas[v.indice]?.propria) throw new Error("Imagem não encontrada.");
+    capas.splice(v.indice, 1);
+    const estado = await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { capas });
+    await sincronizarStatus(supabase, v.rascunho_id);
+    return estado;
+  });
+}
+
 // ---------- Conversa ----------
 
 export interface TurnoDaConversa {
@@ -449,35 +534,90 @@ export interface TurnoDaConversa {
   doCache: boolean;
 }
 
+const ROTULO_ETAPA: Record<EtapaId, string> = Object.fromEntries(ETAPAS.map((e) => [e.id, e.rotulo])) as Record<EtapaId, string>;
+
+/** Tudo o que a IA do chat sabe do anúncio aberto, lido do banco (a tela manda só ids e o que foi digitado). */
+async function contextoDaConversa(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ctx: ContextoRascunho,
+  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string; referencia: AnexoTexto | null; imagens: string[]; imagemHash: string | null; resumoPadrao: boolean },
+): Promise<ContextoAssistente> {
+  const e = ctx.rascunho.estado;
+  const preco = await precoDoAnuncio(supabase, ctx.produto.id, ctx.perfil?.id ?? null).catch(() => null);
+  return {
+    produtoNome: [ctx.produto.nome, ctx.produto.variante].filter(Boolean).join(" "),
+    plataforma: ctx.plataforma.nome,
+    maxImagens: ctx.plataforma.maxImagens,
+    perfilNome: ctx.perfil?.nome ?? null,
+    etapa: extra.etapa ? ROTULO_ETAPA[extra.etapa] : null,
+    estado: {
+      titulo: ctx.rascunho.titulo,
+      titulosSugeridos: (e.variantes ?? []).map((x) => x.titulo),
+      numeroImagens: e.numeroImagens ?? null,
+      descricaoSalva: ctx.rascunho.descricao,
+      descricaoPendente: extra.descricaoPendente,
+      capas: (e.capas ?? []).map((c) => ({ veredito: c.veredito ?? null, motivo: c.motivo ?? null, propria: !!c.propria })),
+      fichaCapa1: Object.keys(ctx.fichaCapa1).length ? resumoDaFicha(ctx.fichaCapa1) : null,
+      concorrentes: (e.concorrentes ?? []).map((c) => c.titulo),
+      preco: preco?.preco != null ? { valor: preco.preco, margemPct: preco.margemPct, lucro: preco.lucro, onde: preco.lojaRotulo } : null,
+    },
+    direcao: {
+      instrucoesTitulo: ctx.estilo.titulo.instrucoes,
+      instrucoesDescricao: ctx.estilo.descricao.instrucoes,
+      exemplosTitulo: ctx.estilo.titulo.exemplos.length,
+      exemplosDescricao: ctx.estilo.descricao.exemplos.length,
+    },
+    memoria: ctx.memoriaItens,
+    historico: extra.historico,
+    mensagem: extra.mensagem,
+    referencia: extra.referencia,
+    imagens: extra.imagens,
+    imagemHash: extra.imagemHash,
+    padrao: extra.resumoPadrao ? { exemplosTitulo: ctx.estilo.titulo.exemplos.map((x) => x.texto), exemplosDescricao: ctx.estilo.descricao.exemplos.map((x) => x.texto) } : null,
+  };
+}
+
+const SEM_0110 = "Mandar referência ou imagem no chat precisa da migração 0110. Aplique no Supabase e recarregue.";
+const MAX_REFERENCIAS_PERFIL = 8;
+const faltaColuna = (code?: string) => code === "PGRST204" || code === "42703";
+
 export async function conversar(entrada: unknown) {
   return comResultado(async (): Promise<TurnoDaConversa> => {
     const v = validar(conversaSchema, entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const referencia: AnexoTexto | null = v.referencia ? { tipo: "texto", qual: v.referencia.qual, deOutraLoja: v.referencia.de_outra_loja, texto: v.referencia.texto } : null;
+    const imagens = v.imagens ?? [];
+    for (const p of [...imagens, ...(v.montagem ? [v.montagem] : [])]) {
+      if (!caminhoDoUsuario(ctx.userId, p) || !caminhoValido(p)) throw new Error("Envie as imagens por esta tela (só arquivos da sua conta).");
+    }
+    const anexos: AnexoMensagem[] = [...(referencia ? [referencia] : []), ...imagens.map((path) => ({ tipo: "imagem" as const, path }))];
+    // Sem a 0110 não há onde guardar o anexo: avisa ANTES de gastar a geração.
+    if (anexos.length) {
+      const { error: semColuna } = await supabase.from("anuncio_rascunho_mensagens").select("anexos").limit(0);
+      if (semColuna && faltaColuna(semColuna.code)) throw new Error(SEM_0110);
+    }
+    const mensagem =
+      v.mensagem ||
+      (referencia ? `Colei uma referência (${ROTULO_REFERENCIA[referencia.qual]}${referencia.deOutraLoja ? " de outra loja" : ""}).` : `Mandei ${imagens.length} ${imagens.length === 1 ? "imagem" : "imagens"}.`);
+    // Uma chamada leva uma imagem: com várias, a montagem que a tela juntou.
+    const alvo = imagens.length > 1 ? v.montagem! : imagens[0];
+    const imagem = alvo ? await baixarImagemDaConta(ctx.userId, alvo) : null;
 
-    const { data: anteriores } = await supabase.from("anuncio_rascunho_mensagens").select("papel, texto").eq("rascunho_id", v.rascunho_id).order("criado_em", { ascending: false }).limit(6);
-    const historico = ((anteriores ?? []) as MensagemHistorico[]).reverse();
+    // "*": `anexos` só existe depois da 0110.
+    const { data: anteriores } = await supabase.from("anuncio_rascunho_mensagens").select("*").eq("rascunho_id", v.rascunho_id).order("criado_em", { ascending: false }).limit(HISTORICO_MENSAGENS);
+    const historico: MensagemHistorico[] = ((anteriores ?? []) as Record<string, unknown>[]).reverse().map((m) => ({ papel: m.papel === "ia" ? "ia" : "usuario", texto: String(m.texto ?? ""), anexos: lerAnexos(m.anexos) }));
 
-    const g = await conversarIA(supabase, {
-      produtoNome: [ctx.produto.nome, ctx.produto.variante].filter(Boolean).join(" "),
-      plataforma: ctx.plataforma.nome,
-      maxImagens: ctx.plataforma.maxImagens,
-      estado: {
-        titulo: ctx.rascunho.titulo,
-        numeroImagens: ctx.rascunho.estado.numeroImagens ?? null,
-        temConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).length > 0,
-        capasGeradas: (ctx.rascunho.estado.capas ?? []).length,
-        fichaCapa1Preenchida: Object.keys(ctx.fichaCapa1).length > 0,
-      },
-      memoria: ctx.memoria,
-      historico,
-      mensagem: v.mensagem,
-    });
+    const g = await conversarIA(
+      supabase,
+      await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem, referencia, imagens, imagemHash: imagem?.hash ?? null, resumoPadrao: !!v.resumo_padrao }),
+      imagem ? { base64: imagem.base64, mime: imagem.mime } : undefined,
+    );
     if (!g.ok) throw new Error(g.erro);
 
     // Só depois de a IA responder: mensagem e resposta entram juntas no histórico.
     const { error } = await supabase.from("anuncio_rascunho_mensagens").insert([
-      { rascunho_id: v.rascunho_id, papel: "usuario", texto: v.mensagem, acoes: [] },
+      { rascunho_id: v.rascunho_id, papel: "usuario", texto: mensagem, acoes: [], ...(anexos.length ? { anexos } : {}) },
       { rascunho_id: v.rascunho_id, papel: "ia", texto: g.dado.conversa.resposta || "Certo.", acoes: g.dado.conversa.acoes },
     ]);
     checar(error);
@@ -485,3 +625,144 @@ export async function conversar(entrada: unknown) {
   });
 }
 
+/** A ação `indice` da mensagem, lida do banco, e as já feitas (`null` = banco sem a 0110). */
+async function lerAcaoDaMensagem(supabase: Awaited<ReturnType<typeof createClient>>, rascunhoId: string, mensagemId: string, indice: number) {
+  const { data, error } = await supabase.from("anuncio_rascunho_mensagens").select("*").eq("id", mensagemId).eq("rascunho_id", rascunhoId).eq("papel", "ia").maybeSingle();
+  checar(error);
+  if (!data) throw new Error("Mensagem não encontrada.");
+  const linha = data as Record<string, unknown>;
+  const acao = lerAcaoGuardada(Array.isArray(linha.acoes) ? linha.acoes[indice] : null);
+  if (!acao) throw new Error("Essa sugestão não está mais disponível.");
+  const feitas = "acoes_feitas" in linha ? lerMensagem(linha).acoesFeitas : null;
+  if (feitas?.includes(indice)) throw new Error("Essa sugestão já foi aplicada.");
+  return { acao, feitas };
+}
+
+/** Grava a ação como feita. Sem a 0110 não há onde gravar: devolve `false` e a tela marca só na memória. */
+async function gravarFeita(supabase: Awaited<ReturnType<typeof createClient>>, mensagemId: string, feitas: number[] | null, indice: number): Promise<boolean> {
+  if (feitas === null) return false;
+  const { error } = await supabase.from("anuncio_rascunho_mensagens").update({ acoes_feitas: [...new Set([...feitas, indice])].sort() }).eq("id", mensagemId);
+  return !error;
+}
+
+/**
+ * Marca como feita uma ação que a TELA executa (gerar títulos ou descrição, ir para a capa,
+ * pesquisar concorrentes): a geração em si passa pelas mesmas actions dos botões.
+ */
+export async function marcarAcaoFeita(entrada: unknown) {
+  return comResultado(async (): Promise<boolean> => {
+    const v = validar(acaoConversaSchema, entrada);
+    const supabase = await createClient();
+    await usuarioDaSessao(supabase);
+    const { feitas } = await lerAcaoDaMensagem(supabase, v.rascunho_id, v.mensagem_id, v.indice);
+    return gravarFeita(supabase, v.mensagem_id, feitas, v.indice);
+  });
+}
+
+/** Desembrulha o `Resultado` de outra action chamada daqui (o erro sobe com a mensagem dela). */
+function exigir<T>(r: { ok: true; dado: T } | { ok: false; erro: string }): T {
+  if (!r.ok) throw new Error(r.erro);
+  return r.dado;
+}
+
+/**
+ * Aplica uma ação que GRAVA (memória, ficha, número de imagens…) e a marca como feita. A ação é
+ * lida do banco, na mensagem da IA: o navegador manda só o id e o índice, então não dá para
+ * aplicar algo que a IA não propôs. Cada tipo passa pela mesma action (e as mesmas checagens)
+ * do botão equivalente na tela.
+ */
+export async function aplicarAcaoConversa(entrada: unknown) {
+  return comResultado(async (): Promise<{ mensagem: string; marcada: boolean }> => {
+    const v = validar(acaoConversaSchema, entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const { acao, feitas } = await lerAcaoDaMensagem(supabase, v.rascunho_id, v.mensagem_id, v.indice);
+    const perfilId = ctx.perfil?.id ?? null;
+    const precisaPerfil = () => {
+      if (!perfilId) throw new Error("Este anúncio está sem perfil. Escolha ou crie um perfil de loja em Configurações para guardar isso nele.");
+      return perfilId;
+    };
+
+    let mensagem: string;
+    switch (acao.tipo) {
+      case "definir_numero_imagens": {
+        if (ctx.plataforma.maxImagens && acao.n > ctx.plataforma.maxImagens) throw new Error(`${ctx.plataforma.nome} aceita até ${ctx.plataforma.maxImagens} imagens por anúncio.`);
+        await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { numeroImagens: acao.n });
+        mensagem = `Combinado: ${acao.n} ${acao.n === 1 ? "imagem" : "imagens"}`;
+        break;
+      }
+      case "guardar_memoria":
+        exigir(await adicionarMemoriaMarca({ perfil_id: perfilId, tipo: acao.memoria.tipo, texto: acao.memoria.texto, origem: "ia" }));
+        mensagem = "Guardado na memória";
+        break;
+      case "ajustar_ficha": {
+        const perfil = precisaPerfil();
+        const { data: ativa } = await supabase.from("marca_fichas").select("dados").eq("perfil_id", perfil).eq("tipo_imagem", acao.tipoImagem).eq("ativa", true).maybeSingle();
+        const dados = mesclarFicha(normalizarFicha(ativa?.dados), acao.campos);
+        exigir(await salvarFichaMarca({ perfil_id: perfil, tipo_imagem: acao.tipoImagem, dados, origem: "ajuste_ia", nota: "Ajuste proposto na conversa" }));
+        mensagem = "Ficha atualizada (nova versão; dá para voltar na aba Ficha de arte)";
+        break;
+      }
+      case "guardar_exemplo": {
+        const { error } = await supabase.from("marca_exemplos").insert({ perfil_id: perfilId, tipo: acao.tipoExemplo, origem: "referencia", texto: acao.texto });
+        if (error && (error.code === "23514" || faltaMigracao(error.code))) throw new Error("Guardar exemplo pelo chat precisa das migrações 0109 e 0110. Aplique no Supabase e recarregue.");
+        checar(error);
+        mensagem = `Guardado como exemplo de ${acao.tipoExemplo === "titulo" ? "título" : "descrição"}${perfilId ? " deste perfil" : " (vale para a conta toda)"}. Dá para pausar ou apagar na aba Direção da IA.`;
+        break;
+      }
+      case "guardar_referencia_imagem": {
+        const perfil = precisaPerfil();
+        if (!caminhoDoUsuario(ctx.userId, acao.path)) throw new Error("Imagem fora da sua conta.");
+        const { data: linha, error } = await supabase.from("perfis_marca").select("referencias").eq("id", perfil).maybeSingle();
+        checar(error);
+        const atuais = ((linha?.referencias as string[] | null) ?? []).filter(Boolean);
+        if (atuais.includes(acao.path)) throw new Error("Essa imagem já está nas referências do perfil.");
+        let novas = [...atuais, acao.path];
+        if (atuais.length >= MAX_REFERENCIAS_PERFIL) {
+          if (!v.substituir || !atuais.includes(v.substituir)) throw new Error(`O perfil já tem ${MAX_REFERENCIAS_PERFIL} referências. Escolha qual sai para esta entrar.`);
+          novas = [...atuais.filter((r) => r !== v.substituir), acao.path];
+        }
+        const { error: erroGravar } = await supabase.from("perfis_marca").update({ referencias: novas, atualizado_em: new Date().toISOString() }).eq("id", perfil);
+        checar(erroGravar);
+        mensagem = `Imagem guardada nas referências do perfil (${novas.length} de ${MAX_REFERENCIAS_PERFIL}). Use "Aprender das capas" para atualizar a ficha.`;
+        break;
+      }
+      case "atualizar_instrucoes": {
+        const perfil = precisaPerfil();
+        const atual = acao.alvo === "titulo" ? ctx.estilo.titulo.instrucoes : ctx.estilo.descricao.instrucoes;
+        const novo = aplicarInstrucao(atual, acao.modo, acao.texto);
+        if (novo.passa) throw new Error(`As instruções passariam de ${LIMITE_INSTRUCOES.toLocaleString("pt-BR")} caracteres. Peça para a IA resumir e tente de novo.`);
+        // A mesma action da aba Direção da IA (grava as duas; a outra fica como está).
+        exigir(
+          await salvarDirecaoMarca({
+            perfil_id: perfil,
+            instrucoes_titulo: acao.alvo === "titulo" ? novo.texto : ctx.estilo.titulo.instrucoes,
+            instrucoes_descricao: acao.alvo === "descricao" ? novo.texto : ctx.estilo.descricao.instrucoes,
+          }),
+        );
+        mensagem = `Instruções de ${acao.alvo === "titulo" ? "títulos" : "descrições"} atualizadas. Dá para desfazer na aba Direção da IA.`;
+        break;
+      }
+      case "usar_titulo": {
+        // A mesma conferência de termos e limite do "Usar o meu"; se não for uma das sugestões, vira exemplo.
+        const r = exigir(await escolherTitulo({ rascunho_id: v.rascunho_id, titulo: acao.titulo }));
+        mensagem = r.aprendeu ? "Título escolhido. O seu jeito de escrever vira exemplo para os próximos." : "Título escolhido";
+        break;
+      }
+      case "pausar_memoria":
+        exigir(await alternarMemoriaMarca(acao.id, false));
+        mensagem = "Frase pausada na memória. Dá para reativar na aba Memória.";
+        break;
+      case "usar_imagem_no_anuncio":
+        // Mesma ação do "Enviar minha imagem" da Capa: aprovada, sem cota, conta no teto de 12.
+        exigir(await adicionarCapaPropria({ rascunho_id: v.rascunho_id, path: acao.path }));
+        mensagem = "Imagem adicionada ao anúncio (na etapa Capa, como enviada por você).";
+        break;
+      default:
+        throw new Error("Essa sugestão roda na tela do anúncio.");
+    }
+    const marcada = await gravarFeita(supabase, v.mensagem_id, feitas, v.indice);
+    revalidatePath(PATH);
+    return { mensagem, marcada };
+  });
+}

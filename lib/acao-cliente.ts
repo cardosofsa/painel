@@ -11,9 +11,12 @@ import type { Resultado } from "./acao";
  * dentro do bundle do servidor.
  */
 
-interface Mensagens {
-  /** Toast de sucesso. Omitir quando a própria tela já mostra o resultado. */
-  sucesso?: string;
+interface Mensagens<T> {
+  /**
+   * Toast de sucesso. Omitir quando a própria tela já mostra o resultado. Função quando o
+   * texto depende do que a action devolveu.
+   */
+  sucesso?: string | ((dado: T) => string);
   /** Usado só quando a chamada nem chegou a produzir um `Resultado` — ver abaixo. */
   erro: string;
 }
@@ -43,12 +46,13 @@ interface Mensagens {
  */
 export async function executarComToast<T>(
   promessa: Promise<Resultado<T>>,
-  mensagens: Mensagens,
+  mensagens: Mensagens<T>,
 ): Promise<Resultado<T>> {
   try {
     const r = await promessa;
     if (r.ok) {
-      if (mensagens.sucesso) toast.success(mensagens.sucesso);
+      const sucesso = typeof mensagens.sucesso === "function" ? mensagens.sucesso(r.dado) : mensagens.sucesso;
+      if (sucesso) toast.success(sucesso);
     } else {
       // `r.erro` já passou por `traduzirErroSupabase`/`validar` no servidor — é texto
       // escrito para o usuário, não detalhe de infraestrutura.

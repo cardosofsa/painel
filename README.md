@@ -206,8 +206,8 @@ inválido" e o resto da tela segue funcionando.
 
 A aba **Anúncio** (`/anuncio`) reúne o fluxo: o botão **Anúncio Infinito** abre uma tela guiada em seis
 etapas (Loja → Produto → Título → Capa → Descrição → Revisar e enviar), com as configurações (perfil,
-ficha de arte, memória, aprender das capas, conferir texto) numa gaveta e o assistente numa janela de
-conversa. A ordem e os bloqueios das etapas vivem em `lib/anuncio/etapas.ts` (puro, testado). A aba
+ficha de arte, memória, aprender das capas, conferir texto) numa gaveta e o chat do anúncio ao lado
+(ver "Chat do anúncio" abaixo). A ordem e os bloqueios das etapas vivem em `lib/anuncio/etapas.ts` (puro, testado). A aba
 **acompanha Produtos** (`ABAS_HERDADAS` em `lib/acesso.ts`): contas que já têm Produtos a recebem sem
 migração de dados. Sem migração de banco.
 
@@ -244,6 +244,54 @@ concorrente vindos do navegador).
   mantendo cache → cota → chamada → guardar.
 - **Assistente:** responde e PROPÕE ações de uma lista fechada (`lib/ia/prompts-assistente.ts`); cada uma
   é um botão que o usuário aprova. Ação fora da lista ou com valor inválido é descartada na leitura.
+
+### Chat do anúncio (migração 0110)
+
+O assistente virou um chat ao lado da tela de criação (`components/estudio/ChatAnuncio.tsx`,
+`PainelConversa.tsx`): fixo à direita a partir de 1280 px (recolher/abrir lembrado em `localStorage`,
+`lib/hooks/usePainelConversa.ts`), gaveta à direita entre 1024 e 1279 px e tela cheia no celular. Só
+existe com um anúncio aberto: a conversa é do rascunho (`anuncio_rascunho_mensagens`).
+
+- **O que vai para a IA** (tudo lido no servidor por `contextoDaConversa` em
+  `app/(painel)/produtos/estudio/actions.ts`; a tela manda só ids, o texto, a etapa aberta e caminhos de
+  arquivo, que o servidor confere): produto, plataforma, perfil, etapa, título e os 5 sugeridos,
+  descrição salva (600 caracteres), capas com veredito e motivo, resumo da ficha da Capa 1, instruções de
+  base (400 cada) e quantos exemplos, títulos dos concorrentes, preço e margem da loja (só leitura),
+  memória (12 frases) e as últimas 12 mensagens (600 caracteres cada). Cada bloco é cortado no teto e
+  bloco vazio não entra.
+- **Referência de texto** ("Colar referência", até 3.000 caracteres, título/descrição/outro, meu ou de
+  outra loja): vai num bloco delimitado com o aviso de que é dado e não ordem; os marcadores são tirados
+  de dentro do texto, então "ignore as regras" colado de outro site não fecha o bloco. Texto de outra
+  loja nunca vira exemplo (a IA aproveita estrutura e tom). Link não é lido: buscar página escolhida
+  por quem usa abriria brecha no servidor, e a Shopee bloqueia.
+- **Imagens** (clipe, Ctrl+V, arrastar; até 4, JPG/PNG/WebP, 5 MB): sobem para a pasta da conta no
+  bucket `produtos` (prefixo `estudio-chat-`); com mais de uma, o navegador monta uma imagem só
+  (`montarMontagemDeArquivos`) e é ela que vai, porque o provedor lê uma imagem por chamada. O servidor
+  baixa só do Storage do projeto, na pasta da conta, sem seguir redirecionamento, com teto de tamanho
+  e tempo (`baixarImagemDaConta`). O cache usa a impressão digital dos bytes, não o caminho.
+- **Ações** (cada uma é um botão; nada grava sem clique): as que gravam (`aplicarAcaoConversa`) leem a
+  ação **do banco**, na mensagem da IA, e passam pela mesma action do botão equivalente (memória,
+  ficha, número de imagens, exemplo, instruções com antes e depois, título com a conferência de termos,
+  pausar memória, referência de imagem do perfil, imagem no anúncio). As de gerar (títulos, descrição,
+  concorrentes, capa) rodam na tela, com o chat aberto, e a capa com imagem só leva à etapa Capa, onde o
+  gasto é confirmado. Aplicada, a ação fica marcada em `acoes_feitas`: recarregar mostra "Feito". Sem
+  perfil, as ações que gravam no perfil (ficha, instruções, referência de imagem) são descartadas.
+- **"Meu padrão"**: a IA recebe também os exemplos guardados e instruções mais longas, resume em
+  tópicos, aponta contradições e propõe a limpeza como ações.
+- **Sem a 0110**: o chat funciona só com texto; o "Feito" fica na memória da tela; mandar referência ou
+  imagem avisa antes de gastar a geração.
+
+| Ação no chat | Custo |
+| --- | --- |
+| Mensagem de texto | 1 geração de texto (tipo `assistente`) |
+| Mensagem com imagem(ns) | 1 geração de texto, mais lenta |
+| Aplicar ação de guardar | sem custo |
+| Gerar títulos/descrição pelo chat | 1 geração, igual ao botão |
+| Gerar capa | só pela Capa, com confirmação (1 imagem da cota) |
+
+Prompt medido com o contexto cheio (12 mensagens longas, descrição, ficha, instruções, 6 concorrentes):
+~16 mil caracteres (≈ 4,7 mil tokens de entrada), ~20 mil com uma referência de 3.000; vazio, ~5 mil. Se
+precisar cortar, os primeiros a sair são concorrentes e preço.
 
 **Botão de copiar (fluxo do anúncio).** `lib/copiar.ts` (formatadores puros + cópia com plano B por
 `execCommand` quando `navigator.clipboard` falha) e `components/ui/BotaoCopiar.tsx` (ícone que vira ✓,

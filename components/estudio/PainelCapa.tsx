@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Copy, ImageIcon, ThumbsDown, ThumbsUp, Wrench } from "lucide-react";
+import { Copy, ImageIcon, ThumbsDown, ThumbsUp, Trash2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { AcoesImagem, BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
+import { CampoArquivo } from "@/components/ui/CampoArquivo";
 import { ImagemStorage } from "@/components/ui/ImagemStorage";
 import { FormField, Modal, inputClass } from "@/components/ui/Modal";
 import { executarComToast } from "@/lib/acao-cliente";
@@ -14,7 +15,7 @@ import type { RegrasPlataforma } from "@/lib/marca/plataformas";
 import { resumoDaFicha } from "@/lib/marca/prompt-capa";
 import { urlPublicaImagem } from "@/lib/marca/tipos";
 import type { Violacao } from "@/lib/conformidade/termos";
-import { gerarCenaCapa, promptDaCapa, registrarCapaFinal, vereditoCapa, type RascunhoAberto } from "@/app/(painel)/produtos/estudio/actions";
+import { adicionarCapaPropria, gerarCenaCapa, promptDaCapa, registrarCapaFinal, removerCapaPropria, vereditoCapa, type RascunhoAberto } from "@/app/(painel)/produtos/estudio/actions";
 import { comporCapa } from "@/components/marca/compor";
 import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
@@ -69,6 +70,8 @@ export function PainelCapa({
   const titulo = rascunho.titulo;
   const capas = rascunho.estado.capas ?? [];
   const semVeredito = capas.some((c) => !c.veredito);
+  const geradas = capas.filter((c) => !c.propria).length;
+  const cheio = capas.length >= 12;
   const fichaVazia = Object.keys(ficha).length === 0;
 
   function verPrompt() {
@@ -114,6 +117,23 @@ export function PainelCapa({
     });
   }
 
+  /** Imagem feita fora do Painel: vai direto, aprovada, sem cota. */
+  function enviarPropria(file: File) {
+    startTransition(async () => {
+      const up = await enviar(file, { maxSizeMb: 5, tiposAceitos: ["image/jpeg", "image/png", "image/webp"], prefixo: "estudio-propria" });
+      if (!up) return;
+      const r = await executarComToast(adicionarCapaPropria({ rascunho_id: rascunho.id, path: up.path }), { sucesso: "Imagem adicionada ao anúncio.", erro: "Não foi possível adicionar a imagem." });
+      if (r.ok) onMudou();
+    });
+  }
+
+  function remover(indice: number) {
+    startTransition(async () => {
+      const r = await executarComToast(removerCapaPropria({ rascunho_id: rascunho.id, indice }), { sucesso: "Imagem removida do anúncio.", erro: "Não foi possível remover a imagem." });
+      if (r.ok) onMudou();
+    });
+  }
+
   function decidir(v: Veredito) {
     if (!previa) return;
     startTransition(async () => {
@@ -156,7 +176,7 @@ export function PainelCapa({
             <Button variant="secondary" onClick={verPrompt} loading={pending && !previa} disabled={pending}>
               <Copy size={14} aria-hidden /> Ver o prompt (sem custo)
             </Button>
-            <Button variant="primary" onClick={() => setConfirmando(true)} loading={gerando} disabled={pending || !iaDisponivel || semVeredito || capas.length >= 6} title={semVeredito ? "Dê um veredito à capa anterior primeiro" : undefined}>
+            <Button variant="primary" onClick={() => setConfirmando(true)} loading={gerando} disabled={pending || !iaDisponivel || semVeredito || geradas >= 6 || cheio} title={semVeredito ? "Dê um veredito à capa anterior primeiro" : undefined}>
               <ImageIcon size={14} aria-hidden /> {gerando ? "Gerando a cena…" : "Gerar a capa aqui"}
             </Button>
           </div>
@@ -226,29 +246,42 @@ export function PainelCapa({
             </div>
           )}
 
-          {capas.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-2">
-                Capas deste anúncio ({capas.length}/6){imagensUsadas != null && ` · imagens geradas no mês: ${usadas?.usadas ?? imagensUsadas}${usadas?.limite ? ` de ${usadas.limite}` : ""}`}
-              </h4>
-              <ul className="flex flex-wrap gap-3">
-                {capas.map((c, i) => (
-                  <li key={c.cenaPath} className="w-[120px]">
-                    <ImagemStorage src={urlPublicaImagem(c.finalPath ?? c.cenaPath)} alt={`Capa ${i + 1}`} className="w-[120px] h-[120px] rounded-md border border-border object-cover bg-surface-2" />
-                    <p className="text-xs mt-1 text-text-secondary">{c.veredito ? ROTULO_VEREDITO[c.veredito] : "Sem veredito"}</p>
-                    {c.finalPath && <AcoesImagem url={urlPublicaImagem(c.finalPath)} nomeArquivo={`capa-${i + 1}.png`} rotulo={`capa ${i + 1}`} />}
-                    {c.motivo && <p className="text-xs text-text-tertiary break-words">{c.motivo}</p>}
-                    {!c.veredito && (
-                      <Button size="sm" variant="ghost" onClick={() => reabrir(i, c.cenaPath)} disabled={pending}>
-                        Revisar
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </>
+      )}
+
+      <div className="mt-4 rounded-md border border-border p-3">
+        <p className="text-sm font-medium text-text-primary">Já tem a imagem pronta?</p>
+        <p className="text-xs text-text-secondary mb-2">Envie a capa ou uma foto que você fez em outro gerador. Ela entra aprovada no anúncio, sem usar a cota de imagens. JPG, PNG ou WebP, até 5 MB.</p>
+        <CampoArquivo rotulo={pending ? "Enviando…" : "Enviar minha imagem"} aceita="image/jpeg,image/png,image/webp" disabled={pending || cheio} onArquivo={enviarPropria} />
+        {cheio && <p className="text-xs text-text-tertiary mt-1">O anúncio já tem 12 imagens: remova uma enviada antes.</p>}
+      </div>
+
+      {capas.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-2">
+            Imagens deste anúncio ({capas.length}) · geradas com IA: {geradas}/6{imagensUsadas != null && ` · imagens geradas no mês: ${usadas?.usadas ?? imagensUsadas}${usadas?.limite ? ` de ${usadas.limite}` : ""}`}
+          </h4>
+          <ul className="flex flex-wrap gap-3">
+            {capas.map((c, i) => (
+              <li key={c.cenaPath} className="w-[120px]">
+                <ImagemStorage src={urlPublicaImagem(c.finalPath ?? c.cenaPath)} alt={`Imagem ${i + 1}`} className="w-[120px] h-[120px] rounded-md border border-border object-cover bg-surface-2" />
+                <p className="text-xs mt-1 text-text-secondary">{c.propria ? "Enviada por você" : c.veredito ? ROTULO_VEREDITO[c.veredito] : "Sem veredito"}</p>
+                {c.finalPath && <AcoesImagem url={urlPublicaImagem(c.finalPath)} nomeArquivo={`capa-${i + 1}.png`} rotulo={`capa ${i + 1}`} />}
+                {c.motivo && <p className="text-xs text-text-tertiary break-words">{c.motivo}</p>}
+                {c.propria && (
+                  <Button size="sm" variant="ghost" onClick={() => remover(i)} disabled={pending || !!previa} aria-label={`Remover a imagem ${i + 1}`}>
+                    <Trash2 size={12} aria-hidden /> Remover
+                  </Button>
+                )}
+                {!c.veredito && titulo && (
+                  <Button size="sm" variant="ghost" onClick={() => reabrir(i, c.cenaPath)} disabled={pending}>
+                    Revisar
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <Modal open={confirmando} onClose={() => setConfirmando(false)} title="Gerar a cena da capa?" width="max-w-lg">

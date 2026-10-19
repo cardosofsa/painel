@@ -208,7 +208,8 @@ export function DetalhamentoPrecificacao({
   impostoPct,
 }: {
   aberto: boolean;
-  onToggle: () => void;
+  /** Sem `onToggle`, o detalhamento fica sempre aberto e sem o botão (ex.: Variações, que já abre o cartão). */
+  onToggle?: () => void;
   componentes: ComponenteKit[] | null;
   custoTotal: number;
   taxaVariavelValor: number;
@@ -222,9 +223,11 @@ export function DetalhamentoPrecificacao({
 }) {
   return (
     <>
-      <button onClick={onToggle} className="text-xs text-accent hover:underline">
-        {aberto ? "Ocultar detalhamento ▲" : "Ver detalhamento ▾"}
-      </button>
+      {onToggle && (
+        <button onClick={onToggle} className="text-xs text-accent hover:underline">
+          {aberto ? "Ocultar detalhamento ▲" : "Ver detalhamento ▾"}
+        </button>
+      )}
       {aberto && (
         <>
           <div className="flex justify-between text-text-secondary">

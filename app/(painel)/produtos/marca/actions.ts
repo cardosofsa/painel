@@ -10,6 +10,12 @@ import { validar, perfilMarcaSchema, memoriaMarcaSchema, salvarFichaSchema, PLAT
 import { gerarFichaPelasCapasIA } from "@/lib/ia/gerar";
 import { regrasDaPlataforma } from "@/lib/marca/plataformas";
 import { presetPorId } from "@/lib/conformidade/termos";
+import { buscarEmLotes } from "@/lib/lotes";
+import { carregarPedidosMarketplace } from "@/lib/marketplace/pedidos-servidor";
+import { rankearAnuncios, type PedidoRanking } from "@/lib/marketplace/ranking-anuncios";
+import { apiDaConexao } from "@/lib/marketplace/conexao-api";
+import type { ConexaoShopee } from "@/lib/marketplace/tokens";
+import { itensParaLer, linhasDeExemplo } from "@/lib/marca/exemplos-loja";
 
 const PATH = "/anuncio/infinito";
 const SEM_MIGRACAO = "O padrão da loja precisa da migração 0098. Aplique no Supabase e recarregue.";
@@ -114,6 +120,114 @@ export async function removerMemoriaMarca(id: string) {
     const { error } = await supabase.from("marca_memoria").delete().eq("id", v);
     checar(error);
     revalidatePath(PATH);
+  });
+}
+
+// ---------- Direção da IA (0109) ----------
+
+const SEM_0109 = "As instruções e os exemplos da IA precisam da migração 0109. Aplique no Supabase e recarregue.";
+const textoInstrucao = z.string().trim().max(2000, "Até 2.000 caracteres").nullable();
+
+/** Instruções de base do perfil: entram em toda geração de título e de descrição dele. */
+export async function salvarDirecaoMarca(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(z.object({ perfil_id: z.string().uuid(), instrucoes_titulo: textoInstrucao, instrucoes_descricao: textoInstrucao }), entrada);
+    const { supabase } = await sessao();
+    const { error } = await supabase
+      .from("perfis_marca")
+      .update({ instrucoes_titulo: v.instrucoes_titulo || null, instrucoes_descricao: v.instrucoes_descricao || null, atualizado_em: new Date().toISOString() })
+      .eq("id", v.perfil_id);
+    if (error && faltaColuna(error.code)) throw new Error(SEM_0109);
+    checar(error);
+    revalidatePath(PATH);
+  });
+}
+
+export async function alternarExemploMarca(id: string, ativo: boolean) {
+  return comResultado(async () => {
+    const v = validar(z.object({ id: z.string().uuid(), ativo: z.boolean() }), { id, ativo });
+    const { supabase } = await sessao();
+    const { error } = await supabase.from("marca_exemplos").update({ ativo: v.ativo }).eq("id", v.id);
+    if (error && faltaMigracao(error.code)) throw new Error(SEM_0109);
+    checar(error);
+    revalidatePath(PATH);
+  });
+}
+
+export async function removerExemploMarca(id: string) {
+  return comResultado(async () => {
+    const v = validar(z.string().uuid(), id);
+    const { supabase } = await sessao();
+    const { error } = await supabase.from("marca_exemplos").delete().eq("id", v);
+    if (error && faltaMigracao(error.code)) throw new Error(SEM_0109);
+    checar(error);
+    revalidatePath(PATH);
+  });
+}
+
+/** Janela de vendas usada para escolher quais anúncios ler. */
+const DIAS_VENDAS_EXEMPLOS = 90;
+
+/**
+ * Lê título e descrição dos anúncios que mais vendem na loja ligada ao perfil (Shopee ou
+ * Mercado Livre) e guarda como exemplos dele, no lugar da leitura anterior. A IA passa a
+ * escrever no estilo que a loja já usa. Sob demanda: é chamada à API da plataforma.
+ */
+export async function lerAnunciosDaLoja(perfilId: string) {
+  return comResultado(async (): Promise<{ anuncios: number; titulos: number; descricoes: number }> => {
+    const v = validar(z.string().uuid(), perfilId);
+    const { supabase } = await sessao();
+    const { data: perfil, error: erroPerfil } = await supabase.from("perfis_marca").select("id, loja_id").eq("id", v).maybeSingle();
+    checar(erroPerfil);
+    if (!perfil) throw new Error("Perfil não encontrado.");
+    if (!perfil.loja_id) throw new Error("Ligue este perfil a uma loja (aba Perfil) para a IA ler os anúncios dela.");
+    const loja = perfil.loja_id as string;
+
+    const { data: conexao } = await supabase.from("marketplace_conexoes").select("*").eq("loja_id", loja).maybeSingle();
+    if (!conexao) throw new Error("A loja deste perfil não está conectada à Shopee nem ao Mercado Livre. Conecte em Configurações › Canais de venda.");
+
+    const [dados, anunciosRes] = await Promise.all([
+      carregarPedidosMarketplace(supabase, DIAS_VENDAS_EXEMPLOS),
+      buscarEmLotes((de, ate) => supabase.from("marketplace_anuncios").select("*", { count: "exact" }).eq("loja_id", loja).order("id").range(de, ate), { maximo: 20000 }),
+    ]);
+    checar(anunciosRes.error);
+    const anuncios = (anunciosRes.data ?? []) as { id: string; item_id: number; loja_id: string; sku_principal?: string | null; nome_item?: string | null; nome?: string | null }[];
+    if (anuncios.length === 0) throw new Error("Ainda não há anúncios desta loja no Painel. Sincronize a loja em Vendas › Marketplace e tente de novo.");
+
+    const pedidos: PedidoRanking[] = dados.pedidos
+      .filter((p) => p.loja_id === loja)
+      .map((p) => ({
+        loja_id: p.loja_id,
+        status: p.status,
+        criado_em_plataforma: p.criado_em_plataforma,
+        lucro: p.lucro,
+        custo_incompleto: p.custo_incompleto,
+        itens: p.pedidos_marketplace_itens.map((i) => ({ sku_principal: i.sku_principal ?? null, nome: i.nome, variacao: i.variacao, quantidade: i.quantidade, preco_unitario: i.preco_unitario })),
+      }));
+    const fim = new Date();
+    const inicio = new Date(fim.getTime() - DIAS_VENDAS_EXEMPLOS * 86_400_000);
+    const linhas = rankearAnuncios(
+      pedidos,
+      anuncios.map((a) => ({ id: a.id, loja_id: a.loja_id, sku_principal: a.sku_principal ?? null, nome_item: a.nome_item ?? null, nome: a.nome ?? null, imagem_url: null, link: null })),
+      inicio,
+      fim,
+      "unidades",
+    );
+    const itens = itensParaLer(linhas, anuncios);
+
+    const api = await apiDaConexao(supabase, conexao as ConexaoShopee);
+    const textos = await api.buscarTextos(itens);
+    const novas = linhasDeExemplo(v, textos);
+    if (novas.length === 0) throw new Error("Não consegui ler o texto dos anúncios da loja. Tente de novo mais tarde.");
+
+    // Troca a leitura anterior inteira: o que saiu da loja deixa de ser exemplo.
+    const { error: erroApagar } = await supabase.from("marca_exemplos").delete().eq("perfil_id", v).eq("origem", "loja");
+    if (erroApagar && faltaMigracao(erroApagar.code)) throw new Error(SEM_0109);
+    checar(erroApagar);
+    const { error } = await supabase.from("marca_exemplos").insert(novas);
+    checar(error);
+    revalidatePath(PATH);
+    return { anuncios: textos.length, titulos: novas.filter((n) => n.tipo === "titulo").length, descricoes: novas.filter((n) => n.tipo === "descricao").length };
   });
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularVariacao, type ConfigVariacoes, type LojaVariacao, type VariacaoLinha } from "./precificacao-variacoes";
+import { calcularVariacao, custoDaVariacao, type ConfigVariacoes, type LojaVariacao, type VariacaoLinha } from "./precificacao-variacoes";
 
 const cfgBase: ConfigVariacoes = {
   modo: "margem",
@@ -25,6 +25,29 @@ const lojaFaixas: LojaVariacao = {
     { min: 80, max: null, comissaoPct: 14, tarifaFixa: 16 },
   ],
 };
+
+describe("custoDaVariacao (unidade, embalagem e insumos)", () => {
+  it("produto vendido por kg: 0,5 kg de um custo de R$ 40/kg, mais pote e etiqueta", () => {
+    const c = custoDaVariacao(40, { ...unidade, multiplicador: 0.5, embalagem: 1.8, insumos: 0.35 });
+    expect(c.produto).toBeCloseTo(20, 6);
+    expect(c.total).toBeCloseTo(22.15, 6);
+  });
+  it("embalagem e insumos não multiplicam pela quantidade", () => {
+    expect(custoDaVariacao(10, { ...unidade, multiplicador: 3, embalagem: 2, insumos: 1 }).total).toBe(33);
+  });
+  it("custo digitado substitui só o do produto", () => {
+    expect(custoDaVariacao(10, { ...unidade, multiplicador: 3, custoManual: 25, embalagem: 2 }).total).toBe(27);
+  });
+  it("sem embalagem e insumos, é o de sempre; valor negativo vira zero", () => {
+    expect(custoDaVariacao(10, { ...unidade, multiplicador: 2 }).total).toBe(20);
+    expect(custoDaVariacao(10, { ...unidade, embalagem: -5 }).total).toBe(10);
+  });
+  it("o preço já sai com a embalagem e os insumos no custo", () => {
+    const r = calcularVariacao(cfgBase, { ...unidade, multiplicador: 0.5, embalagem: 1, insumos: 1 });
+    expect(r.custo).toBe(7);
+    expect(r.resultado.custoTotal).toBe(7);
+  });
+});
 
 describe("calcularVariacao", () => {
   it("modo manual: custo = base × multiplicador e bate a margem alvo", () => {

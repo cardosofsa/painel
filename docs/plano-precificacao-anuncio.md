@@ -651,3 +651,8 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - **A-04** `origemDaRequisicao`: fora da Vercel, x-forwarded-host só na lista (canônico, domínios da Vercel, `ORIGENS_PERMITIDAS`).
 - **A-05/A-06** CI: `npm audit --omit=dev --audit-level=high`, Dependabot; smoke diz "NÃO EXECUTADO" e falha em produção sem credenciais. Falta ligar "Dependabot security updates" em Settings → Code security.
 - Testes: 1645 unitários, 55 scripts SQL, E2E smoke (7) passando; `tsc`, `lint` e `build` limpos.
+
+## 25. Correções pedidas pelo dono (19/10/2026)
+
+- **C-01** Precificação › Variações: sai o botão "Ocultar detalhamento ▲" de dentro do cartão aberto (o cartão já abre e fecha pela seta). `DetalhamentoPrecificacao` sem `onToggle` fica sempre aberto e sem o botão; as outras telas seguem iguais.
+- **C-02 (0111)** Variações de produto vendido por kg, litro ou caixa: o custo base agora diz a unidade ("Vendido por": unidade, caixa, kg, L) e a quantidade de cada variação é nessa unidade, com 3 casas para kg e L (0,5 = 500 g). Cada variação ganhou **Embalagem (R$)** e **Insumos (R$)**, que são por variação e não multiplicam pela quantidade. Custo total = produto (custo base × quantidade, ou o digitado) + embalagem + insumos (`custoDaVariacao`, testado). O detalhamento separa as três partes, e a escada mostra o preço por kg/L/un, com a economia contada sobre a menor quantidade. Migração 0111: `anuncio_variacoes.multiplicador` vira `numeric(12,3)`; entram `unidade`, `custo_embalagem` e `custo_insumos`. Sem ela, variação por unidade sem embalagem/insumos salva como antes; o resto avisa e não deixa anúncio sem variações.
