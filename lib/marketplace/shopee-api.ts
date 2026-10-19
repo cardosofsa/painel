@@ -83,10 +83,28 @@ export interface TokensShopee {
   expiraEm: string;
 }
 
+/**
+ * Tempo máximo de cada chamada à Shopee. Sem isso, uma Shopee lenta prendia a sincronização (e o
+ * cron) até a função estourar o tempo da Vercel, sem mensagem nenhuma.
+ */
+export const TEMPO_SHOPEE_MS = 30_000;
+/** Envio de arquivo (imagem, etiqueta) demora mais. */
+export const TEMPO_SHOPEE_ARQUIVO_MS = 60_000;
+
+/** `fetch` com tempo limite e mensagem clara quando a Shopee não responde. */
+export async function fetchShopee(url: string, init: RequestInit, ms = TEMPO_SHOPEE_MS): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) throw new Error(`Shopee: não respondeu em ${Math.round(ms / 1000)} s. Tente de novo em instantes.`);
+    throw e;
+  }
+}
+
 async function postPublico(c: CredenciaisShopee, caminho: string, corpo: Record<string, unknown>): Promise<Record<string, unknown>> {
   const ts = agora();
   const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), sign: assinar(c, caminho, ts) });
-  const r = await fetch(`${c.host}${caminho}?${q}`, {
+  const r = await fetchShopee(`${c.host}${caminho}?${q}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...corpo, partner_id: c.partnerId }),
@@ -117,7 +135,7 @@ export async function renovarToken(c: CredenciaisShopee, refreshToken: string, s
 export async function getLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, params: Record<string, string>): Promise<Record<string, unknown>> {
   const ts = agora();
   const q = new URLSearchParams({ ...params, partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
-  const r = await fetch(`${c.host}${caminho}?${q}`, { cache: "no-store" });
+  const r = await fetchShopee(`${c.host}${caminho}?${q}`, { cache: "no-store" });
   const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (!r.ok || j.error) throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
   return (j.response ?? {}) as Record<string, unknown>;
@@ -442,7 +460,7 @@ export async function buscarPedidos(c: CredenciaisShopee, token: string, shopId:
 export async function postLoja(c: CredenciaisShopee, caminho: string, token: string, shopId: number, corpo: Record<string, unknown>): Promise<Record<string, unknown>> {
   const ts = agora();
   const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
-  const r = await fetch(`${c.host}${caminho}?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), cache: "no-store" });
+  const r = await fetchShopee(`${c.host}${caminho}?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), cache: "no-store" });
   const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (!r.ok || j.error) throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
   return (j.response ?? {}) as Record<string, unknown>;
@@ -530,7 +548,7 @@ export async function enviarEstoque(c: CredenciaisShopee, token: string, shopId:
 export async function postLojaArquivo(c: CredenciaisShopee, caminho: string, token: string, shopId: number, corpo: Record<string, unknown>): Promise<Uint8Array> {
   const ts = agora();
   const q = new URLSearchParams({ partner_id: String(c.partnerId), timestamp: String(ts), access_token: token, shop_id: String(shopId), sign: assinar(c, caminho, ts, token, shopId) });
-  const r = await fetch(`${c.host}${caminho}?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), cache: "no-store" });
+  const r = await fetchShopee(`${c.host}${caminho}?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), cache: "no-store" }, TEMPO_SHOPEE_ARQUIVO_MS);
   if ((r.headers.get("content-type") ?? "").includes("json") || !r.ok) {
     const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
     throw new Error(`Shopee: ${String(j.message || j.error || r.status)}`);
