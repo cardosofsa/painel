@@ -75,7 +75,8 @@ export function melhorEnvio(token: string, ambiente: AmbienteFrete, contato: str
   }
 
   const provedor: ProvedorFrete & {
-    comprarEtiqueta: (e: EntradaEtiqueta) => Promise<{ etiquetaId: string; rastreio: string | null; urlImpressao: string | null }>;
+    criarCarrinho: (e: EntradaEtiqueta) => Promise<string>;
+    concluirEtiqueta: (id: string) => Promise<{ rastreio: string | null; urlImpressao: string | null }>;
     saldo: () => Promise<number | null>;
   } = {
     async cotar({ origem, destino, pacote, valorDeclarado }) {
@@ -93,14 +94,32 @@ export function melhorEnvio(token: string, ambiente: AmbienteFrete, contato: str
       return j?.balance != null ? Number(j.balance) : null;
     },
 
-    async comprarEtiqueta(e) {
+    /** Põe o envio no carrinho (não cobra nada). Quem chama grava o id ANTES de pagar. */
+    async criarCarrinho(e) {
       const cart = (await chamar("/api/v2/me/cart", corpoCarrinho(e))) as { id?: string };
       if (!cart?.id) throw new Error("O Melhor Envio não aceitou o envio no carrinho.");
-      await chamar("/api/v2/me/shipment/checkout", { orders: [cart.id] });
-      await chamar("/api/v2/me/shipment/generate", { orders: [cart.id] });
-      const imp = (await chamar("/api/v2/me/shipment/print", { mode: "public", orders: [cart.id] }).catch(() => null)) as { url?: string } | null;
-      const info = (await chamar(`/api/v2/me/orders/${cart.id}`).catch(() => null)) as { tracking?: string | null; self_tracking?: string | null } | null;
-      return { etiquetaId: cart.id, rastreio: info?.tracking || info?.self_tracking || null, urlImpressao: imp?.url ?? null };
+      return cart.id;
+    },
+
+    /**
+     * Paga, gera e imprime um envio que já está no carrinho. Pode ser chamado de novo para o
+     * mesmo id: lê a situação do pedido antes e pula o que já foi feito (nunca paga duas vezes).
+     */
+    async concluirEtiqueta(id) {
+      type Pedido = { status?: string | null; paid_at?: string | null; generated_at?: string | null; tracking?: string | null; self_tracking?: string | null };
+      const ler = async () => (await chamar(`/api/v2/me/orders/${id}`)) as Pedido;
+      let pedido = await ler();
+      if (pedido.status === "canceled") throw new Error("Este envio foi cancelado no Melhor Envio. Cancele a etiqueta da venda e compre de novo.");
+      if (pedido.status === "pending" && !pedido.paid_at) {
+        await chamar("/api/v2/me/shipment/checkout", { orders: [id] });
+        pedido = await ler();
+      }
+      if (!pedido.generated_at) {
+        await chamar("/api/v2/me/shipment/generate", { orders: [id] });
+        pedido = (await ler().catch(() => pedido)) ?? pedido;
+      }
+      const imp = (await chamar("/api/v2/me/shipment/print", { mode: "public", orders: [id] }).catch(() => null)) as { url?: string } | null;
+      return { rastreio: pedido.tracking || pedido.self_tracking || null, urlImpressao: imp?.url ?? null };
     },
   };
   return provedor;

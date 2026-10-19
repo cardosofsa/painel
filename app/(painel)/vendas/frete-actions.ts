@@ -8,6 +8,7 @@ import { comResultado } from "@/lib/acao";
 import { conexaoFrete, pacoteDosProdutos, provedorDa, regrasDa } from "@/lib/frete/servidor";
 import { aplicarRegras, cepValido, soDigitosCep } from "@/lib/frete/tipos";
 import type { Endereco } from "@/lib/frete/melhor-envio";
+import { estadoEtiqueta, marcaPendente, marcaReserva, podeReservar } from "@/lib/frete/etiqueta-estado";
 
 /**
  * Frete nas vendas (Fase 10.6): cotar no PDV, cotar e comprar a etiqueta de uma venda com
@@ -82,7 +83,7 @@ export async function cotarFreteVenda(vendaId: string) {
       // Sem acréscimo/grátis: aqui é o CUSTO real da etiqueta para a loja.
       opcoes: aplicarRegras(cotacoes, { ...regrasDa(conexao), acrescimo: 0, freteGratisAcima: null }, Number(v.subtotal)),
       sugerido: v.frete_servico_id ?? null,
-      jaComprada: !!v.frete_etiqueta_id,
+      jaComprada: estadoEtiqueta(v.frete_etiqueta_id).tipo === "comprada",
       destino: `${destino.nome} · ${destino.cidade}/${destino.uf} · CEP ${soDigitosCep(destino.cep)}`,
       semMedida,
     };
@@ -96,7 +97,10 @@ export async function comprarEtiquetaVenda(vendaId: string, servicoId: number) {
     const servico = validar(z.number().int().positive(), servicoId);
     const { supabase, user, conexao } = await sessao();
     const v = await carregarVenda(supabase, id);
-    if (v.frete_etiqueta_id) throw new Error("Esta venda já tem etiqueta comprada.");
+    const agora = new Date();
+    const antes = estadoEtiqueta(v.frete_etiqueta_id);
+    if (antes.tipo === "comprada") throw new Error("Esta venda já tem etiqueta comprada.");
+    if (antes.tipo === "reservando" && !podeReservar(antes, agora)) throw new Error("A compra desta etiqueta já está em andamento. Aguarde um instante e atualize a tela.");
     const destino = await destinoDaVenda(supabase, v);
     if (!destino) throw new Error("O cliente desta venda não tem endereço com CEP.");
     const { data: perfil } = await supabase.from("perfil_negocio").select("*").maybeSingle();
@@ -119,28 +123,56 @@ export async function comprarEtiquetaVenda(vendaId: string, servicoId: number) {
     const provedor = provedorDa(conexao, user.email ?? "sem-email");
     const cotacao = (await provedor.cotar({ origem: remetente.cep, destino: destino.cep, pacote, valorDeclarado })).find((c) => c.servicoId === servico);
     if (!cotacao) throw new Error("Este serviço não atende mais o trecho. Cote de novo.");
-    const r = await provedor.comprarEtiqueta({
-      servicoId: servico,
-      remetente,
-      destinatario: destino,
-      pacote,
-      valorDeclarado,
-      produtos: v.venda_itens.map((i) => ({ nome: i.produto_nome, quantidade: i.quantidade, valor: Number(i.preco_unitario) })),
-      numeroPedido: v.numero,
-    });
+
+
+    // Envio já no carrinho (tentativa anterior caiu no meio): retoma o MESMO, nunca compra outro.
+    let etiquetaId: string;
+    if (antes.tipo === "pendente") {
+      etiquetaId = antes.id;
+    } else {
+      // Reserva atômica: só uma tentativa passa (dois cliques, duas abas).
+      const reserva = marcaReserva(agora);
+      const { data: reservou } = await supabase
+        .from("vendas")
+        .update({ frete_etiqueta_id: reserva })
+        .eq("id", id)
+        .or(v.frete_etiqueta_id ? `frete_etiqueta_id.is.null,frete_etiqueta_id.eq."${v.frete_etiqueta_id}"` : "frete_etiqueta_id.is.null")
+        .select("id");
+      if (!reservou?.length) throw new Error("A compra desta etiqueta já está em andamento. Aguarde um instante e atualize a tela.");
+      try {
+        etiquetaId = await provedor.criarCarrinho({
+          servicoId: servico,
+          remetente,
+          destinatario: destino,
+          pacote,
+          valorDeclarado,
+          produtos: v.venda_itens.map((i) => ({ nome: i.produto_nome, quantidade: i.quantidade, valor: Number(i.preco_unitario) })),
+          numeroPedido: v.numero,
+        });
+      } catch (e) {
+        // Nada foi cobrado: libera a venda para tentar de novo.
+        await supabase.from("vendas").update({ frete_etiqueta_id: null }).eq("id", id).eq("frete_etiqueta_id", reserva);
+        throw e;
+      }
+      // O id fica gravado ANTES de pagar: se algo cair daqui em diante, a próxima tentativa retoma.
+      const { error: erroPendente } = await supabase.from("vendas").update({ frete_etiqueta_id: marcaPendente(etiquetaId) }).eq("id", id);
+      if (erroPendente) throw new Error("Não consegui registrar a compra na venda; nada foi cobrado. Tente de novo.");
+    }
+    const r = await provedor.concluirEtiqueta(etiquetaId);
     const { error } = await supabase
       .from("vendas")
       .update({
         frete_servico: `${cotacao.transportadora} ${cotacao.servico}`.trim(),
         frete_servico_id: servico,
-        frete_etiqueta_id: r.etiquetaId,
+        frete_etiqueta_id: etiquetaId,
         // O gatilho trg_lucro_venda (0083) tira este frete do lucro da venda na mesma gravação.
         frete_custo: cotacao.valor,
         rastreio: r.rastreio,
         logistica: `${cotacao.transportadora} ${cotacao.servico}`.trim(),
       })
       .eq("id", id);
-    if (error) console.error("[frete] gravar etiqueta:", error.message);
+    // A etiqueta está paga: se a gravação falhar, a venda continua "pendente" e a próxima tentativa só reimprime.
+    if (error) throw new Error("A etiqueta foi paga, mas não consegui gravar o rastreio na venda. Clique em comprar de novo: o Painel retoma a mesma etiqueta, sem cobrar outra.");
     revalidatePath("/vendas");
     return { url: r.urlImpressao, rastreio: r.rastreio, valor: cotacao.valor };
   });
