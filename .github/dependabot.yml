@@ -11,6 +11,12 @@ updates:
       time: "06:00"
       timezone: America/Sao_Paulo
     open-pull-requests-limit: 5
+    # TypeScript 7 (o compilador nativo) ainda não é suportado pelo typescript-eslint, que o
+    # eslint-config-next usa: o `npm run lint` quebra. Tirar daqui quando o typescript-eslint
+    # suportar o 7 (https://github.com/typescript-eslint/typescript-eslint/issues/10940).
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       menores:
         update-types: ["minor", "patch"]
