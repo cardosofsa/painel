@@ -229,13 +229,19 @@ export async function precoDoAnuncio(supabase: SupabaseClient, produtoId: string
 
   const [loja, precoRes, negocioRes] = await Promise.all([
     carregarLojaParaPreco(supabase, lojaId),
-    supabase.from("produto_lojas").select("loja_id, preco, preco_atualizado_em").eq("produto_id", produtoId).eq("loja_id", lojaId).maybeSingle(),
+    supabase.from("produto_lojas").select("loja_id, preco, preco_atualizado_em, precificacoes(taxa_adicional_pct)").eq("produto_id", produtoId).eq("loja_id", lojaId).maybeSingle(),
     supabase.from("perfil_negocio").select("aliquota_das").maybeSingle(),
   ]);
   // Sem a 0101 a coluna `preco` não existe: segue com o preço do cadastro.
   if (precoRes.error || !loja) return doCadastro;
   const aliquota = Number(negocioRes.data?.aliquota_das ?? 6) / 100;
-  const [linha] = precosPorLoja([loja], precoRes.data ? [precoRes.data as { loja_id: string; preco: number | null }] : [], Number(prod?.custo ?? 0), aliquota);
+  const gravado = precoRes.data as unknown as { loja_id: string; preco: number | null; preco_atualizado_em: string | null; precificacoes: { taxa_adicional_pct: number | null } | null } | null;
+  const [linha] = precosPorLoja(
+    [loja],
+    gravado ? [{ loja_id: gravado.loja_id, preco: gravado.preco, preco_atualizado_em: gravado.preco_atualizado_em, taxa_adicional_pct: gravado.precificacoes?.taxa_adicional_pct ?? null }] : [],
+    Number(prod?.custo ?? 0),
+    aliquota,
+  );
   return {
     origem: "loja",
     lojaId: loja.id,

@@ -1,5 +1,6 @@
 import { filtrarMercadorias, soMercadorias } from "@/lib/mercadorias-consulta";
 import { createClient } from "@/lib/supabase/server";
+import { buscarEmLotes } from "@/lib/lotes";
 import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { comRotulo, mapaGrupos } from "@/lib/produtos";
 import { PrecificacaoClient } from "./PrecificacaoClient";
@@ -57,7 +58,17 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     // Sem a migração vem erro e a tela segue sem o aviso.
     supabase.from("precificacao_rascunhos").select("id, visao, titulo, atualizado_em, dados").order("atualizado_em", { ascending: false }).limit(20),
     // Preço de cada loja (0101). Sem a migração vem erro e o bloco não aparece.
-    supabase.from("produto_lojas").select("produto_id, loja_id, preco, preco_atualizado_em").not("preco", "is", null),
+    // Com a taxa adicional da precificação que gravou o preço (o lucro por loja usa a mesma conta).
+    // Em lotes: o PostgREST corta em 1000 linhas.
+    buscarEmLotes((de, ate) =>
+      supabase
+        .from("produto_lojas")
+        .select("produto_id, loja_id, preco, preco_atualizado_em, precificacoes(taxa_adicional_pct)", { count: "exact" })
+        .not("preco", "is", null)
+        .order("produto_id")
+        .order("loja_id")
+        .range(de, ate),
+    ),
     // Anúncios sincronizados, para o seletor "Analisar anúncio". `*`: nome_item é da 0093.
     supabase.from("marketplace_anuncios").select("*").limit(1000),
   ]);
@@ -138,7 +149,13 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       iaDisponivel={iaDisponivel}
       visaoInicial={VISOES_PRECIFICACAO.find((v) => v === visao)}
       rascunhosPendentes={rascunhosRes.error ? [] : ((rascunhosRes.data ?? []) as RascunhoPendente[])}
-      precosLoja={precosLojaRes.error ? null : ((precosLojaRes.data ?? []) as { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[])}
+      precosLoja={
+        precosLojaRes.error
+          ? null
+          : (
+              (precosLojaRes.data ?? []) as unknown as { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null; precificacoes: { taxa_adicional_pct: number | null } | null }[]
+            ).map(({ precificacoes, ...p }) => ({ ...p, taxa_adicional_pct: precificacoes?.taxa_adicional_pct != null ? Number(precificacoes.taxa_adicional_pct) : null }))
+      }
       inicial={{ produtoId: produto ?? null, lojaId: loja ?? null }}
       anunciosLoja={(() => {
         const vistos = new Set<string>();

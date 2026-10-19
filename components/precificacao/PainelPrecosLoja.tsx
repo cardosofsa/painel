@@ -8,6 +8,8 @@ import { precosPorLoja, type LojaParaPreco, type PrecoGravado, type SituacaoPrec
 
 const SELO: Record<SituacaoPrecoLoja, { texto: string; classe: string }> = {
   sem_preco: { texto: "Sem preço", classe: "bg-surface-2 text-text-secondary" },
+  sem_custo: { texto: "Sem custo", classe: "bg-surface-2 text-text-secondary" },
+  sem_faixas: { texto: "Sem faixas", classe: "bg-negative-soft text-negative" },
   prejuizo: { texto: "Prejuízo", classe: "bg-negative-soft text-negative" },
   zona_morta: { texto: "Zona morta", classe: "bg-negative-soft text-negative" },
   ok: { texto: "Ok", classe: "bg-positive-soft text-positive" },

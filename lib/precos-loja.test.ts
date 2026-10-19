@@ -40,3 +40,21 @@ describe("precosPorLoja", () => {
     expect(z.zonaMorta?.precoMelhor).toBe(79.99);
   });
 });
+
+describe("auditoria de 19/10/2026", () => {
+  const lojaFixa = { id: "l1", nome: "Loja", canalNome: "Canal", tipoTaxa: "fixo" as const, comissaoPct: 10, taxaFixa: 0, taxaExtraValor: null, taxaExtraTipo: null, faixas: [] };
+  it("usa a taxa adicional da precificação que gravou o preço", () => {
+    const [sem] = precosPorLoja([lojaFixa], [{ loja_id: "l1", preco: 100 }], 50, 0);
+    const [com] = precosPorLoja([lojaFixa], [{ loja_id: "l1", preco: 100, taxa_adicional_pct: 0.05 }], 50, 0);
+    expect(sem.resultado?.lucroLiquido).toBeCloseTo(40, 6);
+    expect(com.resultado?.lucroLiquido).toBeCloseTo(35, 6);
+  });
+  it("preço sem custo não aparece como ok", () => {
+    expect(precosPorLoja([lojaFixa], [{ loja_id: "l1", preco: 100 }], 0, 0)[0].situacao).toBe("sem_custo");
+  });
+  it("canal de faixas sem faixa nenhuma não calcula com 0%", () => {
+    const [l] = precosPorLoja([{ ...lojaFixa, tipoTaxa: "faixas" }], [{ loja_id: "l1", preco: 100 }], 50, 0);
+    expect(l.situacao).toBe("sem_faixas");
+    expect(l.resultado).toBeNull();
+  });
+});

@@ -52,7 +52,7 @@ export function IndividualNova({
   produtos: ProdutoOpcao[];
   lojas: LojaOpcao[];
   iaDisponivel: boolean;
-  precosLoja: { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null }[] | null;
+  precosLoja: { produto_id: string; loja_id: string; preco: number; preco_atualizado_em: string | null; taxa_adicional_pct?: number | null }[] | null;
   onSalvarRascunho: () => void;
   salvandoRascunho: boolean;
 }) {
