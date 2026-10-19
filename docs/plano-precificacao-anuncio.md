@@ -625,3 +625,9 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - **Somas cortadas em 1000** ✔: `buscarEmLotes` no Dashboard, Valor do estoque, Vixe Insights, Financeiro, comissões, cliente, Radar e resumo diário da Vixe. Ficam para depois (secundários): calendário, sugestões de compra, alertas e exportações CSV.
 - **`error.message` cru** ✔: `comResultado` passa toda mensagem por `mensagemParaUsuario` (texto técnico vira genérico, original no log); envio, operador e equipe usam `lancarErroSupabase`.
 - **Ranking de anúncios**: busca, período personalizado, situações com contagem (vendendo, parados, em alta, em queda, prejuízo, margem baixa, cancelamentos, custo incompleto), classe, variação contra o período anterior, ordenação pelo cabeçalho, filtros na URL, Analisar/Ajuste de Preço por linha (`ranking-anuncios.ts` + teste).
+
+### 23.1 Migrações 0104, 0105 e 0106 aplicadas pelo dono (conferido)
+
+- Na conta de teste, com a sessão dela: a tabela e a função da 0104 respondem. Uma venda criada pela RPC não teve o total alterado nem foi apagada pela API direta (erro P0001 com a mensagem da 0106); a observação interna seguiu editável e o cancelamento pela RPC funcionou. O smoke do caixa passou com a 0106 no ar.
+- O índice da 0105 não foi exercitado (a conta de teste não emite NF-e).
+- `e2e/anuncio.spec.ts`: na primeira abertura depois de o servidor ficar parado, o formulário ainda não estava interativo quando o teste digitava; agora ele digita de novo até o botão responder.

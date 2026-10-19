@@ -53,10 +53,19 @@ test("termo que bloqueia recusa o título; a lista mostra o rascunho com filtro"
   await page.waitForLoadState("networkidle");
   const cfg = page.getByRole("dialog");
   await cfg.locator("#cfg-perfil").selectOption("novo");
-  await cfg.getByPlaceholder("Ex.: Minha loja principal").fill(PERFIL);
-  await cfg.getByLabel(/Bloqueiam/).fill("original");
-  await cfg.getByLabel(/Bloqueiam/).press("Enter");
-  await cfg.getByRole("button", { name: "Criar perfil" }).click();
+  // Na primeira abertura depois de o servidor ficar parado, o formulário pode ainda não estar
+  // interativo: o texto entra no campo mas não no estado. Digita de novo até o botão responder.
+  const criar = cfg.getByRole("button", { name: "Criar perfil" });
+  await expect(async () => {
+    await cfg.getByPlaceholder("Ex.: Minha loja principal").fill(PERFIL);
+    await expect(criar).toBeEnabled({ timeout: 1000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(async () => {
+    await cfg.getByLabel(/Bloqueiam/).fill("original");
+    await cfg.getByLabel(/Bloqueiam/).press("Enter");
+    await expect(cfg.getByRole("button", { name: "Remover original" })).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 30_000 });
+  await criar.click();
   await expect(page.getByText("Perfil salvo").first()).toBeVisible();
 
   // Rascunho de um produto, no perfil novo.
