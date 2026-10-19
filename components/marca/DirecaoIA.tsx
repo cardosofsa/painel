@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Store, Trash2 } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { FormField, inputClass } from "@/components/ui/Modal";
@@ -9,7 +9,7 @@ import { useConfirm } from "@/components/ui/ConfirmModal";
 import { executarComToast } from "@/lib/acao-cliente";
 import { LIMITE_INSTRUCOES } from "@/lib/ia/estilo-loja";
 import type { ExemploMarca, PerfilMarca } from "@/lib/marca/tipos";
-import { alternarExemploMarca, removerExemploMarca, salvarDirecaoMarca } from "@/app/(painel)/produtos/marca/actions";
+import { alternarExemploMarca, lerAnunciosDaLoja, removerExemploMarca, salvarDirecaoMarca } from "@/app/(painel)/produtos/marca/actions";
 
 const ROTULO_TIPO = { titulo: "Título", descricao: "Descrição" } as const;
 
@@ -18,7 +18,7 @@ const ROTULO_TIPO = { titulo: "Título", descricao: "Descrição" } as const;
  * de descrição, e os exemplos que a IA imita (as edições que você salvou e, com a loja ligada,
  * os anúncios que ela já tem). `key` no consumidor: trocar de perfil remonta com o texto dele.
  */
-export function DirecaoIA({ perfil, exemplos, semMigracao, leitorLoja }: { perfil: PerfilMarca; exemplos: ExemploMarca[]; semMigracao: boolean; leitorLoja?: React.ReactNode }) {
+export function DirecaoIA({ perfil, exemplos, semMigracao }: { perfil: PerfilMarca; exemplos: ExemploMarca[]; semMigracao: boolean }) {
   const [pending, startTransition] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
   const [titulo, setTitulo] = useState(perfil.instrucoes_titulo ?? "");
@@ -28,6 +28,18 @@ export function DirecaoIA({ perfil, exemplos, semMigracao, leitorLoja }: { perfi
   const doPerfil = exemplos.filter((e) => e.perfil_id === perfil.id || e.perfil_id === null);
   const edicoes = doPerfil.filter((e) => e.origem === "edicao");
   const daLoja = doPerfil.filter((e) => e.origem === "loja");
+
+  const [lendo, setLendo] = useState(false);
+  function lerLoja() {
+    setLendo(true);
+    startTransition(async () => {
+      await executarComToast(lerAnunciosDaLoja(perfil.id), {
+        sucesso: (r) => `Li ${r.anuncios} anúncio${r.anuncios === 1 ? "" : "s"} da loja: ${r.titulos} título${r.titulos === 1 ? "" : "s"} e ${r.descricoes} ${r.descricoes === 1 ? "descrição" : "descrições"} viraram exemplo.`,
+        erro: "Não foi possível ler os anúncios da loja.",
+      });
+      setLendo(false);
+    });
+  }
 
   function salvar() {
     startTransition(async () => {
@@ -113,7 +125,14 @@ export function DirecaoIA({ perfil, exemplos, semMigracao, leitorLoja }: { perfi
         )}
 
         <h4 className="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-1 mt-2">Anúncios da sua loja ({daLoja.length})</h4>
-        {leitorLoja}
+        <p className="text-sm text-text-secondary mb-2">
+          {perfil.loja_id
+            ? "Leio o título e a descrição dos anúncios que mais vendem na loja deste perfil (Shopee ou Mercado Livre). Ler de novo troca a leitura anterior."
+            : "Ligue este perfil a uma loja na aba Perfil para a IA ler os anúncios dela."}
+        </p>
+        <Button variant="secondary" onClick={lerLoja} loading={lendo} disabled={pending || !perfil.loja_id}>
+          <Store size={14} aria-hidden /> {daLoja.length ? "Ler os anúncios de novo" : "Ler os anúncios da loja"}
+        </Button>
         {daLoja.length > 0 && <ul className="mt-2">{daLoja.map(linha)}</ul>}
       </Card>
       {ConfirmDialog}

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PedidoMarketplace } from "./shopee-planilha";
-import { buscarAnuncios, buscarPedidos, enviarEstoque, type AnuncioShopee } from "./shopee-api";
-import { buscarAnunciosML, buscarPedidosML, enviarEstoqueML } from "./mercadolivre-api";
+import { buscarAnuncios, buscarPedidos, buscarTextosItens, enviarEstoque, type AnuncioShopee, type TextoAnuncio } from "./shopee-api";
+import { buscarAnunciosML, buscarPedidosML, buscarTextosML, enviarEstoqueML } from "./mercadolivre-api";
 import { buscarRetornos, type RetornoMarketplace } from "./shopee-retornos";
 import { tokenDaConexao, tokenML, type ConexaoShopee } from "./tokens";
 
@@ -18,6 +18,8 @@ export interface ApiMarketplace {
   buscarPedidos(desde: Date | null, apenas?: string[], reprocessar?: string[]): Promise<PedidoMarketplace[]>;
   buscarAnuncios(): Promise<AnuncioShopee[]>;
   enviarEstoque(itemId: number, estoques: { modelId: number; quantidade: number }[]): Promise<void>;
+  /** Título e descrição dos itens pedidos, para a IA aprender o estilo da loja (0109). */
+  buscarTextos(itemIds: number[]): Promise<TextoAnuncio[]>;
   /** Devoluções atualizadas desde `desde` (0090). Só a Shopee tem; no Mercado Livre fica ausente. */
   buscarRetornos?(desde: Date): Promise<RetornoMarketplace[]>;
 }
@@ -32,6 +34,7 @@ export async function apiDaConexao(supabase: SupabaseClient, conexao: ConexaoSho
       buscarPedidos: (desde, apenas) => buscarPedidosML(token, sellerId, desde ?? new Date(Date.now() - 86_400_000), apenas),
       buscarAnuncios: () => buscarAnunciosML(token, sellerId),
       enviarEstoque: (itemId, estoques) => enviarEstoqueML(token, itemId, estoques),
+      buscarTextos: (itemIds) => buscarTextosML(token, itemIds),
     };
   }
   const { c, token, shopId } = await tokenDaConexao(supabase, conexao);
@@ -41,6 +44,7 @@ export async function apiDaConexao(supabase: SupabaseClient, conexao: ConexaoSho
     buscarPedidos: (desde, _apenas, reprocessar) => buscarPedidos(c, token, shopId, desde ?? new Date(Date.now() - 86_400_000), reprocessar),
     buscarAnuncios: () => buscarAnuncios(c, token, shopId),
     enviarEstoque: (itemId, estoques) => enviarEstoque(c, token, shopId, itemId, estoques),
+    buscarTextos: (itemIds) => buscarTextosItens(c, token, shopId, itemIds),
     buscarRetornos: (desde) => buscarRetornos(c, token, shopId, desde),
   };
 }

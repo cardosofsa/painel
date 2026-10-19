@@ -556,6 +556,34 @@ export async function postLojaArquivo(c: CredenciaisShopee, caminho: string, tok
   return new Uint8Array(await r.arrayBuffer());
 }
 
+/** Título e descrição de um anúncio, lidos para servirem de exemplo à IA (0109). */
+export interface TextoAnuncio {
+  itemId: number;
+  titulo: string;
+  descricao: string | null;
+}
+
+/** Descrição do item: a normal (`description`) ou o texto da estendida (`description_info`). */
+export function descricaoDoItemShopee(item: { description?: unknown; description_info?: { extended_description?: { field_list?: { field_type?: string; text?: unknown }[] } } }): string | null {
+  if (typeof item.description === "string" && item.description.trim()) return item.description.trim();
+  const partes = (item.description_info?.extended_description?.field_list ?? []).filter((f) => f.field_type === "text" && typeof f.text === "string").map((f) => (f.text as string).trim());
+  const texto = partes.filter(Boolean).join("\n\n");
+  return texto || null;
+}
+
+/** Título e descrição de alguns itens da loja (`get_item_base_info`, de 50 em 50). */
+export async function buscarTextosItens(c: CredenciaisShopee, token: string, shopId: number, itemIds: number[]): Promise<TextoAnuncio[]> {
+  const textos: TextoAnuncio[] = [];
+  for (let i = 0; i < itemIds.length; i += 50) {
+    const r = await getLoja(c, "/api/v2/product/get_item_base_info", token, shopId, { item_id_list: itemIds.slice(i, i + 50).join(",") });
+    for (const item of (r.item_list as ({ item_id: number; item_name?: string } & Parameters<typeof descricaoDoItemShopee>[0])[] | undefined) ?? []) {
+      const titulo = item.item_name?.trim();
+      if (titulo) textos.push({ itemId: item.item_id, titulo, descricao: descricaoDoItemShopee(item) });
+    }
+  }
+  return textos;
+}
+
 /**
  * Lista completa de imagens de um item (`get_item_base_info` → `image.image_url_list`), para a
  * Análise do anúncio. Sob demanda, com o token da conexão. Não testado contra a loja real.
