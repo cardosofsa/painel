@@ -8,6 +8,7 @@ import { statusDoRascunho } from "@/lib/anuncio/etapas";
 import { termosDoPerfil, type TermosDoPerfil } from "@/lib/conformidade/termos";
 import { precosPorLoja, type SituacaoPrecoLoja } from "@/lib/precos-loja";
 import { carregarLojaParaPreco } from "@/lib/precos-loja-servidor";
+import type { EstiloDaLoja, OrigemExemplo, TipoExemplo } from "@/lib/ia/estilo-loja";
 
 /**
  * O preço que o anúncio usa (0101): o da loja do perfil, com lucro e margem calculados com as
@@ -63,6 +64,8 @@ export interface ContextoRascunho {
   plataforma: RegrasPlataforma;
   memoria: string[];
   fichaCapa1: FichaMarca;
+  /** Instruções de base e exemplos da loja (0109), por tipo de texto. Vazio sem a migração. */
+  estilo: Record<TipoExemplo, EstiloDaLoja>;
 }
 
 const erro = (msg: string) => new Error(msg);
@@ -99,12 +102,20 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
   ]);
   const p = produtoRes.data as { id: string; nome: string; sku: string | null; estoque: number | null; variante_nome: string | null; imagem_url: string | null; palavras_chave: string[] | null; preco_venda: number | null; peso_g: number | null; altura_cm: number | null; largura_cm: number | null; comprimento_cm: number | null; categorias: { nome: string } | null } | null;
   if (!p) throw erro("Produto não encontrado.");
-  const perfil = perfilRes.data as { id: string; nome: string; plataforma: PlataformaMarcaId; loja_id: string | null; nicho: string | null; termos_proibidos: string[] | null; logo_path: string | null; presets?: unknown; presets_gravidade?: unknown; termos_bloqueados?: unknown } | null;
+  const perfil = perfilRes.data as { id: string; nome: string; plataforma: PlataformaMarcaId; loja_id: string | null; nicho: string | null; termos_proibidos: string[] | null; logo_path: string | null; presets?: unknown; presets_gravidade?: unknown; termos_bloqueados?: unknown; instrucoes_titulo?: string | null; instrucoes_descricao?: string | null } | null;
+  const doPerfil = perfil ? `perfil_id.is.null,perfil_id.eq.${perfil.id}` : "perfil_id.is.null";
 
-  const [memoriaRes, fichasRes] = await Promise.all([
-    supabase.from("marca_memoria").select("texto, perfil_id").eq("ativo", true).or(perfil ? `perfil_id.is.null,perfil_id.eq.${perfil.id}` : "perfil_id.is.null").order("criado_em", { ascending: false }).limit(20),
+  const [memoriaRes, fichasRes, exemplosRes] = await Promise.all([
+    supabase.from("marca_memoria").select("texto, perfil_id").eq("ativo", true).or(doPerfil).order("criado_em", { ascending: false }).limit(20),
     perfil ? supabase.from("marca_fichas").select("tipo_imagem, dados").eq("perfil_id", perfil.id).eq("ativa", true).in("tipo_imagem", ["geral", "capa_1"]) : Promise.resolve({ data: [] }),
+    // Sem a 0109 a tabela não existe: o erro vira lista vazia e a IA gera como antes.
+    supabase.from("marca_exemplos").select("tipo, origem, texto").eq("ativo", true).or(doPerfil).order("criado_em", { ascending: false }).limit(60),
   ]);
+  const exemplos = ((exemplosRes.error ? [] : exemplosRes.data) ?? []) as { tipo: TipoExemplo; origem: OrigemExemplo; texto: string }[];
+  const estiloDo = (tipo: TipoExemplo, instrucoes: string | null | undefined): EstiloDaLoja => ({
+    instrucoes: instrucoes?.trim() || null,
+    exemplos: exemplos.filter((e) => e.tipo === tipo).map((e) => ({ texto: e.texto, origem: e.origem })),
+  });
   const fichas = (fichasRes.data ?? []) as { tipo_imagem: string; dados: unknown }[];
   const geral = normalizarFicha(fichas.find((f) => f.tipo_imagem === "geral")?.dados);
   const capa1 = normalizarFicha(fichas.find((f) => f.tipo_imagem === "capa_1")?.dados);
@@ -117,6 +128,7 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
     plataforma: regrasDaPlataforma(perfil?.plataforma ?? "shopee"),
     memoria: ((memoriaRes.data ?? []) as { texto: string }[]).map((m) => m.texto),
     fichaCapa1: mesclarFicha(geral, capa1),
+    estilo: { titulo: estiloDo("titulo", perfil?.instrucoes_titulo), descricao: estiloDo("descricao", perfil?.instrucoes_descricao) },
   };
 }
 

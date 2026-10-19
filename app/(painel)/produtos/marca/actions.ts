@@ -117,6 +117,48 @@ export async function removerMemoriaMarca(id: string) {
   });
 }
 
+// ---------- Direção da IA (0109) ----------
+
+const SEM_0109 = "As instruções e os exemplos da IA precisam da migração 0109. Aplique no Supabase e recarregue.";
+const textoInstrucao = z.string().trim().max(2000, "Até 2.000 caracteres").nullable();
+
+/** Instruções de base do perfil: entram em toda geração de título e de descrição dele. */
+export async function salvarDirecaoMarca(entrada: unknown) {
+  return comResultado(async () => {
+    const v = validar(z.object({ perfil_id: z.string().uuid(), instrucoes_titulo: textoInstrucao, instrucoes_descricao: textoInstrucao }), entrada);
+    const { supabase } = await sessao();
+    const { error } = await supabase
+      .from("perfis_marca")
+      .update({ instrucoes_titulo: v.instrucoes_titulo || null, instrucoes_descricao: v.instrucoes_descricao || null, atualizado_em: new Date().toISOString() })
+      .eq("id", v.perfil_id);
+    if (error && faltaColuna(error.code)) throw new Error(SEM_0109);
+    checar(error);
+    revalidatePath(PATH);
+  });
+}
+
+export async function alternarExemploMarca(id: string, ativo: boolean) {
+  return comResultado(async () => {
+    const v = validar(z.object({ id: z.string().uuid(), ativo: z.boolean() }), { id, ativo });
+    const { supabase } = await sessao();
+    const { error } = await supabase.from("marca_exemplos").update({ ativo: v.ativo }).eq("id", v.id);
+    if (error && faltaMigracao(error.code)) throw new Error(SEM_0109);
+    checar(error);
+    revalidatePath(PATH);
+  });
+}
+
+export async function removerExemploMarca(id: string) {
+  return comResultado(async () => {
+    const v = validar(z.string().uuid(), id);
+    const { supabase } = await sessao();
+    const { error } = await supabase.from("marca_exemplos").delete().eq("id", v);
+    if (error && faltaMigracao(error.code)) throw new Error(SEM_0109);
+    checar(error);
+    revalidatePath(PATH);
+  });
+}
+
 // ---------- Ficha de Direção de Arte ----------
 
 export async function salvarFichaMarca(entrada: unknown) {

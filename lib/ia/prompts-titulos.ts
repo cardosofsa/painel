@@ -11,6 +11,7 @@
 
 import { avaliarTitulo, type NotaTitulo } from "./nota-titulo";
 import { verificarTextos, type RegraTermo, type Violacao } from "@/lib/conformidade/termos";
+import { blocoEstiloDaLoja, hashEstilo, type EstiloDaLoja } from "./estilo-loja";
 import { hashTexto, lerObjetoJson, limparCampo, linhas, truncarEmPalavra } from "./texto";
 
 export const VARIANTES_TITULO = 5;
@@ -36,6 +37,8 @@ export interface ContextoTitulosEstudio {
   concorrentes: { titulo: string; faixaPreco: string | null }[];
   /** Pedido livre do usuário na conversa ("mais curto", "destaque o kit"). */
   pedido: string | null;
+  /** Instruções de base e exemplos de título da loja (0109). */
+  estilo?: EstiloDaLoja | null;
 }
 
 export interface VarianteTitulo {
@@ -95,7 +98,7 @@ export function montarPromptTitulos(ctx: ContextoTitulosEstudio): string {
   return `Você escreve títulos de anúncio para ${limparCampo(ctx.plataforma, 40) ?? "marketplace brasileiro"}.
 
 ${dados}
-${memoria ? `\nO que a loja pediu para você lembrar (siga):\n${memoria}\n` : ""}${proibidos ? `\nNunca use estes termos: ${proibidos}.\n` : ""}${concorrentes ? `\nTítulos de concorrentes (referência de mercado: NÃO copie, só entenda o que eles destacam):\n${concorrentes}\n` : ""}
+${blocoEstiloDaLoja(ctx.estilo, "titulo")}${memoria ? `\nO que a loja pediu para você lembrar (siga):\n${memoria}\n` : ""}${proibidos ? `\nNunca use estes termos: ${proibidos}.\n` : ""}${concorrentes ? `\nTítulos de concorrentes (referência de mercado: NÃO copie, só entenda o que eles destacam):\n${concorrentes}\n` : ""}
 Gere ${VARIANTES_TITULO} títulos diferentes entre si, cada um com no máximo ${ctx.limite} caracteres (conte antes de responder). Cada um segue um ângulo:
 ${ANGULOS.map((a) => `- ${a}`).join("\n")}
 
@@ -195,6 +198,8 @@ export function hashTitulos(ctx: ContextoTitulosEstudio): string {
       [...ctx.termosProibidos].sort().join("|"),
       ctx.concorrentes.map((c) => c.titulo).join("|"),
       ctx.pedido ?? "",
+      // Só entra quando há direção da loja: sem ela, a chave (e o cache) fica igual à de antes.
+      ...[hashEstilo(ctx.estilo, "titulo")].filter(Boolean),
     ].join("\u0001"),
   );
 }

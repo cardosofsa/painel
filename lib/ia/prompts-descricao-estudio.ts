@@ -9,6 +9,7 @@
 
 import { LIMITE_DESCRICAO_SHOPEE } from "@/lib/anuncio-shopee";
 import { verificarTextos, temBloqueio, type RegraTermo, type Violacao } from "@/lib/conformidade/termos";
+import { blocoEstiloDaLoja, hashEstilo, type EstiloDaLoja } from "./estilo-loja";
 import { hashTexto, lerObjetoJson, limparCampo, linhas } from "./texto";
 
 /** Teto do estúdio: o limite da Shopee Brasil (3.000), uma constante só para o Painel inteiro. */
@@ -29,6 +30,8 @@ export interface ContextoDescricaoEstudio {
   /** O que os concorrentes destacam (referência de mercado, não para copiar). */
   diferenciaisConcorrentes: string[];
   pedido: string | null;
+  /** Instruções de base e exemplos de descrição da loja (0109). */
+  estilo?: EstiloDaLoja | null;
 }
 
 export function montarPromptDescricaoEstudio(c: ContextoDescricaoEstudio): string {
@@ -63,7 +66,7 @@ export function montarPromptDescricaoEstudio(c: ContextoDescricaoEstudio): strin
   return `Você escreve descrições de anúncio para ${limparCampo(c.plataforma, 40) ?? "marketplace brasileiro"}.
 
 ${dados}
-${memoria ? `\nO que a loja pediu para você lembrar (siga):\n${memoria}\n` : ""}${proibidos ? `\nNunca use estes termos: ${proibidos}.\n` : ""}${diferenciais ? `\nO que anúncios concorrentes destacam (referência de mercado: NÃO copie frases, só entenda o que o comprador valoriza):\n${diferenciais}\n` : ""}
+${blocoEstiloDaLoja(c.estilo, "descricao")}${memoria ? `\nO que a loja pediu para você lembrar (siga):\n${memoria}\n` : ""}${proibidos ? `\nNunca use estes termos: ${proibidos}.\n` : ""}${diferenciais ? `\nO que anúncios concorrentes destacam (referência de mercado: NÃO copie frases, só entenda o que o comprador valoriza):\n${diferenciais}\n` : ""}
 Escreva a descrição com no máximo ${c.limite} caracteres e pelo menos ${MINIMO_DESCRICAO}, em seções curtas separadas por linha em branco:
 1. Abertura: 1 a 2 frases com o produto e o termo de busca mais forte.
 2. Destaques: de 3 a 6 linhas começando com "• ", cada uma com um benefício de USO concreto.
@@ -160,6 +163,8 @@ export function hashDescricaoEstudio(c: ContextoDescricaoEstudio): string {
       [...c.termosProibidos].sort().join("|"),
       c.diferenciaisConcorrentes.join("|"),
       c.pedido ?? "",
+      // Só entra quando há direção da loja: sem ela, a chave (e o cache) fica igual à de antes.
+      ...[hashEstilo(c.estilo, "descricao")].filter(Boolean),
     ].join("\u0001"),
   );
 }

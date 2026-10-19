@@ -4,7 +4,7 @@ import { iaDisponivelParaConta } from "@/lib/ia/resolver";
 import { normalizarFicha } from "@/lib/marca/ficha";
 import { plataformaDoCanal } from "@/lib/marca/plataformas";
 import { rotuloProduto } from "@/lib/produtos";
-import type { FichaSalva, LojaParaMarca, MemoriaMarca, PerfilMarca } from "@/lib/marca/tipos";
+import type { ExemploMarca, FichaSalva, LojaParaMarca, MemoriaMarca, PerfilMarca } from "@/lib/marca/tipos";
 import { saldoImagensIA } from "../../produtos/estudio-actions";
 import { lerRascunhoAberto } from "@/lib/estudio/servidor";
 import { saldoIAParaTela } from "@/lib/ia/gerar";
@@ -13,14 +13,14 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Anúncio Infinito" };
 
-const ABAS_CONFIG: ConfigAba[] = ["perfil", "ficha", "memoria", "conferir", "aprender"];
+const ABAS_CONFIG: ConfigAba[] = ["perfil", "direcao", "ficha", "memoria", "conferir", "aprender"];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function InfinitoPage({ searchParams }: { searchParams: Promise<{ produto?: string; config?: string; rascunho?: string; loja?: string }> }) {
   const { produto, config, rascunho, loja } = await searchParams;
   const supabase = await createClient();
-  const [produtosRes, perfisRes, memoriaRes, fichasRes, lojasRes, iaDisponivel, saldo, rascunhoAberto, saldoTexto] = await Promise.all([
+  const [produtosRes, perfisRes, memoriaRes, fichasRes, lojasRes, iaDisponivel, saldo, rascunhoAberto, saldoTexto, exemplosRes] = await Promise.all([
     soMercadorias(
       (f) => {
         const q = supabase.from("produtos").select("id, sku, nome, variante_nome");
@@ -38,6 +38,7 @@ export default async function InfinitoPage({ searchParams }: { searchParams: Pro
     // para a etapa Loja e "Abrir" criava um rascunho novo e vazio se o perfil não batesse.
     rascunho && UUID.test(rascunho) ? lerRascunhoAberto(supabase, rascunho).catch(() => null) : Promise.resolve(null),
     saldoIAParaTela(supabase),
+    supabase.from("marca_exemplos").select("id, perfil_id, tipo, origem, texto, texto_ia, referencia, ativo, criado_em").order("criado_em", { ascending: false }).limit(300),
   ]);
 
   const produtos = (produtosRes.data ?? []).map((p) => ({ id: p.id as string, rotulo: rotuloProduto(p), sku: (p.sku as string | null) ?? null }));
@@ -56,6 +57,9 @@ export default async function InfinitoPage({ searchParams }: { searchParams: Pro
       configInicial={ABAS_CONFIG.find((a) => a === config) ?? null}
       perfis={(perfisRes.data ?? []) as PerfilMarca[]}
       memorias={(memoriaRes.data ?? []) as MemoriaMarca[]}
+      // Sem a 0109 a tabela não existe: a aba Direção da IA explica em vez de quebrar.
+      exemplos={(exemplosRes.error ? [] : (exemplosRes.data ?? [])) as ExemploMarca[]}
+      semMigracaoExemplos={!!exemplosRes.error}
       fichas={((fichasRes.data ?? []) as FichaSalva[]).map((f) => ({ ...f, dados: normalizarFicha(f.dados) }))}
       lojas={lojas.map((l) => ({ ...l, plataforma: plataformaDoCanal(l.canal) }))}
       iaDisponivel={iaDisponivel}

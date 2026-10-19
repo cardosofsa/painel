@@ -15,9 +15,10 @@ import {
 } from "@/lib/validacao";
 import { z } from "zod";
 import { conversarIA, gerarDescricaoEstudioIA, gerarTitulosEstudioIA, pesquisarConcorrentesIA } from "@/lib/ia/gerar";
-import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, type AvaliacaoDescricao } from "@/lib/ia/prompts-descricao-estudio";
+import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, MINIMO_DESCRICAO, type AvaliacaoDescricao } from "@/lib/ia/prompts-descricao-estudio";
 import { avaliarVariantes, type VarianteAvaliada } from "@/lib/ia/prompts-titulos";
 import { gerarImagemGemini } from "@/lib/ia/imagem";
+import { edicaoRelevante, type TipoExemplo } from "@/lib/ia/estilo-loja";
 import { ErroIA } from "@/lib/ia/erro";
 import { regrasDoPerfil, temBloqueio, termosParaEvitar, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
 import { montarPromptCapaCena, montarPromptCapaCompleta, type ContextoCapa } from "@/lib/marca/prompt-capa";
@@ -162,6 +163,32 @@ export async function definirNumeroImagens(entrada: unknown) {
   });
 }
 
+// ---------- Aprendizado (0109) ----------
+
+/** Quantas edições de cada tipo o perfil guarda; as mais antigas saem. */
+const EDICOES_GUARDADAS = 8;
+
+/**
+ * O texto que o vendedor corrigiu vira exemplo para as próximas gerações do perfil. É um
+ * extra: se falhar (banco sem a 0109, por exemplo), o que ele salvou continua salvo e a tela
+ * só não diz que aprendeu.
+ */
+async function aprenderComEdicao(supabase: Awaited<ReturnType<typeof createClient>>, ctx: ContextoRascunho, tipo: TipoExemplo, texto: string, antes: string | null): Promise<boolean> {
+  try {
+    const perfilId = ctx.perfil?.id ?? null;
+    const { error } = await supabase.from("marca_exemplos").insert({ perfil_id: perfilId, tipo, origem: "edicao", texto: texto.slice(0, 5000), texto_ia: antes?.slice(0, 5000) ?? null });
+    if (error) return false;
+    let antigas = supabase.from("marca_exemplos").select("id").eq("tipo", tipo).eq("origem", "edicao").order("criado_em", { ascending: false }).range(EDICOES_GUARDADAS, EDICOES_GUARDADAS + 50);
+    antigas = perfilId ? antigas.eq("perfil_id", perfilId) : antigas.is("perfil_id", null);
+    const { data } = await antigas;
+    const ids = (data ?? []).map((x) => x.id as string);
+    if (ids.length) await supabase.from("marca_exemplos").delete().in("id", ids);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------- Títulos ----------
 
 export interface TitulosDoEstudio {
@@ -189,6 +216,7 @@ export async function gerarTitulosEstudio(entrada: unknown) {
       termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       concorrentes: (ctx.rascunho.estado.concorrentes ?? []).map((c) => ({ titulo: c.titulo, faixaPreco: c.precoTexto })),
       pedido: v.pedido,
+      estilo: ctx.estilo.titulo,
     });
     if (!g.ok) throw new Error(g.erro);
 
@@ -202,7 +230,7 @@ export async function gerarTitulosEstudio(entrada: unknown) {
 
 /** O título escolhido (ou digitado) passa pela mesma conferência antes de virar o do anúncio. */
 export async function escolherTitulo(entrada: unknown) {
-  return comResultado(async (): Promise<{ violacoes: Violacao[] }> => {
+  return comResultado(async (): Promise<{ violacoes: Violacao[]; aprendeu: boolean }> => {
     const v = validar(escolherTituloSchema, entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
@@ -212,8 +240,12 @@ export async function escolherTitulo(entrada: unknown) {
     if (temBloqueio(violacoes)) throw new Error(`Este título tem “${violacoes[0].trecho}” (${violacoes[0].motivo.toLowerCase()}). Ajuste e tente de novo.`);
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, {}, { titulo: v.titulo });
     await sincronizarStatus(supabase, v.rascunho_id);
+    // Título que não é nenhuma das sugestões da IA: o vendedor escreveu ou mexeu. Vira exemplo.
+    const sugestoes = (ctx.rascunho.estado.variantes ?? []).map((x) => x.titulo);
+    const editado = sugestoes.length > 0 && !sugestoes.some((t) => !edicaoRelevante(t, v.titulo));
+    const aprendeu = editado ? await aprenderComEdicao(supabase, ctx, "titulo", v.titulo, null) : false;
     revalidatePath(PATH);
-    return { violacoes };
+    return { violacoes, aprendeu };
   });
 }
 
@@ -246,6 +278,7 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
       termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       diferenciaisConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).flatMap((c) => c.diferenciais),
       pedido: v.pedido,
+      estilo: ctx.estilo.descricao,
     });
     if (!g.ok) throw new Error(g.erro);
     const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasDoPerfil(ctx.perfil?.termos) });
@@ -255,8 +288,9 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
 
 /** Salva a descrição que o usuário aprovou, depois de conferir tamanho e termos no servidor. */
 export async function salvarDescricao(entrada: unknown) {
-  return comResultado(async (): Promise<{ avaliacao: AvaliacaoDescricao }> => {
-    const v = validar(rascunhoIdSchema.extend({ descricao: z.string().max(5000) }), entrada);
+  return comResultado(async (): Promise<{ avaliacao: AvaliacaoDescricao; aprendeu: boolean }> => {
+    // `original`: o texto com que o editor abriu (o da IA ou o salvo antes). Se mudou, vira exemplo.
+    const v = validar(rascunhoIdSchema.extend({ descricao: z.string().max(5000), original: z.string().max(5000).nullish() }), entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
@@ -268,7 +302,8 @@ export async function salvarDescricao(entrada: unknown) {
     const { error } = await supabase.from("anuncio_rascunhos").update({ descricao: v.descricao.trim(), atualizado_em: new Date().toISOString() }).eq("id", v.rascunho_id);
     checar(error);
     await sincronizarStatus(supabase, v.rascunho_id);
-    return { avaliacao };
+    const aprendeu = v.original !== undefined && edicaoRelevante(v.original, v.descricao, MINIMO_DESCRICAO) ? await aprenderComEdicao(supabase, ctx, "descricao", v.descricao.trim(), v.original ?? null) : false;
+    return { avaliacao, aprendeu };
   });
 }
 

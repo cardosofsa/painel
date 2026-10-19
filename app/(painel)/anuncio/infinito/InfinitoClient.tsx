@@ -29,6 +29,7 @@ import { PerfilForm } from "@/components/marca/PerfilForm";
 import { AprenderCapas } from "@/components/marca/AprenderCapas";
 import { FichaEditor } from "@/components/marca/FichaEditor";
 import { MemoriaMarcaCard } from "@/components/marca/MemoriaMarca";
+import { DirecaoIA } from "@/components/marca/DirecaoIA";
 import { ConferirTexto } from "@/components/marca/ConferirTexto";
 import { termosDoPerfil } from "@/lib/conformidade/termos";
 import { LIMITE_DESCRICAO_ESTUDIO } from "@/lib/ia/prompts-descricao-estudio";
@@ -36,12 +37,12 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { calcularEtapas, ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { mesclarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
 import { regrasDaPlataforma, type PlataformaMarcaId } from "@/lib/marca/plataformas";
-import { urlPublicaImagem, type FichaSalva, type LojaParaMarca, type MemoriaMarca, type PerfilMarca } from "@/lib/marca/tipos";
+import { urlPublicaImagem, type ExemploMarca, type FichaSalva, type LojaParaMarca, type MemoriaMarca, type PerfilMarca } from "@/lib/marca/tipos";
 import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { adicionarMemoriaMarca, salvarFichaMarca } from "../../produtos/marca/actions";
 import { abrirRascunho, abrirRascunhoPorId, criarProdutoParaAnuncio, conversar, descartarRascunho, marcarPublicado, definirNumeroImagens, escolherTitulo, gerarDescricaoEstudio, gerarTitulosEstudio, pesquisarConcorrentesEstudio, salvarDescricao, type RascunhoAberto, type TitulosDoEstudio } from "../../produtos/estudio/actions";
 
-export type ConfigAba = "perfil" | "ficha" | "memoria" | "conferir" | "aprender";
+export type ConfigAba = "perfil" | "direcao" | "ficha" | "memoria" | "conferir" | "aprender";
 type Qual = "titulos" | "concorrentes" | "conversa" | "descricao" | null;
 type LojaComPlataforma = LojaParaMarca & { plataforma: PlataformaMarcaId | null };
 
@@ -50,6 +51,7 @@ const TETO_DESCRICAO = LIMITE_DESCRICAO_ESTUDIO;
 
 const ABAS_CONFIG: { value: ConfigAba; label: string }[] = [
   { value: "perfil", label: "Perfil" },
+  { value: "direcao", label: "Direção da IA" },
   { value: "ficha", label: "Ficha de arte" },
   { value: "memoria", label: "Memória" },
   { value: "aprender", label: "Aprender das capas" },
@@ -71,6 +73,8 @@ export function InfinitoClient({
   configInicial,
   perfis,
   memorias,
+  exemplos,
+  semMigracaoExemplos,
   fichas,
   lojas,
   iaDisponivel,
@@ -86,6 +90,8 @@ export function InfinitoClient({
   configInicial: ConfigAba | null;
   perfis: PerfilMarca[];
   memorias: MemoriaMarca[];
+  exemplos: ExemploMarca[];
+  semMigracaoExemplos: boolean;
   fichas: FichaSalva[];
   lojas: LojaComPlataforma[];
   iaDisponivel: boolean;
@@ -136,7 +142,7 @@ export function InfinitoClient({
         setTituloPendente(null);
       }
       if (descPendente) {
-        const r = await executarComToast(salvarDescricao({ rascunho_id: rascunho.id, descricao: descPendente }), { erro: "Não foi possível salvar a descrição." });
+        const r = await executarComToast(salvarDescricao({ rascunho_id: rascunho.id, descricao: descPendente, original: descGerada?.texto ?? rascunho.descricao }), { erro: "Não foi possível salvar a descrição." });
         if (!r.ok) return false;
         setDescPendente(null);
       }
@@ -145,6 +151,11 @@ export function InfinitoClient({
   });
 
   const perfil = perfis.find((p) => p.id === aberto?.perfil) ?? null;
+  // O que a IA de texto vai seguir neste perfil (0109): instruções e exemplos ativos.
+  const direcao = {
+    instrucoes: [perfil?.instrucoes_titulo, perfil?.instrucoes_descricao].filter((t) => t?.trim()).length,
+    exemplos: exemplos.filter((e) => e.ativo && (e.perfil_id === null || e.perfil_id === perfil?.id)).length,
+  };
   const plataforma = regrasDaPlataforma(perfil?.plataforma ?? "shopee");
   const termosPerfil = useMemo(() => termosDoPerfil(perfil), [perfil]);
   const limiteTitulo = plataforma.limiteTitulo ?? 120;
@@ -224,7 +235,7 @@ export function InfinitoClient({
         return setManual("descricao");
       }
       setMontando("Salvando a descrição…");
-      const sv = await executarComToast(salvarDescricao({ rascunho_id: rascunhoId, descricao: d.dado.descricao }), { erro: "Não foi possível salvar a descrição." });
+      const sv = await executarComToast(salvarDescricao({ rascunho_id: rascunhoId, descricao: d.dado.descricao, original: d.dado.descricao }), { erro: "Não foi possível salvar a descrição." });
       if (!sv.ok) return setManual("descricao");
       toast.success("Título e descrição prontos. Revise o que quiser e siga para a capa.");
       setManual("capa");
@@ -308,7 +319,11 @@ export function InfinitoClient({
   async function guardarDescricao(texto: string) {
     if (!rascunho) return;
     setQual("descricao");
-    const r = await executarComToast(salvarDescricao({ rascunho_id: rascunho.id, descricao: texto }), { sucesso: "Descrição salva", erro: "Não foi possível salvar a descrição." });
+    // O texto de partida do editor (o da IA ou o salvo antes): o que mudou vira exemplo para a IA.
+    const r = await executarComToast(salvarDescricao({ rascunho_id: rascunho.id, descricao: texto, original: descGerada?.texto ?? rascunho.descricao }), {
+      sucesso: (d) => (d.aprendeu ? "Descrição salva. A sua edição vira exemplo para as próximas descrições." : "Descrição salva"),
+      erro: "Não foi possível salvar a descrição.",
+    });
     setQual(null);
     if (r.ok) {
       setDescGerada(null);
@@ -319,7 +334,10 @@ export function InfinitoClient({
 
   async function escolher(titulo: string) {
     if (!rascunho) return false;
-    const r = await executarComToast(escolherTitulo({ rascunho_id: rascunho.id, titulo }), { sucesso: "Título escolhido", erro: "Não foi possível usar este título." });
+    const r = await executarComToast(escolherTitulo({ rascunho_id: rascunho.id, titulo }), {
+      sucesso: (d) => (d.aprendeu ? "Título escolhido. O seu jeito de escrever vira exemplo para os próximos." : "Título escolhido"),
+      erro: "Não foi possível usar este título.",
+    });
     if (r.ok) await carregar();
     return r.ok;
   }
@@ -642,6 +660,17 @@ export function InfinitoClient({
             </Card>
           )}
 
+          {rascunho && (atual === "titulo" || atual === "descricao") && perfil && (
+            <p className="text-xs text-text-secondary">
+              {direcao.instrucoes || direcao.exemplos
+                ? `A IA segue a direção deste perfil: ${[direcao.instrucoes ? `${direcao.instrucoes} ${direcao.instrucoes > 1 ? "instruções" : "instrução"}` : null, direcao.exemplos ? `${direcao.exemplos} exemplo${direcao.exemplos > 1 ? "s" : ""}` : null].filter(Boolean).join(" e ")}.`
+                : "A IA ainda não tem instruções nem exemplos deste perfil."}{" "}
+              <button type="button" className="text-accent underline" onClick={() => abrirConfig("direcao")}>
+                {direcao.instrucoes || direcao.exemplos ? "Ajustar" : "Dar uma direção"}
+              </button>
+            </p>
+          )}
+
           {rascunho && atual === "titulo" && (
             <>
               <PainelTitulos key={`titulos-${rascunho.id}`} onPendente={setTituloPendente} usados={rascunho.titulosUsados} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher}>
@@ -771,6 +800,7 @@ export function InfinitoClient({
             <PerfilForm key={cfgPerfilAtual?.id ?? "novo"} perfil={cfgNovo ? null : cfgPerfilAtual} lojas={lojas} onSalvo={(id) => setCfgPerfil(id)} onRemovido={() => setCfgPerfil("novo")} />
           ) : null}
           {!cfgNovo && cfgPerfilAtual && abaConfig === "ficha" && <FichaEditor perfilId={cfgPerfilAtual.id} fichas={fichas} />}
+          {!cfgNovo && cfgPerfilAtual && abaConfig === "direcao" && <DirecaoIA key={`direcao-${cfgPerfilAtual.id}`} perfil={cfgPerfilAtual} exemplos={exemplos} semMigracao={semMigracaoExemplos} />}
           {!cfgNovo && cfgPerfilAtual && abaConfig === "memoria" && <MemoriaMarcaCard perfilId={cfgPerfilAtual.id} memorias={memorias} />}
           {!cfgNovo && cfgPerfilAtual && abaConfig === "aprender" && (
             <AprenderCapas key={`aprender-${cfgPerfilAtual.id}-${cfgPerfilAtual.referencias.join("|")}`} perfil={cfgPerfilAtual} fichas={fichas} iaDisponivel={iaDisponivel} />

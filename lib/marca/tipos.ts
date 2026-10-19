@@ -16,6 +16,22 @@ export interface PerfilMarca {
   presets?: string[];
   presets_gravidade?: string;
   termos_bloqueados?: string[];
+  /** Da 0109: direção fixa para a IA de títulos e de descrições. */
+  instrucoes_titulo?: string | null;
+  instrucoes_descricao?: string | null;
+}
+
+/** Linha de `marca_exemplos` (0109): texto de referência para a IA. */
+export interface ExemploMarca {
+  id: string;
+  perfil_id: string | null;
+  tipo: "titulo" | "descricao";
+  origem: "edicao" | "loja";
+  texto: string;
+  texto_ia: string | null;
+  referencia: string | null;
+  ativo: boolean;
+  criado_em: string;
 }
 
 export interface MemoriaMarca {
