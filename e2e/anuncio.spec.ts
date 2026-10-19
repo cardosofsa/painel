@@ -73,7 +73,7 @@ test("termo que bloqueia recusa o título; a lista mostra o rascunho com filtro"
   await page.waitForLoadState("networkidle");
   await page.getByRole("radio", { name: new RegExp(PERFIL) }).click();
   await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByPlaceholder("Buscar produto…").click();
+  await page.getByPlaceholder("Buscar produto ou digitar um novo…").click();
   await page.getByRole("option").first().click();
   await page.getByRole("button", { name: "Abrir o anúncio" }).click();
   await expect(page).toHaveURL(/rascunho=/);
