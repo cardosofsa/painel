@@ -33,7 +33,7 @@ const TETO: Record<TipoExemplo, { quantos: number; caracteres: number }> = {
 };
 
 /** Texto em várias linhas para dentro do prompt: sem crase (delimita bloco), sem excesso de branco, cortado. */
-function blocoDeTexto(t: string, max: number): string | null {
+export function blocoDeTexto(t: string, max: number): string | null {
   const limpo = t
     .replace(/`+/g, "'")
     .replace(/\r\n?/g, "\n")

@@ -937,7 +937,17 @@ export type EscolhasShopee = z.infer<typeof escolhasShopeeSchema>;
 
 export const rascunhoIdSchema = z.object({ rascunho_id: z.string().uuid() });
 export const abrirRascunhoSchema = z.object({ produto_id: z.string().uuid(), perfil_id: z.string().uuid().nullable() });
-export const conversaSchema = z.object({ rascunho_id: z.string().uuid(), mensagem: z.string().trim().min(1, "Escreva uma mensagem").max(500, "Mensagem longa demais (até 500 caracteres)") });
+/** Teto de uma mensagem do chat do anúncio. */
+export const LIMITE_MENSAGEM_CHAT = 2000;
+export const conversaSchema = z.object({
+  rascunho_id: z.string().uuid(),
+  mensagem: z.string().trim().min(1, "Escreva uma mensagem").max(LIMITE_MENSAGEM_CHAT, `Mensagem longa demais (até ${LIMITE_MENSAGEM_CHAT.toLocaleString("pt-BR")} caracteres)`),
+  /** Etapa aberta na tela e se há descrição gerada sem salvar: só contexto para a IA. */
+  etapa: z.enum(["loja", "produto", "titulo", "capa", "descricao", "revisar"]).nullish(),
+  descricao_pendente: z.boolean().nullish(),
+});
+/** Aplicar (ou marcar como feita) a ação `indice` de uma mensagem da IA. A ação é lida do banco, não do navegador. */
+export const acaoConversaSchema = z.object({ rascunho_id: z.string().uuid(), mensagem_id: z.string().uuid(), indice: z.number().int().min(0).max(7) });
 export const titulosEstudioSchema = z.object({ rascunho_id: z.string().uuid(), pedido: z.string().trim().max(300).nullable() });
 export const escolherTituloSchema = z.object({ rascunho_id: z.string().uuid(), titulo: z.string().trim().min(3, "Título curto demais").max(200) });
 export const vereditoCapaSchema = z.object({

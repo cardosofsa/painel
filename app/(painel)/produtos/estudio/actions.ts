@@ -7,6 +7,7 @@ import { lancarErroSupabase } from "@/lib/erros";
 import {
   validar,
   abrirRascunhoSchema,
+  acaoConversaSchema,
   conversaSchema,
   escolherTituloSchema,
   rascunhoIdSchema,
@@ -29,13 +30,19 @@ import {
   gravarEstado,
   gravarEstadoVersionado,
   lerEstadoAtual,
+  lerMensagem,
   lerRascunhoAberto,
+  precoDoAnuncio,
   sincronizarStatus,
   usuarioDaSessao,
   type ContextoRascunho,
   type RascunhoAberto,
 } from "@/lib/estudio/servidor";
-import type { MensagemHistorico, AcaoProposta } from "@/lib/ia/prompts-assistente";
+import { HISTORICO_MENSAGENS, lerAcaoGuardada, type AcaoProposta, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
+import { ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
+import { resumoDaFicha } from "@/lib/marca/prompt-capa";
+import { mesclarFicha, normalizarFicha } from "@/lib/marca/ficha";
+import { adicionarMemoriaMarca, salvarFichaMarca } from "../marca/actions";
 
 export type { RascunhoAberto } from "@/lib/estudio/servidor";
 
@@ -525,30 +532,55 @@ export interface TurnoDaConversa {
   doCache: boolean;
 }
 
+const ROTULO_ETAPA: Record<EtapaId, string> = Object.fromEntries(ETAPAS.map((e) => [e.id, e.rotulo])) as Record<EtapaId, string>;
+
+/** Tudo o que a IA do chat sabe do anúncio aberto, lido do banco (a tela manda só ids e o que foi digitado). */
+async function contextoDaConversa(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ctx: ContextoRascunho,
+  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string },
+): Promise<ContextoAssistente> {
+  const e = ctx.rascunho.estado;
+  const preco = await precoDoAnuncio(supabase, ctx.produto.id, ctx.perfil?.id ?? null).catch(() => null);
+  return {
+    produtoNome: [ctx.produto.nome, ctx.produto.variante].filter(Boolean).join(" "),
+    plataforma: ctx.plataforma.nome,
+    maxImagens: ctx.plataforma.maxImagens,
+    perfilNome: ctx.perfil?.nome ?? null,
+    etapa: extra.etapa ? ROTULO_ETAPA[extra.etapa] : null,
+    estado: {
+      titulo: ctx.rascunho.titulo,
+      titulosSugeridos: (e.variantes ?? []).map((x) => x.titulo),
+      numeroImagens: e.numeroImagens ?? null,
+      descricaoSalva: ctx.rascunho.descricao,
+      descricaoPendente: extra.descricaoPendente,
+      capas: (e.capas ?? []).map((c) => ({ veredito: c.veredito ?? null, motivo: c.motivo ?? null, propria: !!c.propria })),
+      fichaCapa1: Object.keys(ctx.fichaCapa1).length ? resumoDaFicha(ctx.fichaCapa1) : null,
+      concorrentes: (e.concorrentes ?? []).map((c) => c.titulo),
+      preco: preco?.preco != null ? { valor: preco.preco, margemPct: preco.margemPct, lucro: preco.lucro, onde: preco.lojaRotulo } : null,
+    },
+    direcao: {
+      instrucoesTitulo: ctx.estilo.titulo.instrucoes,
+      instrucoesDescricao: ctx.estilo.descricao.instrucoes,
+      exemplosTitulo: ctx.estilo.titulo.exemplos.length,
+      exemplosDescricao: ctx.estilo.descricao.exemplos.length,
+    },
+    memoria: ctx.memoria,
+    historico: extra.historico,
+    mensagem: extra.mensagem,
+  };
+}
+
 export async function conversar(entrada: unknown) {
   return comResultado(async (): Promise<TurnoDaConversa> => {
     const v = validar(conversaSchema, entrada);
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
 
-    const { data: anteriores } = await supabase.from("anuncio_rascunho_mensagens").select("papel, texto").eq("rascunho_id", v.rascunho_id).order("criado_em", { ascending: false }).limit(6);
+    const { data: anteriores } = await supabase.from("anuncio_rascunho_mensagens").select("papel, texto").eq("rascunho_id", v.rascunho_id).order("criado_em", { ascending: false }).limit(HISTORICO_MENSAGENS);
     const historico = ((anteriores ?? []) as MensagemHistorico[]).reverse();
 
-    const g = await conversarIA(supabase, {
-      produtoNome: [ctx.produto.nome, ctx.produto.variante].filter(Boolean).join(" "),
-      plataforma: ctx.plataforma.nome,
-      maxImagens: ctx.plataforma.maxImagens,
-      estado: {
-        titulo: ctx.rascunho.titulo,
-        numeroImagens: ctx.rascunho.estado.numeroImagens ?? null,
-        temConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).length > 0,
-        capasGeradas: (ctx.rascunho.estado.capas ?? []).length,
-        fichaCapa1Preenchida: Object.keys(ctx.fichaCapa1).length > 0,
-      },
-      memoria: ctx.memoria,
-      historico,
-      mensagem: v.mensagem,
-    });
+    const g = await conversarIA(supabase, await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem: v.mensagem }));
     if (!g.ok) throw new Error(g.erro);
 
     // Só depois de a IA responder: mensagem e resposta entram juntas no histórico.
@@ -561,3 +593,89 @@ export async function conversar(entrada: unknown) {
   });
 }
 
+/** A ação `indice` da mensagem, lida do banco, e as já feitas (`null` = banco sem a 0110). */
+async function lerAcaoDaMensagem(supabase: Awaited<ReturnType<typeof createClient>>, rascunhoId: string, mensagemId: string, indice: number) {
+  const { data, error } = await supabase.from("anuncio_rascunho_mensagens").select("*").eq("id", mensagemId).eq("rascunho_id", rascunhoId).eq("papel", "ia").maybeSingle();
+  checar(error);
+  if (!data) throw new Error("Mensagem não encontrada.");
+  const linha = data as Record<string, unknown>;
+  const acao = lerAcaoGuardada(Array.isArray(linha.acoes) ? linha.acoes[indice] : null);
+  if (!acao) throw new Error("Essa sugestão não está mais disponível.");
+  const feitas = "acoes_feitas" in linha ? lerMensagem(linha).acoesFeitas : null;
+  if (feitas?.includes(indice)) throw new Error("Essa sugestão já foi aplicada.");
+  return { acao, feitas };
+}
+
+/** Grava a ação como feita. Sem a 0110 não há onde gravar: devolve `false` e a tela marca só na memória. */
+async function gravarFeita(supabase: Awaited<ReturnType<typeof createClient>>, mensagemId: string, feitas: number[] | null, indice: number): Promise<boolean> {
+  if (feitas === null) return false;
+  const { error } = await supabase.from("anuncio_rascunho_mensagens").update({ acoes_feitas: [...new Set([...feitas, indice])].sort() }).eq("id", mensagemId);
+  return !error;
+}
+
+/**
+ * Marca como feita uma ação que a TELA executa (gerar títulos ou descrição, ir para a capa,
+ * pesquisar concorrentes): a geração em si passa pelas mesmas actions dos botões.
+ */
+export async function marcarAcaoFeita(entrada: unknown) {
+  return comResultado(async (): Promise<boolean> => {
+    const v = validar(acaoConversaSchema, entrada);
+    const supabase = await createClient();
+    await usuarioDaSessao(supabase);
+    const { feitas } = await lerAcaoDaMensagem(supabase, v.rascunho_id, v.mensagem_id, v.indice);
+    return gravarFeita(supabase, v.mensagem_id, feitas, v.indice);
+  });
+}
+
+/** Desembrulha o `Resultado` de outra action chamada daqui (o erro sobe com a mensagem dela). */
+function exigir<T>(r: { ok: true; dado: T } | { ok: false; erro: string }): T {
+  if (!r.ok) throw new Error(r.erro);
+  return r.dado;
+}
+
+/**
+ * Aplica uma ação que GRAVA (memória, ficha, número de imagens…) e a marca como feita. A ação é
+ * lida do banco, na mensagem da IA: o navegador manda só o id e o índice, então não dá para
+ * aplicar algo que a IA não propôs. Cada tipo passa pela mesma action (e as mesmas checagens)
+ * do botão equivalente na tela.
+ */
+export async function aplicarAcaoConversa(entrada: unknown) {
+  return comResultado(async (): Promise<{ mensagem: string; marcada: boolean }> => {
+    const v = validar(acaoConversaSchema, entrada);
+    const supabase = await createClient();
+    const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
+    const { acao, feitas } = await lerAcaoDaMensagem(supabase, v.rascunho_id, v.mensagem_id, v.indice);
+    const perfilId = ctx.perfil?.id ?? null;
+    const precisaPerfil = () => {
+      if (!perfilId) throw new Error("Este anúncio está sem perfil. Escolha ou crie um perfil de loja em Configurações para guardar isso nele.");
+      return perfilId;
+    };
+
+    let mensagem: string;
+    switch (acao.tipo) {
+      case "definir_numero_imagens": {
+        if (ctx.plataforma.maxImagens && acao.n > ctx.plataforma.maxImagens) throw new Error(`${ctx.plataforma.nome} aceita até ${ctx.plataforma.maxImagens} imagens por anúncio.`);
+        await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { numeroImagens: acao.n });
+        mensagem = `Combinado: ${acao.n} ${acao.n === 1 ? "imagem" : "imagens"}`;
+        break;
+      }
+      case "guardar_memoria":
+        exigir(await adicionarMemoriaMarca({ perfil_id: perfilId, tipo: acao.memoria.tipo, texto: acao.memoria.texto, origem: "ia" }));
+        mensagem = "Guardado na memória";
+        break;
+      case "ajustar_ficha": {
+        const perfil = precisaPerfil();
+        const { data: ativa } = await supabase.from("marca_fichas").select("dados").eq("perfil_id", perfil).eq("tipo_imagem", acao.tipoImagem).eq("ativa", true).maybeSingle();
+        const dados = mesclarFicha(normalizarFicha(ativa?.dados), acao.campos);
+        exigir(await salvarFichaMarca({ perfil_id: perfil, tipo_imagem: acao.tipoImagem, dados, origem: "ajuste_ia", nota: "Ajuste proposto na conversa" }));
+        mensagem = "Ficha atualizada (nova versão; dá para voltar na aba Ficha de arte)";
+        break;
+      }
+      default:
+        throw new Error("Essa sugestão roda na tela do anúncio.");
+    }
+    const marcada = await gravarFeita(supabase, v.mensagem_id, feitas, v.indice);
+    revalidatePath(PATH);
+    return { mensagem, marcada };
+  });
+}

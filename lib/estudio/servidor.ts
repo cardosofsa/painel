@@ -43,12 +43,36 @@ export interface RascunhoAberto {
   produto: { nome: string; precoVenda: number | null; palavrasChave: string[]; imagemUrl: string | null; pesoG: number | null; temMedidas: boolean; estoque: number };
   status: string;
   estado: EstadoRascunho;
-  mensagens: { id: string; papel: "usuario" | "ia"; texto: string; acoes: AcaoProposta[]; criado_em: string }[];
+  mensagens: MensagemDoChat[];
   preco: PrecoDoAnuncio;
   /** Títulos já usados nas precificações deste produto (`precificacoes.titulo_anuncio`). */
   titulosUsados: string[];
   /** O anúncio sincronizado deste produto na loja (o criado por este rascunho, se houver), para a Análise. */
   anuncioLojaId: string | null;
+}
+
+/** Uma mensagem do chat do anúncio como a tela recebe. */
+export interface MensagemDoChat {
+  id: string;
+  papel: "usuario" | "ia";
+  texto: string;
+  acoes: AcaoProposta[];
+  /** Índices das ações já aplicadas (0110). Sem a migração vem vazio: a tela marca só na memória. */
+  acoesFeitas: number[];
+  criado_em: string;
+}
+
+/** Linha crua de `anuncio_rascunho_mensagens` (lida com `*`: as colunas da 0110 podem não existir). */
+export function lerMensagem(m: Record<string, unknown>): MensagemDoChat {
+  const feitas = Array.isArray(m.acoes_feitas) ? (m.acoes_feitas as unknown[]).filter((n): n is number => Number.isInteger(n)) : [];
+  return {
+    id: String(m.id),
+    papel: m.papel === "ia" ? "ia" : "usuario",
+    texto: typeof m.texto === "string" ? m.texto : "",
+    acoes: Array.isArray(m.acoes) ? (m.acoes as AcaoProposta[]) : [],
+    acoesFeitas: feitas,
+    criado_em: String(m.criado_em ?? ""),
+  };
 }
 
 /**
@@ -217,7 +241,8 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
   if (!r) return null;
   const [{ data: p }, { data: msgs }, preco, { data: titulosRes }] = await Promise.all([
     supabase.from("produtos").select("nome, preco_venda, palavras_chave, imagem_url, peso_g, altura_cm, largura_cm, comprimento_cm, estoque").eq("id", r.produto_id).maybeSingle(),
-    supabase.from("anuncio_rascunho_mensagens").select("id, papel, texto, acoes, criado_em").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60),
+    // "*": `acoes_feitas` e `anexos` só existem depois da 0110.
+    supabase.from("anuncio_rascunho_mensagens").select("*").eq("rascunho_id", r.id).order("criado_em", { ascending: true }).limit(60),
     precoDoAnuncio(supabase, r.produto_id, r.perfil_id ?? null),
     supabase.from("precificacoes").select("titulo_anuncio").eq("produto_id", r.produto_id).not("titulo_anuncio", "is", null).order("criado_em", { ascending: false }).limit(30),
   ]);
@@ -244,7 +269,7 @@ export async function lerRascunhoAberto(supabase: SupabaseClient, rascunhoId: st
     },
     status: r.status ?? "rascunho",
     estado: lerEstado(r.estado),
-    mensagens: ((msgs ?? []) as RascunhoAberto["mensagens"]).map((m) => ({ ...m, acoes: Array.isArray(m.acoes) ? m.acoes : [] })),
+    mensagens: ((msgs ?? []) as Record<string, unknown>[]).map(lerMensagem),
     preco,
     titulosUsados,
     anuncioLojaId: ((noAr ?? []) as { id: string }[])[0]?.id ?? null,

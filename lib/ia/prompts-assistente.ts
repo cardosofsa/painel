@@ -5,6 +5,9 @@
  * mais curto"). A IA responde e PROPÕE ações de uma lista fechada; cada ação é um botão que o
  * usuário aprova. Nada caro (imagem, busca) roda sozinho, e nada é gravado sem o clique. Ação
  * fora da lista, ou com valor inválido, é descartada aqui, na leitura.
+ *
+ * O contexto vem inteiro do servidor (`carregarContextoRascunho`): a tela manda só ids e o que
+ * foi digitado. Cada bloco é cortado no seu teto, e bloco vazio não entra (é token pago).
  */
 
 import { normalizarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
@@ -19,6 +22,9 @@ export type AcaoProposta =
   | { tipo: "gerar_descricao"; pedido: string | null }
   | { tipo: "gerar_capa"; modo: "prompt" | "imagem" }
   | { tipo: "pesquisar_concorrentes" };
+
+/** Ações que só levam a outra etapa ou geram ali (a tela executa); as outras gravam no servidor. */
+export const ACOES_DA_TELA = ["gerar_titulos", "gerar_descricao", "gerar_capa", "pesquisar_concorrentes"] as const;
 
 export interface RespostaAssistente {
   resposta: string;
@@ -35,61 +41,119 @@ export interface ContextoAssistente {
   plataforma: string;
   /** Máximo de imagens por anúncio na plataforma, quando conhecido. */
   maxImagens: number | null;
-  /** O que já existe no rascunho, em frases curtas. */
+  /** Nome do perfil da loja; `null` = sem perfil (padrão neutro). */
+  perfilNome: string | null;
+  /** Rótulo da etapa em que o vendedor está (Título, Capa…). */
+  etapa: string | null;
+  /** O que já existe no rascunho. */
   estado: {
     titulo: string | null;
+    /** Os títulos sugeridos na última geração. */
+    titulosSugeridos: string[];
     numeroImagens: number | null;
-    temConcorrentes: boolean;
-    capasGeradas: number;
-    fichaCapa1Preenchida: boolean;
+    descricaoSalva: string | null;
+    /** Há uma descrição gerada na tela que ainda não foi salva. */
+    descricaoPendente: boolean;
+    capas: { veredito: "aprovada" | "ajustar" | "rejeitada" | null; motivo: string | null; propria: boolean }[];
+    /** Resumo da ficha da Capa 1 (`resumoDaFicha`); vazio = ficha vazia. */
+    fichaCapa1: string | null;
+    concorrentes: string[];
+    preco: { valor: number; margemPct: number | null; lucro: number | null; onde: string | null } | null;
   };
+  /** Direção da IA do perfil (0109). */
+  direcao: { instrucoesTitulo: string | null; instrucoesDescricao: string | null; exemplosTitulo: number; exemplosDescricao: number };
   memoria: string[];
   historico: MensagemHistorico[];
   mensagem: string;
 }
 
 const TIPOS_MEMORIA = ["preferencia", "regra", "aprendizado"] as const;
+/** Quantas mensagens anteriores e de que tamanho cada uma entram no prompt. */
+export const HISTORICO_MENSAGENS = 12;
+const HISTORICO_CARACTERES = 600;
+/** Teto da resposta da IA: cabe um resumo em tópicos, não um texto longo. */
+export const LIMITE_RESPOSTA = 900;
+
+const ROTULO_VEREDITO = { aprovada: "aprovada", ajustar: "ajustar", rejeitada: "rejeitada" } as const;
+
+function blocoCapas(capas: ContextoAssistente["estado"]["capas"]): string | null {
+  if (capas.length === 0) return "nenhuma ainda";
+  const enviadas = capas.filter((c) => c.propria).length;
+  const vereditos = capas
+    .map((c, i) => {
+      if (!c.veredito) return `Capa ${i + 1}: sem veredito`;
+      const motivo = c.veredito !== "aprovada" ? limparCampo(c.motivo, 120) : null;
+      return `Capa ${i + 1}: ${ROTULO_VEREDITO[c.veredito]}${motivo ? ` (${motivo})` : ""}`;
+    })
+    .slice(0, 12)
+    .join("; ");
+  return `${capas.length}${enviadas ? ` (${enviadas} enviada${enviadas > 1 ? "s" : ""} pelo lojista)` : ""}. ${vereditos}`;
+}
+
+function blocoPreco(p: ContextoAssistente["estado"]["preco"]): string | null {
+  if (!p) return null;
+  const valor = `R$ ${p.valor.toFixed(2).replace(".", ",")}`;
+  const margem = p.margemPct !== null ? `margem ${(p.margemPct * 100).toFixed(1).replace(".", ",")}%` : null;
+  const lucro = p.lucro !== null ? `lucro R$ ${p.lucro.toFixed(2).replace(".", ",")} por venda` : null;
+  return [valor, lucro, margem, limparCampo(p.onde, 80)].filter(Boolean).join(", ");
+}
 
 export function montarPromptAssistente(c: ContextoAssistente): string {
+  const e = c.estado;
+  const sugeridos = e.titulosSugeridos.map((t) => limparCampo(t, 140)).filter(Boolean).slice(0, 5);
+  const concorrentes = e.concorrentes.map((t) => limparCampo(t, 120)).filter(Boolean).slice(0, 6);
   const estado = linhas([
     ["Produto", limparCampo(c.produtoNome, 160)],
     ["Plataforma", limparCampo(c.plataforma, 40)],
+    ["Perfil da loja", limparCampo(c.perfilNome, 80) ?? "sem perfil (padrão neutro)"],
+    ["Etapa em que o lojista está", limparCampo(c.etapa, 40)],
     ["Máximo de imagens por anúncio na plataforma", c.maxImagens ? String(c.maxImagens) : null],
-    ["Título escolhido", limparCampo(c.estado.titulo, 140) ?? "ainda não escolhido"],
-    ["Quantidade de imagens combinada", c.estado.numeroImagens ? String(c.estado.numeroImagens) : "ainda não combinada"],
-    ["Concorrentes pesquisados", c.estado.temConcorrentes ? "sim" : "não"],
-    ["Capas já geradas", String(c.estado.capasGeradas)],
-    ["Ficha da Capa 1", c.estado.fichaCapa1Preenchida ? "preenchida" : "vazia"],
+    ["Título escolhido", limparCampo(e.titulo, 140) ?? "ainda não escolhido"],
+    ["Títulos sugeridos na última geração", sugeridos.length ? sugeridos.map((t) => `"${t}"`).join(" | ") : null],
+    ["Quantidade de imagens combinada", e.numeroImagens ? String(e.numeroImagens) : "ainda não combinada"],
+    ["Descrição salva (início)", limparCampo(e.descricaoSalva, 600) ?? "ainda não salva"],
+    ["Descrição gerada na tela e ainda não salva", e.descricaoPendente ? "sim" : null],
+    ["Capas", blocoCapas(e.capas)],
+    ["Ficha da Capa 1", limparCampo(e.fichaCapa1, 600) ?? "vazia"],
+    ["Concorrentes pesquisados", concorrentes.length ? concorrentes.map((t) => `"${t}"`).join(" | ") : "nenhum"],
+    ["Preço na loja (só para consulta)", blocoPreco(e.preco)],
+  ]);
+  const d = c.direcao;
+  const direcao = linhas([
+    ["Instruções para títulos", limparCampo(d.instrucoesTitulo, 400)],
+    ["Instruções para descrições", limparCampo(d.instrucoesDescricao, 400)],
+    ["Exemplos ativos", d.exemplosTitulo || d.exemplosDescricao ? `${d.exemplosTitulo} de título, ${d.exemplosDescricao} de descrição` : null],
   ]);
   const memoria = c.memoria
     .slice(0, 12)
     .map((m) => `- ${limparCampo(m, 160)}`)
     .join("\n");
   const historico = c.historico
-    .slice(-6)
-    .map((m) => `${m.papel === "usuario" ? "Lojista" : "Você"}: ${limparCampo(m.texto, 300)}`)
+    .slice(-HISTORICO_MENSAGENS)
+    .map((m) => `${m.papel === "usuario" ? "Lojista" : "Você"}: ${limparCampo(m.texto, HISTORICO_CARACTERES)}`)
     .join("\n");
 
   return `Você é a assistente de anúncios de um pequeno vendedor brasileiro. Conversa em português simples, direto e curto, e ajuda a montar o anúncio passo a passo. O foco é o título e a capa 1, porque são o que faz o cliente clicar.
 
 Situação do anúncio:
 ${estado}
-${memoria ? `\nO que a loja já pediu para você lembrar:\n${memoria}\n` : ""}${historico ? `\nConversa até aqui:\n${historico}\n` : ""}
-Mensagem do lojista: "${limparCampo(c.mensagem, 500)}"
+${direcao ? `\nDireção da IA deste perfil:\n${direcao}\n` : ""}${memoria ? `\nO que a loja já pediu para você lembrar:\n${memoria}\n` : ""}${historico ? `\nConversa até aqui:\n${historico}\n` : ""}
+Mensagem do lojista: "${limparCampo(c.mensagem, 2000)}"
 
 Responda em JSON com:
-- "resposta": sua resposta (até 500 caracteres). Se faltar informação, faça UMA pergunta curta.
+- "resposta": sua resposta (até ${LIMITE_RESPOSTA} caracteres). Se faltar informação, faça UMA pergunta curta. Para listar, use linhas começando com "- ".
 - "acoes": de 0 a 4 ações que você SUGERE (o lojista aprova cada uma). Cada ação é um objeto com "tipo" e os campos dele:
   - {"tipo":"definir_numero_imagens","n":<1 a ${c.maxImagens ?? 9}>}
   - {"tipo":"guardar_memoria","tipo_memoria":"preferencia"|"regra"|"aprendizado","texto":"frase curta"}  (quando o lojista disser uma preferência que vale para os próximos anúncios)
   - {"tipo":"ajustar_ficha","tipo_imagem":"capa_1"|"capa_2"|"detalhe"|"beneficios"|"uso"|"composicao"|"faq"|"geral","campos":{...}}  (campos do visual: fundo, luz, enquadramento, areaProdutoMinPct, paleta, tipografia, tituloMaxPalavras, selos, faixaInferior, logoPosicao, logoLarguraPct, pessoas, tom, observacoes)
   - {"tipo":"gerar_titulos","pedido":"o que mudar nos títulos, ou vazio"}
   - {"tipo":"gerar_descricao","pedido":"o que mudar na descrição, ou vazio"}  (só depois de o título estar escolhido)
-  - {"tipo":"gerar_capa","modo":"prompt"|"imagem"}  ("prompt" só monta o texto, sem custo; "imagem" gera a imagem e gasta a cota do mês)
+  - {"tipo":"gerar_capa","modo":"prompt"|"imagem"}  ("prompt" só monta o texto, sem custo; "imagem" leva à etapa Capa, onde o lojista confirma o gasto de 1 imagem da cota)
   - {"tipo":"pesquisar_concorrentes"}
 
 Regras:
-- Imagem custa. Só sugira "gerar_capa" com modo "imagem" se o lojista já aprovou o título e pediu a imagem; antes disso, prefira "prompt" ou "gerar_titulos".
+- Imagem custa. Só sugira "gerar_capa" com modo "imagem" se o lojista já aprovou o título e pediu a imagem; antes disso, prefira "prompt" ou "gerar_titulos". Você não gera imagem aqui.
+- O preço é só para consulta: comente se perguntarem, mas não proponha mudar preço.
 - Não invente fatos sobre o produto, preço, prazo nem concorrente. Não prometa resultado de venda.
 - Sem emoji, sem markdown, sem HTML.`;
 }
@@ -121,10 +185,23 @@ export function esquemaAssistente() {
   };
 }
 
+/** Resposta da IA: espaço em excesso sai, mas as quebras de linha ficam (listas em tópicos). */
+function limparResposta(t: string): string {
+  const limpo = t
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return truncarEmPalavra(limpo, LIMITE_RESPOSTA);
+}
+
+const pedidoDe = (v: unknown) => (typeof v === "string" && v.trim() ? truncarEmPalavra(v.replace(/\s+/g, " ").trim(), 300) : null);
+
 /** Lê a resposta e devolve só ações permitidas e válidas. Nunca lança. */
 export function interpretarAssistente(bruto: string, maxImagens: number | null): RespostaAssistente {
   const obj = lerObjetoJson(bruto) ?? {};
-  const resposta = typeof obj.resposta === "string" ? truncarEmPalavra(obj.resposta.replace(/\s+/g, " ").trim(), 500) : "";
+  const resposta = typeof obj.resposta === "string" ? limparResposta(obj.resposta) : "";
   const teto = Math.min(maxImagens ?? 9, 12);
   const acoes: AcaoProposta[] = [];
 
@@ -152,10 +229,10 @@ export function interpretarAssistente(bruto: string, maxImagens: number | null):
         break;
       }
       case "gerar_titulos":
-        acoes.push({ tipo: "gerar_titulos", pedido: typeof r.pedido === "string" && r.pedido.trim() ? truncarEmPalavra(r.pedido.replace(/\s+/g, " ").trim(), 300) : null });
+        acoes.push({ tipo: "gerar_titulos", pedido: pedidoDe(r.pedido) });
         break;
       case "gerar_descricao":
-        acoes.push({ tipo: "gerar_descricao", pedido: typeof r.pedido === "string" && r.pedido.trim() ? truncarEmPalavra(r.pedido.replace(/\s+/g, " ").trim(), 300) : null });
+        acoes.push({ tipo: "gerar_descricao", pedido: pedidoDe(r.pedido) });
         break;
       case "gerar_capa":
         acoes.push({ tipo: "gerar_capa", modo: r.modo === "imagem" ? "imagem" : "prompt" });
@@ -171,21 +248,42 @@ export function interpretarAssistente(bruto: string, maxImagens: number | null):
 
 export const respostaVazia = (r: RespostaAssistente) => !r.resposta && r.acoes.length === 0;
 
+/**
+ * Relê uma ação JÁ GUARDADA na mensagem (formato de `AcaoProposta`) antes de aplicar. A linha
+ * é da própria conta, mas pode ter sido mexida pelo console: o que não tiver a forma certa
+ * vira `null` e não é aplicado.
+ */
+export function lerAcaoGuardada(bruto: unknown): AcaoProposta | null {
+  if (!bruto || typeof bruto !== "object") return null;
+  const a = bruto as Record<string, unknown>;
+  const texto = (v: unknown, min: number, max: number) => (typeof v === "string" && v.trim().length >= min && v.length <= max ? v.trim() : null);
+  switch (a.tipo) {
+    case "definir_numero_imagens":
+      return Number.isInteger(a.n) && (a.n as number) >= 1 && (a.n as number) <= 12 ? { tipo: a.tipo, n: a.n as number } : null;
+    case "guardar_memoria": {
+      const m = a.memoria as Record<string, unknown> | undefined;
+      const t = texto(m?.texto, 3, 160);
+      const tipo = TIPOS_MEMORIA.find((x) => x === m?.tipo);
+      return t && tipo ? { tipo: a.tipo, memoria: { tipo, texto: t } } : null;
+    }
+    case "ajustar_ficha": {
+      const tipoImagem = TIPOS_IMAGEM_MARCA.find((t) => t === a.tipoImagem);
+      const campos = normalizarFicha(a.campos);
+      delete campos.numeroImagens;
+      return tipoImagem && Object.keys(campos).length > 0 ? { tipo: a.tipo, tipoImagem, campos } : null;
+    }
+    case "gerar_titulos":
+    case "gerar_descricao":
+      return { tipo: a.tipo, pedido: texto(a.pedido, 1, 300) };
+    case "gerar_capa":
+      return { tipo: a.tipo, modo: a.modo === "imagem" ? "imagem" : "prompt" };
+    case "pesquisar_concorrentes":
+      return { tipo: a.tipo };
+  }
+  return null;
+}
+
+/** Chave do cache: qualquer mudança no contexto (inclusive na direção e no histórico) muda a resposta. */
 export function hashAssistente(c: ContextoAssistente): string {
-  return hashTexto(
-    [
-      "assistente-v1",
-      c.produtoNome,
-      c.plataforma,
-      String(c.maxImagens ?? ""),
-      c.estado.titulo ?? "",
-      String(c.estado.numeroImagens ?? ""),
-      c.estado.temConcorrentes ? "1" : "0",
-      String(c.estado.capasGeradas),
-      c.estado.fichaCapa1Preenchida ? "1" : "0",
-      c.memoria.join("|"),
-      c.historico.slice(-6).map((m) => `${m.papel}:${m.texto}`).join("|"),
-      c.mensagem,
-    ].join("\u0001"),
-  );
+  return hashTexto(["assistente-v2", JSON.stringify({ ...c, historico: c.historico.slice(-HISTORICO_MENSAGENS) })].join("\u0001"));
 }
