@@ -27,6 +27,7 @@ async function entrar(page: Page) {
 async function removerPerfis(page: Page) {
   for (let i = 0; i < 5; i++) {
     await page.goto("/anuncio/infinito?config=perfil");
+    await page.waitForLoadState("networkidle");
     const d = page.getByRole("dialog");
     await expect(d.locator("#cfg-perfil")).toBeVisible();
     const opcao = d.locator("#cfg-perfil option", { hasText: PERFIL });
@@ -48,6 +49,8 @@ test("termo que bloqueia recusa o título; a lista mostra o rascunho com filtro"
 
   // Perfil com um termo que bloqueia.
   await page.goto("/anuncio/infinito?config=perfil");
+  // Antes de digitar, a página precisa estar hidratada (senão o texto não chega ao estado).
+  await page.waitForLoadState("networkidle");
   const cfg = page.getByRole("dialog");
   await cfg.locator("#cfg-perfil").selectOption("novo");
   await cfg.getByPlaceholder("Ex.: Minha loja principal").fill(PERFIL);
@@ -58,6 +61,7 @@ test("termo que bloqueia recusa o título; a lista mostra o rascunho com filtro"
 
   // Rascunho de um produto, no perfil novo.
   await page.goto("/anuncio/infinito");
+  await page.waitForLoadState("networkidle");
   await page.getByRole("radio", { name: new RegExp(PERFIL) }).click();
   await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByPlaceholder("Buscar produto…").click();
