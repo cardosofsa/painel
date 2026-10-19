@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { AlertTriangle, Check, ClipboardPaste, ImageOff, MessageCircle, Paperclip, Send, X } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, ClipboardPaste, ImageOff, MessageCircle, Paperclip, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { inputClass } from "@/components/ui/Modal";
@@ -13,7 +13,8 @@ import { useSupabaseUpload } from "@/lib/hooks/useSupabaseUpload";
 import { montarMontagemDeArquivos } from "@/components/marca/montagem";
 import { LIMITE_MENSAGEM_CHAT } from "@/lib/validacao";
 import type { EtapaId } from "@/lib/anuncio/etapas";
-import { LIMITE_REFERENCIA, MAX_IMAGENS_MENSAGEM, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type QualReferencia } from "@/lib/ia/prompts-assistente";
+import { aplicarInstrucao, LIMITE_REFERENCIA, MAX_IMAGENS_MENSAGEM, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type QualReferencia } from "@/lib/ia/prompts-assistente";
+import { LIMITE_INSTRUCOES } from "@/lib/ia/estilo-loja";
 import type { MensagemDoChat } from "@/lib/estudio/servidor";
 
 export function descreverAcao(a: AcaoProposta): { rotulo: string; botao: string } {
@@ -40,6 +41,16 @@ export function descreverAcao(a: AcaoProposta): { rotulo: string; botao: string 
       return { rotulo: "Guardar esta imagem nas referências do perfil (o visual que a loja quer)", botao: "Guardar referência" };
     case "usar_imagem_no_anuncio":
       return { rotulo: "Usar esta imagem no anúncio, como enviada por você (sem cota)", botao: "Usar no anúncio" };
+    case "atualizar_instrucoes": {
+      const de = a.alvo === "titulo" ? "títulos" : "descrições";
+      return a.modo === "acrescentar"
+        ? { rotulo: `Acrescentar às instruções de ${de}: “${a.texto}”`, botao: "Acrescentar" }
+        : { rotulo: `Trocar as instruções de ${de} por: “${a.texto}”`, botao: "Trocar instruções" };
+    }
+    case "usar_titulo":
+      return { rotulo: `Usar este título no anúncio: “${a.titulo}” (passa pela conferência de termos)`, botao: "Usar título" };
+    case "pausar_memoria":
+      return { rotulo: `Pausar na memória: “${a.texto}”`, botao: "Pausar" };
     case "guardar_exemplo":
       return { rotulo: `Guardar como exemplo de ${a.tipoExemplo === "titulo" ? "título" : "descrição"} (a IA imita o tom e a estrutura): “${a.texto.length > 160 ? `${a.texto.slice(0, 160)}…` : a.texto}”`, botao: "Guardar exemplo" };
   }
@@ -52,7 +63,11 @@ export interface EnvioChat {
   /** Caminhos no Storage das imagens já enviadas e, com mais de uma, da montagem que vai à IA. */
   imagens: string[];
   montagem: string | null;
+  /** "O que você já sabe do meu padrão?": a IA recebe os exemplos e resume a direção da loja. */
+  resumoPadrao?: boolean;
 }
+
+const PERGUNTA_PADRAO = "O que você já sabe do meu padrão?";
 
 const TIPOS_FOTO = ["image/jpeg", "image/png", "image/webp"];
 const MAX_FOTO_MB = 5;
@@ -75,7 +90,7 @@ const SUGESTOES: Partial<Record<EtapaId, string[]>> = {
 };
 
 /** A mensagem que está indo (aparece na hora) ou que falhou (volta para o campo, com o erro). */
-type Pendente = { texto: string; referencia: EnvioChat["referencia"]; fotos: Foto[]; montagem: string | null; erro: string | null };
+type Pendente = { texto: string; referencia: EnvioChat["referencia"]; fotos: Foto[]; montagem: string | null; resumoPadrao?: boolean; erro: string | null };
 
 /**
  * Chat do anúncio. A IA responde e SUGERE ações; cada uma é um botão que você aprova. Nada caro
@@ -94,6 +109,7 @@ export function ChatAnuncio({
   campoRef,
   referenciasPerfil,
   fichaDoPerfil,
+  instrucoesPerfil,
 }: {
   mensagens: MensagemDoChat[];
   texto: string;
@@ -111,6 +127,8 @@ export function ChatAnuncio({
   referenciasPerfil: string[] | null;
   /** Ficha ativa do perfil, para mostrar o antes e depois de um ajuste. */
   fichaDoPerfil: (tipo: TipoImagemMarca) => FichaMarca;
+  /** Instruções de base do perfil, para mostrar o antes e depois de "atualizar instruções". */
+  instrucoesPerfil: { titulo: string | null; descricao: string | null } | null;
 }) {
   const [pendente, setPendente] = useState<Pendente | null>(null);
   // Referência sendo colada (painel aberto acima do campo) ou `null`.
@@ -185,7 +203,7 @@ export function ChatAnuncio({
         if (!montagem) return falhar("Não consegui juntar as imagens. Tente de novo.");
         atual = { ...atual, montagem };
       }
-      const erro = await onEnviar({ texto: p.texto, referencia: p.referencia, imagens: enviadas.map((f) => f.path!), montagem });
+      const erro = await onEnviar({ texto: p.texto, referencia: p.referencia, imagens: enviadas.map((f) => f.path!), montagem, resumoPadrao: p.resumoPadrao });
       if (erro) return falhar(erro);
       enviadas.forEach((f) => URL.revokeObjectURL(f.previa));
       setPendente(null);
@@ -251,7 +269,7 @@ export function ChatAnuncio({
               <ul className="flex flex-wrap gap-2" aria-label="Sugestões para começar">
                 {sugestoes.map((s) => (
                   <li key={s}>
-                    <button type="button" className="rounded-full border border-border bg-surface-1 px-3 py-1 text-xs text-text-primary hover:bg-surface-2" onClick={() => void enviar({ texto: s, referencia: null, fotos: [], montagem: null })}>
+                    <button type="button" className="rounded-full border border-border bg-surface-1 px-3 py-1 text-xs text-text-primary hover:bg-surface-2" onClick={() => void enviar({ texto: s, referencia: null, fotos: [], montagem: null, resumoPadrao: s === PERGUNTA_PADRAO })}>
                       {s}
                     </button>
                   </li>
@@ -280,12 +298,19 @@ export function ChatAnuncio({
                             <Check size={12} aria-hidden /> Feito
                           </span>
                         ) : (
-                          <Button size="sm" variant="secondary" onClick={() => void aplicar(m, i, a)} loading={aplicando === chave} disabled={aplicando !== null || (!iaDisponivel && PRECISAM_DE_IA.has(a.tipo))}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void aplicar(m, i, a)}
+                            loading={aplicando === chave}
+                            disabled={aplicando !== null || (!iaDisponivel && PRECISAM_DE_IA.has(a.tipo)) || (a.tipo === "atualizar_instrucoes" && aplicarInstrucao(instrucoesPerfil?.[a.alvo] ?? null, a.modo, a.texto).passa)}
+                          >
                             {d.botao}
                           </Button>
                         )}
                       </div>
                       {a.tipo === "ajustar_ficha" && !feita && <AntesDepoisFicha atual={fichaDoPerfil(a.tipoImagem)} campos={a.campos} />}
+                      {a.tipo === "atualizar_instrucoes" && !feita && <AntesDepoisInstrucoes atual={instrucoesPerfil?.[a.alvo] ?? null} acao={a} />}
                       {trocando?.chave === chave && referenciasPerfil && (
                         <fieldset className="mt-2 rounded-md border border-border p-2">
                           <legend className="px-1 text-xs text-text-primary">O perfil já tem 8 referências. Qual sai para esta entrar?</legend>
@@ -427,6 +452,9 @@ export function ChatAnuncio({
               <Button type="button" size="sm" variant="ghost" onClick={() => arquivoRef.current?.click()} disabled={fotos.length >= MAX_IMAGENS_MENSAGEM}>
                 <Paperclip size={14} aria-hidden /> Imagem
               </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => void enviar({ texto: PERGUNTA_PADRAO, referencia: null, fotos: [], montagem: null, resumoPadrao: true })} disabled={enviando}>
+                <BookOpen size={14} aria-hidden /> Meu padrão
+              </Button>
               <input
                 ref={arquivoRef}
                 type="file"
@@ -498,6 +526,27 @@ function AntesDepoisFicha({ atual, campos }: { atual: FichaMarca; campos: FichaM
         </li>
       ))}
     </ul>
+  );
+}
+
+/** "Atualizar instruções": o texto como está e como fica, antes de aplicar. */
+function AntesDepoisInstrucoes({ atual, acao }: { atual: string | null; acao: Extract<AcaoProposta, { tipo: "atualizar_instrucoes" }> }) {
+  const depois = aplicarInstrucao(atual, acao.modo, acao.texto);
+  return (
+    <div className="mt-1.5">
+      {depois.passa && (
+        <p className="text-negative">
+          Passaria de {LIMITE_INSTRUCOES.toLocaleString("pt-BR")} caracteres ({depois.texto.length.toLocaleString("pt-BR")}). Peça para a IA resumir.
+        </p>
+      )}
+      <details>
+        <summary className="cursor-pointer text-text-secondary">Ver antes e depois</summary>
+        <p className="mt-1 text-text-tertiary">Antes</p>
+        <p className="whitespace-pre-line break-words text-text-secondary">{atual?.trim() || "(sem instruções)"}</p>
+        <p className="mt-1 text-text-tertiary">Depois</p>
+        <p className="whitespace-pre-line break-words text-text-primary">{depois.texto}</p>
+      </details>
+    </div>
   );
 }
 

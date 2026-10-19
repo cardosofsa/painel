@@ -957,6 +957,8 @@ export const conversaSchema = z
     /** Imagens já enviadas ao Storage pela tela (0110) e, com mais de uma, a montagem delas que vai à IA. */
     imagens: z.array(z.string().trim().min(1).max(300)).max(4, "Até 4 imagens por mensagem").nullish(),
     montagem: z.string().trim().min(1).max(300).nullish(),
+    /** "O que você já sabe do meu padrão?": a IA recebe também os exemplos e resume. */
+    resumo_padrao: z.boolean().nullish(),
   })
   .refine((v) => v.mensagem.length > 0 || !!v.referencia || (v.imagens?.length ?? 0) > 0, { message: "Escreva uma mensagem", path: ["mensagem"] })
   .refine((v) => (v.imagens?.length ?? 0) <= 1 || !!v.montagem, { message: "Não consegui juntar as imagens. Mande de novo.", path: ["montagem"] });

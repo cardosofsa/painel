@@ -39,11 +39,12 @@ import {
   type ContextoRascunho,
   type RascunhoAberto,
 } from "@/lib/estudio/servidor";
-import { caminhoValido, HISTORICO_MENSAGENS, lerAcaoGuardada, lerAnexos, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type AnexoTexto, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
+import { aplicarInstrucao, caminhoValido, HISTORICO_MENSAGENS, lerAcaoGuardada, lerAnexos, ROTULO_REFERENCIA, type AcaoProposta, type AnexoMensagem, type AnexoTexto, type ContextoAssistente, type MensagemHistorico } from "@/lib/ia/prompts-assistente";
 import { ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { resumoDaFicha } from "@/lib/marca/prompt-capa";
 import { mesclarFicha, normalizarFicha } from "@/lib/marca/ficha";
-import { adicionarMemoriaMarca, salvarFichaMarca } from "../marca/actions";
+import { adicionarMemoriaMarca, alternarMemoriaMarca, salvarDirecaoMarca, salvarFichaMarca } from "../marca/actions";
+import { LIMITE_INSTRUCOES } from "@/lib/ia/estilo-loja";
 
 export type { RascunhoAberto } from "@/lib/estudio/servidor";
 
@@ -539,7 +540,7 @@ const ROTULO_ETAPA: Record<EtapaId, string> = Object.fromEntries(ETAPAS.map((e) 
 async function contextoDaConversa(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ctx: ContextoRascunho,
-  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string; referencia: AnexoTexto | null; imagens: string[]; imagemHash: string | null },
+  extra: { etapa: EtapaId | null; descricaoPendente: boolean; historico: MensagemHistorico[]; mensagem: string; referencia: AnexoTexto | null; imagens: string[]; imagemHash: string | null; resumoPadrao: boolean },
 ): Promise<ContextoAssistente> {
   const e = ctx.rascunho.estado;
   const preco = await precoDoAnuncio(supabase, ctx.produto.id, ctx.perfil?.id ?? null).catch(() => null);
@@ -566,12 +567,13 @@ async function contextoDaConversa(
       exemplosTitulo: ctx.estilo.titulo.exemplos.length,
       exemplosDescricao: ctx.estilo.descricao.exemplos.length,
     },
-    memoria: ctx.memoria,
+    memoria: ctx.memoriaItens,
     historico: extra.historico,
     mensagem: extra.mensagem,
     referencia: extra.referencia,
     imagens: extra.imagens,
     imagemHash: extra.imagemHash,
+    padrao: extra.resumoPadrao ? { exemplosTitulo: ctx.estilo.titulo.exemplos.map((x) => x.texto), exemplosDescricao: ctx.estilo.descricao.exemplos.map((x) => x.texto) } : null,
   };
 }
 
@@ -608,7 +610,7 @@ export async function conversar(entrada: unknown) {
 
     const g = await conversarIA(
       supabase,
-      await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem, referencia, imagens, imagemHash: imagem?.hash ?? null }),
+      await contextoDaConversa(supabase, ctx, { etapa: v.etapa ?? null, descricaoPendente: !!v.descricao_pendente, historico, mensagem, referencia, imagens, imagemHash: imagem?.hash ?? null, resumoPadrao: !!v.resumo_padrao }),
       imagem ? { base64: imagem.base64, mime: imagem.mime } : undefined,
     );
     if (!g.ok) throw new Error(g.erro);
@@ -725,6 +727,32 @@ export async function aplicarAcaoConversa(entrada: unknown) {
         mensagem = `Imagem guardada nas referências do perfil (${novas.length} de ${MAX_REFERENCIAS_PERFIL}). Use "Aprender das capas" para atualizar a ficha.`;
         break;
       }
+      case "atualizar_instrucoes": {
+        const perfil = precisaPerfil();
+        const atual = acao.alvo === "titulo" ? ctx.estilo.titulo.instrucoes : ctx.estilo.descricao.instrucoes;
+        const novo = aplicarInstrucao(atual, acao.modo, acao.texto);
+        if (novo.passa) throw new Error(`As instruções passariam de ${LIMITE_INSTRUCOES.toLocaleString("pt-BR")} caracteres. Peça para a IA resumir e tente de novo.`);
+        // A mesma action da aba Direção da IA (grava as duas; a outra fica como está).
+        exigir(
+          await salvarDirecaoMarca({
+            perfil_id: perfil,
+            instrucoes_titulo: acao.alvo === "titulo" ? novo.texto : ctx.estilo.titulo.instrucoes,
+            instrucoes_descricao: acao.alvo === "descricao" ? novo.texto : ctx.estilo.descricao.instrucoes,
+          }),
+        );
+        mensagem = `Instruções de ${acao.alvo === "titulo" ? "títulos" : "descrições"} atualizadas. Dá para desfazer na aba Direção da IA.`;
+        break;
+      }
+      case "usar_titulo": {
+        // A mesma conferência de termos e limite do "Usar o meu"; se não for uma das sugestões, vira exemplo.
+        const r = exigir(await escolherTitulo({ rascunho_id: v.rascunho_id, titulo: acao.titulo }));
+        mensagem = r.aprendeu ? "Título escolhido. O seu jeito de escrever vira exemplo para os próximos." : "Título escolhido";
+        break;
+      }
+      case "pausar_memoria":
+        exigir(await alternarMemoriaMarca(acao.id, false));
+        mensagem = "Frase pausada na memória. Dá para reativar na aba Memória.";
+        break;
       case "usar_imagem_no_anuncio":
         // Mesma ação do "Enviar minha imagem" da Capa: aprovada, sem cota, conta no teto de 12.
         exigir(await adicionarCapaPropria({ rascunho_id: v.rascunho_id, path: acao.path }));

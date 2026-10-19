@@ -13,7 +13,7 @@
 import { normalizarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
 import { TIPOS_IMAGEM_MARCA } from "@/lib/validacao";
 import { hashTexto, lerObjetoJson, limparCampo, linhas, truncarEmPalavra } from "./texto";
-import { blocoDeTexto, type TipoExemplo } from "./estilo-loja";
+import { blocoDeTexto, LIMITE_INSTRUCOES, type TipoExemplo } from "./estilo-loja";
 
 export type AcaoProposta =
   | { tipo: "definir_numero_imagens"; n: number }
@@ -25,7 +25,22 @@ export type AcaoProposta =
   | { tipo: "pesquisar_concorrentes" }
   | { tipo: "guardar_exemplo"; tipoExemplo: TipoExemplo; texto: string }
   | { tipo: "guardar_referencia_imagem"; path: string }
-  | { tipo: "usar_imagem_no_anuncio"; path: string };
+  | { tipo: "usar_imagem_no_anuncio"; path: string }
+  | { tipo: "atualizar_instrucoes"; alvo: TipoExemplo; modo: "acrescentar" | "substituir"; texto: string }
+  | { tipo: "usar_titulo"; titulo: string }
+  | { tipo: "pausar_memoria"; id: string; texto: string };
+
+/** Ações que gravam no PERFIL: sem perfil escolhido, não há onde guardar. */
+export const ACOES_DO_PERFIL = new Set<AcaoProposta["tipo"]>(["ajustar_ficha", "atualizar_instrucoes", "guardar_referencia_imagem"]);
+
+/**
+ * O texto das instruções depois de aplicar a ação: "acrescentar" junta numa linha nova,
+ * "substituir" troca tudo. `passa` = estourou o limite (a tela pede para a IA resumir).
+ */
+export function aplicarInstrucao(atual: string | null, modo: "acrescentar" | "substituir", texto: string): { texto: string; passa: boolean } {
+  const novo = modo === "substituir" || !atual?.trim() ? texto.trim() : `${atual.trim()}\n${texto.trim()}`;
+  return { texto: novo, passa: novo.length > LIMITE_INSTRUCOES };
+}
 
 /** Ações que só levam a outra etapa ou geram ali (a tela executa); as outras gravam no servidor. */
 export const ACOES_DA_TELA = ["gerar_titulos", "gerar_descricao", "gerar_capa", "pesquisar_concorrentes"] as const;
@@ -107,7 +122,8 @@ export interface ContextoAssistente {
   };
   /** Direção da IA do perfil (0109). */
   direcao: { instrucoesTitulo: string | null; instrucoesDescricao: string | null; exemplosTitulo: number; exemplosDescricao: number };
-  memoria: string[];
+  /** Memória ativa (id para poder propor pausar uma frase). */
+  memoria: { id: string; texto: string }[];
   historico: MensagemHistorico[];
   mensagem: string;
   /** Texto colado junto desta mensagem. Vai para o prompt como DADO, num bloco delimitado. */
@@ -116,6 +132,11 @@ export interface ContextoAssistente {
   imagens: string[];
   /** Impressão digital dos bytes da imagem que foi à IA: a mesma imagem com a mesma pergunta sai do cache. */
   imagemHash: string | null;
+  /**
+   * "O que você já sabe do meu padrão?": a IA recebe também os exemplos guardados e as
+   * instruções mais completas, e resume, aponta contradições e propõe a limpeza. `null` no resto.
+   */
+  padrao: { exemplosTitulo: string[]; exemplosDescricao: string[] } | null;
 }
 
 const TIPOS_MEMORIA = ["preferencia", "regra", "aprendizado"] as const;
@@ -204,14 +225,18 @@ export function montarPromptAssistente(c: ContextoAssistente): string {
     ["Preço na loja (só para consulta)", blocoPreco(e.preco)],
   ]);
   const d = c.direcao;
+  // No resumo do padrão a IA precisa ver mais da direção para achar contradições.
+  const tetoInstrucao = c.padrao ? 900 : 400;
   const direcao = linhas([
-    ["Instruções para títulos", limparCampo(d.instrucoesTitulo, 400)],
-    ["Instruções para descrições", limparCampo(d.instrucoesDescricao, 400)],
+    ["Instruções para títulos", limparCampo(d.instrucoesTitulo, tetoInstrucao)],
+    ["Instruções para descrições", limparCampo(d.instrucoesDescricao, tetoInstrucao)],
     ["Exemplos ativos", d.exemplosTitulo || d.exemplosDescricao ? `${d.exemplosTitulo} de título, ${d.exemplosDescricao} de descrição` : null],
+    ["Exemplos de título guardados", c.padrao?.exemplosTitulo.length ? c.padrao.exemplosTitulo.slice(0, 5).map((t) => `"${limparCampo(t, 120)}"`).join(" | ") : null],
+    ["Exemplos de descrição guardados (início)", c.padrao?.exemplosDescricao.length ? c.padrao.exemplosDescricao.slice(0, 2).map((t) => `"${limparCampo(t, 300)}"`).join(" | ") : null],
   ]);
   const memoria = c.memoria
     .slice(0, 12)
-    .map((m) => `- ${limparCampo(m, 160)}`)
+    .map((m, i) => `- M${i + 1}: ${limparCampo(m.texto, 160)}`)
     .join("\n");
   const historico = c.historico
     .slice(-HISTORICO_MENSAGENS)
@@ -224,7 +249,13 @@ Situação do anúncio:
 ${estado}
 ${direcao ? `\nDireção da IA deste perfil:\n${direcao}\n` : ""}${memoria ? `\nO que a loja já pediu para você lembrar:\n${memoria}\n` : ""}${historico ? `\nConversa até aqui:\n${historico}\n` : ""}
 Mensagem do lojista: "${limparCampo(c.mensagem, 2000)}"
-${blocoReferencia(c.referencia)}${blocoImagens(c.imagens.length)}
+${blocoReferencia(c.referencia)}${blocoImagens(c.imagens.length)}${
+    c.padrao
+      ? `
+O lojista quer saber o que você já sabe do padrão da loja. Resuma em tópicos curtos o que está na memória, nas instruções, nos exemplos e na ficha. Aponte contradições entre eles (ex.: a memória diz "sem emoji" e uma instrução pede emoji) e proponha a limpeza como ações ("pausar_memoria", "atualizar_instrucoes" com "substituir", "ajustar_ficha"). Se ainda não houver nada guardado, diga isso e sugira por onde começar.
+`
+      : ""
+  }
 Responda em JSON com:
 - "resposta": sua resposta (até ${LIMITE_RESPOSTA} caracteres). Se faltar informação, faça UMA pergunta curta. Para listar, use linhas começando com "- ".
 - "acoes": de 0 a 4 ações que você SUGERE (o lojista aprova cada uma). Cada ação é um objeto com "tipo" e os campos dele:
@@ -238,7 +269,22 @@ Responda em JSON com:
   - {"tipo":"guardar_referencia_imagem","anexo":<número da imagem>}  (guarda a imagem mandada nesta mensagem como referência visual do perfil da loja, quando ela representa o visual que o lojista quer)
   - {"tipo":"usar_imagem_no_anuncio","anexo":<número da imagem>}  (põe a imagem mandada nesta mensagem no anúncio, como imagem enviada pelo lojista, quando ela já é uma foto ou arte pronta do produto)
   - {"tipo":"guardar_exemplo","tipo_exemplo":"titulo"|"descricao","usar_referencia":true}  (guarda a referência colada como exemplo que a IA imita nos próximos textos; ou, no lugar de "usar_referencia", "texto":"um título ou descrição que o lojista escreveu na conversa e disse ser o jeito certo")
+  - {"tipo":"atualizar_instrucoes","alvo":"titulo"|"descricao","modo":"acrescentar"|"substituir","texto":"a instrução"}  (como escrever títulos ou descrições deste perfil, de agora em diante; "substituir" troca as instruções atuais inteiras, então mande o texto completo, até ${LIMITE_INSTRUCOES} caracteres)
+  - {"tipo":"usar_titulo","titulo":"o título"}  (quando o lojista escrever ou aprovar na conversa um título para ESTE anúncio)
+  - {"tipo":"pausar_memoria","item":<número da memória, o N de MN>}  (tira de uso uma frase da memória que ficou velha ou contradiz outra)
 
+Onde guardar o que o lojista diz (você escolhe, ele aprova):
+- preferência curta que vale para tudo ("sem pessoa", "sempre 6 imagens") → "guardar_memoria"
+- como escrever títulos ou descrições ("tom acolhedor", "abrir pelo uso") → "atualizar_instrucoes"
+- um texto dele que é o jeito certo → "guardar_exemplo"
+- o visual das imagens → "ajustar_ficha"
+- uma imagem que representa a loja → "guardar_referencia_imagem"
+${
+  c.perfilNome
+    ? ""
+    : `Este anúncio está SEM perfil de loja: não proponha "ajustar_ficha", "atualizar_instrucoes" nem "guardar_referencia_imagem". Se o lojista quiser guardar algo assim, diga que é preciso escolher ou criar um perfil em Configurações. Memória e exemplos valem para a conta toda.
+`
+}
 Regras:
 - Imagem custa. Só sugira "gerar_capa" com modo "imagem" se o lojista já aprovou o título e pediu a imagem; antes disso, prefira "prompt" ou "gerar_titulos". Você não gera imagem aqui.
 - O preço é só para consulta: comente se perguntarem, mas não proponha mudar preço.
@@ -271,6 +317,9 @@ export function esquemaAssistente() {
             tipo_exemplo: { type: "string" },
             usar_referencia: { type: "boolean" },
             anexo: { type: "integer" },
+            alvo: { type: "string" },
+            titulo: { type: "string" },
+            item: { type: "integer" },
           },
           required: ["tipo"],
         },
@@ -296,7 +345,7 @@ const pedidoDe = (v: unknown) => (typeof v === "string" && v.trim() ? truncarEmP
 const LIMITE_EXEMPLO: Record<TipoExemplo, number> = { titulo: 200, descricao: LIMITE_REFERENCIA };
 
 /** Lê a resposta e devolve só ações permitidas e válidas, conferidas contra o contexto da mensagem. Nunca lança. */
-export function interpretarAssistente(bruto: string, c: Pick<ContextoAssistente, "maxImagens" | "referencia" | "imagens" | "perfilNome">): RespostaAssistente {
+export function interpretarAssistente(bruto: string, c: Pick<ContextoAssistente, "maxImagens" | "referencia" | "imagens" | "perfilNome" | "memoria">): RespostaAssistente {
   const obj = lerObjetoJson(bruto) ?? {};
   const resposta = typeof obj.resposta === "string" ? limparResposta(obj.resposta) : "";
   const teto = Math.min(c.maxImagens ?? 9, 12);
@@ -305,6 +354,8 @@ export function interpretarAssistente(bruto: string, c: Pick<ContextoAssistente,
   for (const a of Array.isArray(obj.acoes) ? obj.acoes : []) {
     if (!a || typeof a !== "object") continue;
     const r = a as Record<string, unknown>;
+    // Sem perfil, o que grava no perfil não tem onde ficar.
+    if (!c.perfilNome && ACOES_DO_PERFIL.has(r.tipo as AcaoProposta["tipo"])) continue;
     switch (r.tipo) {
       case "definir_numero_imagens": {
         const n = Number(r.n);
@@ -357,6 +408,24 @@ export function interpretarAssistente(bruto: string, c: Pick<ContextoAssistente,
         if (!acoes.some((x) => x.tipo === r.tipo && "path" in x && x.path === path)) acoes.push({ tipo: r.tipo, path });
         break;
       }
+      case "atualizar_instrucoes": {
+        const alvo = r.alvo === "titulo" || r.alvo === "descricao" ? r.alvo : null;
+        const modo = r.modo === "substituir" ? "substituir" : r.modo === "acrescentar" ? "acrescentar" : null;
+        const texto = typeof r.texto === "string" ? r.texto.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim() : "";
+        if (alvo && modo && texto.length >= 3 && texto.length <= LIMITE_INSTRUCOES) acoes.push({ tipo: "atualizar_instrucoes", alvo, modo, texto });
+        break;
+      }
+      case "usar_titulo": {
+        const titulo = typeof r.titulo === "string" ? r.titulo.replace(/\s+/g, " ").trim() : "";
+        if (titulo.length >= 3 && titulo.length <= 200) acoes.push({ tipo: "usar_titulo", titulo });
+        break;
+      }
+      case "pausar_memoria": {
+        const n = Number(r.item);
+        const m = Number.isInteger(n) && n >= 1 ? c.memoria.slice(0, 12)[n - 1] : undefined;
+        if (m && !acoes.some((x) => x.tipo === "pausar_memoria" && x.id === m.id)) acoes.push({ tipo: "pausar_memoria", id: m.id, texto: m.texto });
+        break;
+      }
     }
     if (acoes.length >= 4) break;
   }
@@ -403,6 +472,20 @@ export function lerAcaoGuardada(bruto: unknown): AcaoProposta | null {
     case "guardar_referencia_imagem":
     case "usar_imagem_no_anuncio":
       return caminhoValido(a.path) ? { tipo: a.tipo, path: a.path } : null;
+    case "atualizar_instrucoes": {
+      const t = texto(a.texto, 3, LIMITE_INSTRUCOES);
+      const alvo = a.alvo === "titulo" || a.alvo === "descricao" ? a.alvo : null;
+      const modo = a.modo === "acrescentar" || a.modo === "substituir" ? a.modo : null;
+      return t && alvo && modo ? { tipo: a.tipo, alvo, modo, texto: t } : null;
+    }
+    case "usar_titulo": {
+      const t = texto(a.titulo, 3, 200);
+      return t ? { tipo: a.tipo, titulo: t } : null;
+    }
+    case "pausar_memoria": {
+      const t = texto(a.texto, 1, 240);
+      return typeof a.id === "string" && /^[0-9a-f-]{36}$/i.test(a.id) && t ? { tipo: a.tipo, id: a.id, texto: t } : null;
+    }
   }
   return null;
 }

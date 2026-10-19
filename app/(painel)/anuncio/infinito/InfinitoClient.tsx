@@ -40,7 +40,7 @@ import { calcularEtapas, ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { mesclarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
 import { regrasDaPlataforma, type PlataformaMarcaId } from "@/lib/marca/plataformas";
 import { urlPublicaImagem, type ExemploMarca, type FichaSalva, type LojaParaMarca, type MemoriaMarca, type PerfilMarca } from "@/lib/marca/tipos";
-import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
+import { ACOES_DO_PERFIL, type AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { abrirRascunho, abrirRascunhoPorId, aplicarAcaoConversa, criarProdutoParaAnuncio, conversar, descartarRascunho, marcarAcaoFeita, marcarPublicado, escolherTitulo, gerarDescricaoEstudio, gerarTitulosEstudio, pesquisarConcorrentesEstudio, salvarDescricao, type RascunhoAberto, type TitulosDoEstudio } from "../../produtos/estudio/actions";
 
 export type ConfigAba = "perfil" | "direcao" | "ficha" | "memoria" | "conferir" | "aprender";
@@ -365,7 +365,7 @@ export function InfinitoClient({
     setQual("conversa");
     const referencia = envio.referencia ? { qual: envio.referencia.qual, de_outra_loja: envio.referencia.deOutraLoja, texto: envio.referencia.texto } : null;
     const r = await executarComToast(
-      conversar({ rascunho_id: rascunho.id, mensagem: envio.texto, referencia, imagens: envio.imagens, montagem: envio.montagem, etapa: atual, descricao_pendente: descGerada !== null || descPendente !== null }),
+      conversar({ rascunho_id: rascunho.id, mensagem: envio.texto, referencia, imagens: envio.imagens, montagem: envio.montagem, resumo_padrao: !!envio.resumoPadrao, etapa: atual, descricao_pendente: descGerada !== null || descPendente !== null }),
       {
         erro: "Não foi possível falar com a IA.",
       },
@@ -385,8 +385,8 @@ export function InfinitoClient({
   async function aplicar(mensagemId: string, indice: number, a: AcaoProposta, extra?: { substituir?: string }): Promise<string | false> {
     if (!rascunho) return false;
     const marcar = () => executarComToast(marcarAcaoFeita({ rascunho_id: rascunho.id, mensagem_id: mensagemId, indice }), { erro: "Não foi possível marcar a sugestão como feita." });
-    if (a.tipo === "ajustar_ficha" && !perfil) {
-      toast.error("Este anúncio está sem perfil. Escolha ou crie um perfil em Configurações para a ficha poder ser ajustada.");
+    if (ACOES_DO_PERFIL.has(a.tipo) && !perfil) {
+      toast.error("Este anúncio está sem perfil. Escolha ou crie um perfil de loja em Configurações para guardar isso nele.");
       return false;
     }
     const etapaAlvo = a.tipo === "gerar_capa" ? "capa" : a.tipo === "gerar_descricao" ? "descricao" : null;
@@ -505,6 +505,7 @@ export function InfinitoClient({
       campoRef={campoChatRef}
       referenciasPerfil={perfil ? perfil.referencias : null}
       fichaDoPerfil={fichaAtiva}
+      instrucoesPerfil={perfil ? { titulo: perfil.instrucoes_titulo ?? null, descricao: perfil.instrucoes_descricao ?? null } : null}
     />
   ) : (
     <p className="px-4 py-3 text-sm text-text-secondary">Abra o anúncio para conversar sobre ele.</p>

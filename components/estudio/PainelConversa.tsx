@@ -65,7 +65,8 @@ export function GavetaConversa({ subtitulo, onFechar, focoInicial, children }: {
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        e.stopPropagation();
+        // Esc já tratado dentro do chat (ex.: fechar a imagem ampliada) não fecha a gaveta junto.
+        if (e.defaultPrevented) return;
         aoFechar.current();
         return;
       }

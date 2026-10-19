@@ -91,6 +91,8 @@ export interface ContextoRascunho {
   perfil: { id: string; nome: string; plataforma: PlataformaMarcaId; lojaId: string | null; nicho: string | null; termos: TermosDoPerfil; logoPath: string | null } | null;
   plataforma: RegrasPlataforma;
   memoria: string[];
+  /** A mesma memória com o id (para o chat poder propor pausar uma frase). */
+  memoriaItens: { id: string; texto: string }[];
   fichaCapa1: FichaMarca;
   /** Instruções de base e exemplos da loja (0109), por tipo de texto. Vazio sem a migração. */
   estilo: Record<TipoExemplo, EstiloDaLoja>;
@@ -134,7 +136,7 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
   const doPerfil = perfil ? `perfil_id.is.null,perfil_id.eq.${perfil.id}` : "perfil_id.is.null";
 
   const [memoriaRes, fichasRes, exemplosRes] = await Promise.all([
-    supabase.from("marca_memoria").select("texto, perfil_id").eq("ativo", true).or(doPerfil).order("criado_em", { ascending: false }).limit(20),
+    supabase.from("marca_memoria").select("id, texto, perfil_id").eq("ativo", true).or(doPerfil).order("criado_em", { ascending: false }).limit(20),
     perfil ? supabase.from("marca_fichas").select("tipo_imagem, dados").eq("perfil_id", perfil.id).eq("ativa", true).in("tipo_imagem", ["geral", "capa_1"]) : Promise.resolve({ data: [] }),
     // Sem a 0109 a tabela não existe: o erro vira lista vazia e a IA gera como antes.
     supabase.from("marca_exemplos").select("tipo, origem, texto").eq("ativo", true).or(doPerfil).order("criado_em", { ascending: false }).limit(60),
@@ -155,6 +157,7 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
     perfil: perfil ? { id: perfil.id, nome: perfil.nome, plataforma: perfil.plataforma, lojaId: perfil.loja_id, nicho: perfil.nicho, termos: termosDoPerfil(perfil), logoPath: perfil.logo_path } : null,
     plataforma: regrasDaPlataforma(perfil?.plataforma ?? "shopee"),
     memoria: ((memoriaRes.data ?? []) as { texto: string }[]).map((m) => m.texto),
+    memoriaItens: ((memoriaRes.data ?? []) as { id: string; texto: string }[]).map((m) => ({ id: m.id, texto: m.texto })),
     fichaCapa1: mesclarFicha(geral, capa1),
     estilo: { titulo: estiloDo("titulo", perfil?.instrucoes_titulo), descricao: estiloDo("descricao", perfil?.instrucoes_descricao) },
   };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocoReferencia, hashAssistente, interpretarAssistente, lerAcaoGuardada, lerAnexos, montarPromptAssistente, respostaVazia, type AnexoTexto, type ContextoAssistente } from "./prompts-assistente";
+import { aplicarInstrucao, blocoReferencia, hashAssistente, interpretarAssistente, lerAcaoGuardada, lerAnexos, montarPromptAssistente, respostaVazia, type AnexoTexto, type ContextoAssistente } from "./prompts-assistente";
 
 const ctx: ContextoAssistente = {
   produtoNome: "Bolsa tiracolo",
@@ -9,12 +9,13 @@ const ctx: ContextoAssistente = {
   etapa: null,
   estado: { titulo: null, titulosSugeridos: [], numeroImagens: null, descricaoSalva: null, descricaoPendente: false, capas: [], fichaCapa1: null, concorrentes: [], preco: null },
   direcao: { instrucoesTitulo: null, instrucoesDescricao: null, exemplosTitulo: 0, exemplosDescricao: 0 },
-  memoria: ["Capas sem preço"],
+  memoria: [{ id: "00000000-0000-0000-0000-000000000001", texto: "Capas sem preço" }],
   historico: [{ papel: "usuario", texto: "oi" }],
   mensagem: "quero 6 imagens e a capa sem pessoa",
   referencia: null,
   imagens: [],
   imagemHash: null,
+  padrao: null,
 };
 
 const completo: ContextoAssistente = {
@@ -100,7 +101,7 @@ describe("montarPromptAssistente", () => {
 });
 
 describe("interpretarAssistente", () => {
-  const r = (acoes: unknown[], resposta = "Combinado.") => interpretarAssistente(JSON.stringify({ resposta, acoes }), ctx);
+  const r = (acoes: unknown[], resposta = "Combinado.") => interpretarAssistente(JSON.stringify({ resposta, acoes }), { ...ctx, perfilNome: "Loja" });
 
   it("aceita as ações permitidas", () => {
     const v = r([
@@ -241,6 +242,62 @@ describe("imagens no chat (fase 3)", () => {
     expect(lerAnexos([{ tipo: "imagem", path: "u/estudio-chat-1.jpg" }, { tipo: "imagem", path: "u/../x.jpg" }, { tipo: "imagem", path: "https://site.com/x.jpg" }, { tipo: "imagem" }])).toEqual([{ tipo: "imagem", path: "u/estudio-chat-1.jpg" }]);
     expect(lerAcaoGuardada({ tipo: "usar_imagem_no_anuncio", path: "u/estudio-chat-1.jpg" })).toEqual({ tipo: "usar_imagem_no_anuncio", path: "u/estudio-chat-1.jpg" });
     expect(lerAcaoGuardada({ tipo: "usar_imagem_no_anuncio", path: "../x.jpg" })).toBeNull();
+  });
+});
+
+describe("o padrão da loja (fase 4)", () => {
+  const comPerfil = { ...ctx, perfilNome: "Loja Chá" };
+  const ler = (acoes: unknown[], c: Partial<ContextoAssistente> = comPerfil) => interpretarAssistente(JSON.stringify({ resposta: "ok", acoes }), { ...ctx, ...c }).acoes;
+
+  it("aplicarInstrucao: acrescentar junta numa linha nova, substituir troca, e marca quando passa do limite", () => {
+    expect(aplicarInstrucao("Tom acolhedor.", "acrescentar", "Abra pelo uso.")).toEqual({ texto: "Tom acolhedor.\nAbra pelo uso.", passa: false });
+    expect(aplicarInstrucao(null, "acrescentar", "Abra pelo uso.")).toEqual({ texto: "Abra pelo uso.", passa: false });
+    expect(aplicarInstrucao("Tom acolhedor.", "substituir", "Frases curtas.")).toEqual({ texto: "Frases curtas.", passa: false });
+    expect(aplicarInstrucao("a".repeat(1990), "acrescentar", "Abra pelo uso.").passa).toBe(true);
+    expect(aplicarInstrucao("a".repeat(1990), "substituir", "Abra pelo uso.").passa).toBe(false);
+  });
+  it("atualizar_instrucoes: valida alvo, modo e tamanho", () => {
+    expect(ler([{ tipo: "atualizar_instrucoes", alvo: "descricao", modo: "acrescentar", texto: "Tom acolhedor" }])).toEqual([{ tipo: "atualizar_instrucoes", alvo: "descricao", modo: "acrescentar", texto: "Tom acolhedor" }]);
+    expect(ler([{ tipo: "atualizar_instrucoes", alvo: "capa", modo: "acrescentar", texto: "Tom acolhedor" }])).toEqual([]);
+    expect(ler([{ tipo: "atualizar_instrucoes", alvo: "titulo", modo: "trocar", texto: "Tom acolhedor" }])).toEqual([]);
+    expect(ler([{ tipo: "atualizar_instrucoes", alvo: "titulo", modo: "substituir", texto: "x".repeat(2001) }])).toEqual([]);
+  });
+  it("sem perfil, ações que gravam no perfil são descartadas; memória, exemplo e título continuam", () => {
+    const acoes = [
+      { tipo: "atualizar_instrucoes", alvo: "titulo", modo: "acrescentar", texto: "Comece pelo nome" },
+      { tipo: "ajustar_ficha", tipo_imagem: "capa_1", campos: { fundo: "creme" } },
+      { tipo: "guardar_memoria", tipo_memoria: "regra", texto: "Sem emoji" },
+      { tipo: "usar_titulo", titulo: "Chá de Camomila 100g" },
+    ];
+    expect(ler(acoes, { perfilNome: null }).map((a) => a.tipo)).toEqual(["guardar_memoria", "usar_titulo"]);
+    expect(ler(acoes).map((a) => a.tipo)).toEqual(["atualizar_instrucoes", "ajustar_ficha", "guardar_memoria", "usar_titulo"]);
+    expect(montarPromptAssistente(ctx)).toContain("Este anúncio está SEM perfil de loja");
+    expect(montarPromptAssistente(comPerfil)).not.toContain("SEM perfil de loja");
+  });
+  it("usar_titulo: tamanho de título", () => {
+    expect(ler([{ tipo: "usar_titulo", titulo: "ab" }, { tipo: "usar_titulo", titulo: "t".repeat(201) }])).toEqual([]);
+  });
+  it("pausar_memoria: o número da memória vira o id dela", () => {
+    const memoria = [
+      { id: "00000000-0000-0000-0000-00000000000a", texto: "Sem emoji" },
+      { id: "00000000-0000-0000-0000-00000000000b", texto: "Use emoji no título" },
+    ];
+    expect(montarPromptAssistente({ ...comPerfil, memoria })).toContain("- M2: Use emoji no título");
+    expect(ler([{ tipo: "pausar_memoria", item: 2 }, { tipo: "pausar_memoria", item: 3 }, { tipo: "pausar_memoria", item: 2 }], { memoria })).toEqual([{ tipo: "pausar_memoria", id: memoria[1].id, texto: "Use emoji no título" }]);
+  });
+  it("resumo do padrão: leva os exemplos guardados e pede contradições e limpeza", () => {
+    const p = montarPromptAssistente({ ...comPerfil, padrao: { exemplosTitulo: ["Chá de Camomila 100g Natural"], exemplosDescricao: ["Descrição exemplo do lojista"] } });
+    expect(p).toContain('Exemplos de título guardados: "Chá de Camomila 100g Natural"');
+    expect(p).toContain("Aponte contradições");
+    expect(p).toContain('"pausar_memoria"');
+    expect(montarPromptAssistente(comPerfil)).not.toContain("Aponte contradições");
+  });
+  it("lerAcaoGuardada aceita as ações novas e recusa as mexidas", () => {
+    expect(lerAcaoGuardada({ tipo: "atualizar_instrucoes", alvo: "titulo", modo: "substituir", texto: "Curto" })).toEqual({ tipo: "atualizar_instrucoes", alvo: "titulo", modo: "substituir", texto: "Curto" });
+    expect(lerAcaoGuardada({ tipo: "atualizar_instrucoes", alvo: "titulo", modo: "apagar", texto: "Curto" })).toBeNull();
+    expect(lerAcaoGuardada({ tipo: "usar_titulo", titulo: "Chá 100g" })).toEqual({ tipo: "usar_titulo", titulo: "Chá 100g" });
+    expect(lerAcaoGuardada({ tipo: "pausar_memoria", id: "00000000-0000-0000-0000-00000000000a", texto: "Sem emoji" })).not.toBeNull();
+    expect(lerAcaoGuardada({ tipo: "pausar_memoria", id: "1 or 1=1", texto: "Sem emoji" })).toBeNull();
   });
 });
 
