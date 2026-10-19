@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { hojeIsoBrasil } from "@/lib/format";
 import { cnpjValido, cpfValido } from "@/lib/pix-chave";
+import { lerCorpoLimitado } from "@/lib/corpo-limitado";
 import { ErroWebhookNaoAutorizado, type CheckoutCobranca, type EventoCobranca, type ProvedorCobranca } from "./tipos";
 
 /**
@@ -313,7 +314,16 @@ export function asaas(config: ConfigAsaas): ProvedorCobranca {
 
     async interpretarWebhook(req) {
       if (!tokenWebhookValido(req.headers.get("asaas-access-token"), config.webhookToken)) throw new ErroWebhookNaoAutorizado();
-      const corpo = (await req.json().catch(() => null)) as CorpoWebhookAsaas | null;
+      // Teto real de bytes também aqui (o token já foi conferido, mas a leitura não precisa ser ilimitada).
+      const lido = await lerCorpoLimitado(req, 64 * 1024);
+      let corpo: CorpoWebhookAsaas | null = null;
+      if (lido.ok) {
+        try {
+          corpo = JSON.parse(lido.texto) as CorpoWebhookAsaas;
+        } catch {
+          corpo = null;
+        }
+      }
       return interpretarEventoAsaas(corpo, async (id) => {
         const s = await chamar<AssinaturaBruta>("GET", `/subscriptions/${encodeURIComponent(id)}`);
         return s.externalReference ?? null;

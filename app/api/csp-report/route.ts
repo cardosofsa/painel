@@ -1,3 +1,4 @@
+import { lerCorpoLimitado } from "@/lib/corpo-limitado";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
@@ -28,11 +29,11 @@ export async function POST(request: NextRequest) {
     return new NextResponse(null, { status: 415 });
   }
 
-  const tamanho = Number(request.headers.get("content-length") ?? 0);
-  if (tamanho > LIMITE_CORPO) return new NextResponse(null, { status: 413 });
-
-  const texto = await request.text().catch(() => "");
-  if (!texto || texto.length > LIMITE_CORPO) return new NextResponse(null, { status: 204 });
+  // Teto real de bytes: a leitura para assim que passa do limite (o content-length pode mentir).
+  const lido = await lerCorpoLimitado(request, LIMITE_CORPO);
+  if (!lido.ok) return new NextResponse(null, { status: lido.motivo === "grande" ? 413 : 204 });
+  const texto = lido.texto;
+  if (!texto) return new NextResponse(null, { status: 204 });
 
   try {
     const corpo = JSON.parse(texto);
