@@ -1208,3 +1208,27 @@ export const explicarAjusteSchema = z
     objetivo: z.enum(["volume", "margem"]),
   })
   .refine((x) => !!x.anuncio_id || !!x.produto_id, "Informe o anúncio ou o produto.");
+
+// ---------- Custos avulsos (0112) ----------
+
+const textoCusto = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Até ${max} caracteres`)
+    .nullish()
+    .transform((v) => v || null);
+
+export const linhaCustoSchema = z.object({
+  nome: z.string().trim().min(1, "Dê um nome").max(120, "Nome longo demais (até 120 caracteres)"),
+  unidade: z.enum(["un", "cx", "kg", "l"]),
+  custo: z.number().finite("Custo inválido").min(0, "Custo não pode ser negativo").max(1_000_000, "Custo alto demais"),
+  grupo: textoCusto(60),
+  observacao: textoCusto(500),
+});
+
+export const custoAvulsoSchema = linhaCustoSchema.extend({ id: z.string().uuid().nullish() });
+
+export const importarCustosSchema = z.object({
+  linhas: z.array(linhaCustoSchema).min(1, "Nada para importar").max(1000, "Até 1.000 itens por vez"),
+});
