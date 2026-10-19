@@ -688,7 +688,12 @@ export function InfinitoClient({
               plataforma={plataforma}
               imagensUsadas={imagensUsadas}
               iaDisponivel={iaDisponivel}
-              onMudou={() => void carregar()}
+              // Fica na Capa: com a primeira imagem aprovada ou enviada a etapa conta como feita e
+              // a tela pulava para a Descrição, no meio de quem ainda ia enviar outras imagens.
+              onMudou={() => {
+                setManual("capa");
+                void carregar();
+              }}
               onAjustar={(t) => {
                 setTexto(t);
                 setConversaAberta(true);
