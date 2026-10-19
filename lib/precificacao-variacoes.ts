@@ -12,14 +12,39 @@ import {
   type TaxasPlataforma,
 } from "./pricing";
 
+/** A que se refere o custo base: unidade, caixa, quilo ou litro (0111). */
+export type UnidadeBase = "un" | "cx" | "kg" | "l";
+
+export const UNIDADES_BASE: readonly { id: UnidadeBase; rotulo: string; curto: string; fracionada: boolean }[] = [
+  { id: "un", rotulo: "Unidade", curto: "un", fracionada: false },
+  { id: "cx", rotulo: "Caixa", curto: "cx", fracionada: false },
+  { id: "kg", rotulo: "Quilo (kg)", curto: "kg", fracionada: true },
+  { id: "l", rotulo: "Litro (L)", curto: "L", fracionada: true },
+];
+
+export const unidadeBase = (id: UnidadeBase) => UNIDADES_BASE.find((u) => u.id === id) ?? UNIDADES_BASE[0];
+
 export interface VariacaoLinha {
   id: string;
   nome: string;
+  /** Quantidade na unidade do custo base (0,5 = meio kg). */
   multiplicador: number;
-  /** null = custo unitário base × multiplicador. */
+  /** null = custo base × quantidade. Só o PRODUTO: embalagem e insumos somam por cima. */
   custoManual: number | null;
   /** null = usa o parâmetro padrão do modo (margem %, lucro R$ ou preço R$). */
   parametroOverride: number | null;
+  /** R$ por variação (pote, saco, caixa de envio): não multiplica pela quantidade. */
+  embalagem?: number;
+  /** R$ por variação (etiqueta, fita, brinde…). */
+  insumos?: number;
+}
+
+/** Custo da variação por parte: produto (base × quantidade, ou o digitado), embalagem e insumos. */
+export function custoDaVariacao(custoBase: number, v: VariacaoLinha): { produto: number; embalagem: number; insumos: number; total: number } {
+  const produto = v.custoManual ?? custoBase * v.multiplicador;
+  const embalagem = Math.max(0, v.embalagem ?? 0);
+  const insumos = Math.max(0, v.insumos ?? 0);
+  return { produto, embalagem, insumos, total: produto + embalagem + insumos };
 }
 
 export interface LojaVariacao {
@@ -75,7 +100,7 @@ function taxasSemFaixa(cfg: ConfigVariacoes): TaxasPlataforma {
 }
 
 export function calcularVariacao(cfg: ConfigVariacoes, v: VariacaoLinha): ResultadoVariacao {
-  const custo = v.custoManual ?? cfg.custoUnitarioBase * v.multiplicador;
+  const custo = custoDaVariacao(cfg.custoUnitarioBase, v).total;
   const bruto = v.parametroOverride ?? cfg.parametroPadrao;
   // Margem e markup chegam em % da tela; o motor de preço trabalha em fração.
   const parametro = cfg.modo === "margem" || cfg.modo === "markup" ? bruto / 100 : bruto;

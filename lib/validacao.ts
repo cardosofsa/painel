@@ -649,6 +649,9 @@ export const anuncioSchema = z.object({
       z.object({
         nome_variacao: z.string().trim().max(200),
         multiplicador: z.number().finite("Multiplicador inválido").min(0).max(10_000),
+        unidade: z.enum(["un", "cx", "kg", "l"]).optional(),
+        custo_embalagem: dinheiro.optional(),
+        custo_insumos: dinheiro.optional(),
         custo: dinheiro,
         taxa_variavel_pct: fracao,
         taxa_fixa: dinheiro,

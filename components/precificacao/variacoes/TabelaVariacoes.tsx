@@ -11,7 +11,7 @@ import { PriceBreakdownChart } from "@/components/charts/dinamicos";
 import { DetalhamentoPrecificacao, SimuladorPreco, type ResumoExport } from "@/components/precificacao/resultado-compartilhado";
 import { classeValor, formatBRL } from "@/lib/format";
 import type { ModoCalculo } from "@/lib/pricing";
-import type { ResultadoVariacao, VariacaoLinha } from "@/lib/precificacao-variacoes";
+import { custoDaVariacao, unidadeBase, type ResultadoVariacao, type UnidadeBase, type VariacaoLinha } from "@/lib/precificacao-variacoes";
 
 const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const NUM = `${campoBase} h-9 text-right tabular`;
@@ -21,11 +21,14 @@ function rotuloDoModo(modo: ModoCalculo): string {
 }
 
 /**
- * Variações como cartões: o que se digita à esquerda (nome, quantas unidades, custo, valor
- * próprio) e o resultado à direita (preço, lucro e margem). Ao abrir, o detalhamento.
+ * Variações como cartões: o que se digita à esquerda (nome, quantidade na unidade do custo base,
+ * custo do produto, embalagem, insumos e valor próprio) e o resultado à direita (preço, lucro e
+ * margem). Ao abrir, o detalhamento com o custo separado por parte.
  */
 export function ListaVariacoes({
   variacoes,
+  unidade,
+  custoBase,
   modo,
   parametroPadrao,
   calcular,
@@ -40,6 +43,9 @@ export function ListaVariacoes({
   onAtualizar,
 }: {
   variacoes: VariacaoLinha[];
+  /** A que se refere o custo base (un, cx, kg, L): a quantidade de cada variação é nessa unidade. */
+  unidade: UnidadeBase;
+  custoBase: number;
   modo: ModoCalculo;
   parametroPadrao: number;
   calcular: (v: VariacaoLinha) => ResultadoVariacao;
@@ -55,26 +61,42 @@ export function ListaVariacoes({
 }) {
   const [expandida, setExpandida] = useState<string | null>(null);
   const rotuloParametro = rotuloDoModo(modo);
+  const un = unidadeBase(unidade);
 
   return (
     <div className="space-y-3">
       {variacoes.map((v) => {
         const r = calcular(v);
-        const { custo, resultado, taxas } = r;
+        const { resultado, taxas } = r;
+        const partes = custoDaVariacao(custoBase, v);
         const aberta = expandida === v.id;
         const proprio = v.parametroOverride !== null;
         return (
           <div key={v.id} className={`rounded-lg border bg-surface-1 transition-colors duration-[--duracao-rapida] ${resultado.viavel ? "border-border" : "border-negative/40"}`}>
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_12.5rem] gap-3 p-3">
-              <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1.4fr)_5rem_minmax(0,1fr)_minmax(0,1fr)] gap-2 items-end">
-                <Campo rotulo="Variação" className="col-span-2 sm:col-span-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
+                <Campo rotulo="Variação" className="col-span-2">
                   <input value={v.nome} onChange={(e) => onAtualizar(v.id, "nome", e.target.value)} className={`${campoBase} h-9`} aria-label="Nome da variação" />
                 </Campo>
-                <Campo rotulo="Unidades">
-                  <CampoNumero value={v.multiplicador} onChange={(n) => onAtualizar(v.id, "multiplicador", String(n))} min={1} casas={0} padrao={1} className={NUM} aria-label={`Unidades em ${v.nome}`} />
+                <Campo rotulo={`Quantidade (${un.curto})`}>
+                  <CampoNumero
+                    value={v.multiplicador}
+                    onChange={(n) => onAtualizar(v.id, "multiplicador", String(n))}
+                    min={un.fracionada ? 0.001 : 1}
+                    casas={un.fracionada ? 3 : 0}
+                    padrao={1}
+                    className={NUM}
+                    aria-label={`Quantidade em ${un.curto} de ${v.nome}`}
+                  />
                 </Campo>
-                <Campo rotulo="Custo (R$)">
-                  <CampoNumero value={v.custoManual ?? custo} onChange={(n) => onAtualizar(v.id, "custoManual", String(n))} min={0} casas={2} className={NUM} aria-label={`Custo de ${v.nome}`} />
+                <Campo rotulo="Produto (R$)">
+                  <CampoNumero value={partes.produto} onChange={(n) => onAtualizar(v.id, "custoManual", String(n))} min={0} casas={2} className={NUM} aria-label={`Custo do produto em ${v.nome}`} />
+                </Campo>
+                <Campo rotulo="Embalagem (R$)">
+                  <CampoNumero value={v.embalagem ?? 0} onChange={(n) => onAtualizar(v.id, "embalagem", String(n))} min={0} casas={2} className={NUM} aria-label={`Custo da embalagem de ${v.nome}`} />
+                </Campo>
+                <Campo rotulo="Insumos (R$)">
+                  <CampoNumero value={v.insumos ?? 0} onChange={(n) => onAtualizar(v.id, "insumos", String(n))} min={0} casas={2} className={NUM} aria-label={`Custo dos insumos de ${v.nome}`} />
                 </Campo>
                 <Campo rotulo={proprio ? `${rotuloParametro} · próprio` : rotuloParametro} className="col-span-2 sm:col-span-1">
                   <CampoNumero
@@ -87,6 +109,15 @@ export function ListaVariacoes({
                     aria-label={`${rotuloParametro} de ${v.nome}`}
                   />
                 </Campo>
+                <div className="col-span-2 text-xs text-text-tertiary">
+                  Custo total <span className="font-mono text-text-primary">{formatBRL(partes.total)}</span>
+                  {v.custoManual === null && (
+                    <>
+                      {" "}
+                      · {v.multiplicador.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} {un.curto} × {formatBRL(custoBase)}
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-end justify-between gap-2 md:border-l md:border-border md:pl-3">
@@ -118,8 +149,11 @@ export function ListaVariacoes({
                 <div className="text-sm space-y-1.5">
                   <DetalhamentoPrecificacao
                     aberto
-                    onToggle={() => {}}
-                    componentes={null}
+                    componentes={[
+                      { id: "produto", nome: `Produto (${v.multiplicador.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} ${un.curto})`, quantidade: 1, custoUnitario: partes.produto },
+                      ...(partes.embalagem > 0 ? [{ id: "embalagem", nome: "Embalagem", quantidade: 1, custoUnitario: partes.embalagem }] : []),
+                      ...(partes.insumos > 0 ? [{ id: "insumos", nome: "Insumos", quantidade: 1, custoUnitario: partes.insumos }] : []),
+                    ]}
                     custoTotal={resultado.custoTotal}
                     taxaVariavelValor={resultado.taxaVariavelValor}
                     taxaVariavelPct={taxas.taxaVariavelPct}
@@ -197,18 +231,23 @@ function Campo({ rotulo, className = "", children }: { rotulo: string; className
  */
 export function EscadaPrecos({
   variacoes,
+  unidade,
   calcular,
   canal,
   acoes,
 }: {
   variacoes: VariacaoLinha[];
+  unidade: UnidadeBase;
   calcular: (v: VariacaoLinha) => ResultadoVariacao;
   canal: string | null;
   /** Botões de salvar e o indicador do rascunho. */
   acoes: ReactNode;
 }) {
+  const un = unidadeBase(unidade);
   const linhas = variacoes.map((v) => ({ v, r: calcular(v).resultado }));
-  const unidade = linhas.find((l) => l.v.multiplicador === 1 && l.r.viavel);
+  // Referência da economia: a menor quantidade viável (a "unidade avulsa", ou 250 g no granel).
+  const base = linhas.filter((l) => l.r.viavel && l.v.multiplicador > 0).sort((a, b) => a.v.multiplicador - b.v.multiplicador)[0];
+  const precoPorUn = (l: { v: VariacaoLinha; r: { precoVenda: number } }) => l.r.precoVenda / l.v.multiplicador;
   const inviaveis = linhas.filter((l) => !l.r.viavel).length;
   const lucroMin = linhas.filter((l) => l.r.viavel).reduce((m, l) => Math.min(m, l.r.lucroLiquido), Infinity);
 
@@ -222,7 +261,7 @@ export function EscadaPrecos({
       <ul className="mt-3 divide-y divide-border">
         {linhas.map(({ v, r }) => {
           const porUnidade = r.viavel && v.multiplicador > 0 ? r.precoVenda / v.multiplicador : 0;
-          const economia = unidade && v.multiplicador > 1 && porUnidade > 0 ? 1 - porUnidade / unidade.r.precoVenda : null;
+          const economia = base && v.multiplicador > base.v.multiplicador && porUnidade > 0 ? 1 - porUnidade / precoPorUn(base) : null;
           return (
             <li key={v.id} className="flex items-center justify-between gap-3 py-2.5">
               <div className="min-w-0">
@@ -230,7 +269,7 @@ export function EscadaPrecos({
                 <div className="text-xs text-text-tertiary">
                   {r.viavel ? (
                     <>
-                      {v.multiplicador > 1 ? `${formatBRL(porUnidade)}/un` : "por unidade"}
+                      {un.fracionada || v.multiplicador !== 1 ? `${formatBRL(porUnidade)}/${un.curto}` : `por ${un.rotulo.toLowerCase()}`}
                       {economia !== null && economia > 0.0005 && <span className="text-positive"> · {pct(economia)} mais barato</span>}
                       {economia !== null && economia < -0.0005 && <span className="text-negative"> · {pct(-economia)} mais caro</span>}
                     </>

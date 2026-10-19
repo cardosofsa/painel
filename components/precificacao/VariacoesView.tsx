@@ -8,7 +8,11 @@ import { formatBRL, numeroOuNulo } from "@/lib/format";
 import { margemAtingida, type ModoCalculo } from "@/lib/pricing";
 import {
   calcularVariacao,
+  custoDaVariacao,
+  UNIDADES_BASE,
+  unidadeBase,
   type ConfigVariacoes,
+  type UnidadeBase,
   type VariacaoLinha,
 } from "@/lib/precificacao-variacoes";
 import { type ResumoExport, useExportarPrecificacao } from "@/components/precificacao/resultado-compartilhado";
@@ -65,6 +69,8 @@ export function VariacoesView({
   const [modoTaxas, setModoTaxas] = useState<"manual" | "loja">("manual");
   const [lojaId, setLojaId] = useState<string | null>(null);
   const [custoUnitarioBase, setCustoUnitarioBase] = useState(10);
+  // A que se refere o custo base: produto a granel é por kg ou litro, e cada variação diz quanto leva.
+  const [unidade, setUnidade] = useState<UnidadeBase>("un");
   const [taxaFixa, setTaxaFixa] = useState(4);
   const [taxaVariavelPct, setTaxaVariavelPct] = useState(20);
   const [taxaAdicionalPct, setTaxaAdicionalPct] = useState(0);
@@ -94,7 +100,7 @@ export function VariacoesView({
     if (!nomeAnuncio.trim()) setNomeAnuncio(p.nome);
   }
 
-  const instantaneo = { nomeAnuncio, tituloAnuncio, descricaoAnuncio, produtoId, modoTaxas, lojaId, custoUnitarioBase, taxaFixa, taxaVariavelPct, taxaAdicionalPct, impostoPct, modo, margemPct, markupPct, lucroDesejado, precoFixo, variacoes };
+  const instantaneo = { nomeAnuncio, tituloAnuncio, descricaoAnuncio, produtoId, modoTaxas, lojaId, custoUnitarioBase, unidade, taxaFixa, taxaVariavelPct, taxaAdicionalPct, impostoPct, modo, margemPct, markupPct, lucroDesejado, precoFixo, variacoes };
   // Depois de salvar, o nome volta a vazio: sem nome não há o que guardar.
   const temConteudo = !!nomeAnuncio.trim();
   const aba = useRascunhoDaAba({
@@ -117,6 +123,7 @@ export function VariacoesView({
       setLojaId(lojaValida);
       setModoTaxas(d.modoTaxas === "loja" && lojaValida ? "loja" : "manual");
       setCustoUnitarioBase(lerNumero(d.custoUnitarioBase, 10));
+      setUnidade(UNIDADES_BASE.find((u) => u.id === d.unidade)?.id ?? "un");
       setTaxaFixa(lerNumero(d.taxaFixa, 4));
       setTaxaVariavelPct(lerNumero(d.taxaVariavelPct, 20));
       setTaxaAdicionalPct(lerNumero(d.taxaAdicionalPct, 0));
@@ -128,7 +135,15 @@ export function VariacoesView({
       setPrecoFixo(lerNumero(d.precoFixo, 99.9));
       const lidas = lerLista<VariacaoLinha>(d.variacoes, (x) =>
         typeof x.id === "string" && typeof x.nome === "string"
-          ? { id: x.id, nome: x.nome, multiplicador: lerNumero(x.multiplicador, 1), custoManual: typeof x.custoManual === "number" ? x.custoManual : null, parametroOverride: typeof x.parametroOverride === "number" ? x.parametroOverride : null }
+          ? {
+              id: x.id,
+              nome: x.nome,
+              multiplicador: lerNumero(x.multiplicador, 1),
+              custoManual: typeof x.custoManual === "number" ? x.custoManual : null,
+              parametroOverride: typeof x.parametroOverride === "number" ? x.parametroOverride : null,
+              embalagem: lerNumero(x.embalagem, 0),
+              insumos: lerNumero(x.insumos, 0),
+            }
           : null,
       );
       setVariacoes(lidas.length ? lidas : VARIACOES_INICIAIS);
@@ -173,6 +188,8 @@ export function VariacoesView({
         // no INSERT. `numeroOuNulo` converte vírgula e recusa qualquer coisa não finita.
         if (campo === "multiplicador") return { ...v, multiplicador: numeroOuNulo(valor) ?? 1 };
         if (campo === "parametroOverride") return { ...v, parametroOverride: numeroOuNulo(valor) };
+        if (campo === "embalagem") return { ...v, embalagem: numeroOuNulo(valor) ?? 0 };
+        if (campo === "insumos") return { ...v, insumos: numeroOuNulo(valor) ?? 0 };
         return { ...v, custoManual: numeroOuNulo(valor) };
       }),
     );
@@ -205,14 +222,18 @@ export function VariacoesView({
 
   function salvarAnuncio() {
     if (!podeSalvar) {
-      toast.error("Preencha o nome do anúncio, o custo unitário base e adicione ao menos uma variação");
+      toast.error("Preencha o nome do anúncio, o custo base e adicione ao menos uma variação");
       return;
     }
     const variacoesInput: VariacaoInput[] = variacoes.map((v) => {
       const { custo, resultado, taxas } = calcular(v);
+      const partes = custoDaVariacao(custoUnitarioBase, v);
       return {
         nome_variacao: v.nome,
         multiplicador: v.multiplicador,
+        unidade,
+        custo_embalagem: partes.embalagem,
+        custo_insumos: partes.insumos,
         custo,
         taxa_variavel_pct: taxas.taxaVariavelPct,
         taxa_fixa: taxas.taxaFixa,
@@ -234,7 +255,7 @@ export function VariacoesView({
           nome_anuncio: nomeAnuncio,
           titulo_anuncio: tituloAnuncio.trim() || null,
           descricao: descricaoAnuncio.trim() || null,
-          componentes_base: [{ id: "base", nome: "Custo unitário base", quantidade: 1, custoUnitario: custoUnitarioBase }],
+          componentes_base: [{ id: "base", nome: `Custo base por ${unidadeBase(unidade).curto}`, quantidade: 1, custoUnitario: custoUnitarioBase }],
           variacoes: variacoesInput,
         }),
         { sucesso: "Anúncio com variações salvo", erro: "Erro ao salvar anúncio" },
@@ -268,7 +289,7 @@ export function VariacoesView({
             <FormField label="Nome do anúncio *">
               <input value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} placeholder="Ex.: Óleo para Barba" className={inputClass} />
             </FormField>
-            <FormField label="Produto (opcional)" dica="Sem cadastro? Deixe vazio e informe o custo unitário base.">
+            <FormField label="Produto (opcional)" dica="Sem cadastro? Deixe vazio e informe o custo base.">
               <Combobox
                 key={produtoId ?? "nenhum"}
                 itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
@@ -277,9 +298,20 @@ export function VariacoesView({
                 placeholder="Buscar produto pelo nome ou SKU…"
               />
             </FormField>
-            <FormField label="Custo unitário base (R$) *">
-              <CampoNumero value={custoUnitarioBase} onChange={setCustoUnitarioBase} min={0} casas={2} />
-            </FormField>
+            <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] gap-2">
+              <FormField label={`Custo por ${unidadeBase(unidade).curto} (R$) *`} dica="Só o produto. Embalagem e insumos vão em cada variação.">
+                <CampoNumero value={custoUnitarioBase} onChange={setCustoUnitarioBase} min={0} casas={2} />
+              </FormField>
+              <FormField label="Vendido por" dica={unidadeBase(unidade).fracionada ? "0,5 = meia unidade" : undefined}>
+                <select value={unidade} onChange={(e) => setUnidade(e.target.value as UnidadeBase)} className={inputClass}>
+                  {UNIDADES_BASE.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.rotulo}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </div>
             <FormField label="Título do anúncio (opcional)">
               <input value={tituloAnuncio} onChange={(e) => setTituloAnuncio(e.target.value)} className={inputClass} />
             </FormField>
@@ -344,6 +376,8 @@ export function VariacoesView({
         <Passo n={4} titulo="Variações" resumo={`${variacoes.length} variaç${variacoes.length === 1 ? "ão" : "ões"}`} ultimo>
           <ListaVariacoes
             variacoes={variacoes}
+            unidade={unidade}
+            custoBase={custoUnitarioBase}
             modo={modo}
             parametroPadrao={parametroPadrao}
             calcular={calcular}
@@ -363,6 +397,7 @@ export function VariacoesView({
       <div className="lg:sticky lg:top-20">
         <EscadaPrecos
           variacoes={variacoes}
+          unidade={unidade}
           calcular={calcular}
           canal={canal}
           acoes={

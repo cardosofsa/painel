@@ -251,6 +251,10 @@ export async function criarProdutosDeAnuncio(anuncioId: string) {
 export interface VariacaoInput {
   nome_variacao: string;
   multiplicador: number;
+  /** 0111: unidade do custo base e custos fixos por variação. */
+  unidade?: "un" | "cx" | "kg" | "l";
+  custo_embalagem?: number;
+  custo_insumos?: number;
   custo: number;
   taxa_variavel_pct: number;
   taxa_fixa: number;
@@ -295,7 +299,23 @@ export async function criarAnuncio(dados: AnuncioInput) {
     if (!anuncio) throw new Error("Erro ao criar anúncio.");
 
     const variacoes = v.variacoes.map((item) => ({ ...item, anuncio_id: anuncio.id }));
-    const { error: erroVariacoes } = await supabase.from("anuncio_variacoes").insert(variacoes);
+    let { error: erroVariacoes } = await supabase.from("anuncio_variacoes").insert(variacoes);
+    // Sem a 0111: as colunas novas não existem e a quantidade é inteira. Se nada disso foi
+    // usado, grava como antes; se foi, avisa (e tira o anúncio que ficaria sem variações).
+    if (erroVariacoes && (erroVariacoes.code === "PGRST204" || erroVariacoes.code === "42703" || erroVariacoes.code === "22P02")) {
+      const usaNovo = v.variacoes.some((x) => (x.unidade ?? "un") !== "un" || (x.custo_embalagem ?? 0) > 0 || (x.custo_insumos ?? 0) > 0 || !Number.isInteger(x.multiplicador));
+      if (usaNovo) {
+        await supabase.from("anuncios").delete().eq("id", anuncio.id);
+        throw new Error("Unidade, quantidade fracionada, embalagem e insumos nas variações precisam da migração 0111. Aplique no Supabase e salve de novo.");
+      }
+      ({ error: erroVariacoes } = await supabase.from("anuncio_variacoes").insert(variacoes.map((x) => {
+          const resto: Partial<typeof x> = { ...x };
+          delete resto.unidade;
+          delete resto.custo_embalagem;
+          delete resto.custo_insumos;
+          return resto;
+        })));
+    }
     if (erroVariacoes) lancarErroSupabase(erroVariacoes);
 
     revalidatePath("/precificacao");
