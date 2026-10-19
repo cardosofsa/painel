@@ -6,7 +6,7 @@
  * estratégia. Nenhum dado de cliente final vai ao prompt. Título sugerido que passa do limite
  * ou tem termo barrado é descartado na leitura.
  */
-import { regrasAtivas, verificarTextos } from "@/lib/conformidade/termos";
+import { regrasDoPerfil, verificarTextos, type TermosDoPerfil } from "@/lib/conformidade/termos";
 import { hashTexto, lerObjetoJson, linhas, truncarEmPalavra } from "./texto";
 
 export interface ContextoAnaliseIA {
@@ -88,9 +88,9 @@ const texto = (v: unknown, max: number) => (typeof v === "string" ? truncarEmPal
 const ABAS: AbaAnalise[] = ["titulo", "imagens", "preco", "estrategia"];
 
 /** Nunca lança. Título longo demais ou com termo barrado (da base ou do usuário) é descartado. */
-export function interpretarAnalise(bruto: string, limite: number, termosProibidos: readonly string[]): NarracaoAnalise {
+export function interpretarAnalise(bruto: string, limite: number, termos: TermosDoPerfil | null): NarracaoAnalise {
   const obj = lerObjetoJson(bruto) ?? {};
-  const regras = regrasAtivas([], termosProibidos);
+  const regras = regrasDoPerfil(termos);
   const titulos: string[] = [];
   for (const t of Array.isArray(obj.titulos) ? obj.titulos : []) {
     const s = typeof t === "string" ? t.replace(/\s+/g, " ").trim() : "";

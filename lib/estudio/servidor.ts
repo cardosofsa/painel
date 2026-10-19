@@ -5,6 +5,7 @@ import { regrasDaPlataforma, type PlataformaMarcaId, type RegrasPlataforma } fro
 import { estadoRascunhoSchema, type EstadoRascunho } from "@/lib/validacao";
 import type { AcaoProposta } from "@/lib/ia/prompts-assistente";
 import { statusDoRascunho } from "@/lib/anuncio/etapas";
+import { termosDoPerfil, type TermosDoPerfil } from "@/lib/conformidade/termos";
 import { precosPorLoja, type SituacaoPrecoLoja } from "@/lib/precos-loja";
 import { carregarLojaParaPreco } from "@/lib/precos-loja-servidor";
 
@@ -53,7 +54,7 @@ export interface ContextoRascunho {
   userId: string;
   rascunho: { id: string; produto_id: string; perfil_id: string | null; titulo: string | null; descricao: string | null; status: string; estado: EstadoRascunho; atualizadoEm: string };
   produto: { id: string; nome: string; variante: string | null; categoria: string | null; imagemUrl: string | null; palavrasChave: string[]; precoVenda: number | null; sku: string | null; estoque: number; pesoG: number | null; alturaCm: number | null; larguraCm: number | null; comprimentoCm: number | null };
-  perfil: { id: string; nome: string; plataforma: PlataformaMarcaId; lojaId: string | null; nicho: string | null; termosProibidos: string[]; logoPath: string | null } | null;
+  perfil: { id: string; nome: string; plataforma: PlataformaMarcaId; lojaId: string | null; nicho: string | null; termos: TermosDoPerfil; logoPath: string | null } | null;
   plataforma: RegrasPlataforma;
   memoria: string[];
   fichaCapa1: FichaMarca;
@@ -88,11 +89,12 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
 
   const [produtoRes, perfilRes] = await Promise.all([
     supabase.from("produtos").select("id, nome, sku, estoque, variante_nome, imagem_url, palavras_chave, preco_venda, peso_g, altura_cm, largura_cm, comprimento_cm, categorias(nome)").eq("id", r.produto_id).maybeSingle(),
-    r.perfil_id ? supabase.from("perfis_marca").select("id, nome, plataforma, loja_id, nicho, termos_proibidos, logo_path").eq("id", r.perfil_id).maybeSingle() : Promise.resolve({ data: null }),
+    r.perfil_id ? // "*": as colunas de termos da 0103 só vêm depois dela.
+    supabase.from("perfis_marca").select("*").eq("id", r.perfil_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const p = produtoRes.data as { id: string; nome: string; sku: string | null; estoque: number | null; variante_nome: string | null; imagem_url: string | null; palavras_chave: string[] | null; preco_venda: number | null; peso_g: number | null; altura_cm: number | null; largura_cm: number | null; comprimento_cm: number | null; categorias: { nome: string } | null } | null;
   if (!p) throw erro("Produto não encontrado.");
-  const perfil = perfilRes.data as { id: string; nome: string; plataforma: PlataformaMarcaId; loja_id: string | null; nicho: string | null; termos_proibidos: string[] | null; logo_path: string | null } | null;
+  const perfil = perfilRes.data as { id: string; nome: string; plataforma: PlataformaMarcaId; loja_id: string | null; nicho: string | null; termos_proibidos: string[] | null; logo_path: string | null; presets?: unknown; presets_gravidade?: unknown; termos_bloqueados?: unknown } | null;
 
   const [memoriaRes, fichasRes] = await Promise.all([
     supabase.from("marca_memoria").select("texto, perfil_id").eq("ativo", true).or(perfil ? `perfil_id.is.null,perfil_id.eq.${perfil.id}` : "perfil_id.is.null").order("criado_em", { ascending: false }).limit(20),
@@ -106,7 +108,7 @@ export async function carregarContextoRascunho(supabase: SupabaseClient, rascunh
     userId,
     rascunho: { id: r.id, produto_id: r.produto_id, perfil_id: r.perfil_id, titulo: r.titulo ?? null, descricao: r.descricao ?? null, status: r.status ?? "rascunho", estado: lerEstado(r.estado), atualizadoEm: r.atualizado_em },
     produto: { id: p.id, nome: p.nome, variante: p.variante_nome, categoria: p.categorias?.nome ?? null, imagemUrl: p.imagem_url, palavrasChave: p.palavras_chave ?? [], precoVenda: p.preco_venda != null ? Number(p.preco_venda) : null, sku: p.sku, estoque: Number(p.estoque ?? 0), pesoG: p.peso_g != null ? Number(p.peso_g) : null, alturaCm: p.altura_cm != null ? Number(p.altura_cm) : null, larguraCm: p.largura_cm != null ? Number(p.largura_cm) : null, comprimentoCm: p.comprimento_cm != null ? Number(p.comprimento_cm) : null },
-    perfil: perfil ? { id: perfil.id, nome: perfil.nome, plataforma: perfil.plataforma, lojaId: perfil.loja_id, nicho: perfil.nicho, termosProibidos: perfil.termos_proibidos ?? [], logoPath: perfil.logo_path } : null,
+    perfil: perfil ? { id: perfil.id, nome: perfil.nome, plataforma: perfil.plataforma, lojaId: perfil.loja_id, nicho: perfil.nicho, termos: termosDoPerfil(perfil), logoPath: perfil.logo_path } : null,
     plataforma: regrasDaPlataforma(perfil?.plataforma ?? "shopee"),
     memoria: ((memoriaRes.data ?? []) as { texto: string }[]).map((m) => m.texto),
     fichaCapa1: mesclarFicha(geral, capa1),

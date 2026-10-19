@@ -7,14 +7,14 @@ import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmModal";
 import { inputClass } from "@/components/ui/Modal";
-import { regrasAtivas } from "@/lib/conformidade/termos";
+import { regrasDoPerfil, type TermosDoPerfil } from "@/lib/conformidade/termos";
 import { avaliarDescricao, MINIMO_DESCRICAO } from "@/lib/ia/prompts-descricao-estudio";
 import { numeroDaEtapa } from "@/lib/anuncio/etapas";
 
 /** O texto editável. `key` no consumidor: uma geração nova (ou uma descrição salva) remonta com o texto novo. */
-function Editor({ inicial, limite, termos, ocupado, onSalvar, onEditado }: { inicial: string; limite: number; termos: string[]; ocupado: boolean; onSalvar: (texto: string) => void; onEditado: (texto: string | null) => void }) {
+function Editor({ inicial, limite, termos, ocupado, onSalvar, onEditado }: { inicial: string; limite: number; termos: TermosDoPerfil; ocupado: boolean; onSalvar: (texto: string) => void; onEditado: (texto: string | null) => void }) {
   const [texto, setTexto] = useState(inicial);
-  const avaliacao = useMemo(() => avaliarDescricao(texto, { limite, regras: regrasAtivas([], termos) }), [texto, limite, termos]);
+  const avaliacao = useMemo(() => avaliarDescricao(texto, { limite, regras: regrasDoPerfil(termos) }), [texto, limite, termos]);
 
   return (
     <div>
@@ -75,7 +75,7 @@ export function PainelDescricao({
   geradaTexto: string | null;
   versao: number;
   limite: number;
-  termos: string[];
+  termos: TermosDoPerfil;
   titulo: string | null;
   iaDisponivel: boolean;
   ocupado: boolean;

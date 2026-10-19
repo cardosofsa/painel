@@ -147,12 +147,12 @@ Esses pontos ficam com você e estão marcados em cada fase.
 | A4 ✔ | O preço enviado à Shopee é o do cadastro, sem mostrar lucro (`shopee-actions.ts:171`) | Alto | Preço por loja (seção 4) |
 | A5 | Estoque e medidas não conferidos antes de criar o item (`shopee-criar-puro.ts:149-167`) | Médio | Entram na lista de pendências |
 | A6 | `status` nunca muda; a etapa 6 só fica feita via API | Médio | Gravar `pronto`/`publicado`; botão "Publiquei manualmente" |
-| A7 | Termos proibidos nunca bloqueiam; presets sempre `[]` | Médio | Gravidade e presets por perfil (migração) |
+| A7 ✔ | Termos proibidos nunca bloqueiam; presets sempre `[]` | Médio | Gravidade e presets por perfil (migração) |
 | A8 | Numeração dos painéis difere do trilho; Capa e Descrição liberadas sem título | Médio | Numeração única; `etapas.ts` com teste |
 | A9 | Capa sem retorno de carregamento; composição que falha perde a imagem (`PainelCapa:149-152`) | Médio | `loading` certo e "desenhar de novo" sem nova cota |
 | A10 | "Gerar outra" descarta a edição; apagar memória não confirma; não há "Descartar rascunho" | Médio | `useConfirm` e ação de descarte |
 | A11 | Erro de IA só em toast; a cota só aparece depois de gastar | Médio | Erro fixo com "Tentar de novo" e cota visível antes |
-| A12 | A lista mostra só 6 rascunhos | Baixo | Lista completa com filtro |
+| A12 ✔ | A lista mostra só 6 rascunhos | Baixo | Lista completa com filtro |
 | A13 | Ícones sem `aria-hidden`; lista de produtos vazia sem `EmptyState` | Baixo | Ajustar |
 | A14 ✔ | `anuncios` (Variações) e `anuncio_rascunhos` (Infinito) são coisas diferentes com o mesmo nome | Médio | Renomear na tela para "Grupo de variações" |
 
@@ -595,3 +595,13 @@ A 0101 foi aplicada pelo dono (conferido). Protótipo com dados da conta de test
 - **Variações**: passo 4 "Variações" com um cartão por variação (o que se digita à esquerda, preço/lucro/margem à direita; valor próprio destacado) e o detalhamento ao abrir. À direita, a **escada de preços** fixa: cada variação, o preço por unidade e quanto sai mais barato que a unidade, mais Salvar variações e o rascunho.
 - `Combobox`: clicar no campo já focado reabre a lista (antes, depois de escolher um item, era preciso sair e voltar ao campo).
 - **Migração 0103** (`perfis_marca.presets`, `presets_gravidade`, `termos_bloqueados`) escrita e testada (`scripts/sql/termos-perfil.mjs`, PGlite 2×), enviada ao dono para aplicar. O código que usa as colunas vem na fase 8.
+
+## 21. Fase 8 concluída: Anúncio redesenhado + termos que bloqueiam
+
+- **0103 aplicada pelo dono** (conferido: o perfil salva e relê presets, gravidade e termos que bloqueiam).
+- **A7** (`lib/conformidade/termos.ts` + teste): `TermosDoPerfil` (presets ligados, gravidade dos presets, termos que pedem revisão e termos que bloqueiam), `termosDoPerfil` (leitura defensiva da linha; antes da 0103 as colunas não vêm), `regrasDoPerfil` (o termo que bloqueia vence o mesmo termo em "revisar") e `termosParaEvitar` (o que vai no prompt da IA). Os servidores leem `perfis_marca` com `*`. Bloqueiam: escolher título, salvar descrição, textos da capa, título vindo da Análise e **criar na Shopee** (título e descrição conferidos de novo no servidor). A mensagem diz o trecho e o motivo, em vez de sempre "as plataformas costumam barrar".
+- **Perfil**: seção "Termos que você não quer ver" com duas listas (Bloqueiam · Pedem revisão) e os conjuntos prontos como caixas de ligar, com "Pedem revisão / Bloqueiam". Sem a 0103, salvar com esses campos explica que falta a migração; sem eles, salva o resto.
+- **A12**: "Seus anúncios" lista todos os rascunhos (até 500), com busca, filtro por status com contagem, barra de progresso das etapas e "Mostrar mais". "Meus anúncios na loja" ganhou busca e "Mostrar mais" (antes, 20 fixos).
+- **Redesenho (seção 9)**: a página Anúncio virou lista principal + atalhos (Meu padrão, O que replicar) ao lado. No Infinito, progresso, IA de texto e imagens do mês ficam em três quadros fixos no topo; os concorrentes viraram uma gaveta dentro do cartão do Título (abre sozinha ao pesquisar). "Etapa X de 6" no celular e a ordem do Revisar já vinham da fase 5.
+- **Corrigido**: no `Combobox` dentro de um `<label>`, escolher uma opção reabria a lista (o clique é repassado ao campo), cobrindo o botão de baixo.
+- **E2E** `e2e/anuncio.spec.ts` (smoke, conta de teste): perfil com termo que bloqueia → rascunho → título com o termo é recusado, sem ele passa → a lista mostra o rascunho e o filtro funciona → descarta e remove o perfil. Precificação e rascunho continuam passando.

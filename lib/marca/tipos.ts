@@ -12,6 +12,10 @@ export interface PerfilMarca {
   logo_path: string | null;
   referencias: string[];
   termos_proibidos: string[];
+  /** Da 0103: ausentes antes dela (leia com `termosDoPerfil`). */
+  presets?: string[];
+  presets_gravidade?: string;
+  termos_bloqueados?: string[];
 }
 
 export interface MemoriaMarca {

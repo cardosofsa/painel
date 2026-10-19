@@ -1,3 +1,4 @@
+import { TERMOS_VAZIOS } from "@/lib/conformidade/termos";
 import { describe, expect, it } from "vitest";
 import { hashContextoAnalise, interpretarAnalise, interpretarCapa, montarPromptAnalise, type ContextoAnaliseIA } from "./prompts-analise-anuncio";
 
@@ -28,7 +29,7 @@ describe("prompt da análise", () => {
       titulos: ["Caneca de Cerâmica Presente 325 ml Café", "Caneca chame no WhatsApp para pedir já", "x".repeat(80), "caneca de cerâmica presente 325 ml café", "Caneca que cura dor de cabeça e insônia"],
       estrategia: [{ aba: "preco", acao: "Subir até o ideal", motivo: "Margem de 16,7%" }, { aba: "qualquer", acao: "Repor estoque", motivo: "" }, { aba: "titulo", acao: "", motivo: "x" }],
     });
-    const r = interpretarAnalise(bruto, 60, ["cura"]);
+    const r = interpretarAnalise(bruto, 60, { ...TERMOS_VAZIOS, revisar: ["cura"] });
     expect(r.titulos).toEqual(["Caneca de Cerâmica Presente 325 ml Café"]);
     expect(r.estrategia).toEqual([
       { aba: "preco", acao: "Subir até o ideal", motivo: "Margem de 16,7%" },
@@ -37,7 +38,7 @@ describe("prompt da análise", () => {
   });
 
   it("resposta quebrada vira vazio sem lançar; cache ignora poeira", () => {
-    expect(interpretarAnalise("não é json", 60, [])).toEqual({ diagnostico: "", titulos: [], estrategia: [] });
+    expect(interpretarAnalise("não é json", 60, null)).toEqual({ diagnostico: "", titulos: [], estrategia: [] });
     const outro = { ...ctx, preco: { ...ctx.preco!, atual: 59.9004 } };
     expect(hashContextoAnalise(outro)).toBe(hashContextoAnalise(ctx));
   });

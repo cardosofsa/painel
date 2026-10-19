@@ -9,7 +9,7 @@ import { validar } from "@/lib/validacao";
 import { carregarAnalise, contextoDaAnalise } from "@/lib/analise-servidor";
 import { gerarAnaliseAnuncioIA, gerarAnaliseCapaIA } from "@/lib/ia/gerar";
 import { ErroIA } from "@/lib/ia/erro";
-import { regrasAtivas, temBloqueio, verificarTextos } from "@/lib/conformidade/termos";
+import { regrasDoPerfil, temBloqueio, verificarTextos } from "@/lib/conformidade/termos";
 import { tokenDaConexao, type ConexaoShopee } from "@/lib/marketplace/tokens";
 import { plataformaDa } from "@/lib/marketplace/conexao-api";
 import { buscarImagensItem } from "@/lib/marketplace/shopee-api";
@@ -34,7 +34,7 @@ export async function gerarAnaliseTextoIA(entrada: unknown) {
   return comResultado(async () => {
     const v = validar(alvoSchema.extend({ total_imagens: z.number().int().min(0).max(30).nullable() }), entrada);
     const { supabase, d } = await dados(v.anuncio_id);
-    const r = await gerarAnaliseAnuncioIA(supabase, contextoDaAnalise(d, v.total_imagens), d.perfil?.termosProibidos ?? []);
+    const r = await gerarAnaliseAnuncioIA(supabase, contextoDaAnalise(d, v.total_imagens), d.perfil?.termos ?? null);
     return { narracao: r.narracao, doCache: r.doCache, usadas: r.usadas, limite: r.limite, origem: r.origem };
   });
 }
@@ -101,8 +101,8 @@ export async function usarTituloNoInfinito(entrada: unknown) {
     const v = validar(alvoSchema.extend({ titulo: z.string().trim().min(3).max(200) }), entrada);
     const { supabase, d } = await dados(v.anuncio_id);
     if (v.titulo.length > d.plataforma.limiteTitulo) throw new Error(`O título passa de ${d.plataforma.limiteTitulo} caracteres.`);
-    const violacoes = verificarTextos([{ campo: "Título", texto: v.titulo, tipo: "texto" }], regrasAtivas([], d.perfil?.termosProibidos ?? []));
-    if (temBloqueio(violacoes)) throw new Error(`O título tem algo que as plataformas costumam barrar: “${violacoes[0].trecho}”.`);
+    const violacoes = verificarTextos([{ campo: "Título", texto: v.titulo, tipo: "texto" }], regrasDoPerfil(d.perfil?.termos));
+    if (temBloqueio(violacoes)) throw new Error(`O título tem “${violacoes[0].trecho}” (${violacoes[0].motivo.toLowerCase()}).`);
     const perfilId = d.perfil?.id ?? null;
     let consulta = supabase.from("anuncio_rascunhos").select("id").eq("produto_id", d.ajuste.produto.id).order("atualizado_em", { ascending: false }).limit(1);
     consulta = perfilId ? consulta.eq("perfil_id", perfilId) : consulta.is("perfil_id", null);

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
 import { inputClass } from "@/components/ui/Modal";
-import { regrasAtivas, temBloqueio, verificarTextos } from "@/lib/conformidade/termos";
+import { regrasDoPerfil, temBloqueio, verificarTextos, type TermosDoPerfil } from "@/lib/conformidade/termos";
 
 const EXEMPLO_LIMPO = "Organizador de Gaveta Modular 6 Peças – Plástico Resistente, Fácil de Limpar";
 const EXEMPLO_COM_PROBLEMA = "Melhor do Brasil! Cura ansiedade, 100% garantido, frete grátis, o mais barato do mercado";
@@ -14,10 +14,10 @@ const EXEMPLO_COM_PROBLEMA = "Melhor do Brasil! Cura ansiedade, 100% garantido, 
  * aparece algo das regras gerais de marketplace ou dos termos que você marcou. É uma primeira
  * barreira automática: a revisão final continua sendo sua.
  */
-export function ConferirTexto({ termosDoPerfil }: { termosDoPerfil: string[] }) {
+export function ConferirTexto({ termosDoPerfil }: { termosDoPerfil: TermosDoPerfil }) {
   const [texto, setTexto] = useState("");
   const [tipo, setTipo] = useState<"texto" | "imagem">("texto");
-  const violacoes = useMemo(() => verificarTextos([{ campo: tipo === "imagem" ? "Texto da imagem" : "Texto", texto, tipo }], regrasAtivas([], termosDoPerfil)), [texto, tipo, termosDoPerfil]);
+  const violacoes = useMemo(() => verificarTextos([{ campo: tipo === "imagem" ? "Texto da imagem" : "Texto", texto, tipo }], regrasDoPerfil(termosDoPerfil)), [texto, tipo, termosDoPerfil]);
 
   return (
     <Card>
@@ -55,13 +55,13 @@ export function ConferirTexto({ termosDoPerfil }: { termosDoPerfil: string[] }) 
                 <li key={`${v.campo}-${v.termo}`} className="flex gap-2">
                   <AlertTriangle size={14} className={`mt-0.5 shrink-0 ${v.gravidade === "bloquear" ? "text-negative" : "text-text-secondary"}`} aria-hidden />
                   <span className="text-text-primary">
-                    <strong>{v.gravidade === "bloquear" ? "Evite" : "Revise"}:</strong> “{v.trecho}” — {v.motivo.toLowerCase()}.
+                    <strong>{v.gravidade === "bloquear" ? "Bloqueia" : "Revise"}:</strong> “{v.trecho}” — {v.motivo.toLowerCase()}.
                   </span>
                 </li>
               ))}
             </ul>
           )}
-          {temBloqueio(violacoes) && <p className="text-xs text-text-tertiary mt-2">“Evite” são regras gerais que as plataformas costumam barrar; “Revise” vêm dos termos que você marcou.</p>}
+          {temBloqueio(violacoes) && <p className="text-xs text-text-tertiary mt-2">“Bloqueia” vem das regras gerais que as plataformas costumam barrar ou dos termos que você marcou para bloquear: com ele, o título não é salvo nem vai para a Shopee. “Revise” é só aviso.</p>}
         </div>
       )}
     </Card>

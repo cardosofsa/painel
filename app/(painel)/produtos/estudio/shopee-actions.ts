@@ -6,6 +6,7 @@ import { comResultado } from "@/lib/acao";
 import { validar, escolhasShopeeSchema, rascunhoIdSchema } from "@/lib/validacao";
 import { carregarContextoRascunho, caminhoDoUsuario, gravarEstado, precoDoAnuncio, sincronizarStatus, type ContextoRascunho } from "@/lib/estudio/servidor";
 import { plataformaDa } from "@/lib/marketplace/conexao-api";
+import { regrasDoPerfil, verificarTextos } from "@/lib/conformidade/termos";
 import { tokenDaConexao, type ConexaoShopee } from "@/lib/marketplace/tokens";
 import type { CredenciaisShopee } from "@/lib/marketplace/shopee-api";
 import {
@@ -183,6 +184,15 @@ export async function criarNaoListadoShopee(entrada: unknown) {
     };
     const falta = conferirEntradaCriacao({ ...base, imagens: capas.map((x) => x.finalPath as string) });
     if (falta.length) throw new Error(falta.join(" "));
+    // Termo que bloqueia (da base, de um preset ligado como "bloquear" ou da lista do perfil) não vai para a Shopee.
+    const barrados = verificarTextos(
+      [
+        { campo: "Título", texto: base.titulo, tipo: "texto" },
+        { campo: "Descrição", texto: base.descricao, tipo: "texto" },
+      ],
+      regrasDoPerfil(ctx.perfil?.termos),
+    ).filter((x) => x.gravidade === "bloquear");
+    if (barrados.length) throw new Error(`${barrados[0].campo} tem “${barrados[0].trecho}” (${barrados[0].motivo.toLowerCase()}). Ajuste antes de criar na Shopee.`);
 
     let itemId: number | null = null;
     try {

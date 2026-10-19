@@ -4,7 +4,7 @@
  * prioriza estes números; nada aqui depende dela.
  */
 import { avaliarTitulo, type CriterioTitulo } from "./ia/nota-titulo";
-import { regrasAtivas, verificarTextos, type Violacao } from "./conformidade/termos";
+import { regrasDoPerfil, verificarTextos, type TermosDoPerfil, type Violacao } from "./conformidade/termos";
 import { LIMIARES } from "./consultor/insights";
 import type { Tendencia } from "./demanda";
 
@@ -25,7 +25,8 @@ export interface EntradaAnalise {
   /** Palavras-chave do produto (cadastro). */
   palavrasChave: string[];
   termoPrincipal: string | null;
-  termosProibidos: string[];
+  /** Termos do perfil da loja (presets, revisar e bloquear). */
+  termos: TermosDoPerfil;
   /** Imagens: a capa sincronizada e, quando lida da Shopee, o total. */
   capa: string | null;
   totalImagens: number | null;
@@ -68,7 +69,7 @@ const IMAGENS_BOAS = 8;
 export function analisarAnuncio(e: EntradaAnalise): Analise {
   const titulo = e.titulo.trim();
   const nota = avaliarTitulo(titulo, { limite: e.limiteTitulo, termoPrincipal: e.termoPrincipal });
-  const violacoes = verificarTextos([{ campo: "Título", texto: titulo, tipo: "texto" }], regrasAtivas([], e.termosProibidos));
+  const violacoes = verificarTextos([{ campo: "Título", texto: titulo, tipo: "texto" }], regrasDoPerfil(e.termos));
   const tituloNorm = normalizar(titulo);
   const chaves = [...new Set(e.palavrasChave.map((p) => p.trim()).filter(Boolean))];
   const presentes = chaves.filter((p) => tituloNorm.includes(normalizar(p)));

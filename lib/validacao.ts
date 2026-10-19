@@ -828,6 +828,8 @@ const linkLoja = z
   .max(300, "Link longo demais")
   .regex(/^https?:\/\//i, "O link precisa começar com http:// ou https://");
 
+const listaDeTermos = z.array(z.string().trim().min(2, "Termo curto demais").max(60, "Termo longo demais")).max(100, "Até 100 termos");
+
 /** Perfil de marca: plataforma primeiro, nicho livre (opcional), link da loja e termos que ele não quer ver. */
 export const perfilMarcaSchema = z.object({
   id: z.string().uuid().nullable(),
@@ -838,7 +840,11 @@ export const perfilMarcaSchema = z.object({
   link_loja: linkLoja.nullable(),
   logo_path: z.string().trim().max(300).nullable(),
   referencias: z.array(z.string().trim().min(1).max(300)).max(8, "Até 8 imagens de referência"),
-  termos_proibidos: z.array(z.string().trim().min(2, "Termo curto demais").max(60, "Termo longo demais")).max(100, "Até 100 termos"),
+  termos_proibidos: listaDeTermos,
+  // 0103: ids dos presets ligados, se eles bloqueiam e os termos que bloqueiam.
+  presets: z.array(z.string().regex(/^[a-z0-9_-]{1,40}$/, "Conjunto inválido")).max(20).default([]),
+  presets_gravidade: z.enum(["revisar", "bloquear"]).default("revisar"),
+  termos_bloqueados: listaDeTermos.default([]),
 });
 export type PerfilMarcaInput = z.input<typeof perfilMarcaSchema>;
 

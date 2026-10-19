@@ -71,7 +71,15 @@ export function Combobox({
   const podeCriar = !!criar && texto.trim().length > 0;
   const total = filtrados.length + (podeCriar ? 1 : 0);
 
+  // Dentro de um <label> (FormField), o clique na opção é repassado ao campo e reabria a lista.
+  const acabouDeEscolher = useRef(false);
+  function marcarEscolha() {
+    acabouDeEscolher.current = true;
+    setTimeout(() => (acabouDeEscolher.current = false), 0);
+  }
+
   function escolher(item: ItemCombobox) {
+    marcarEscolha();
     onChange(item.id);
     setTexto(limparAoEscolher ? "" : item.rotulo);
     setAberto(false);
@@ -79,6 +87,7 @@ export function Combobox({
 
   function criarComTexto() {
     if (!criar) return;
+    marcarEscolha();
     criar.onCriar(texto.trim());
     setTexto("");
     setAberto(false);
@@ -122,7 +131,9 @@ export function Combobox({
           e.currentTarget.select();
         }}
         // Já focado (acabou de escolher), o foco não dispara de novo: o clique reabre a lista.
-        onClick={() => setAberto(true)}
+        onClick={() => {
+          if (!acabouDeEscolher.current) setAberto(true);
+        }}
         onBlur={() => setTimeout(() => setAberto(false), 120)}
         onChange={(e) => {
           setTexto(e.target.value);

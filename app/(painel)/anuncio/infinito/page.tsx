@@ -28,7 +28,7 @@ export default async function InfinitoPage({ searchParams }: { searchParams: Pro
       },
       { incluirFilhas: true },
     ),
-    supabase.from("perfis_marca").select("id, nome, plataforma, loja_id, nicho, link_loja, logo_path, referencias, termos_proibidos").order("nome"),
+    supabase.from("perfis_marca").select("*").order("nome"),
     supabase.from("marca_memoria").select("id, perfil_id, tipo, texto, origem, ativo").order("criado_em", { ascending: false }).limit(300),
     supabase.from("marca_fichas").select("id, perfil_id, tipo_imagem, versao, dados, ativa, origem, nota, criado_em").order("criado_em", { ascending: false }).limit(400),
     supabase.from("lojas_canal").select("id, nome, canais(nome)").order("nome"),

@@ -29,6 +29,7 @@ import { AprenderCapas } from "@/components/marca/AprenderCapas";
 import { FichaEditor } from "@/components/marca/FichaEditor";
 import { MemoriaMarcaCard } from "@/components/marca/MemoriaMarca";
 import { ConferirTexto } from "@/components/marca/ConferirTexto";
+import { termosDoPerfil } from "@/lib/conformidade/termos";
 import { executarComToast } from "@/lib/acao-cliente";
 import { calcularEtapas, ETAPAS, type EtapaId } from "@/lib/anuncio/etapas";
 import { mesclarFicha, type FichaMarca, type TipoImagemMarca } from "@/lib/marca/ficha";
@@ -138,6 +139,7 @@ export function InfinitoClient({
 
   const perfil = perfis.find((p) => p.id === aberto?.perfil) ?? null;
   const plataforma = regrasDaPlataforma(perfil?.plataforma ?? "shopee");
+  const termosPerfil = useMemo(() => termosDoPerfil(perfil), [perfil]);
   const limiteTitulo = plataforma.limiteTitulo ?? 120;
   const limiteDescricao = Math.min(plataforma.limiteDescricao ?? TETO_DESCRICAO, TETO_DESCRICAO);
 
@@ -373,7 +375,7 @@ export function InfinitoClient({
       <AberturaMarca
         eyebrow="Anúncio Infinito"
         titulo={rascunho ? rascunho.produto.nome || "Seu anúncio" : "Monte um anúncio novo"}
-        texto={`${calculo.feitas} de ${ETAPAS.length} etapas feitas. Você aprova cada passo e vê o custo antes de gastar.${textoSaldo(saldoTexto, imagensUsadas)}`}
+        texto="Você aprova cada passo e vê o custo antes de gastar."
       >
         <Button variant="secondary" onClick={() => abrirConfig("perfil")}>
           <Settings size={14} aria-hidden /> Configurações
@@ -382,6 +384,8 @@ export function InfinitoClient({
           <MessageCircle size={14} aria-hidden /> Pergunte à IA
         </Button>
       </AberturaMarca>
+
+      <FaixaSaldo feitas={calculo.feitas} total={ETAPAS.length} saldo={saldoTexto} imagens={imagensUsadas} />
 
       {!iaDisponivel && <p className="text-sm text-text-secondary mb-4">Sem IA configurada, só dá para digitar o título e ver os prompts. Configure uma IA em Configurações para gerar.</p>}
 
@@ -490,8 +494,9 @@ export function InfinitoClient({
 
           {rascunho && atual === "titulo" && (
             <>
-              <PainelTitulos key={`titulos-${rascunho.id}`} onPendente={setTituloPendente} usados={rascunho.titulosUsados} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher} />
-              <PainelConcorrentes concorrentes={estado?.concorrentes ?? []} observacao={observacao} iaDisponivel={iaDisponivel} ocupado={qual === "concorrentes"} onPesquisar={pesquisar} />
+              <PainelTitulos key={`titulos-${rascunho.id}`} onPendente={setTituloPendente} usados={rascunho.titulosUsados} titulo={rascunho.titulo} limite={limiteTitulo} resultado={titulos} iaDisponivel={iaDisponivel} ocupado={qual === "titulos"} onGerar={gerarTitulos} onEscolher={escolher}>
+                <PainelConcorrentes concorrentes={estado?.concorrentes ?? []} observacao={observacao} iaDisponivel={iaDisponivel} ocupado={qual === "concorrentes"} onPesquisar={pesquisar} />
+              </PainelTitulos>
             </>
           )}
 
@@ -520,7 +525,7 @@ export function InfinitoClient({
               geradaTexto={descGerada?.texto ?? null}
               versao={versaoDesc}
               limite={limiteDescricao}
-              termos={perfil?.termos_proibidos ?? []}
+              termos={termosPerfil}
               titulo={rascunho.titulo}
               iaDisponivel={iaDisponivel}
               ocupado={qual === "descricao"}
@@ -543,7 +548,7 @@ export function InfinitoClient({
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-text-tertiary mt-3">Os termos que as plataformas costumam barrar são conferidos no título e nos textos da capa. A revisão final é sempre sua.</p>
+                <p className="text-xs text-text-tertiary mt-3">Título, descrição e textos da capa passam pela conferência de termos: o que as plataformas costumam barrar e o que você marcou para bloquear não deixa salvar nem criar na Shopee. A revisão final é sempre sua.</p>
                 {rascunho.anuncioLojaId && (
                   <Link href={`/anuncio/analise/${rascunho.anuncioLojaId}`} className="mt-3 inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
                     <Sparkles size={14} aria-hidden /> Analisar o anúncio que está na loja
@@ -620,7 +625,7 @@ export function InfinitoClient({
           {!cfgNovo && cfgPerfilAtual && abaConfig === "aprender" && (
             <AprenderCapas key={`aprender-${cfgPerfilAtual.id}-${cfgPerfilAtual.referencias.join("|")}`} perfil={cfgPerfilAtual} fichas={fichas} iaDisponivel={iaDisponivel} />
           )}
-          {abaConfig === "conferir" && <ConferirTexto termosDoPerfil={cfgPerfilAtual?.termos_proibidos ?? []} />}
+          {abaConfig === "conferir" && <ConferirTexto termosDoPerfil={termosDoPerfil(cfgPerfilAtual)} />}
         </div>
       </Modal>
 
@@ -635,14 +640,36 @@ export function InfinitoClient({
   );
 }
 
-/** " IA: 3 de 10 do teste grátis · imagens no mês: 2." — mostrado antes de gastar. */
-function textoSaldo(saldo: { origem: "propria" | "sistema"; usadas: number; limite: number } | null, imagens: number | null): string {
-  const partes: string[] = [];
-  if (saldo) partes.push(saldo.origem === "propria" ? "IA de texto: a sua (sem cota do Painel)" : saldo.limite > 0 ? `IA de texto: ${saldo.usadas} de ${saldo.limite} do teste grátis` : "IA de texto do sistema");
-  if (imagens !== null) partes.push(`imagens geradas no mês: ${imagens}`);
-  if (!partes.length) return "";
-  const frase = partes.join(" · ");
-  return ` ${frase[0].toUpperCase()}${frase.slice(1)}.`;
+/**
+ * Progresso e saldo, sempre à vista no topo (antes era uma frase dentro da abertura): quanto do
+ * anúncio está feito e quanto de IA ainda dá para gastar, antes de gastar.
+ */
+function FaixaSaldo({ feitas, total, saldo, imagens }: { feitas: number; total: number; saldo: { origem: "propria" | "sistema"; usadas: number; limite: number } | null; imagens: number | null }) {
+  const textoIA = !saldo ? null : saldo.origem === "propria" ? "a sua chave (sem cota do Painel)" : saldo.limite > 0 ? `${saldo.usadas} de ${saldo.limite} hoje` : "do sistema";
+  const acabou = !!saldo && saldo.origem === "sistema" && saldo.limite > 0 && saldo.usadas >= saldo.limite;
+  return (
+    <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 shadow-elev-1">
+        <span className="block text-xs text-text-tertiary">Progresso</span>
+        <span className="mt-1 flex items-center gap-3">
+          <span className="font-mono text-sm font-semibold text-text-primary whitespace-nowrap">
+            {feitas} de {total}
+          </span>
+          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={feitas} aria-label="Etapas feitas">
+            <span className="block h-full rounded-full bg-accent transition-[width] duration-[--duracao-media]" style={{ width: `${(feitas / total) * 100}%` }} />
+          </span>
+        </span>
+      </div>
+      <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 shadow-elev-1">
+        <span className="block text-xs text-text-tertiary">IA de texto</span>
+        <span className={`mt-1 block truncate text-sm font-medium ${acabou ? "text-negative" : "text-text-primary"}`}>{textoIA ?? "sem IA configurada"}</span>
+      </div>
+      <div className="rounded-lg border border-border bg-surface-1 px-4 py-3 shadow-elev-1">
+        <span className="block text-xs text-text-tertiary">Imagens geradas no mês</span>
+        <span className="mt-1 block font-mono text-sm font-medium text-text-primary">{imagens ?? "—"}</span>
+      </div>
+    </div>
+  );
 }
 
 /** Preço que vai para o anúncio, com lucro e margem da loja e o alerta de prejuízo ou zona morta. */

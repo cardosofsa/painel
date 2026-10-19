@@ -6,11 +6,12 @@ import { analisarAnuncio, type EntradaAnalise } from "@/lib/analise-anuncio";
 import { regrasDaPlataforma, type PlataformaMarcaId } from "@/lib/marca/plataformas";
 import { mesclarFicha, normalizarFicha } from "@/lib/marca/ficha";
 import { resumoDaFicha } from "@/lib/marca/prompt-capa";
+import { termosDoPerfil, type TermosDoPerfil } from "@/lib/conformidade/termos";
 
 export interface DadosAnalise {
   anuncio: { id: string; lojaId: string; itemId: number; titulo: string; imagemUrl: string | null; link: string | null };
   ajuste: DadosAjuste;
-  perfil: { id: string; nome: string; termosProibidos: string[]; fichaResumo: string | null } | null;
+  perfil: { id: string; nome: string; termos: TermosDoPerfil; fichaResumo: string | null } | null;
   plataforma: { nome: string; limiteTitulo: number; maxImagens: number; capaFundoBranco: boolean };
   /** Entrada da análise pura: a tela recalcula quando lê a lista de imagens. */
   entrada: EntradaAnalise;
@@ -27,11 +28,11 @@ export async function carregarAnalise(supabase: SupabaseClient, anuncioId: strin
   const [ajuste, produtoRes, perfilRes] = await Promise.all([
     carregarDadosAjuste(supabase, { anuncioId }),
     supabase.from("produtos").select("palavras_chave").eq("id", a.produto_id).maybeSingle(),
-    supabase.from("perfis_marca").select("id, nome, plataforma, termos_proibidos").eq("loja_id", a.loja_id).order("nome").limit(1),
+    supabase.from("perfis_marca").select("*").eq("loja_id", a.loja_id).order("nome").limit(1),
   ]);
   if (!ajuste || ajuste === "sem_produto") return ajuste;
 
-  const perfilBruto = ((perfilRes.data ?? []) as { id: string; nome: string; plataforma: PlataformaMarcaId; termos_proibidos: string[] | null }[])[0] ?? null;
+  const perfilBruto = ((perfilRes.data ?? []) as { id: string; nome: string; plataforma: PlataformaMarcaId; termos_proibidos: string[] | null; presets?: unknown; presets_gravidade?: unknown; termos_bloqueados?: unknown }[])[0] ?? null;
   let fichaResumo: string | null = null;
   if (perfilBruto) {
     const { data: fichas } = await supabase.from("marca_fichas").select("tipo_imagem, dados").eq("perfil_id", perfilBruto.id).eq("ativa", true).in("tipo_imagem", ["geral", "capa_1"]);
@@ -51,7 +52,7 @@ export async function carregarAnalise(supabase: SupabaseClient, anuncioId: strin
     limiteTitulo: plataforma.limiteTitulo,
     palavrasChave,
     termoPrincipal: palavrasChave[0] ?? ajuste.produto.nome,
-    termosProibidos: perfilBruto?.termos_proibidos ?? [],
+    termos: termosDoPerfil(perfilBruto),
     capa: a.imagem_url ?? null,
     totalImagens: null,
     maxImagens: plataforma.maxImagens,
@@ -74,7 +75,7 @@ export async function carregarAnalise(supabase: SupabaseClient, anuncioId: strin
   return {
     anuncio: { id: a.id, lojaId: a.loja_id, itemId: Number(a.item_id), titulo, imagemUrl: a.imagem_url ?? null, link: a.link ?? null },
     ajuste,
-    perfil: perfilBruto ? { id: perfilBruto.id, nome: perfilBruto.nome, termosProibidos: perfilBruto.termos_proibidos ?? [], fichaResumo } : null,
+    perfil: perfilBruto ? { id: perfilBruto.id, nome: perfilBruto.nome, termos: termosDoPerfil(perfilBruto), fichaResumo } : null,
     plataforma,
     entrada,
     palavrasChave,

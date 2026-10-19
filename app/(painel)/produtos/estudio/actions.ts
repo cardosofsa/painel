@@ -19,7 +19,7 @@ import { avaliarDescricao, LIMITE_DESCRICAO_ESTUDIO, type AvaliacaoDescricao } f
 import { avaliarVariantes, type VarianteAvaliada } from "@/lib/ia/prompts-titulos";
 import { gerarImagemGemini } from "@/lib/ia/imagem";
 import { ErroIA } from "@/lib/ia/erro";
-import { regrasAtivas, temBloqueio, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
+import { regrasDoPerfil, temBloqueio, termosParaEvitar, verificarTextos, type Violacao } from "@/lib/conformidade/termos";
 import { montarPromptCapaCena, montarPromptCapaCompleta, type ContextoCapa } from "@/lib/marca/prompt-capa";
 import {
   capaEmGeracao,
@@ -146,13 +146,13 @@ export async function gerarTitulosEstudio(entrada: unknown) {
       nicho: ctx.perfil?.nicho ?? null,
       palavrasChave: ctx.produto.palavrasChave,
       memoria: ctx.memoria,
-      termosProibidos: ctx.perfil?.termosProibidos ?? [],
+      termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       concorrentes: (ctx.rascunho.estado.concorrentes ?? []).map((c) => ({ titulo: c.titulo, faixaPreco: c.precoTexto })),
       pedido: v.pedido,
     });
     if (!g.ok) throw new Error(g.erro);
 
-    const regras = regrasAtivas([], ctx.perfil?.termosProibidos ?? []);
+    const regras = regrasDoPerfil(ctx.perfil?.termos);
     const principal = g.dado.titulos.palavrasChave[0] ?? ctx.produto.nome;
     const variantes = avaliarVariantes(g.dado.titulos.variantes, { limite, termoPrincipal: principal, regras });
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, { variantes: variantes.map((x) => ({ titulo: x.titulo, angulo: x.angulo })) });
@@ -168,8 +168,8 @@ export async function escolherTitulo(entrada: unknown) {
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = ctx.plataforma.limiteTitulo ?? 120;
     if (v.titulo.length > limite) throw new Error(`O título passa de ${limite} caracteres (limite de ${ctx.plataforma.nome}).`);
-    const violacoes = verificarTextos([{ campo: "Título", texto: v.titulo, tipo: "texto" }], regrasAtivas([], ctx.perfil?.termosProibidos ?? []));
-    if (temBloqueio(violacoes)) throw new Error(`Este título tem algo que as plataformas costumam barrar: “${violacoes[0].trecho}”. Ajuste e tente de novo.`);
+    const violacoes = verificarTextos([{ campo: "Título", texto: v.titulo, tipo: "texto" }], regrasDoPerfil(ctx.perfil?.termos));
+    if (temBloqueio(violacoes)) throw new Error(`Este título tem “${violacoes[0].trecho}” (${violacoes[0].motivo.toLowerCase()}). Ajuste e tente de novo.`);
     await gravarEstado(supabase, v.rascunho_id, ctx.rascunho.estado, {}, { titulo: v.titulo });
     await sincronizarStatus(supabase, v.rascunho_id);
     revalidatePath(PATH);
@@ -195,7 +195,6 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
-    const termos = ctx.perfil?.termosProibidos ?? [];
     const g = await gerarDescricaoEstudioIA(supabase, {
       produto: { nome: ctx.produto.nome, variante: ctx.produto.variante, categoria: ctx.produto.categoria, componentes: [] },
       titulo: ctx.rascunho.titulo,
@@ -204,12 +203,12 @@ export async function gerarDescricaoEstudio(entrada: unknown) {
       nicho: ctx.perfil?.nicho ?? null,
       palavrasChave: ctx.produto.palavrasChave,
       memoria: ctx.memoria,
-      termosProibidos: termos,
+      termosProibidos: termosParaEvitar(ctx.perfil?.termos),
       diferenciaisConcorrentes: (ctx.rascunho.estado.concorrentes ?? []).flatMap((c) => c.diferenciais),
       pedido: v.pedido,
     });
     if (!g.ok) throw new Error(g.erro);
-    const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasAtivas([], termos) });
+    const avaliacao = avaliarDescricao(g.dado.descricao.descricao, { limite, regras: regrasDoPerfil(ctx.perfil?.termos) });
     return { descricao: g.dado.descricao.descricao, palavrasChave: g.dado.descricao.palavrasChave, avaliacao, usadas: g.dado.usadas, limite: g.dado.limite, doCache: g.dado.doCache };
   });
 }
@@ -221,10 +220,11 @@ export async function salvarDescricao(entrada: unknown) {
     const supabase = await createClient();
     const ctx = await carregarContextoRascunho(supabase, v.rascunho_id);
     const limite = Math.min(ctx.plataforma.limiteDescricao ?? LIMITE_DESCRICAO_ESTUDIO, LIMITE_DESCRICAO_ESTUDIO);
-    const avaliacao = avaliarDescricao(v.descricao, { limite, regras: regrasAtivas([], ctx.perfil?.termosProibidos ?? []) });
+    const avaliacao = avaliarDescricao(v.descricao, { limite, regras: regrasDoPerfil(ctx.perfil?.termos) });
     if (avaliacao.curta) throw new Error("A descrição está curta demais: escreva pelo menos 100 caracteres.");
     if (avaliacao.longa) throw new Error(`A descrição passa de ${limite} caracteres.`);
-    if (avaliacao.violacoes.some((x) => x.gravidade === "bloquear")) throw new Error(`Há algo que as plataformas costumam barrar na descrição: “${avaliacao.violacoes[0].trecho}”. Ajuste e tente de novo.`);
+    const barrado = avaliacao.violacoes.find((x) => x.gravidade === "bloquear");
+    if (barrado) throw new Error(`A descrição tem “${barrado.trecho}” (${barrado.motivo.toLowerCase()}). Ajuste e tente de novo.`);
     const { error } = await supabase.from("anuncio_rascunhos").update({ descricao: v.descricao.trim(), atualizado_em: new Date().toISOString() }).eq("id", v.rascunho_id);
     checar(error);
     await sincronizarStatus(supabase, v.rascunho_id);
@@ -268,7 +268,7 @@ function conferirTextosDaCapa(ctx: ContextoRascunho, titulo: string, textoFaixa:
     ...(ctx.fichaCapa1.selos ?? []).map((s) => ({ campo: "Selo", texto: s, tipo: "imagem" as const })),
     ...(textoFaixa ? [{ campo: "Faixa", texto: textoFaixa, tipo: "imagem" as const }] : []),
   ];
-  return verificarTextos(itens, regrasAtivas([], ctx.perfil?.termosProibidos ?? []));
+  return verificarTextos(itens, regrasDoPerfil(ctx.perfil?.termos));
 }
 
 /** Modo A: o prompt, sem IA e sem custo. */

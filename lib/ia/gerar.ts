@@ -7,6 +7,7 @@
  */
 
 import "server-only";
+import type { TermosDoPerfil } from "@/lib/conformidade/termos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validar, iaContextoSchema, iaPrecoSchema, iaFerramentaSchemas, iaVitrineSchema } from "@/lib/validacao";
 import { lancarErroSupabase } from "@/lib/erros";
@@ -444,14 +445,14 @@ export interface SugestaoAnalise extends MetaGeracao {
  * Análise do anúncio (0102): a IA narra os números de `lib/analise-anuncio.ts`, sugere 3
  * títulos e prioriza a estratégia. Mesma ordem de sempre (cache → cota → chamada).
  */
-export async function gerarAnaliseAnuncioIA(supabase: SupabaseClient, contexto: ContextoAnaliseIA, termosProibidos: string[]): Promise<SugestaoAnalise> {
+export async function gerarAnaliseAnuncioIA(supabase: SupabaseClient, contexto: ContextoAnaliseIA, termos: TermosDoPerfil | null): Promise<SugestaoAnalise> {
   const { valor, ...meta } = await executarEstruturado(
     supabase,
     "analise_anuncio",
     hashContextoAnalise(contexto),
     montarPromptAnalise(contexto),
     esquemaAnalise(),
-    (bruto) => interpretarAnalise(bruto, contexto.limite, termosProibidos),
+    (bruto) => interpretarAnalise(bruto, contexto.limite, termos),
   );
   if (analiseVazia(valor)) throw new ErroIA("vazio", "análise vazia");
   return { narracao: valor, ...meta };

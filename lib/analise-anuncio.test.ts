@@ -1,3 +1,4 @@
+import { TERMOS_VAZIOS } from "./conformidade/termos";
 import { describe, expect, it } from "vitest";
 import { analisarAnuncio, type EntradaAnalise } from "./analise-anuncio";
 
@@ -6,7 +7,7 @@ const base: EntradaAnalise = {
   limiteTitulo: 100,
   palavrasChave: ["caneca", "cerâmica", "presente", "xícara"],
   termoPrincipal: "Caneca",
-  termosProibidos: [],
+  termos: TERMOS_VAZIOS,
   capa: "https://x/capa.jpg",
   totalImagens: 5,
   maxImagens: 9,
@@ -46,6 +47,6 @@ describe("analisarAnuncio", () => {
 
   it("termo bloqueado ou a revisar no título vira ponto fraco", () => {
     expect(analisarAnuncio({ ...base, titulo: "Caneca chame no whatsapp" }).pontos.some((p) => p.texto.includes("barrar"))).toBe(true);
-    expect(analisarAnuncio({ ...base, titulo: "Caneca que cura ansiedade", termosProibidos: ["cura"] }).pontos.some((p) => p.texto.startsWith("Revise"))).toBe(true);
+    expect(analisarAnuncio({ ...base, titulo: "Caneca que cura ansiedade", termos: { ...TERMOS_VAZIOS, revisar: ["cura"] } }).pontos.some((p) => p.texto.startsWith("Revise"))).toBe(true);
   });
 });

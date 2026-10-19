@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { BotaoCopiar } from "@/components/ui/BotaoCopiar";
@@ -25,7 +25,10 @@ export function PainelTitulos({
   onEscolher,
   onPendente,
   usados = [],
+  children,
 }: {
+  /** Gaveta embaixo do cartão (os concorrentes, que servem ao título). */
+  children?: ReactNode;
   /** Títulos já usados nas precificações deste produto. */
   usados?: string[];
   /** O título digitado e ainda não usado (ou `null`), para a proteção de saída da tela. */
@@ -94,7 +97,7 @@ export function PainelTitulos({
                     {v.violacoes.map((x) => (
                       <li key={x.termo} className="flex gap-1.5 text-xs text-text-secondary">
                         <AlertTriangle size={12} className={`mt-0.5 shrink-0 ${x.gravidade === "bloquear" ? "text-negative" : ""}`} aria-hidden />
-                        {x.gravidade === "bloquear" ? "Evite" : "Revise"}: “{x.trecho}” — {x.motivo.toLowerCase()}.
+                        {x.gravidade === "bloquear" ? "Bloqueia" : "Revise"}: “{x.trecho}” — {x.motivo.toLowerCase()}.
                       </li>
                     ))}
                   </ul>
@@ -145,6 +148,7 @@ export function PainelTitulos({
           Usar o meu
         </Button>
       </div>
+      {children}
     </Card>
   );
 }
