@@ -14,6 +14,7 @@ import { classeValor, formatBRL } from "@/lib/format";
 import { ComoLucrar, DICA_MARGEM, Metrica, OndeVende, Passo, type ModoOpcao } from "@/components/precificacao/blocos";
 import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
 import { Combobox } from "@/components/ui/Combobox";
+import { BotaoCusto, SeletorCusto, type CustoEscolhido } from "@/components/precificacao/SeletorCusto";
 import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
 import { margemAtingida } from "@/lib/pricing";
 import { useExportarPrecificacao, type ResumoExport } from "@/components/precificacao/resultado-compartilhado";
@@ -55,6 +56,7 @@ export function KitsView({
   const [pending, startTransition] = useTransition();
   const [itens, setItens] = useState<ItemKit[]>([]);
   const [extra, setExtra] = useState(0);
+  const [escolhendoCusto, setEscolhendoCusto] = useState(false);
   const [lojaId, setLojaId] = useState<string>("");
   const [imposto, setImposto] = useState(aliquotaDasPadrao);
   const [modo, setModo] = useState<ModoKit>("desconto");
@@ -106,6 +108,24 @@ export function KitsView({
   /** Item que ainda não existe no cadastro: o dono digita nome, custo e preço avulso. */
   function adicionarSemCadastro(nomeInicial = "") {
     setItens((x) => [...x, { id: `livre-${crypto.randomUUID()}`, produtoId: null, nome: nomeInicial.trim().slice(0, 120), quantidade: 1, unidade: "un", custo: 0, preco: 0 }]);
+  }
+
+  /** Custos registrados (não são produto): entram como item sem cadastro, com o custo e a unidade deles. */
+  function adicionarCustos(escolhidos: CustoEscolhido[]) {
+    setItens((x) => [
+      ...x,
+      ...escolhidos.map(({ custo: c }) => ({
+        id: `custo-${c.id}-${crypto.randomUUID().slice(0, 8)}`,
+        produtoId: null,
+        nome: c.nome.slice(0, 120),
+        quantidade: 1,
+        // kg e L: o kit já trabalha com custo por kg/L e quantidade em kg/L, g ou ml.
+        unidade: (c.unidade === "kg" ? "kg" : c.unidade === "l" ? "l" : "un") as UnidadeKit,
+        custo: c.custo,
+        preco: 0,
+      })),
+    ]);
+    setEscolhendoCusto(false);
   }
 
   function mudarItem(id: string, parcial: Partial<ItemKit>) {
@@ -213,6 +233,7 @@ export function KitsView({
   return (
     <>
       {aba.pendente && <AvisoRascunho pendente={aba.pendente} onContinuar={aba.continuar} onDescartar={() => void aba.descartar()} />}
+      {escolhendoCusto && <SeletorCusto multiplo onFechar={() => setEscolhendoCusto(false)} onEscolher={adicionarCustos} />}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-5 items-start pb-24 lg:pb-0">
         <div className="space-y-5 min-w-0">
           <Card padding="nenhum">
@@ -234,6 +255,9 @@ export function KitsView({
                 <Button type="button" variant="secondary" className="shrink-0" onClick={() => adicionarSemCadastro()}>
                   <Plus size={14} aria-hidden /> Item sem cadastro
                 </Button>
+                <span className="flex shrink-0 items-center">
+                  <BotaoCusto onClick={() => setEscolhendoCusto(true)} rotulo="Custo" />
+                </span>
               </div>
               {!temItens ? (
                 <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
@@ -241,7 +265,7 @@ export function KitsView({
                     <PackageOpen size={18} aria-hidden />
                   </span>
                   <p className="text-sm font-medium text-text-primary">Monte o kit</p>
-                  <p className="mt-1 text-xs text-text-secondary max-w-sm mx-auto">Busque os produtos (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use “Item sem cadastro” e informe custo e preço.</p>
+                  <p className="mt-1 text-xs text-text-secondary max-w-sm mx-auto">Busque os produtos (ex.: 2 canecas + 1 pires). Ainda não cadastrou um deles? Use “Item sem cadastro” e informe custo e preço, ou puxe de “Custo”.</p>
                 </div>
               ) : (
                 <div className="space-y-2">

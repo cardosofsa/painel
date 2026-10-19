@@ -245,6 +245,20 @@ concorrente vindos do navegador).
 - **Assistente:** responde e PROPÕE ações de uma lista fechada (`lib/ia/prompts-assistente.ts`); cada uma
   é um botão que o usuário aprova. Ação fora da lista ou com valor inválido é descartada na leitura.
 
+### Custos avulsos (migração 0112)
+
+Produtos › **Registrar custo** (`/produtos/custos`): itens com custo que **não são produto** (não entram
+no PDV, estoque, catálogo, vitrine nem alertas), para precificar, montar variações ou kits sem cadastrar.
+Tabela própria `custos_avulsos` (nome único por conta, unidade `un`/`cx`/`kg`/`l`, grupo, observação,
+ativo) e `custos_avulsos_historico` (cada mudança de custo, gravada por trigger `security definer`; a
+tabela só tem policy de SELECT). Entrada um por um, colando uma lista ou importando CSV/.xlsx
+(`lib/custos-avulsos.ts`, puro e testado: separa nome e valor, título de seção vira grupo, cabeçalho
+"Preço (Kg)" define a unidade, e `prepararImportacao` mostra novo / muda / igual antes de gravar; o
+servidor refaz a comparação com o banco). Na Precificação, o botão **Custo** abre o pop-up
+(`components/precificacao/SeletorCusto.tsx`, lê os ativos por Server Action ao abrir) na Individual (com
+quantidade), nas Variações (custo base e unidade) e nos Kits (vários). O valor é copiado na hora: mudar o
+custo depois não altera precificações e kits já salvos.
+
 ### Chat do anúncio (migração 0110)
 
 O assistente virou um chat ao lado da tela de criação (`components/estudio/ChatAnuncio.tsx`,

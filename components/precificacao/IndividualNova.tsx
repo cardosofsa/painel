@@ -25,6 +25,8 @@ import { formatarFaixaLabel, pctPorModo } from "@/lib/pricing";
 import { limiteEfetivo, LIMITE_DESCRICAO_ANUNCIO } from "@/lib/ia/prompts";
 import type { EstadoPrecificacao, LojaOpcao, ProdutoOpcao } from "@/lib/precificacao-estado";
 import { rotuloTaxaFaixa } from "@/lib/faixas";
+import { BotaoCusto, SeletorCusto } from "@/components/precificacao/SeletorCusto";
+import { custoDaQuantidade } from "@/lib/custos-avulsos";
 
 const ID_RESULTADO = "resultado-precificacao";
 const pct = (n: number) => `${(n * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
@@ -57,6 +59,8 @@ export function IndividualNova({
   salvandoRascunho: boolean;
 }) {
   const [maisAberto, setMaisAberto] = useState(false);
+  // Pop-up "Custo": item registrado em Produtos › Registrar custo, que não é produto.
+  const [escolhendoCusto, setEscolhendoCusto] = useState(false);
   const e = estado;
   const r = e.resultado;
   const loja = e.modoTaxas === "loja" ? e.lojaSelecionada : null;
@@ -90,13 +94,31 @@ export function IndividualNova({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-5 items-start pb-24 lg:pb-0">
+      {escolhendoCusto && (
+        <SeletorCusto
+          comQuantidade
+          onFechar={() => setEscolhendoCusto(false)}
+          onEscolher={([{ custo, quantidade }]) => {
+            // Custo registrado (não é produto): entra como produto sem cadastro, com o custo da quantidade.
+            e.setProdutoId(null);
+            e.setNomeProduto(custo.nome);
+            e.setCustoProduto(custoDaQuantidade(custo.custo, quantidade));
+            setEscolhendoCusto(false);
+          }}
+        />
+      )}
       <div className="space-y-5 min-w-0">
         {/* Os três passos que decidem o preço, num cartão só. */}
         <Card padding="nenhum">
           <Passo n={1} titulo="Produto">
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end mb-3 [&>*]:mb-0">
-              <FormField label="Qual produto">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-text-secondary">Produto</span>
+                  <BotaoCusto onClick={() => setEscolhendoCusto(true)} />
+                </div>
                 <Combobox
+                  ariaLabel="Produto"
                   // O texto do campo é estado dele: remonta quando o produto muda por fora (Duplicar, rascunho).
                   key={e.produtoId ?? "nenhum"}
                   itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
@@ -108,7 +130,7 @@ export function IndividualNova({
                   }}
                   placeholder="Buscar produto pelo nome ou SKU…"
                 />
-              </FormField>
+              </div>
               <div className="rounded-md bg-surface-2 px-3 py-1.5 min-w-36">
                 <div className="text-xs text-text-tertiary">Custo total</div>
                 <div className="font-mono text-text-primary flex items-center gap-1.5">

@@ -569,6 +569,10 @@ export function ProdutosClient({
                 Anúncio Infinito
               </Link>
             )}
+            {/* Custos de itens que não são produto: puxados na Precificação, nas Variações e nos Kits. */}
+            <Link href="/produtos/custos" className={classesBotao({ variant: "secondary" })}>
+              Registrar custo
+            </Link>
             {emInsumos ? (
               <Button variant="primary" onClick={() => abrirInsumo(null)} disabled={semTipo}>+ Cadastrar Insumo / Embalagem</Button>
             ) : (

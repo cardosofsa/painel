@@ -27,6 +27,7 @@ import type { ProdutoOpcao, LojaOpcao, AnuncioSalvo } from "@/lib/precificacao-e
 import { executarComToast } from "@/lib/acao-cliente";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
+import { BotaoCusto, SeletorCusto } from "@/components/precificacao/SeletorCusto";
 import { ComoLucrar, MODOS_PRECO, OndeVende, Passo } from "@/components/precificacao/blocos";
 import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
 import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
@@ -71,6 +72,7 @@ export function VariacoesView({
   const [custoUnitarioBase, setCustoUnitarioBase] = useState(10);
   // A que se refere o custo base: produto a granel é por kg ou litro, e cada variação diz quanto leva.
   const [unidade, setUnidade] = useState<UnidadeBase>("un");
+  const [escolhendoCusto, setEscolhendoCusto] = useState(false);
   const [taxaFixa, setTaxaFixa] = useState(4);
   const [taxaVariavelPct, setTaxaVariavelPct] = useState(20);
   const [taxaAdicionalPct, setTaxaAdicionalPct] = useState(0);
@@ -281,6 +283,19 @@ export function VariacoesView({
 
   return (
     <div className="space-y-5">
+      {escolhendoCusto && (
+        <SeletorCusto
+          onFechar={() => setEscolhendoCusto(false)}
+          onEscolher={([{ custo }]) => {
+            // Custo registrado (não é produto): vira o custo base, na unidade dele (kg, L, cx, un).
+            setProdutoId(null);
+            setCustoUnitarioBase(custo.custo);
+            setUnidade(custo.unidade);
+            if (!nomeAnuncio.trim()) setNomeAnuncio(custo.nome);
+            setEscolhendoCusto(false);
+          }}
+        />
+      )}
       {aba.pendente && <AvisoRascunho pendente={aba.pendente} onContinuar={aba.continuar} onDescartar={() => void aba.descartar()} />}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-5 items-start">
       <Card padding="nenhum" className="min-w-0">
@@ -289,15 +304,21 @@ export function VariacoesView({
             <FormField label="Nome do anúncio *">
               <input value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} placeholder="Ex.: Óleo para Barba" className={inputClass} />
             </FormField>
-            <FormField label="Produto (opcional)" dica="Sem cadastro? Deixe vazio e informe o custo base.">
+            <div className="flex flex-col gap-1.5 mb-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-text-secondary">Produto</span>
+                <BotaoCusto onClick={() => setEscolhendoCusto(true)} />
+              </div>
               <Combobox
+                ariaLabel="Produto"
                 key={produtoId ?? "nenhum"}
                 itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
                 valor={produtoId}
                 onChange={escolherProduto}
                 placeholder="Buscar produto pelo nome ou SKU…"
               />
-            </FormField>
+              <span className="text-xs text-text-tertiary">Sem cadastro? Use “Custo” ou informe o custo base.</span>
+            </div>
             <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] gap-2">
               <FormField label={`Custo por ${unidadeBase(unidade).curto} (R$) *`} dica="Só o produto. Embalagem e insumos vão em cada variação.">
                 <CampoNumero value={custoUnitarioBase} onChange={setCustoUnitarioBase} min={0} casas={2} />
