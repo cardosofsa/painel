@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avisoDaFaixa, textoFaixa, faixaInvertida, normalizarFaixa, posicaoNaFaixa } from "./faixa-venda";
+import { avisoDaFaixa, faixaInvertida, normalizarFaixa, posicaoNaFaixa } from "./faixa-venda";
 
 const brl = (n: number) => `R$ ${n.toFixed(2)}`;
 
@@ -42,13 +42,3 @@ describe("avisoDaFaixa", () => {
   });
 });
 
-describe("textoFaixa", () => {
-  it("as duas pontas, uma só, nenhuma ou invertida", () => {
-    expect(textoFaixa({ minimo: 39.9, maximo: 59.9 })).toMatch(/^faixa R\$\s39,90 a R\$\s59,90$/);
-    expect(textoFaixa({ minimo: 39.9, maximo: null })).toMatch(/^mínimo R\$\s39,90$/);
-    expect(textoFaixa({ minimo: null, maximo: 59.9 })).toMatch(/^máximo R\$\s59,90$/);
-    expect(textoFaixa({ minimo: null, maximo: null })).toBeNull();
-    expect(textoFaixa({ minimo: 60, maximo: 40 })).toBeNull();
-    expect(textoFaixa(null)).toBeNull();
-  });
-});

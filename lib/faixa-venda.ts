@@ -3,8 +3,6 @@
  * coberto por `faixa-venda.test.ts`. Vale para Individual, Kits e cada variação.
  */
 
-import { formatBRL } from "./format";
-
 export interface FaixaVenda {
   /** null = não informado. */
   minimo: number | null;
@@ -42,9 +40,3 @@ export function avisoDaFaixa(preco: number, f: FaixaVenda, formatar: (n: number)
   return null;
 }
 
-/** Para o texto e a imagem: "faixa R$ 39,90 a R$ 59,90", "mínimo R$ 39,90" ou null. */
-export function textoFaixa(f: FaixaVenda | null | undefined): string | null {
-  if (!f || faixaInvertida(f) || (f.minimo === null && f.maximo === null)) return null;
-  if (f.minimo !== null && f.maximo !== null) return `faixa ${formatBRL(f.minimo)} a ${formatBRL(f.maximo)}`;
-  return f.minimo !== null ? `mínimo ${formatBRL(f.minimo)}` : `máximo ${formatBRL(f.maximo!)}`;
-}
