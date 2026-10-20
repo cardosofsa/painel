@@ -112,10 +112,11 @@ export function IndividualNova({
         <Card padding="nenhum">
           <Passo n={1} titulo="Produto">
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end mb-3 [&>*]:mb-0">
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-text-secondary">Produto</span>
-                  <BotaoCusto onClick={() => setEscolhendoCusto(true)} />
+              <div className="flex flex-col">
+                {/* Mesma linha de rótulo do FormField ao lado (text-xs, mb-1.5): os campos ficam alinhados. */}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs font-medium text-text-secondary">Produto</span>
+                  <BotaoCusto compacto onClick={() => setEscolhendoCusto(true)} />
                 </div>
                 <Combobox
                   ariaLabel="Produto"

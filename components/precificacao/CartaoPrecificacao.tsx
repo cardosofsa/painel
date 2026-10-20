@@ -56,6 +56,42 @@ export function CartaoPrecificacao({ dados, formato, empresa }: { dados: ResumoE
           />
         )}
 
+        {dados.variacoes?.length ? <EscadaVariacoes variacoes={dados.variacoes} completo={completo} /> : <CorpoUnico dados={dados} completo={completo} lucroPositivo={lucroPositivo} />}
+      </div>
+    </div>
+  );
+}
+
+/** Variações: a escada de preços, uma linha por variação. */
+function EscadaVariacoes({ variacoes, completo }: { variacoes: NonNullable<ResumoExport["variacoes"]>; completo: boolean }) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      {variacoes.map((v, i) => (
+        <div key={i} style={{ padding: "8px 0", borderTop: i ? `1px solid ${COR.linha}` : undefined }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>
+              {v.nome} <span style={{ fontSize: 11, fontWeight: 400, color: COR.suave }}>{v.quantidade}</span>
+            </span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: v.viavel ? COR.destaque : COR.negativo, fontVariantNumeric: "tabular-nums" }}>{v.viavel ? formatBRL(v.preco) : "inviável"}</span>
+          </div>
+          {v.viavel && (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, color: COR.suave, marginTop: 2 }}>
+              <span>{completo ? `custo ${formatBRL(v.custo)}${v.porUnidade ? ` · ${v.porUnidade}` : ""}` : (v.porUnidade ?? "")}</span>
+              <span style={{ color: v.lucro >= 0 ? COR.positivo : COR.negativo, fontWeight: 600 }}>
+                lucro {formatBRL(v.lucro)} ({pct(v.margemPct)})
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** O cartão de um preço só (Individual, Kits, uma variação). */
+function CorpoUnico({ dados, completo, lucroPositivo }: { dados: ResumoExport; completo: boolean; lucroPositivo: boolean }) {
+  return (
+    <>
         <div style={{ textAlign: "center", background: COR.fundo, borderRadius: 12, padding: "12px 0", margin: "14px 0" }}>
           <div style={{ fontSize: 11, color: COR.suave, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 600 }}>Preço de venda</div>
           <div style={{ fontSize: 30, fontWeight: 800, color: COR.destaque, lineHeight: 1.15 }}>{formatBRL(dados.precoVenda)}</div>
@@ -100,7 +136,6 @@ export function CartaoPrecificacao({ dados, formato, empresa }: { dados: ResumoE
             <Linha rotulo="Lucro máximo" valor={`${formatBRL(dados.faixaVenda.lucroMaximo)} (${pct(dados.faixaVenda.margemMaximaPct)})`} />
           </div>
         )}
-      </div>
-    </div>
+    </>
   );
 }
