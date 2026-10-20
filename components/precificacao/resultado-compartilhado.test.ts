@@ -60,24 +60,41 @@ describe("montarTextoResumo com variações (escada de preços)", () => {
     ...base,
     titulo: "Café a granel",
     variacoes: [
-      { nome: "250 g", quantidade: "0,25 kg", custo: 12.15, preco: 31.9, lucro: 8.5, margemPct: 0.266, porUnidade: "R$ 127,60/kg", viavel: true },
-      { nome: "1 kg", quantidade: "1 kg", custo: 42, preco: 99.9, lucro: 27.1, margemPct: 0.271, porUnidade: "R$ 99,90/kg", viavel: true },
+      {
+        nome: "250 g",
+        quantidade: "0,25 kg",
+        custo: 12.15,
+        preco: 21.9,
+        lucro: 5.25,
+        margemPct: 0.24,
+        porUnidade: "R$ 87,60/kg",
+        viavel: true,
+        minimo: { preco: 19.49, lucro: 2.42, margemPct: 0.124 },
+        maximo: { preco: 23.49, lucro: 6.6, margemPct: 0.281 },
+      },
+      { nome: "1 kg", quantidade: "1 kg", custo: 42, preco: 99.9, lucro: 27.1, margemPct: 0.271, porUnidade: "R$ 99,90/kg", viavel: true, minimo: { preco: 110, lucro: 33, margemPct: 0.3 } },
       { nome: "5 kg", quantidade: "5 kg", custo: 200, preco: 0, lucro: 0, margemPct: 0, porUnidade: null, viavel: false },
     ],
   };
-  it("simples: uma linha por variação, com preço, lucro e margem; inviável é dita", () => {
+  it("simples: um bloco por variação com mínimo, ideal e máximo e a margem de cada", () => {
     const t = montarTextoResumo(escada, "simples");
-    expect(t).toContain("*Café a granel*");
-    expect(t).toContain("- 250 g (0,25 kg): R$");
-    expect(t).toContain("(26.6%)");
-    expect(t).toContain("- 5 kg (5 kg): inviável");
+    expect(t).toMatch(/^\*Café a granel\*\n\n\*250 g\*\nMín\. R\$\s19,49 \(12,4%\)\nIdeal R\$\s21,90 \(24,0%\)\nMáx\. R\$\s23,49 \(28,1%\)\n\n\*1 kg\*/);
+    expect(t).toContain("*5 kg*\nIdeal: inviável com essa margem");
     expect(t).not.toContain("Canal:");
-    expect(t).not.toContain("custo");
+    expect(t).not.toContain("lucro");
+    expect(t).not.toContain("Custo");
   });
-  it("completa: canal, custo e preço por kg de cada variação", () => {
+  it("sem faixa, só o ideal; ideal fora da faixa é avisado", () => {
+    const t = montarTextoResumo(escada, "simples");
+    expect(t).toMatch(/\*1 kg\*\nMín\. R\$\s110,00 \(30,0%\)\nIdeal R\$\s99,90 \(27,1%\) · fora da faixa\n\n/);
+  });
+  it("completa: canal, lucro em R$, quantidade, custo e preço por kg", () => {
     const t = montarTextoResumo(escada, "completo");
     expect(t).toContain("Canal: Shopee · Loja Centro");
-    expect(t).toContain("R$ 127,60/kg");
+    expect(t).toContain("*250 g* (0,25 kg)");
+    expect(t).toMatch(/Ideal R\$\s21,90 · lucro R\$\s5,25 \(24,0%\)/);
+    expect(t).toMatch(/Custo R\$\s12,15 · R\$ 87,60\/kg/);
+    expect(t).toContain("*1 kg*\n");
     expect(t).not.toContain("Preço de venda:");
   });
 });

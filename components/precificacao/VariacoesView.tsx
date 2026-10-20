@@ -241,7 +241,7 @@ export function VariacoesView({
     };
   }
 
-  /** A escada inteira para Copiar, WhatsApp e Imagem: uma linha por variação. */
+  /** A escada inteira para Copiar, WhatsApp e Imagem: mínimo, ideal e máximo de cada variação. */
   function resumoDasVariacoes(): ResumoExport {
     const un = unidadeBase(unidade);
     return {
@@ -251,6 +251,12 @@ export function VariacoesView({
         const { resultado } = calcular(v);
         const qtd = v.multiplicador.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
         const faixa = normalizarFaixa(v.precoMinimo, v.precoMaximo);
+        const ok = !faixaInvertida(faixa);
+        const ponta = (preco: number | null) => {
+          if (preco === null || !ok) return null;
+          const r = calcularNoPreco(v, preco).resultado;
+          return { preco: r.precoVenda, lucro: r.lucroLiquido, margemPct: r.margemEfetivaPct };
+        };
         return {
           nome: v.nome || "Sem nome",
           quantidade: `${qtd} ${un.curto}`,
@@ -260,7 +266,8 @@ export function VariacoesView({
           margemPct: resultado.margemEfetivaPct,
           porUnidade: resultado.viavel && v.multiplicador > 0 && (un.fracionada || v.multiplicador !== 1) ? `${formatBRL(resultado.precoVenda / v.multiplicador)}/${un.curto}` : null,
           viavel: resultado.viavel,
-          faixa: faixaInvertida(faixa) ? null : faixa,
+          minimo: ponta(faixa.minimo),
+          maximo: ponta(faixa.maximo),
         };
       }),
     };

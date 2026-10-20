@@ -10,7 +10,6 @@ import { useCapturaImagem } from "@/components/ui/PreviaImagem";
 import { CartaoPrecificacao, type EmpresaCartao } from "@/components/precificacao/CartaoPrecificacao";
 import { encontrarFaixa, type ComponenteKit, type FaixaComissao, type TaxasPlataforma } from "@/lib/pricing";
 import { rotuloTaxaFaixa } from "@/lib/faixas";
-import { textoFaixa, type FaixaVenda } from "@/lib/faixa-venda";
 
 /** Lucro no menor e no maior preço que o vendedor aceitaria praticar — opcional, só aparece
  * no texto/imagem no formato "completo" (ver montarTextoResumo). */
@@ -71,25 +70,47 @@ export interface VariacaoExport {
   /** "R$ 51,80/kg" (só quando ajuda a comparar). */
   porUnidade: string | null;
   viavel: boolean;
-  /** Faixa de venda da variação (mínimo e máximo que aceita), só no formato "completo". */
-  faixa?: FaixaVenda | null;
+  /** Pontas da faixa de venda da variação (o menor e o maior preço que aceita). */
+  minimo?: PontaExport | null;
+  maximo?: PontaExport | null;
 }
 
-/** Texto da escada de preços das variações. */
+/** Uma ponta da faixa de venda: o preço e o que sobra nele. */
+export interface PontaExport {
+  preco: number;
+  lucro: number;
+  margemPct: number;
+}
+
+/** "24,0%" (pt-BR, uma casa). */
+const pctBR = (f: number) => `${(f * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+
+/**
+ * Texto da escada de preços das variações, um bloco por variação:
+ *
+ *   *250 g*
+ *   Mín. R$ 19,49 (12,4%)
+ *   Ideal R$ 21,90 (24,0%)
+ *   Máx. R$ 23,49 (28,1%)
+ *
+ * A % é a margem (lucro ÷ preço). O "completo" junta o lucro em R$, o canal, o custo e o
+ * preço por kg/L.
+ */
 function textoVariacoes(r: ResumoExport, formato: "simples" | "completo"): string {
+  const completo = formato === "completo";
   const linhas = [`*${r.titulo}*`];
-  if (formato === "completo" && r.canal) linhas.push(`Canal: ${r.canal}`);
-  linhas.push("");
+  if (completo && r.canal) linhas.push(`Canal: ${r.canal}`);
+  const linha = (rotulo: string, p: PontaExport, extra = "") =>
+    `${rotulo} ${formatBRL(p.preco)}${completo ? ` · lucro ${formatBRL(p.lucro)}` : ""} (${pctBR(p.margemPct)})${extra}`;
   for (const v of r.variacoes ?? []) {
-    if (!v.viavel) {
-      linhas.push(`- ${v.nome} (${v.quantidade}): inviável`);
-      continue;
-    }
-    linhas.push(`- ${v.nome} (${v.quantidade}): ${formatBRL(v.preco)} · lucro ${formatBRL(v.lucro)} (${(v.margemPct * 100).toFixed(1)}%)`);
-    if (formato === "completo") {
-      const faixa = textoFaixa(v.faixa);
-      linhas.push(`  custo ${formatBRL(v.custo)}${v.porUnidade ? ` · ${v.porUnidade}` : ""}${faixa ? ` · ${faixa}` : ""}`);
-    }
+    linhas.push("", completo && v.quantidade && v.quantidade !== v.nome ? `*${v.nome}* (${v.quantidade})` : `*${v.nome}*`);
+    if (v.minimo) linhas.push(linha("Mín.", v.minimo));
+    if (v.viavel) {
+      const fora = (v.minimo && v.preco < v.minimo.preco - 0.005) || (v.maximo && v.preco > v.maximo.preco + 0.005);
+      linhas.push(linha("Ideal", v, fora ? " · fora da faixa" : ""));
+    } else linhas.push("Ideal: inviável com essa margem");
+    if (v.maximo) linhas.push(linha("Máx.", v.maximo));
+    if (completo) linhas.push(`Custo ${formatBRL(v.custo)}${v.porUnidade ? ` · ${v.porUnidade}` : ""}`);
   }
   return linhas.join("\n");
 }
