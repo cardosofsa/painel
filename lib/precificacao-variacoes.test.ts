@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularVariacao, custoDaVariacao, type ConfigVariacoes, type LojaVariacao, type VariacaoLinha } from "./precificacao-variacoes";
+import { calcularVariacao, calcularVariacaoNoPreco, custoDaVariacao, type ConfigVariacoes, type LojaVariacao, type VariacaoLinha } from "./precificacao-variacoes";
 
 const cfgBase: ConfigVariacoes = {
   modo: "margem",
@@ -131,5 +131,20 @@ describe("calcularVariacao", () => {
     expect(r.resultado.precoVenda).toBe(20.34); // 12 / 0,59, fechado para cima
     expect(r.taxas.taxaVariavelPct).toBe(0.1);
     expect(r.faixa).toBeNull();
+  });
+});
+
+describe("calcularVariacaoNoPreco (pontas da faixa de venda)", () => {
+  it("vende no preço pedido, ignorando o valor próprio da variação", () => {
+    const v = { ...unidade, parametroOverride: 40, embalagem: 1 };
+    const r = calcularVariacaoNoPreco(cfgBase, v, 30).resultado;
+    expect(r.precoVenda).toBe(30);
+    // 30 − custo 11 − comissão 6 − tarifa 4 − imposto 1,80 = 7,20
+    expect(r.lucroLiquido).toBeCloseTo(7.2, 2);
+  });
+  it("na loja com faixas, cada ponta usa a faixa do próprio preço", () => {
+    const cfg = { ...cfgBase, loja: lojaFaixas };
+    expect(calcularVariacaoNoPreco(cfg, unidade, 50).taxas.taxaFixa).toBe(4);
+    expect(calcularVariacaoNoPreco(cfg, unidade, 100).taxas.taxaFixa).toBe(16);
   });
 });

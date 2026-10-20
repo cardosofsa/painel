@@ -37,6 +37,9 @@ export interface VariacaoLinha {
   embalagem?: number;
   /** R$ por variação (etiqueta, fita, brinde…). */
   insumos?: number;
+  /** Faixa de venda da variação (0113): menor e maior preço que aceita. null/ausente = sem. */
+  precoMinimo?: number | null;
+  precoMaximo?: number | null;
 }
 
 /** Custo da variação por parte: produto (base × quantidade, ou o digitado), embalagem e insumos. */
@@ -137,4 +140,12 @@ export function calcularVariacao(cfg: ConfigVariacoes, v: VariacaoLinha): Result
           ? resolverPorLucro(custo, parametro, taxas)
           : resultadoParaPreco(parametro, custo, taxas);
   return { custo, resultado: fecharPreco(semFechar, cfg.modo, { taxas }), faixa: null, faixas: [], taxas };
+}
+
+/**
+ * A variação vendida num preço dado (as pontas da faixa de venda): mesmas taxas e faixas de
+ * comissão do cálculo normal, só que no modo "preço".
+ */
+export function calcularVariacaoNoPreco(cfg: ConfigVariacoes, v: VariacaoLinha, preco: number): ResultadoVariacao {
+  return calcularVariacao({ ...cfg, modo: "preco", parametroPadrao: preco }, { ...v, parametroOverride: null });
 }

@@ -259,6 +259,18 @@ servidor refaz a comparação com o banco). Na Precificação, o botão **Custo*
 quantidade), nas Variações (custo base e unidade) e nos Kits (vários). O valor é copiado na hora: mudar o
 custo depois não altera precificações e kits já salvos.
 
+### Faixa de venda e foto nas Variações e Kits (migração 0113)
+
+Individual, Kits e **cada variação** têm uma faixa de venda (o menor e o maior preço que o vendedor
+aceita): a tela mostra o lucro e a margem em cada ponta e avisa quando o preço calculado cai fora dela
+(`lib/faixa-venda.ts`, puro e testado; a variação é recalculada na ponta por `calcularVariacaoNoPreco`,
+com as mesmas taxas e faixas de comissão). A faixa vai no texto e na imagem compartilhados e é gravada
+junto: `precificacoes.preco_minimo/preco_maximo` (Individual e Kits; volta ao reabrir a Individual) e
+`anuncio_variacoes.preco_minimo/preco_maximo`, com `check` de mínimo ≤ máximo no banco. Variações e
+Kits também têm **foto própria** (`FotoPrecificacao`) para item puxado de "Custo" ou sem cadastro: o kit
+grava em `precificacoes.imagem_url` (0045) e o anúncio com variações em `anuncios.imagem_url` (0113).
+Antes da 0113, salvar sem faixa e sem foto funciona como antes; com elas, a action avisa da migração.
+
 ### Chat do anúncio (migração 0110)
 
 O assistente virou um chat ao lado da tela de criação (`components/estudio/ChatAnuncio.tsx`,

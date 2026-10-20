@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { formatBRL } from "@/lib/format";
+import { textoFaixa } from "@/lib/faixa-venda";
 import type { ResumoExport } from "@/components/precificacao/resultado-compartilhado";
 
 const COR = { texto: "#111827", suave: "#6b7280", linha: "#e5e7eb", fundo: "#f9fafb", positivo: "#15803d", negativo: "#b91c1c", destaque: "#4f46e5" };
@@ -76,7 +77,7 @@ function EscadaVariacoes({ variacoes, completo }: { variacoes: NonNullable<Resum
           </div>
           {v.viavel && (
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 11, color: COR.suave, marginTop: 2 }}>
-              <span>{completo ? `custo ${formatBRL(v.custo)}${v.porUnidade ? ` · ${v.porUnidade}` : ""}` : (v.porUnidade ?? "")}</span>
+              <span>{completo ? [`custo ${formatBRL(v.custo)}`, v.porUnidade, textoFaixa(v.faixa)].filter(Boolean).join(" · ") : (v.porUnidade ?? "")}</span>
               <span style={{ color: v.lucro >= 0 ? COR.positivo : COR.negativo, fontWeight: 600 }}>
                 lucro {formatBRL(v.lucro)} ({pct(v.margemPct)})
               </span>

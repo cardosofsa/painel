@@ -10,6 +10,7 @@ import { useCapturaImagem } from "@/components/ui/PreviaImagem";
 import { CartaoPrecificacao, type EmpresaCartao } from "@/components/precificacao/CartaoPrecificacao";
 import { encontrarFaixa, type ComponenteKit, type FaixaComissao, type TaxasPlataforma } from "@/lib/pricing";
 import { rotuloTaxaFaixa } from "@/lib/faixas";
+import { textoFaixa, type FaixaVenda } from "@/lib/faixa-venda";
 
 /** Lucro no menor e no maior preço que o vendedor aceitaria praticar — opcional, só aparece
  * no texto/imagem no formato "completo" (ver montarTextoResumo). */
@@ -70,6 +71,8 @@ export interface VariacaoExport {
   /** "R$ 51,80/kg" (só quando ajuda a comparar). */
   porUnidade: string | null;
   viavel: boolean;
+  /** Faixa de venda da variação (mínimo e máximo que aceita), só no formato "completo". */
+  faixa?: FaixaVenda | null;
 }
 
 /** Texto da escada de preços das variações. */
@@ -83,7 +86,10 @@ function textoVariacoes(r: ResumoExport, formato: "simples" | "completo"): strin
       continue;
     }
     linhas.push(`- ${v.nome} (${v.quantidade}): ${formatBRL(v.preco)} · lucro ${formatBRL(v.lucro)} (${(v.margemPct * 100).toFixed(1)}%)`);
-    if (formato === "completo") linhas.push(`  custo ${formatBRL(v.custo)}${v.porUnidade ? ` · ${v.porUnidade}` : ""}`);
+    if (formato === "completo") {
+      const faixa = textoFaixa(v.faixa);
+      linhas.push(`  custo ${formatBRL(v.custo)}${v.porUnidade ? ` · ${v.porUnidade}` : ""}${faixa ? ` · ${faixa}` : ""}`);
+    }
   }
   return linhas.join("\n");
 }

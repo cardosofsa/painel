@@ -15,6 +15,8 @@ import { ComoLucrar, DICA_MARGEM, Metrica, OndeVende, Passo, type ModoOpcao } fr
 import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
 import { Combobox } from "@/components/ui/Combobox";
 import { BotaoCusto, SeletorCusto, type CustoEscolhido } from "@/components/precificacao/SeletorCusto";
+import { FotoPrecificacao } from "@/components/precificacao/FotoPrecificacao";
+import { avisoDaFaixa, faixaInvertida, normalizarFaixa } from "@/lib/faixa-venda";
 import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
 import { margemAtingida } from "@/lib/pricing";
 import { useExportarPrecificacao, type ResumoExport } from "@/components/precificacao/resultado-compartilhado";
@@ -64,6 +66,8 @@ export function KitsView({
   const [nome, setNome] = useState("");
   const [precoMinimo, setPrecoMinimo] = useState(0);
   const [precoMaximo, setPrecoMaximo] = useState(0);
+  // Foto própria do kit (0045): item puxado de "Custo" ou sem cadastro não tem foto.
+  const [imagemPropria, setImagemPropria] = useState<string | null>(null);
   const { setPendenteExport, setPendenteImagem, modais: modaisExportacao } = useExportarPrecificacao(empresa);
 
   const loja = lojas.find((l) => l.id === lojaId) ?? null;
@@ -72,7 +76,7 @@ export function KitsView({
 
   const aba = useRascunhoDaAba({
     visao: "kits",
-    instantaneo: { itens, extra, lojaId, imposto, modo, parametro, nome, precoMinimo, precoMaximo },
+    instantaneo: { itens, extra, lojaId, imposto, modo, parametro, nome, precoMinimo, precoMaximo, imagemPropria },
     temConteudo: itens.length > 0,
     titulo: nomeFinal || "Kit",
     pendenteInicial: rascunhoPendente,
@@ -98,6 +102,8 @@ export function KitsView({
       setNome(lerTexto(d.nome));
       setPrecoMinimo(lerNumero(d.precoMinimo, 0));
       setPrecoMaximo(lerNumero(d.precoMaximo, 0));
+      const foto = lerTexto(d.imagemPropria);
+      setImagemPropria(/^https:\/\//.test(foto) ? foto : null);
     },
   });
 
@@ -134,6 +140,9 @@ export function KitsView({
 
   const semCadastro = itens.filter((i) => i.produtoId === null);
   const semNome = semCadastro.some((i) => !i.nome.trim());
+  const primeiroComFoto = itens.map((i) => produtos.find((p) => p.id === i.produtoId)?.imagem_url).find(Boolean) ?? null;
+  const faixa = normalizarFaixa(precoMinimo, precoMaximo);
+  const faixaErrada = faixaInvertida(faixa);
 
   /** O que a tarifa fixa do canal cobrou neste preço (o motor devolve só o lucro, então é o resto). */
   const taxaFixaDoKit = Math.max(0, r.resultado.precoVenda - r.resultado.custoTotal - r.resultado.lucroLiquido - r.resultado.taxaVariavelValor - r.resultado.taxaAdicionalValor - r.resultado.impostoValor - r.resultado.taxaExtraCalculada);
@@ -143,11 +152,10 @@ export function KitsView({
     const res = r.resultado;
     const min = r.faixaVenda.minimo;
     const max = r.faixaVenda.maximo;
-    const primeiroComFoto = itens.map((i) => produtos.find((p) => p.id === i.produtoId)?.imagem_url).find(Boolean) ?? null;
     return {
       titulo: nomeFinal,
       canal: loja ? `${loja.canalNome} · ${loja.nome}` : "Venda direta",
-      imagemUrl: primeiroComFoto,
+      imagemUrl: imagemPropria ?? primeiroComFoto,
       precoVenda: res.precoVenda,
       custoTotal: r.custoKit,
       taxaVariavelValor: res.taxaVariavelValor,
@@ -175,6 +183,7 @@ export function KitsView({
   function salvar(criarProduto: boolean) {
     const res = r.resultado;
     if (!res.viavel || !itens.length || semNome) return;
+    if (faixaErrada) return void toast.error("O preço mínimo está maior que o máximo.");
     const taxaFixa = taxaFixaDoKit;
     startTransition(async () => {
       const s = await executarComToast(
@@ -210,6 +219,9 @@ export function KitsView({
           preco_calculado: Math.round(res.precoVenda * 100) / 100,
           lucro: Math.round(res.lucroLiquido * 100) / 100,
           origem: "individual",
+          imagem_url: imagemPropria,
+          preco_minimo: faixa.minimo,
+          preco_maximo: faixa.maximo,
         }, aba.rasc.rascunhoId),
         { erro: "Erro ao salvar o kit" },
       );
@@ -229,6 +241,7 @@ export function KitsView({
   const taxasEImposto = res.precoVenda - r.custoKit - res.lucroLiquido;
   // Barra "cliente paga": o kit em relação à soma dos itens avulsos.
   const fracaoKit = r.precoAvulso > 0 && viavel ? Math.min(1, res.precoVenda / r.precoAvulso) : 0;
+  const avisoFaixa = viavel ? avisoDaFaixa(res.precoVenda, faixa, formatBRL) : null;
 
   return (
     <>
@@ -285,13 +298,16 @@ export function KitsView({
                   <CampoNumero value={extra} onChange={setExtra} min={0} casas={2} placeholder="0,00" />
                 </FormField>
               </div>
+              <div className="mt-3">
+                <FotoPrecificacao propria={imagemPropria} doProduto={primeiroComFoto} onChange={setImagemPropria} />
+              </div>
             </Passo>
 
             <Passo n={2} titulo="Onde vende" resumo={loja ? `${loja.canalNome} · ${loja.nome}` : "venda direta"}>
               <OndeVende lojas={lojas} lojaId={lojaId || null} onEscolher={(id) => setLojaId(id ?? "")} semLoja={{ titulo: "Venda direta", sub: "PDV, catálogo, sem comissão" }} />
             </Passo>
 
-            <Passo n={3} titulo="Como quer lucrar" ultimo>
+            <Passo n={3} titulo="Como quer lucrar">
               <ComoLucrar
                 modos={MODOS}
                 modo={modo}
@@ -304,21 +320,10 @@ export function KitsView({
                 onValor={setParametro}
               />
             </Passo>
-          </Card>
 
-          <Card>
-            <details className="group">
-              <summary className="flex cursor-pointer items-center justify-between list-none">
-                <span>
-                  <CardTitle>Mais opções</CardTitle>
-                  <span className="block text-xs text-text-secondary">Imposto e faixa de venda (o menor e o maior preço que você aceitaria)</span>
-                </span>
-                <ChevronDown size={18} className="text-text-tertiary transition-transform duration-[--duracao-media] group-open:rotate-180" aria-hidden />
-              </summary>
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 [&>*]:mb-0">
-                <FormField label="Imposto (%)">
-                  <CampoNumero value={imposto} onChange={setImposto} min={0} max={50} />
-                </FormField>
+            <Passo n={4} titulo="Faixa de venda" resumo={faixa.minimo !== null || faixa.maximo !== null ? "o menor e o maior preço que aceita" : "opcional"} ultimo>
+              <p className="mb-3 text-xs text-text-secondary">O menor e o maior preço que você aceitaria no kit: mostra o lucro em cada ponta, para negociar sem perder dinheiro.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 [&>*]:mb-0">
                 <FormField label="Preço mínimo do kit (R$)">
                   <CampoNumero value={precoMinimo} onChange={setPrecoMinimo} min={0} casas={2} placeholder="Ex.: 79,90" />
                 </FormField>
@@ -326,18 +331,39 @@ export function KitsView({
                   <CampoNumero value={precoMaximo} onChange={setPrecoMaximo} min={0} casas={2} placeholder="Ex.: 129,90" />
                 </FormField>
               </div>
-              {(r.faixaVenda.minimo || r.faixaVenda.maximo) && (
-                <dl className="mt-3 grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      ["Lucro no mínimo", r.faixaVenda.minimo],
-                      ["Lucro no máximo", r.faixaVenda.maximo],
-                    ] as const
-                  ).map(([rotulo, f]) => (
-                    <Metrica key={rotulo} rotulo={rotulo} valor={f ? `${formatBRL(f.lucroLiquido)} · ${pct(f.margemEfetivaPct)}` : "—"} classe={f ? classeValor(f.lucroLiquido) : "text-text-tertiary"} />
-                  ))}
-                </dl>
+              {faixaErrada ? (
+                <p className="mt-2 text-xs text-negative">O mínimo está maior que o máximo.</p>
+              ) : (
+                (r.faixaVenda.minimo || r.faixaVenda.maximo) && (
+                  <dl className="mt-3 grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ["Lucro no mínimo", r.faixaVenda.minimo],
+                        ["Lucro no máximo", r.faixaVenda.maximo],
+                      ] as const
+                    ).map(([rotulo, f]) => (
+                      <Metrica key={rotulo} rotulo={rotulo} valor={f ? `${formatBRL(f.lucroLiquido)} · ${pct(f.margemEfetivaPct)}` : "—"} classe={f ? classeValor(f.lucroLiquido) : "text-text-tertiary"} />
+                    ))}
+                  </dl>
+                )
               )}
+            </Passo>
+          </Card>
+
+          <Card>
+            <details className="group">
+              <summary className="flex cursor-pointer items-center justify-between list-none">
+                <span>
+                  <CardTitle>Mais opções</CardTitle>
+                  <span className="block text-xs text-text-secondary">Imposto</span>
+                </span>
+                <ChevronDown size={18} className="text-text-tertiary transition-transform duration-[--duracao-media] group-open:rotate-180" aria-hidden />
+              </summary>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 [&>*]:mb-0">
+                <FormField label="Imposto (%)">
+                  <CampoNumero value={imposto} onChange={setImposto} min={0} max={50} />
+                </FormField>
+              </div>
             </details>
           </Card>
         </div>
@@ -363,6 +389,11 @@ export function KitsView({
               </p>
             ) : (
               <>
+                {avisoFaixa && (
+                  <p className="mt-2 text-xs text-negative flex gap-1.5">
+                    <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden /> {avisoFaixa}
+                  </p>
+                )}
                 <dl key={`m-${res.precoVenda}`} className="destaque-valor mt-4 grid grid-cols-3 gap-2">
                   <Metrica rotulo="Lucro" valor={formatBRL(res.lucroLiquido)} classe={classeValor(res.lucroLiquido)} />
                   <Metrica rotulo="Margem" valor={pct(res.margemEfetivaPct)} dica={DICA_MARGEM} />
