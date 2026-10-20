@@ -8,6 +8,7 @@ import { formatBRL, numeroOuNulo } from "@/lib/format";
 import { margemAtingida, type ModoCalculo } from "@/lib/pricing";
 import {
   calcularVariacao,
+  calcularVariacaoNoPreco,
   custoDaVariacao,
   UNIDADES_BASE,
   unidadeBase,
@@ -28,6 +29,8 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { FormField, inputClass } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { BotaoCusto, SeletorCusto } from "@/components/precificacao/SeletorCusto";
+import { FotoPrecificacao } from "@/components/precificacao/FotoPrecificacao";
+import { faixaInvertida, normalizarFaixa } from "@/lib/faixa-venda";
 import { ComoLucrar, MODOS_PRECO, OndeVende, Passo } from "@/components/precificacao/blocos";
 import { AvisoRascunho, IndicadorRascunho } from "@/components/precificacao/RascunhoAviso";
 import { lerId, lerLista, lerNumero, lerTexto, useRascunhoDaAba, type RascunhoPendente, type RelatarRascunho } from "@/lib/precificacao-rascunho";
@@ -73,6 +76,8 @@ export function VariacoesView({
   // A que se refere o custo base: produto a granel é por kg ou litro, e cada variação diz quanto leva.
   const [unidade, setUnidade] = useState<UnidadeBase>("un");
   const [escolhendoCusto, setEscolhendoCusto] = useState(false);
+  // Foto própria do anúncio (0113): item puxado de "Custo" não tem foto de produto.
+  const [imagemPropria, setImagemPropria] = useState<string | null>(null);
   const [taxaFixa, setTaxaFixa] = useState(4);
   const [taxaVariavelPct, setTaxaVariavelPct] = useState(20);
   const [taxaAdicionalPct, setTaxaAdicionalPct] = useState(0);
@@ -102,7 +107,7 @@ export function VariacoesView({
     if (!nomeAnuncio.trim()) setNomeAnuncio(p.nome);
   }
 
-  const instantaneo = { nomeAnuncio, tituloAnuncio, descricaoAnuncio, produtoId, modoTaxas, lojaId, custoUnitarioBase, unidade, taxaFixa, taxaVariavelPct, taxaAdicionalPct, impostoPct, modo, margemPct, markupPct, lucroDesejado, precoFixo, variacoes };
+  const instantaneo = { nomeAnuncio, tituloAnuncio, descricaoAnuncio, produtoId, modoTaxas, lojaId, custoUnitarioBase, unidade, taxaFixa, taxaVariavelPct, taxaAdicionalPct, impostoPct, modo, margemPct, markupPct, lucroDesejado, precoFixo, variacoes, imagemPropria };
   // Depois de salvar, o nome volta a vazio: sem nome não há o que guardar.
   const temConteudo = !!nomeAnuncio.trim();
   const aba = useRascunhoDaAba({
@@ -135,6 +140,8 @@ export function VariacoesView({
       setMarkupPct(lerNumero(d.markupPct, 50));
       setLucroDesejado(lerNumero(d.lucroDesejado, 30));
       setPrecoFixo(lerNumero(d.precoFixo, 99.9));
+      const foto = lerTexto(d.imagemPropria);
+      setImagemPropria(/^https:\/\//.test(foto) ? foto : null);
       const lidas = lerLista<VariacaoLinha>(d.variacoes, (x) =>
         typeof x.id === "string" && typeof x.nome === "string"
           ? {
@@ -145,6 +152,8 @@ export function VariacoesView({
               parametroOverride: typeof x.parametroOverride === "number" ? x.parametroOverride : null,
               embalagem: lerNumero(x.embalagem, 0),
               insumos: lerNumero(x.insumos, 0),
+              precoMinimo: typeof x.precoMinimo === "number" && x.precoMinimo > 0 ? x.precoMinimo : null,
+              precoMaximo: typeof x.precoMaximo === "number" && x.precoMaximo > 0 ? x.precoMaximo : null,
             }
           : null,
       );
@@ -168,6 +177,8 @@ export function VariacoesView({
     taxaVariavelPct,
   };
   const calcular = (v: VariacaoLinha) => calcularVariacao(config, v);
+  const calcularNoPreco = (v: VariacaoLinha, preco: number) => calcularVariacaoNoPreco(config, v, preco);
+  const fotoDoProduto = produtos.find((p) => p.id === produtoId)?.imagem_url ?? null;
 
   function adicionarVariacao() {
     setVariacoes((prev) => [
@@ -192,6 +203,10 @@ export function VariacoesView({
         if (campo === "parametroOverride") return { ...v, parametroOverride: numeroOuNulo(valor) };
         if (campo === "embalagem") return { ...v, embalagem: numeroOuNulo(valor) ?? 0 };
         if (campo === "insumos") return { ...v, insumos: numeroOuNulo(valor) ?? 0 };
+        if (campo === "precoMinimo" || campo === "precoMaximo") {
+          const n = numeroOuNulo(valor);
+          return { ...v, [campo]: n !== null && n > 0 ? n : null };
+        }
         return { ...v, custoManual: numeroOuNulo(valor) };
       }),
     );
@@ -199,10 +214,13 @@ export function VariacoesView({
 
   function resumoDeVariacao(v: VariacaoLinha): ResumoExport {
     const { resultado, taxas } = calcular(v);
+    const faixa = normalizarFaixa(v.precoMinimo, v.precoMaximo);
+    const min = faixa.minimo !== null && faixa.maximo !== null && !faixaInvertida(faixa) ? calcularNoPreco(v, faixa.minimo).resultado : null;
+    const max = min && faixa.maximo !== null ? calcularNoPreco(v, faixa.maximo).resultado : null;
     return {
       titulo: `${nomeAnuncio.trim() || "Anúncio"} — ${v.nome}`,
       canal: modoTaxas === "loja" && lojaSelecionada ? `${lojaSelecionada.canalNome} · ${lojaSelecionada.nome}` : null,
-      imagemUrl: produtos.find((p) => p.id === produtoId)?.imagem_url ?? null,
+      imagemUrl: imagemPropria ?? fotoDoProduto,
       precoVenda: resultado.precoVenda,
       custoTotal: resultado.custoTotal,
       taxaVariavelValor: resultado.taxaVariavelValor,
@@ -216,7 +234,10 @@ export function VariacoesView({
       lucroLiquido: resultado.lucroLiquido,
       margemEfetivaPct: resultado.margemEfetivaPct,
       componentes: null,
-      faixaVenda: null,
+      faixaVenda:
+        min && max
+          ? { precoMinimo: min.precoVenda, precoMaximo: max.precoVenda, lucroMinimo: min.lucroLiquido, margemMinimaPct: min.margemEfetivaPct, lucroMaximo: max.lucroLiquido, margemMaximaPct: max.margemEfetivaPct }
+          : null,
     };
   }
 
@@ -229,6 +250,7 @@ export function VariacoesView({
       variacoes: variacoes.map((v) => {
         const { resultado } = calcular(v);
         const qtd = v.multiplicador.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+        const faixa = normalizarFaixa(v.precoMinimo, v.precoMaximo);
         return {
           nome: v.nome || "Sem nome",
           quantidade: `${qtd} ${un.curto}`,
@@ -238,6 +260,7 @@ export function VariacoesView({
           margemPct: resultado.margemEfetivaPct,
           porUnidade: resultado.viavel && v.multiplicador > 0 && (un.fracionada || v.multiplicador !== 1) ? `${formatBRL(resultado.precoVenda / v.multiplicador)}/${un.curto}` : null,
           viavel: resultado.viavel,
+          faixa: faixaInvertida(faixa) ? null : faixa,
         };
       }),
     };
@@ -251,9 +274,15 @@ export function VariacoesView({
       toast.error("Preencha o nome do anúncio, o custo base e adicione ao menos uma variação");
       return;
     }
+    const invertida = variacoes.find((v) => faixaInvertida(normalizarFaixa(v.precoMinimo, v.precoMaximo)));
+    if (invertida) {
+      toast.error(`Na variação "${invertida.nome}", o preço mínimo está maior que o máximo.`);
+      return;
+    }
     const variacoesInput: VariacaoInput[] = variacoes.map((v) => {
       const { custo, resultado, taxas } = calcular(v);
       const partes = custoDaVariacao(custoUnitarioBase, v);
+      const faixa = normalizarFaixa(v.precoMinimo, v.precoMaximo);
       return {
         nome_variacao: v.nome,
         multiplicador: v.multiplicador,
@@ -270,6 +299,8 @@ export function VariacoesView({
         margem_pct: margemAtingida(resultado),
         preco_calculado: resultado.precoVenda,
         lucro: resultado.lucroLiquido,
+        preco_minimo: faixa.minimo,
+        preco_maximo: faixa.maximo,
       };
     });
 
@@ -281,6 +312,7 @@ export function VariacoesView({
           nome_anuncio: nomeAnuncio,
           titulo_anuncio: tituloAnuncio.trim() || null,
           descricao: descricaoAnuncio.trim() || null,
+          imagem_url: imagemPropria,
           componentes_base: [{ id: "base", nome: `Custo base por ${unidadeBase(unidade).curto}`, quantidade: 1, custoUnitario: custoUnitarioBase }],
           variacoes: variacoesInput,
         }),
@@ -291,6 +323,7 @@ export function VariacoesView({
         setNomeAnuncio("");
         setTituloAnuncio("");
         setDescricaoAnuncio("");
+        setImagemPropria(null);
       }
     });
   }
@@ -362,6 +395,9 @@ export function VariacoesView({
               <input value={tituloAnuncio} onChange={(e) => setTituloAnuncio(e.target.value)} className={inputClass} />
             </FormField>
           </div>
+          <div className="mt-3">
+            <FotoPrecificacao propria={imagemPropria} doProduto={fotoDoProduto} onChange={setImagemPropria} />
+          </div>
           <details className="mt-3 group">
             <summary className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-text-secondary hover:text-text-primary list-none">
               Descrição, imposto e taxa adicional
@@ -427,6 +463,7 @@ export function VariacoesView({
             modo={modo}
             parametroPadrao={parametroPadrao}
             calcular={calcular}
+            calcularNoPreco={calcularNoPreco}
             impostoPct={impostoPct}
             taxaAdicionalPct={taxaAdicionalPct}
             resumoDe={resumoDeVariacao}

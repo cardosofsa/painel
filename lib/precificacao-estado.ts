@@ -40,6 +40,7 @@ import {
 } from "@/app/(painel)/precificacao/actions";
 import { executarComToast } from "@/lib/acao-cliente";
 import { numeroDoCampo } from "@/lib/campo-numero";
+import { faixaInvertida, normalizarFaixa } from "@/lib/faixa-venda";
 import { lojaUsadaNaPrecificacao, modoAoReabrir, precoIdeal as precoIdealRaioX, resultadoNoPreco as resultadoNoPrecoRaioX } from "@/lib/raio-x";
 import type {
   PrecificacaoHist,
@@ -511,6 +512,9 @@ export function usePrecificacao({
       setComponentes([]);
     }
     extras.carregarExtras(h);
+    // 0113: a faixa salva volta junto (numeric chega como texto do PostgREST).
+    setPrecoMinimo(Number(h.preco_minimo) > 0 ? Number(h.preco_minimo) : "");
+    setPrecoMaximo(Number(h.preco_maximo) > 0 ? Number(h.preco_maximo) : "");
     setVisao("individual");
     toast.success("Precificação carregada no formulário");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -629,6 +633,13 @@ export function usePrecificacao({
       toast.error("Escolha o canal de venda antes de salvar.");
       return;
     }
+    const faixa = normalizarFaixa(precoMinimo === "" ? null : precoMinimo, precoMaximo === "" ? null : precoMaximo);
+    if (faixaInvertida(faixa)) {
+      toast.error("Na faixa de venda, o preço mínimo está maior que o máximo.");
+      return;
+    }
+    // Só manda a faixa quando há uma: sem ela, salva igual antes da 0113.
+    const faixaParaSalvar = faixa.minimo !== null || faixa.maximo !== null ? { preco_minimo: faixa.minimo, preco_maximo: faixa.maximo } : {};
     const componentesSalvos: ComponenteKit[] =
       custoProduto > 0
         ? [{ id: ID_CUSTO_PRODUTO, nome: "Custo do produto", quantidade: 1, custoUnitario: custoProduto }, ...componentes]
@@ -657,6 +668,7 @@ export function usePrecificacao({
           modo_calculo: modo,
           parametro: modo === "margem" ? margemPct / 100 : modo === "markup" ? markupPct / 100 : modo === "lucro" ? lucroDesejado : precoFixo,
           ...extras.extrasParaSalvar(),
+          ...faixaParaSalvar,
         }, rascunhoAtual?.id() ?? null),
         { sucesso: "Precificação salva no histórico", erro: "Erro ao salvar precificação" },
       );

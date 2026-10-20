@@ -52,17 +52,24 @@ export interface PrecificacaoInput {
   anuncio?: { tipo: "percentual" | "valor"; valor: number; margem_alvo_pct: number | null } | null;
   estrategia?: { diagnostico: string; estrategias: { tipo: string; titulo: string; detalhe: string }[]; precoSugerido: number | null; motivoPreco: string | null } | null;
   imagem_url?: string | null;
+  /** 0113 (opcionais): faixa de venda. */
+  preco_minimo?: number | null;
+  preco_maximo?: number | null;
 }
+
+const MSG_0113 = "A faixa de venda e a foto do anúncio precisam da migração 0113. Aplique no Supabase e salve de novo.";
 
 export async function salvarPrecificacao(dados: PrecificacaoInput, rascunhoId: string | null = null) {
   return comResultado(async () => {
     const supabase = await createClient();
     const v = validar(precificacaoSchema, dados);
     let { data, error } = await supabase.from("precificacoes").insert(v).select("id").single();
-    // Sem a 0045 ou a 0100 as colunas novas não existem (PGRST204): grava o resto, como antes.
+    // Sem a 0045, a 0100 ou a 0113 as colunas novas não existem (PGRST204): grava o resto,
+    // como antes. A faixa de venda preenchida não some calada: avisa da 0113.
     if (error?.code === "PGRST204") {
+      if (error.message?.includes("preco_m") && (v.preco_minimo != null || v.preco_maximo != null)) throw new Error(MSG_0113);
       const base: Record<string, unknown> = { ...v };
-      for (const c of ["anuncio", "estrategia", "imagem_url", "modo_calculo", "parametro"]) delete base[c];
+      for (const c of ["anuncio", "estrategia", "imagem_url", "modo_calculo", "parametro", "preco_minimo", "preco_maximo"]) delete base[c];
       ({ data, error } = await supabase.from("precificacoes").insert(base).select("id").single());
     }
     if (error) lancarErroSupabase(error);
@@ -265,6 +272,9 @@ export interface VariacaoInput {
   margem_pct: number | null;
   preco_calculado: number;
   lucro: number;
+  /** 0113: faixa de venda da variação. */
+  preco_minimo?: number | null;
+  preco_maximo?: number | null;
 }
 
 export interface AnuncioInput {
@@ -273,6 +283,8 @@ export interface AnuncioInput {
   nome_anuncio: string;
   titulo_anuncio: string | null;
   descricao?: string | null;
+  /** 0113: foto própria do anúncio. */
+  imagem_url?: string | null;
   componentes_base: ComponenteKit[] | null;
   variacoes: VariacaoInput[];
 }
@@ -283,22 +295,34 @@ export async function criarAnuncio(dados: AnuncioInput) {
     // Valida ANTES do primeiro insert: sem isso, um NaN vindo da tela passava pelo insert
     // do anúncio e só estourava no das variações, deixando o anúncio pai órfão no banco.
     const v = validar(anuncioSchema, dados);
-    const { data: anuncio, error } = await supabase
-      .from("anuncios")
-      .insert({
-        produto_id: v.produto_id,
-        loja_id: v.loja_id,
-        nome_anuncio: v.nome_anuncio,
-        titulo_anuncio: v.titulo_anuncio,
-        descricao: v.descricao ?? null,
-        componentes_base: v.componentes_base,
-      })
-      .select("id")
-      .single();
+    const usaFaixa = v.variacoes.some((x) => x.preco_minimo != null || x.preco_maximo != null);
+    // Sem a 0113 não há onde guardar a foto nem a faixa: avisa em vez de perder calado.
+    if (v.imagem_url || usaFaixa) {
+      const { error: sem0113 } = await supabase.from("anuncio_variacoes").select("preco_minimo").limit(0);
+      if (sem0113?.code === "42703" || sem0113?.code === "PGRST204") throw new Error(MSG_0113);
+    }
+    const linhaAnuncio: Record<string, unknown> = {
+      produto_id: v.produto_id,
+      loja_id: v.loja_id,
+      nome_anuncio: v.nome_anuncio,
+      titulo_anuncio: v.titulo_anuncio,
+      descricao: v.descricao ?? null,
+      componentes_base: v.componentes_base,
+    };
+    if (v.imagem_url) linhaAnuncio.imagem_url = v.imagem_url;
+    const { data: anuncio, error } = await supabase.from("anuncios").insert(linhaAnuncio).select("id").single();
     if (error) lancarErroSupabase(error);
     if (!anuncio) throw new Error("Erro ao criar anúncio.");
 
-    const variacoes = v.variacoes.map((item) => ({ ...item, anuncio_id: anuncio.id }));
+    // Sem faixa nenhuma, as colunas da 0113 nem vão: o insert funciona antes da migração.
+    const variacoes = v.variacoes.map((item) => {
+      const linha: Record<string, unknown> & typeof item = { ...item };
+      if (!usaFaixa) {
+        delete linha.preco_minimo;
+        delete linha.preco_maximo;
+      }
+      return { ...linha, anuncio_id: anuncio.id };
+    });
     let { error: erroVariacoes } = await supabase.from("anuncio_variacoes").insert(variacoes);
     // Sem a 0111: as colunas novas não existem e a quantidade é inteira. Se nada disso foi
     // usado, grava como antes; se foi, avisa (e tira o anúncio que ficaria sem variações).

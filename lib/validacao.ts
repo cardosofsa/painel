@@ -156,6 +156,9 @@ export const precificacaoSchema = z.object({
     .nullable()
     .optional(),
   imagem_url: z.string().trim().url("Imagem inválida").max(1000).nullable().optional(),
+  // 0113; opcionais: faixa de venda (o banco confere mínimo ≤ máximo).
+  preco_minimo: dinheiro.nullable().optional(),
+  preco_maximo: dinheiro.nullable().optional(),
 });
 
 export const lojaSchema = z.object({
@@ -633,6 +636,8 @@ export const anuncioSchema = z.object({
   nome_anuncio: textoCurto,
   titulo_anuncio: z.string().trim().max(200).nullable(),
   descricao: z.string().trim().max(5000, "Descrição do anúncio: máximo 5.000 caracteres").nullable().optional(),
+  // 0113: foto própria do anúncio (item puxado de "Custo" não tem foto de produto).
+  imagem_url: z.string().trim().url("Imagem inválida").max(1000).nullable().optional(),
   componentes_base: z
     .array(
       z.object({
@@ -662,6 +667,9 @@ export const anuncioSchema = z.object({
         margem_pct: z.number().finite().min(-1).max(1).nullable(),
         preco_calculado: dinheiro,
         lucro: z.number().finite("Lucro inválido").min(-10_000_000).max(10_000_000),
+        // 0113: faixa de venda da variação.
+        preco_minimo: dinheiro.nullable().optional(),
+        preco_maximo: dinheiro.nullable().optional(),
       }),
     )
     .min(1, "O anúncio precisa ter pelo menos uma variação")
