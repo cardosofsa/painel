@@ -54,3 +54,30 @@ describe("montarTextoResumo", () => {
     expect(t).not.toContain("Separado");
   });
 });
+
+describe("montarTextoResumo com variações (escada de preços)", () => {
+  const escada: ResumoExport = {
+    ...base,
+    titulo: "Café a granel",
+    variacoes: [
+      { nome: "250 g", quantidade: "0,25 kg", custo: 12.15, preco: 31.9, lucro: 8.5, margemPct: 0.266, porUnidade: "R$ 127,60/kg", viavel: true },
+      { nome: "1 kg", quantidade: "1 kg", custo: 42, preco: 99.9, lucro: 27.1, margemPct: 0.271, porUnidade: "R$ 99,90/kg", viavel: true },
+      { nome: "5 kg", quantidade: "5 kg", custo: 200, preco: 0, lucro: 0, margemPct: 0, porUnidade: null, viavel: false },
+    ],
+  };
+  it("simples: uma linha por variação, com preço, lucro e margem; inviável é dita", () => {
+    const t = montarTextoResumo(escada, "simples");
+    expect(t).toContain("*Café a granel*");
+    expect(t).toContain("- 250 g (0,25 kg): R$");
+    expect(t).toContain("(26.6%)");
+    expect(t).toContain("- 5 kg (5 kg): inviável");
+    expect(t).not.toContain("Canal:");
+    expect(t).not.toContain("custo");
+  });
+  it("completa: canal, custo e preço por kg de cada variação", () => {
+    const t = montarTextoResumo(escada, "completo");
+    expect(t).toContain("Canal: Shopee · Loja Centro");
+    expect(t).toContain("R$ 127,60/kg");
+    expect(t).not.toContain("Preço de venda:");
+  });
+});

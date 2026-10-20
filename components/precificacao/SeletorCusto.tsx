@@ -15,12 +15,12 @@ import { listarCustosAvulsos } from "@/app/(painel)/produtos/custos/actions";
  * Botão "Custo" (cor própria, ao lado do rótulo Produto): abre o pop-up com os custos
  * registrados em Produtos › Registrar custo, que não são produto cadastrado.
  */
-export function BotaoCusto({ onClick, rotulo = "Custo" }: { onClick: () => void; rotulo?: string }) {
+export function BotaoCusto({ onClick, rotulo = "Custo", compacto = false }: { onClick: () => void; rotulo?: string; /** Ao lado de um rótulo de campo: não aumenta a altura da linha. */ compacto?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-7 items-center gap-1 rounded-full bg-marca-sol px-2.5 text-xs font-semibold text-marca-fundo shadow-elev-1 hover:brightness-95 transition-[filter] duration-[--duracao-rapida]"
+      className={`inline-flex items-center gap-1 rounded-full bg-marca-sol font-semibold text-marca-fundo shadow-elev-1 hover:brightness-95 transition-[filter] duration-[--duracao-rapida] ${compacto ? "-my-1 h-6 px-2 text-[11px]" : "h-7 px-2.5 text-xs"}`}
     >
       <Receipt size={12} aria-hidden /> {rotulo}
     </button>

@@ -18,7 +18,7 @@ import {
 import { type ResumoExport, useExportarPrecificacao } from "@/components/precificacao/resultado-compartilhado";
 import { EscadaPrecos, ListaVariacoes } from "@/components/precificacao/variacoes/TabelaVariacoes";
 import { Button } from "@/components/ui/Button";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Copy, ImageIcon, MessageCircle } from "lucide-react";
 import { ExportarVariacoesModal } from "@/components/precificacao/ExportarPrecificacoes";
 import { VariacoesSalvas } from "@/components/precificacao/variacoes/VariacoesSalvas";
 import { criarAnuncio, removerAnuncio, type VariacaoInput } from "@/app/(painel)/precificacao/actions";
@@ -220,6 +220,30 @@ export function VariacoesView({
     };
   }
 
+  /** A escada inteira para Copiar, WhatsApp e Imagem: uma linha por variação. */
+  function resumoDasVariacoes(): ResumoExport {
+    const un = unidadeBase(unidade);
+    return {
+      ...resumoDeVariacao(variacoes[0]),
+      titulo: nomeAnuncio.trim() || "Variações",
+      variacoes: variacoes.map((v) => {
+        const { resultado } = calcular(v);
+        const qtd = v.multiplicador.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+        return {
+          nome: v.nome || "Sem nome",
+          quantidade: `${qtd} ${un.curto}`,
+          custo: resultado.custoTotal,
+          preco: resultado.precoVenda,
+          lucro: resultado.lucroLiquido,
+          margemPct: resultado.margemEfetivaPct,
+          porUnidade: resultado.viavel && v.multiplicador > 0 && (un.fracionada || v.multiplicador !== 1) ? `${formatBRL(resultado.precoVenda / v.multiplicador)}/${un.curto}` : null,
+          viavel: resultado.viavel,
+        };
+      }),
+    };
+  }
+  const algumaViavel = variacoes.some((v) => calcular(v).resultado.viavel);
+
   const podeSalvar = !!nomeAnuncio.trim() && custoUnitarioBase > 0 && variacoes.length > 0;
 
   function salvarAnuncio() {
@@ -304,10 +328,11 @@ export function VariacoesView({
             <FormField label="Nome do anúncio *">
               <input value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} placeholder="Ex.: Óleo para Barba" className={inputClass} />
             </FormField>
-            <div className="flex flex-col gap-1.5 mb-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-text-secondary">Produto</span>
-                <BotaoCusto onClick={() => setEscolhendoCusto(true)} />
+            <div className="flex flex-col">
+              {/* Mesma linha de rótulo do FormField ao lado (text-xs, mb-1.5): os campos ficam alinhados. */}
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-xs font-medium text-text-secondary">Produto</span>
+                <BotaoCusto compacto onClick={() => setEscolhendoCusto(true)} />
               </div>
               <Combobox
                 ariaLabel="Produto"
@@ -317,7 +342,7 @@ export function VariacoesView({
                 onChange={escolherProduto}
                 placeholder="Buscar produto pelo nome ou SKU…"
               />
-              <span className="text-xs text-text-tertiary">Sem cadastro? Use “Custo” ou informe o custo base.</span>
+              <span className="mt-1.5 text-xs text-text-tertiary">Sem cadastro? Use “Custo” ou informe o custo base.</span>
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] gap-2">
               <FormField label={`Custo por ${unidadeBase(unidade).curto} (R$) *`} dica="Só o produto. Embalagem e insumos vão em cada variação.">
@@ -430,6 +455,18 @@ export function VariacoesView({
               <Button variant="secondary" size="sm" className="w-full mt-2" onClick={() => void aba.rasc.salvarRascunho()} loading={aba.rasc.salvando} disabled={!temConteudo}>
                 Salvar rascunho
               </Button>
+              {/* Os mesmos atalhos da Individual, com a escada inteira (cada variação tem os seus ao abrir). */}
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setPendenteExport({ acao: "copiar", dados: resumoDasVariacoes() })} disabled={!algumaViavel}>
+                  <Copy size={14} aria-hidden /> Copiar
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setPendenteExport({ acao: "whatsapp", dados: resumoDasVariacoes() })} disabled={!algumaViavel}>
+                  <MessageCircle size={14} aria-hidden /> WhatsApp
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setPendenteImagem(resumoDasVariacoes())} disabled={!algumaViavel}>
+                  <ImageIcon size={14} aria-hidden /> Imagem
+                </Button>
+              </div>
               <div className="mt-2 text-center">
                 <IndicadorRascunho sujo={aba.rasc.sujo} salvando={aba.rasc.salvando} salvoEm={aba.rasc.salvoEm} semMigracao={aba.rasc.semMigracao} />
               </div>

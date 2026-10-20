@@ -52,6 +52,40 @@ export interface ResumoExport {
   faixaVenda: FaixaVendaExport | null;
   /** Foto do produto vinculado, centralizada embaixo do nome na imagem. */
   imagemUrl?: string | null;
+  /**
+   * Variações (aba Variações): o texto e a imagem viram a escada de preços, uma linha por
+   * variação. Com isto, os campos de preço únicos acima não são usados.
+   */
+  variacoes?: VariacaoExport[] | null;
+}
+
+export interface VariacaoExport {
+  nome: string;
+  /** "500 g", "2 un"… */
+  quantidade: string;
+  custo: number;
+  preco: number;
+  lucro: number;
+  margemPct: number;
+  /** "R$ 51,80/kg" (só quando ajuda a comparar). */
+  porUnidade: string | null;
+  viavel: boolean;
+}
+
+/** Texto da escada de preços das variações. */
+function textoVariacoes(r: ResumoExport, formato: "simples" | "completo"): string {
+  const linhas = [`*${r.titulo}*`];
+  if (formato === "completo" && r.canal) linhas.push(`Canal: ${r.canal}`);
+  linhas.push("");
+  for (const v of r.variacoes ?? []) {
+    if (!v.viavel) {
+      linhas.push(`- ${v.nome} (${v.quantidade}): inviável`);
+      continue;
+    }
+    linhas.push(`- ${v.nome} (${v.quantidade}): ${formatBRL(v.preco)} · lucro ${formatBRL(v.lucro)} (${(v.margemPct * 100).toFixed(1)}%)`);
+    if (formato === "completo") linhas.push(`  custo ${formatBRL(v.custo)}${v.porUnidade ? ` · ${v.porUnidade}` : ""}`);
+  }
+  return linhas.join("\n");
 }
 
 export function precoPsicologico(preco: number): number {
@@ -62,6 +96,7 @@ export function precoPsicologico(preco: number): number {
 }
 
 export function montarTextoResumo(r: ResumoExport, formato: "simples" | "completo"): string {
+  if (r.variacoes?.length) return textoVariacoes(r, formato);
   const linhas = [`*${r.titulo}*`];
   if (formato === "completo" && r.canal) linhas.push(`Canal: ${r.canal}`);
   if (formato === "completo" && r.componentes && r.componentes.length > 0) {
