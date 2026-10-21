@@ -1,5 +1,6 @@
 "use client";
 
+import { produtosParaBusca } from "@/lib/precificacao-tipos";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, Copy, ImageIcon, MessageCircle, Sparkles } from "lucide-react";
@@ -122,7 +123,7 @@ export function IndividualNova({
                   ariaLabel="Produto"
                   // O texto do campo é estado dele: remonta quando o produto muda por fora (Duplicar, rascunho).
                   key={e.produtoId ?? "nenhum"}
-                  itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
+                  itens={produtosParaBusca(produtos, e.produtoId).map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
                   valor={e.produtoId}
                   onChange={(id) => {
                     const p = produtos.find((x) => x.id === id);

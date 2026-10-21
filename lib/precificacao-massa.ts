@@ -15,6 +15,7 @@ export interface ProdutoMassa {
   nome: string;
   custo: number;
   preco_venda: number;
+  produto_pai_id?: string | null;
 }
 
 export interface LojaMassa {

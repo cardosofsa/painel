@@ -1,5 +1,6 @@
 "use client";
 
+import { produtosParaBusca } from "@/lib/precificacao-tipos";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ChevronDown, Clock, Download, History } from "lucide-react";
@@ -133,7 +134,7 @@ export function CalculadoraEmMassa({
   function sugestoesPorNome(nome: string) {
     const q = nome.trim().toLowerCase();
     if (!q) return [];
-    return produtos.filter((p) => p.nome.toLowerCase().includes(q)).slice(0, 6);
+    return produtosParaBusca(produtos).filter((p) => p.nome.toLowerCase().includes(q)).slice(0, 6);
   }
 
   function vincularProdutoPorNome(id: string, produto: ProdutoMassa) {
