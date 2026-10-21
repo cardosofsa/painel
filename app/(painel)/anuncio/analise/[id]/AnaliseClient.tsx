@@ -118,6 +118,9 @@ export function AnaliseClient({ dados, iaDisponivel, saldo }: { dados: DadosAnal
         }
         actions={
           <>
+            <Link href={`/anuncio/item/${id}`} className={classesBotao({ variant: "secondary" })}>
+              Variações e preços
+            </Link>
             <Link href={`/precificacao/ajuste/${id}`} className={classesBotao({ variant: "secondary" })}>
               Ajuste de Preço
             </Link>

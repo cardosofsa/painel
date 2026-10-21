@@ -30,18 +30,28 @@ export default async function AnuncioPage() {
     // A12: a lista inteira (antes eram só os 6 últimos); o filtro e a busca rodam na tela.
     supabase.from("anuncio_rascunhos").select("id, produto_id, titulo, descricao, status, estado, atualizado_em, produtos(nome, imagem_url)").order("atualizado_em", { ascending: false }).limit(500),
     // `*`: nome_item, imagem_url e preco_atual dependem de migrações (0071/0093).
-    supabase.from("marketplace_anuncios").select("*").order("atualizado_em", { ascending: false }).limit(400),
+    supabase.from("marketplace_anuncios").select("*").order("atualizado_em", { ascending: false }).limit(1000),
   ]);
-  // Um por item (as variações de um anúncio são o mesmo anúncio na loja).
-  const vistos = new Set<string>();
-  const meus: AnuncioDaLoja[] = ((anunciosRes.data ?? []) as { id: string; loja_id: string; item_id: number; nome?: string | null; nome_item?: string | null; imagem_url?: string | null; preco_atual?: number | null; produto_id: string | null }[])
-    .filter((a) => {
-      const k = `${a.loja_id}:${a.item_id}`;
-      if (vistos.has(k)) return false;
-      vistos.add(k);
-      return true;
-    })
-    .map((a) => ({ id: a.id, titulo: a.nome_item ?? a.nome ?? `Anúncio ${a.item_id}`, imagem: a.imagem_url ?? null, preco: a.preco_atual ? Number(a.preco_atual) : null, semProduto: !a.produto_id }));
+  // Um por item (as variações de um anúncio são o mesmo anúncio na loja), com quantas são e a faixa de preço.
+  type Linha = { id: string; loja_id: string; item_id: number; nome?: string | null; nome_item?: string | null; imagem_url?: string | null; preco_atual?: number | null; produto_id: string | null };
+  const porItem = new Map<string, Linha[]>();
+  for (const a of (anunciosRes.data ?? []) as Linha[]) {
+    const k = `${a.loja_id}:${a.item_id}`;
+    porItem.set(k, [...(porItem.get(k) ?? []), a]);
+  }
+  const meus: AnuncioDaLoja[] = [...porItem.values()].map((grupo) => {
+    const a = grupo[0];
+    const precos = grupo.map((g) => Number(g.preco_atual ?? 0)).filter((n) => n > 0);
+    return {
+      id: a.id,
+      titulo: grupo.find((g) => g.nome_item)?.nome_item ?? a.nome ?? `Anúncio ${a.item_id}`,
+      imagem: grupo.find((g) => g.imagem_url)?.imagem_url ?? null,
+      preco: precos.length ? Math.min(...precos) : null,
+      precoMax: precos.length ? Math.max(...precos) : null,
+      variacoes: grupo.length,
+      semProduto: grupo.some((g) => !g.produto_id),
+    };
+  });
   const rascunhos: RascunhoDaLista[] = ((data ?? []) as unknown as LinhaRascunho[]).map((r) => {
     const estado = lerEstado(r.estado);
     const etapas = calcularEtapas({
@@ -99,7 +109,7 @@ export default async function AnuncioPage() {
         <CardHeader>
           <div>
             <CardTitle>Meus anúncios na loja</CardTitle>
-            <CardSubtitle>Os anúncios sincronizados das lojas conectadas: análise completa e ajuste de preço.</CardSubtitle>
+            <CardSubtitle>Os anúncios sincronizados das lojas conectadas, com as variações: abra um para ver como está na loja e reprecificar tudo de uma vez.</CardSubtitle>
           </div>
         </CardHeader>
         <AnunciosNaLoja anuncios={meus} />
