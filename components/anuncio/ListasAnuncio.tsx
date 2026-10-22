@@ -30,7 +30,11 @@ export interface AnuncioDaLoja {
   id: string;
   titulo: string;
   imagem: string | null;
+  /** Menor preço no ar entre as variações (`precoMax` o maior). */
   preco: number | null;
+  precoMax: number | null;
+  variacoes: number;
+  /** Alguma variação sem produto ligado. */
   semProduto: boolean;
 }
 
@@ -175,15 +179,19 @@ export function AnunciosNaLoja({ anuncios }: { anuncios: AnuncioDaLoja[] }) {
               ) : (
                 <span className="h-11 w-11 shrink-0 rounded-md bg-surface-2" aria-hidden="true" />
               )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-text-primary">{a.titulo}</span>
+              <Link href={`/anuncio/item/${a.id}`} className="min-w-0 flex-1 group">
+                <span className="block truncate text-sm font-medium text-text-primary group-hover:text-accent">{a.titulo}</span>
                 <span className="block text-xs text-text-secondary">
-                  <span className="font-mono">{a.preco ? formatBRL(a.preco) : "sem preço lido"}</span>
-                  {a.semProduto && " · sem produto ligado"}
+                  <span className="font-mono">{a.preco ? (a.precoMax && a.precoMax !== a.preco ? `${formatBRL(a.preco)} – ${formatBRL(a.precoMax)}` : formatBRL(a.preco)) : "sem preço lido"}</span>
+                  {a.variacoes > 1 && ` · ${a.variacoes} variações`}
+                  {a.semProduto && (a.variacoes > 1 ? " · alguma sem produto ligado" : " · sem produto ligado")}
                 </span>
-              </span>
+              </Link>
               <span className="flex shrink-0 items-center gap-1">
-                <Link href={`/anuncio/analise/${a.id}`} className="rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft">
+                <Link href={`/anuncio/item/${a.id}`} className="rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft">
+                  {a.variacoes > 1 ? "Reprecificar" : "Abrir"}
+                </Link>
+                <Link href={`/anuncio/analise/${a.id}`} className="hidden rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft sm:inline">
                   Analisar
                 </Link>
                 <Link href={`/precificacao/ajuste/${a.id}`} className="hidden rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft sm:inline">

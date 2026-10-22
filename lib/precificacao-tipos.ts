@@ -95,6 +95,17 @@ export interface ProdutoOpcao {
   imagem_url?: string | null;
   /** Tipo da categoria (0042): insumo/embalagem aparecem primeiro na composição. */
   tipo?: "produto" | "insumo" | "embalagem" | null;
+  /** Pai da variação (0084); `null` no produto pai e no produto sem variação. */
+  produto_pai_id?: string | null;
+}
+
+/**
+ * Produtos oferecidos na busca da Precificação: só o pai e o produto sem variação. A variação
+ * filha continua na lista completa (custo, histórico, link `?produto=`), só não aparece para
+ * escolher. A já escolhida fica, para o campo não aparecer em branco ao duplicar/retomar.
+ */
+export function produtosParaBusca<T extends { id: string; produto_pai_id?: string | null }>(produtos: T[], escolhido: string | null = null): T[] {
+  return produtos.filter((p) => !p.produto_pai_id || p.id === escolhido);
 }
 
 export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "raio-x" | "promocao";

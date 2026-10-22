@@ -1,4 +1,5 @@
 "use client";
+import { produtosParaBusca } from "@/lib/precificacao-tipos";
 import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState, useTransition } from "react";
@@ -256,7 +257,7 @@ export function KitsView({
                   className="flex-1"
                   ariaLabel="Adicionar produto ao kit"
                   limparAoEscolher
-                  itens={produtos.filter((p) => !itens.some((i) => i.produtoId === p.id)).map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: `custo ${formatBRL(Number(p.custo))} · venda ${formatBRL(Number(p.preco_venda))}` }))}
+                  itens={produtosParaBusca(produtos).filter((p) => !itens.some((i) => i.produtoId === p.id)).map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: `custo ${formatBRL(Number(p.custo))} · venda ${formatBRL(Number(p.preco_venda))}` }))}
                   valor={null}
                   onChange={(id) => {
                     const p = produtos.find((x) => x.id === id);

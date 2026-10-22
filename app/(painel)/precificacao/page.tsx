@@ -24,10 +24,11 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
       .select("*")
       .order("criado_em", { ascending: false })
       .limit(50),
-    // Precifica o que se vende: insumo/embalagem (0096) fora; a variação continua (preço próprio).
+    // Precifica o que se vende: insumo/embalagem (0096) fora. A variação vem (custo, histórico,
+    // `?produto=`), mas a busca das abas mostra só o pai e o produto sem variação (`produtosParaBusca`).
     soMercadorias(
       (f) => {
-        const q = supabase.from("produtos").select("id, sku, nome, custo, custo_base, insumos, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id");
+        const q = supabase.from("produtos").select("id, sku, nome, custo, custo_base, insumos, preco_venda, grupo_id, variante_nome, palavras_chave, imagem_url, categoria_id, produto_pai_id");
         return filtrarMercadorias(q, f).order("nome");
       },
       { incluirFilhas: true },

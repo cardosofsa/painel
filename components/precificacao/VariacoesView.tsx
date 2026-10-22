@@ -1,4 +1,5 @@
 "use client";
+import { produtosParaBusca } from "@/lib/precificacao-tipos";
 import { CampoNumero } from "@/components/ui/CampoNumero";
 
 import { useMemo, useState, useTransition } from "react";
@@ -377,7 +378,7 @@ export function VariacoesView({
               <Combobox
                 ariaLabel="Produto"
                 key={produtoId ?? "nenhum"}
-                itens={produtos.map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
+                itens={produtosParaBusca(produtos, produtoId).map((p) => ({ id: p.id, rotulo: p.nome, busca: p.sku, detalhe: formatBRL(Number(p.custo)) }))}
                 valor={produtoId}
                 onChange={escolherProduto}
                 placeholder="Buscar produto pelo nome ou SKU…"
