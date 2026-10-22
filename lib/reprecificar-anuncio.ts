@@ -24,6 +24,8 @@ export interface VariacaoDoAnuncio {
   precoNoAr: number | null;
   /** O que está gravado no Painel para esta loja (0101). */
   precoLoja: number | null;
+  /** O preço deste anúncio gravado pelo Painel (0115); `null` sem preço ou sem a migração. */
+  precoPlanejado?: number | null;
 }
 
 export type RegraPreco = { tipo: "margem"; margem: number } | { tipo: "percentual"; pct: number } | { tipo: "valor"; preco: number };
@@ -80,16 +82,40 @@ export function textoDosPrecos(titulo: string, linhas: { variacao: string | null
 }
 
 /**
- * Os preços a gravar, um por produto. Duas variações ligadas ao mesmo produto com preços
- * diferentes não cabem em `produto_lojas` (uma linha por produto e loja): devolve o conflito.
+ * N margens igualmente espaçadas entre `min` e `max`, da menor para a maior: 1 anúncio fica no
+ * meio da faixa, 2 nas pontas, 3 em mínima/meio/máxima…
  */
-export function precosParaGravar(linhas: { produtoId: string | null; produtoNome: string | null; preco: number | null }[]): { itens: { produto_id: string; preco: number }[]; conflito: string | null } {
-  const porProduto = new Map<string, number>();
-  for (const l of linhas) {
-    if (!l.produtoId || l.preco === null || !(l.preco > 0)) continue;
-    const ja = porProduto.get(l.produtoId);
-    if (ja !== undefined && ja !== l.preco) return { itens: [], conflito: l.produtoNome ?? "um produto" };
-    porProduto.set(l.produtoId, l.preco);
+export function margensDistribuidas(n: number, min: number, max: number): number[] {
+  if (n <= 0) return [];
+  if (n === 1) return [Math.round(((min + max) / 2) * 10000) / 10000];
+  return Array.from({ length: n }, (_, i) => Math.round((min + ((max - min) * i) / (n - 1)) * 10000) / 10000);
+}
+
+/**
+ * A margem de cada anúncio do mesmo produto, mantendo a ordem de hoje: o mais barato no ar fica
+ * com a menor margem e o mais caro com a maior. Sem preço no ar vai para o começo (empate: pela
+ * ordem recebida, para o resultado não mudar de uma vez para outra).
+ */
+export function distribuirNaFaixa<T extends { id: string; precoAtual: number | null }>(anuncios: T[], min: number, max: number): { id: string; margem: number }[] {
+  const ordem = anuncios
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => (x.a.precoAtual ?? -1) - (y.a.precoAtual ?? -1) || x.i - y.i)
+    .map((x) => x.a);
+  const margens = margensDistribuidas(ordem.length, min, max);
+  return ordem.map((a, i) => ({ id: a.id, margem: margens[i] }));
+}
+
+/**
+ * Preços na ordem em que foram distribuídos (do menor para o maior), sem repetir: quem empatar
+ * ou ficar abaixo do anterior sobe (R$ 1 com ",90", senão 1 centavo). Só sobe, nunca desce: o
+ * erro, se houver, é para mais, nunca abaixo da margem pedida.
+ */
+export function semRepetir(precos: number[], noventa: boolean): number[] {
+  const passo = noventa ? 1 : 0.01;
+  const saida: number[] = [];
+  for (const p of precos) {
+    const anterior = saida[saida.length - 1];
+    saida.push(anterior !== undefined && p <= anterior + 1e-9 ? r2(anterior + passo) : p);
   }
-  return { itens: [...porProduto].map(([produto_id, preco]) => ({ produto_id, preco })), conflito: null };
+  return saida;
 }

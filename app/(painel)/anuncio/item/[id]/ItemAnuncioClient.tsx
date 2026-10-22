@@ -18,8 +18,8 @@ import { executarComToast } from "@/lib/acao-cliente";
 import { classeValor, formatBRL } from "@/lib/format";
 import type { ItemAnuncio } from "@/lib/anuncio-item-servidor";
 import type { SituacaoPrecoLoja } from "@/lib/precos-loja";
-import { faixaDePrecos, precoBase, precoPelaRegra, precosParaGravar, resultadoDaVariacao, textoDosPrecos, type RegraPreco } from "@/lib/reprecificar-anuncio";
-import { salvarPrecosLojaEmLote } from "@/app/(painel)/precificacao/actions";
+import { faixaDePrecos, precoBase, precoPelaRegra, resultadoDaVariacao, textoDosPrecos, type RegraPreco } from "@/lib/reprecificar-anuncio";
+import { salvarPrecosPlanejados } from "@/app/(painel)/precificacao/actions";
 
 type TipoRegra = RegraPreco["tipo"];
 const REGRAS: { tipo: TipoRegra; rotulo: string }[] = [
@@ -51,7 +51,7 @@ export function ItemAnuncioClient({ item, anuncioId }: { item: ItemAnuncio; anun
   const { loja, variacoes } = item;
   const comVariacoes = variacoes.length > 1;
 
-  const inicial = () => Object.fromEntries(variacoes.map((v) => [v.anuncioId, v.produtoId ? (v.precoLoja ?? v.precoNoAr) : null])) as Record<string, number | null>;
+  const inicial = () => Object.fromEntries(variacoes.map((v) => [v.anuncioId, v.produtoId ? (v.precoPlanejado ?? v.precoLoja ?? v.precoNoAr) : null])) as Record<string, number | null>;
   const [novos, setNovos] = useState<Record<string, number | null>>(inicial);
   const [marcadas, setMarcadas] = useState<Set<string>>(() => new Set(variacoes.filter((v) => v.produtoId).map((v) => v.anuncioId)));
   const [selecionada, setSelecionada] = useState<string>(() => (variacoes.some((v) => v.anuncioId === anuncioId) ? anuncioId : variacoes[0].anuncioId));
@@ -78,7 +78,7 @@ export function ItemAnuncioClient({ item, anuncioId }: { item: ItemAnuncio; anun
     const novo = novos[v.anuncioId] ?? null;
     return { v, novo, calc: resultadoDaVariacao(v, novo, loja, item.impostoPct), hoje: v.precoNoAr ? resultadoDaVariacao(v, v.precoNoAr, loja, item.impostoPct) : null };
   });
-  const alteradas = linhas.filter((l) => l.v.produtoId && l.novo !== null && l.novo !== l.v.precoLoja);
+  const alteradas = linhas.filter((l) => l.v.produtoId && l.novo !== null && l.novo !== (l.v.precoPlanejado ?? null));
   const todasMarcadas = ligadas.length > 0 && ligadas.every((v) => marcadas.has(v.anuncioId));
 
   function aplicarRegra() {
@@ -104,20 +104,17 @@ export function ItemAnuncioClient({ item, anuncioId }: { item: ItemAnuncio; anun
   }
 
   async function gravar() {
-    const { itens, conflito } = precosParaGravar(alteradas.map((l) => ({ produtoId: l.v.produtoId, produtoNome: l.v.produtoNome, preco: l.novo })));
-    if (conflito) {
-      toast(`Duas variações estão ligadas a “${conflito}” com preços diferentes. Deixe o mesmo preço nas duas.`);
-      return;
-    }
+    // Cada variação guarda o seu preço (0115), mesmo duas ligadas ao mesmo produto.
+    const itens = alteradas.map((l) => ({ anuncio_id: l.v.anuncioId, preco: l.novo!, margem: null }));
     const prejuizo = alteradas.filter((l) => l.calc.situacao === "prejuizo").length;
     const ok = await confirm({
-      title: `Gravar ${itens.length} preço(s) na loja?`,
+      title: `Gravar ${itens.length} preço(s)?`,
       message: `${loja!.canalNome} · ${loja!.nome}.${prejuizo ? ` Atenção: ${prejuizo} variação(ões) ficam com prejuízo.` : ""} O preço na Shopee NÃO muda: copie e altere lá.`,
       confirmLabel: "Gravar preços",
     });
     if (!ok) return;
     startSalvar(async () => {
-      const r = await executarComToast(salvarPrecosLojaEmLote({ loja_id: loja!.id, itens }), { sucesso: "Preços da loja atualizados", erro: "Não foi possível gravar os preços." });
+      const r = await executarComToast(salvarPrecosPlanejados({ itens }), { sucesso: "Preços do anúncio gravados", erro: "Não foi possível gravar os preços." });
       if (r.ok) router.refresh();
     });
   }
@@ -193,6 +190,11 @@ export function ItemAnuncioClient({ item, anuncioId }: { item: ItemAnuncio; anun
               {atual.produtoId && (
                 <Link href={`/precificacao/ajuste/${atual.anuncioId}`} className={classesBotao({ variant: "secondary", size: "sm" })}>
                   Ajuste de Preço desta variação
+                </Link>
+              )}
+              {atual.produtoId && (
+                <Link href={`/anuncio/grupo?loja=${loja.id}&produto=${atual.produtoId}`} className={classesBotao({ variant: "ghost", size: "sm" })}>
+                  Outros anúncios deste SKU
                 </Link>
               )}
               {atual.produtoId && (
@@ -307,15 +309,15 @@ export function ItemAnuncioClient({ item, anuncioId }: { item: ItemAnuncio; anun
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <p className="text-sm text-text-secondary">
-            {alteradas.length ? `${alteradas.length} preço(s) diferente(s) do gravado na loja.` : "Nenhum preço alterado."}
-            {!item.migracao0101 && " Gravar o preço por loja precisa da migração 0101."}
+            {alteradas.length ? `${alteradas.length} preço(s) diferente(s) do gravado.` : "Nenhum preço alterado."}
+            {!item.migracao0115 && " Gravar o preço por anúncio precisa da migração 0115."}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" onClick={() => setNovos(inicial())} disabled={salvando}>
               <RotateCcw size={14} aria-hidden /> Desfazer
             </Button>
             <BotaoCopiar texto={textoCopiar} rotulo="preços" />
-            <Button variant="primary" onClick={gravar} loading={salvando} disabled={salvando || alteradas.length === 0 || !item.migracao0101}>
+            <Button variant="primary" onClick={gravar} loading={salvando} disabled={salvando || alteradas.length === 0 || !item.migracao0115}>
               Gravar preços na loja
             </Button>
           </div>

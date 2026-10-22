@@ -1206,16 +1206,6 @@ export const precoLojaSchema = z.object({
   precificacao_id: z.string().uuid().nullable().optional(),
 });
 
-/** Preços de várias variações de um anúncio numa loja, gravados de uma vez (0101). */
-export const precosLojaLoteSchema = z.object({
-  loja_id: z.string().uuid(),
-  itens: z
-    .array(z.object({ produto_id: z.string().uuid(), preco: z.number().finite().positive("O preço precisa ser maior que zero").max(10_000_000) }))
-    .min(1, "Nenhum preço para gravar.")
-    .max(200)
-    .refine((l) => new Set(l.map((i) => i.produto_id)).size === l.length, "Produto repetido na lista."),
-});
-
 /** Faixa de margem de vários produtos (0114), em fração; `null` limpa a faixa. */
 const margemFaixa = z.number().finite().min(0, "A margem não pode ser negativa").max(0.899, "A margem precisa ser menor que 90%").nullable();
 export const faixasMargemSchema = z.object({
@@ -1228,6 +1218,21 @@ export const faixasMargemSchema = z.object({
     )
     .min(1, "Nenhuma faixa para gravar.")
     .max(2000),
+});
+
+/** Preço de cada anúncio da loja (0115), gravado de uma vez. `margem` em fração, se veio de uma. */
+export const precosPlanejadosSchema = z.object({
+  itens: z
+    .array(
+      z.object({
+        anuncio_id: z.string().uuid(),
+        preco: z.number().finite().positive("O preço precisa ser maior que zero").max(10_000_000),
+        margem: z.number().finite().gt(-1).lt(0.9).nullable(),
+      }),
+    )
+    .min(1, "Nenhum preço para gravar.")
+    .max(1000)
+    .refine((l) => new Set(l.map((i) => i.anuncio_id)).size === l.length, "Anúncio repetido na lista."),
 });
 
 /** Pedido de explicação do Ajuste de Preço: só ids e o preço da régua; o resto o servidor lê. */

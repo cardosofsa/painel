@@ -15,8 +15,8 @@ export interface ItemAnuncio {
   /** Margem da precificação mais recente de um dos produtos nesta loja (padrão 25%). Fração. */
   margemAlvo: number;
   variacoes: VariacaoDoAnuncio[];
-  /** `false` sem a 0101: não há onde gravar o preço da loja. */
-  migracao0101: boolean;
+  /** `false` sem a 0115: não há onde gravar o preço de cada anúncio. */
+  migracao0115: boolean;
 }
 
 interface LinhaAnuncio {
@@ -33,6 +33,7 @@ interface LinhaAnuncio {
   sku_modelo?: string | null;
   variacao?: string | null;
   nome_item?: string | null;
+  preco_planejado?: number | null;
 }
 
 /**
@@ -81,6 +82,7 @@ export async function carregarItemAnuncio(supabase: SupabaseClient, anuncioId: s
       estoque: p ? Number(p.estoque ?? 0) : null,
       precoNoAr: num(l.preco_atual),
       precoLoja: p ? num(precos.get(p.id)) : null,
+      precoPlanejado: num(l.preco_planejado),
     };
   });
   const capa = linhas.find((l) => l.imagem_url)?.imagem_url ?? variacoes.map((v) => (v.produtoId ? produtos.get(v.produtoId)?.imagem_url : null)).find(Boolean) ?? null;
@@ -94,6 +96,6 @@ export async function carregarItemAnuncio(supabase: SupabaseClient, anuncioId: s
     impostoPct: Number(negocioRes.data?.aliquota_das ?? 6) / 100,
     margemAlvo: Math.max(0, Math.min(0.9, margem)),
     variacoes,
-    migracao0101: !precosRes.error,
+    migracao0115: "preco_planejado" in a,
   };
 }
