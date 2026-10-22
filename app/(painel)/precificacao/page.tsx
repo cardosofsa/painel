@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Precificação" };
 export default async function PrecificacaoPage({ searchParams }: { searchParams: Promise<{ visao?: string; produto?: string; loja?: string }> }) {
   const { visao, produto, loja } = await searchParams;
   const supabase = await createClient();
-  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel, rascunhosRes, precosLojaRes, anunciosLojaRes] =
+  const [historicoRes, produtosRes, perfilRes, canaisRes, lojasRes, faixasRes, anunciosRes, concorrentesRes, gruposRes, categoriasRes, iaDisponivel, rascunhosRes, precosLojaRes, anunciosLojaRes, margensRes] =
     await Promise.all([
     supabase
       .from("precificacoes")
@@ -72,6 +72,10 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
     ),
     // Anúncios sincronizados, para o seletor "Analisar anúncio". `*`: nome_item é da 0093.
     supabase.from("marketplace_anuncios").select("*").limit(1000),
+    // Faixa de margem (0114), à parte: sem a migração vem erro e a aba Faixas começa vazia.
+    buscarEmLotes((de, ate) =>
+      supabase.from("produtos").select("id, margem_minima, margem_maxima", { count: "exact" }).not("margem_minima", "is", null).order("id").range(de, ate),
+    ),
   ]);
 
   if (historicoRes.error) throw new Error(historicoRes.error.message);
@@ -89,9 +93,14 @@ export default async function PrecificacaoPage({ searchParams }: { searchParams:
   // grupo ocupam metade da lista sem dar pra distinguir uma da outra.
   const grupos = mapaGrupos(gruposRes.data ?? []);
   const tipoCategoria = new Map(((categoriasRes.data ?? []) as { id: string; tipo?: string }[]).map((c) => [c.id, c.tipo ?? null]));
+  const margens = new Map(
+    (margensRes.error ? [] : (margensRes.data as { id: string; margem_minima: number | null; margem_maxima: number | null }[])).map((m) => [m.id, m]),
+  );
   const produtos = (produtosRes.data ?? []).map((p) => ({
     ...comRotulo(p, grupos),
     tipo: (p.categoria_id ? tipoCategoria.get(p.categoria_id) : null) as "produto" | "insumo" | "embalagem" | null,
+    margem_minima: margens.has(p.id) ? Number(margens.get(p.id)!.margem_minima) : null,
+    margem_maxima: margens.has(p.id) && margens.get(p.id)!.margem_maxima != null ? Number(margens.get(p.id)!.margem_maxima) : null,
   }));
 
   const canaisPorId = new Map((canaisRes.data ?? []).map((c) => [c.id, c]));

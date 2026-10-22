@@ -1216,6 +1216,20 @@ export const precosLojaLoteSchema = z.object({
     .refine((l) => new Set(l.map((i) => i.produto_id)).size === l.length, "Produto repetido na lista."),
 });
 
+/** Faixa de margem de vários produtos (0114), em fração; `null` limpa a faixa. */
+const margemFaixa = z.number().finite().min(0, "A margem não pode ser negativa").max(0.899, "A margem precisa ser menor que 90%").nullable();
+export const faixasMargemSchema = z.object({
+  itens: z
+    .array(
+      z
+        .object({ produto_id: z.string().uuid(), margem_minima: margemFaixa, margem_maxima: margemFaixa })
+        .refine((i) => i.margem_minima === null || i.margem_maxima === null || i.margem_minima <= i.margem_maxima, "A margem mínima não pode passar da máxima.")
+        .refine((i) => (i.margem_minima === null) === (i.margem_maxima === null), "Preencha a margem mínima e a máxima."),
+    )
+    .min(1, "Nenhuma faixa para gravar.")
+    .max(2000),
+});
+
 /** Pedido de explicação do Ajuste de Preço: só ids e o preço da régua; o resto o servidor lê. */
 export const explicarAjusteSchema = z
   .object({

@@ -15,6 +15,7 @@ import {
   rascunhoPrecificacaoSchema,
   precoLojaSchema,
   precosLojaLoteSchema,
+  faixasMargemSchema,
   explicarAjusteSchema,
   type PrecoPraticadoInput,
 } from "@/lib/validacao";
@@ -25,6 +26,7 @@ import { calcularAjuste, noPreco, psicologicoAcima } from "@/lib/ajuste-preco";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { truncarEmPalavra } from "@/lib/ia/texto";
 import { comResultado } from "@/lib/acao";
+import { emPedacos } from "@/lib/lotes";
 import type { PrecificacaoHist } from "@/lib/precificacao-tipos";
 
 export interface PrecificacaoInput {
@@ -571,6 +573,35 @@ export async function salvarPrecosLojaEmLote(entrada: { loja_id: string; itens: 
     if (error) lancarErroSupabase(error);
     revalidatePath("/precificacao");
     revalidatePath("/produtos");
+    revalidatePath("/anuncio", "layout");
+  });
+}
+
+// ---------- Faixa de margem por produto (0114) ----------
+
+/**
+ * Grava a faixa de margem de vários produtos. Um `update` por faixa diferente (quem recebeu
+ * 20–30% vai junto), não um por produto.
+ */
+export async function salvarFaixasMargem(entrada: { itens: { produto_id: string; margem_minima: number | null; margem_maxima: number | null }[] }) {
+  return comResultado(async () => {
+    const v = validar(faixasMargemSchema, entrada);
+    const supabase = await createClient();
+    const porFaixa = new Map<string, { min: number | null; max: number | null; ids: string[] }>();
+    for (const i of v.itens) {
+      const k = `${i.margem_minima}|${i.margem_maxima}`;
+      const g = porFaixa.get(k) ?? { min: i.margem_minima, max: i.margem_maxima, ids: [] };
+      g.ids.push(i.produto_id);
+      porFaixa.set(k, g);
+    }
+    for (const g of porFaixa.values()) {
+      for (const ids of emPedacos(g.ids)) {
+        const { error } = await supabase.from("produtos").update({ margem_minima: g.min, margem_maxima: g.max }).in("id", ids);
+        if (error?.code === "PGRST204" || error?.code === "42703") throw new Error("A faixa de margem precisa da migração 0114 no banco.");
+        if (error) lancarErroSupabase(error);
+      }
+    }
+    revalidatePath("/precificacao");
     revalidatePath("/anuncio", "layout");
   });
 }
