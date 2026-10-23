@@ -36,6 +36,8 @@ export interface AnuncioDaLoja {
   variacoes: number;
   /** Alguma variação sem produto ligado. */
   semProduto: boolean;
+  /** O produto deste anúncio também está em outros anúncios da mesma loja. */
+  mesmoSku: { lojaId: string; produtoId: string; anuncios: number } | null;
 }
 
 type FiltroRascunho = "todos" | "rascunho" | "pronto" | "publicado";
@@ -185,12 +187,19 @@ export function AnunciosNaLoja({ anuncios }: { anuncios: AnuncioDaLoja[] }) {
                   <span className="font-mono">{a.preco ? (a.precoMax && a.precoMax !== a.preco ? `${formatBRL(a.preco)} – ${formatBRL(a.precoMax)}` : formatBRL(a.preco)) : "sem preço lido"}</span>
                   {a.variacoes > 1 && ` · ${a.variacoes} variações`}
                   {a.semProduto && (a.variacoes > 1 ? " · alguma sem produto ligado" : " · sem produto ligado")}
+                  {a.mesmoSku && ` · mesmo SKU em ${a.mesmoSku.anuncios} anúncios`}
                 </span>
               </Link>
               <span className="flex shrink-0 items-center gap-1">
-                <Link href={`/anuncio/item/${a.id}`} className="rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft">
-                  {a.variacoes > 1 ? "Reprecificar" : "Abrir"}
-                </Link>
+                {a.mesmoSku ? (
+                  <Link href={`/anuncio/grupo?loja=${a.mesmoSku.lojaId}&produto=${a.mesmoSku.produtoId}`} className="rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft">
+                    Reprecificar SKU
+                  </Link>
+                ) : (
+                  <Link href={`/anuncio/item/${a.id}`} className="rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft">
+                    {a.variacoes > 1 ? "Reprecificar" : "Abrir"}
+                  </Link>
+                )}
                 <Link href={`/anuncio/analise/${a.id}`} className="hidden rounded-md px-2 py-1 text-sm font-medium text-accent hover:bg-accent-soft sm:inline">
                   Analisar
                 </Link>

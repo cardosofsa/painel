@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowRight, BarChart3, Palette, Sparkles } from "lucide-react";
+import { ArrowRight, BarChart3, Layers, Palette, Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AberturaMarca } from "@/components/anuncio/AberturaMarca";
 import { AnunciosNaLoja, RascunhosAnuncio, type AnuncioDaLoja, type RascunhoDaLista } from "@/components/anuncio/ListasAnuncio";
 import { Card, CardHeader, CardSubtitle, CardTitle } from "@/components/ui/Card";
+import { classesBotao } from "@/components/ui/Button";
 import { calcularEtapas } from "@/lib/anuncio/etapas";
 import { lerEstado } from "@/lib/estudio/servidor";
 import type { Metadata } from "next";
@@ -39,8 +40,19 @@ export default async function AnuncioPage() {
     const k = `${a.loja_id}:${a.item_id}`;
     porItem.set(k, [...(porItem.get(k) ?? []), a]);
   }
+  // Quantos anúncios (itens) de cada loja vendem o mesmo produto: é o que o "Reprecificar em grupo" espalha.
+  const itensPorSku = new Map<string, Set<number>>();
+  for (const a of (anunciosRes.data ?? []) as Linha[]) {
+    if (!a.produto_id) continue;
+    const k = `${a.loja_id}:${a.produto_id}`;
+    itensPorSku.set(k, (itensPorSku.get(k) ?? new Set()).add(a.item_id));
+  }
   const meus: AnuncioDaLoja[] = [...porItem.values()].map((grupo) => {
     const a = grupo[0];
+    const repetido = grupo
+      .filter((g) => g.produto_id)
+      .map((g) => ({ lojaId: g.loja_id, produtoId: g.produto_id!, anuncios: itensPorSku.get(`${g.loja_id}:${g.produto_id}`)?.size ?? 1 }))
+      .sort((x, y) => y.anuncios - x.anuncios)[0];
     const precos = grupo.map((g) => Number(g.preco_atual ?? 0)).filter((n) => n > 0);
     return {
       id: a.id,
@@ -50,6 +62,7 @@ export default async function AnuncioPage() {
       precoMax: precos.length ? Math.max(...precos) : null,
       variacoes: grupo.length,
       semProduto: grupo.some((g) => !g.produto_id),
+      mesmoSku: repetido && repetido.anuncios > 1 ? repetido : null,
     };
   });
   const rascunhos: RascunhoDaLista[] = ((data ?? []) as unknown as LinhaRascunho[]).map((r) => {
@@ -111,6 +124,9 @@ export default async function AnuncioPage() {
             <CardTitle>Meus anúncios na loja</CardTitle>
             <CardSubtitle>Os anúncios sincronizados das lojas conectadas, com as variações: abra um para ver como está na loja e reprecificar tudo de uma vez.</CardSubtitle>
           </div>
+          <Link href="/anuncio/grupo" className={classesBotao({ variant: "secondary", size: "sm" })}>
+            <Layers size={14} aria-hidden /> Reprecificar em grupo
+          </Link>
         </CardHeader>
         <AnunciosNaLoja anuncios={meus} />
       </Card>

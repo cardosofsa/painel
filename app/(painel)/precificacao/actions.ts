@@ -14,7 +14,8 @@ import {
   precoPraticadoSchema,
   rascunhoPrecificacaoSchema,
   precoLojaSchema,
-  precosLojaLoteSchema,
+  faixasMargemSchema,
+  precosPlanejadosSchema,
   explicarAjusteSchema,
   type PrecoPraticadoInput,
 } from "@/lib/validacao";
@@ -25,6 +26,7 @@ import { calcularAjuste, noPreco, psicologicoAcima } from "@/lib/ajuste-preco";
 import { LIMITE_DESCRICAO } from "@/lib/ia/prompts";
 import { truncarEmPalavra } from "@/lib/ia/texto";
 import { comResultado } from "@/lib/acao";
+import { emPedacos } from "@/lib/lotes";
 import type { PrecificacaoHist } from "@/lib/precificacao-tipos";
 
 export interface PrecificacaoInput {
@@ -554,23 +556,66 @@ export async function salvarPrecoLoja(entrada: { produto_id: string; loja_id: st
   });
 }
 
+// ---------- Preço planejado por anúncio (0115) ----------
+
 /**
- * Reprecificar o anúncio inteiro: o preço de cada variação (o produto ligado a ela) nesta loja,
- * num upsert só. Como no Ajuste de Preço, o preço na Shopee não muda.
+ * Grava o preço de cada anúncio da loja: cada um tem o seu, mesmo quando vários vendem o mesmo
+ * produto. O preço na Shopee não muda; `produto_lojas` (Precificação) também não.
  */
-export async function salvarPrecosLojaEmLote(entrada: { loja_id: string; itens: { produto_id: string; preco: number }[] }) {
-  return comResultado(async () => {
-    const v = validar(precosLojaLoteSchema, entrada);
+export async function salvarPrecosPlanejados(entrada: { itens: { anuncio_id: string; preco: number; margem: number | null }[] }) {
+  return comResultado(async (): Promise<number> => {
+    const v = validar(precosPlanejadosSchema, entrada);
     const supabase = await createClient();
     const agora = new Date().toISOString();
-    const { error } = await supabase.from("produto_lojas").upsert(
-      v.itens.map((i) => ({ produto_id: i.produto_id, loja_id: v.loja_id, preco: Math.round(i.preco * 100) / 100, precificacao_id: null, preco_atualizado_em: agora })),
-      { onConflict: "produto_id,loja_id" },
-    );
-    if (error?.code === "PGRST204" || error?.code === "42703") throw new Error("O preço por loja precisa da migração 0101 no banco.");
-    if (error) lancarErroSupabase(error);
+    let gravados = 0;
+    // Um `update` por anúncio (cada um tem um valor), 20 de cada vez.
+    for (let i = 0; i < v.itens.length; i += 20) {
+      const lote = v.itens.slice(i, i + 20);
+      const rs = await Promise.all(
+        lote.map((it) =>
+          supabase
+            .from("marketplace_anuncios")
+            .update({ preco_planejado: Math.round(it.preco * 100) / 100, margem_planejada: it.margem, preco_planejado_em: agora })
+            .eq("id", it.anuncio_id)
+            .select("id"),
+        ),
+      );
+      for (const r of rs) {
+        if (r.error?.code === "PGRST204" || r.error?.code === "42703") throw new Error("O preço por anúncio precisa da migração 0115 no banco.");
+        if (r.error) lancarErroSupabase(r.error);
+        gravados += r.data?.length ?? 0;
+      }
+    }
+    revalidatePath("/anuncio", "layout");
+    return gravados;
+  });
+}
+
+// ---------- Faixa de margem por produto (0114) ----------
+
+/**
+ * Grava a faixa de margem de vários produtos. Um `update` por faixa diferente (quem recebeu
+ * 20–30% vai junto), não um por produto.
+ */
+export async function salvarFaixasMargem(entrada: { itens: { produto_id: string; margem_minima: number | null; margem_maxima: number | null }[] }) {
+  return comResultado(async () => {
+    const v = validar(faixasMargemSchema, entrada);
+    const supabase = await createClient();
+    const porFaixa = new Map<string, { min: number | null; max: number | null; ids: string[] }>();
+    for (const i of v.itens) {
+      const k = `${i.margem_minima}|${i.margem_maxima}`;
+      const g = porFaixa.get(k) ?? { min: i.margem_minima, max: i.margem_maxima, ids: [] };
+      g.ids.push(i.produto_id);
+      porFaixa.set(k, g);
+    }
+    for (const g of porFaixa.values()) {
+      for (const ids of emPedacos(g.ids)) {
+        const { error } = await supabase.from("produtos").update({ margem_minima: g.min, margem_maxima: g.max }).in("id", ids);
+        if (error?.code === "PGRST204" || error?.code === "42703") throw new Error("A faixa de margem precisa da migração 0114 no banco.");
+        if (error) lancarErroSupabase(error);
+      }
+    }
     revalidatePath("/precificacao");
-    revalidatePath("/produtos");
     revalidatePath("/anuncio", "layout");
   });
 }

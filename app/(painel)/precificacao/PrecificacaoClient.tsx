@@ -1,5 +1,6 @@
 "use client";
 
+import { FaixasMargemView } from "@/components/precificacao/FaixasMargemView";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { executarComToast } from "@/lib/acao-cliente";
 import { carregarHistoricoPrecificacoes, descartarRascunhoPrecificacao } from "./actions";
@@ -46,6 +47,7 @@ const ABAS_PRECIFICACAO = [
   { value: "variacoes", label: "Variações" },
   { value: "kits", label: "Kits" },
   { value: "massa", label: "Em Massa" },
+  { value: "faixas", label: "Faixas de margem" },
   { value: "raio-x", label: "Raio-X" },
   { value: "promocao", label: "Promoção" },
 ] as const satisfies readonly TabItem<VisaoPrecificacao>[];
@@ -286,6 +288,11 @@ export function PrecificacaoClient({
             rascunhoPendente={pendentePorAba("massa")}
             relatar={relatar}
           />
+        </div>
+      )}
+      {mostrar("faixas") && (
+        <div hidden={visao !== "faixas"}>
+          <FaixasMargemView produtos={produtos} lojas={lojas} aliquotaDasPadrao={aliquotaDasPadrao} />
         </div>
       )}
       {mostrar("raio-x") && (

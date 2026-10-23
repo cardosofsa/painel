@@ -97,6 +97,9 @@ export interface ProdutoOpcao {
   tipo?: "produto" | "insumo" | "embalagem" | null;
   /** Pai da variação (0084); `null` no produto pai e no produto sem variação. */
   produto_pai_id?: string | null;
+  /** Faixa de margem do produto (0114), em fração; `null` sem faixa ou sem a migração. */
+  margem_minima?: number | null;
+  margem_maxima?: number | null;
 }
 
 /**
@@ -108,9 +111,9 @@ export function produtosParaBusca<T extends { id: string; produto_pai_id?: strin
   return produtos.filter((p) => !p.produto_pai_id || p.id === escolhido);
 }
 
-export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "raio-x" | "promocao";
+export type VisaoPrecificacao = "individual" | "variacoes" | "kits" | "massa" | "faixas" | "raio-x" | "promocao";
 
-export const VISOES_PRECIFICACAO: VisaoPrecificacao[] = ["individual", "variacoes", "kits", "massa", "raio-x", "promocao"];
+export const VISOES_PRECIFICACAO: VisaoPrecificacao[] = ["individual", "variacoes", "kits", "massa", "faixas", "raio-x", "promocao"];
 
 export interface PrecificacaoProps {
   historico: PrecificacaoHist[];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faixaDePrecos, precoPelaRegra, precosParaGravar, resultadoDaVariacao, textoDosPrecos, type VariacaoDoAnuncio } from "./reprecificar-anuncio";
+import { distribuirNaFaixa, faixaDePrecos, margensDistribuidas, precoPelaRegra, semRepetir, resultadoDaVariacao, textoDosPrecos, type VariacaoDoAnuncio } from "./reprecificar-anuncio";
 import type { LojaParaPreco } from "./precos-loja";
 
 const loja: LojaParaPreco = {
@@ -77,9 +77,53 @@ describe("faixaDePrecos e textoDosPrecos", () => {
   });
 });
 
-describe("precosParaGravar", () => {
-  it("um por produto; preço igual repetido passa, diferente é conflito", () => {
-    expect(precosParaGravar([{ produtoId: "p1", produtoNome: "A", preco: 10 }, { produtoId: "p1", produtoNome: "A", preco: 10 }, { produtoId: null, produtoNome: null, preco: 5 }]).itens).toEqual([{ produto_id: "p1", preco: 10 }]);
-    expect(precosParaGravar([{ produtoId: "p1", produtoNome: "A", preco: 10 }, { produtoId: "p1", produtoNome: "A", preco: 11 }]).conflito).toBe("A");
+describe("margensDistribuidas", () => {
+  it("igualmente espaçadas entre a mínima e a máxima", () => {
+    expect(margensDistribuidas(1, 0.2, 0.3)).toEqual([0.25]);
+    expect(margensDistribuidas(2, 0.2, 0.3)).toEqual([0.2, 0.3]);
+    expect(margensDistribuidas(3, 0.2, 0.3)).toEqual([0.2, 0.25, 0.3]);
+    expect(margensDistribuidas(5, 0.2, 0.3)).toEqual([0.2, 0.225, 0.25, 0.275, 0.3]);
+    expect(margensDistribuidas(0, 0.2, 0.3)).toEqual([]);
+  });
+});
+
+describe("distribuirNaFaixa", () => {
+  it("o mais caro hoje continua o mais caro", () => {
+    const r = distribuirNaFaixa(
+      [
+        { id: "b", precoAtual: 50 },
+        { id: "a", precoAtual: 30 },
+        { id: "c", precoAtual: 70 },
+      ],
+      0.2,
+      0.3,
+    );
+    expect(r).toEqual([
+      { id: "a", margem: 0.2 },
+      { id: "b", margem: 0.25 },
+      { id: "c", margem: 0.3 },
+    ]);
+  });
+
+  it("sem preço no ar vai para o começo; empate mantém a ordem recebida", () => {
+    const r = distribuirNaFaixa(
+      [
+        { id: "x", precoAtual: 40 },
+        { id: "y", precoAtual: null },
+        { id: "z", precoAtual: 40 },
+      ],
+      0.2,
+      0.3,
+    );
+    expect(r.map((m) => m.id)).toEqual(["y", "x", "z"]);
+  });
+});
+
+describe("semRepetir", () => {
+  it("só sobe quem empata ou fica abaixo do anterior", () => {
+    expect(semRepetir([39.9, 39.9, 44.9], true)).toEqual([39.9, 40.9, 44.9]);
+    expect(semRepetir([10, 10, 10], false)).toEqual([10, 10.01, 10.02]);
+    expect(semRepetir([20, 15], false)).toEqual([20, 20.01]);
+    expect(semRepetir([10, 12], true)).toEqual([10, 12]);
   });
 });
