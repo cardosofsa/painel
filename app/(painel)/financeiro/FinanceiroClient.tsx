@@ -45,9 +45,7 @@ import { AnaliseMesModal } from "@/components/financeiro/AnaliseMesModal";
 import { ContaAbertaModal } from "@/components/fornecedores/ContaAbertaModal";
 import { PagarFaturaModal } from "@/components/financeiro/PagarFaturaModal";
 import { dividaCartao, ehCartao, limiteDisponivel, percentualUsado, saldoDeCaixa } from "@/lib/cartao";
-import { SaqueMarketplaceModal } from "@/components/financeiro/SaqueMarketplaceModal";
 import { inicioDoMes, type Projecao } from "@/lib/saldo-projetado";
-import { agruparRepassesPorLoja } from "@/lib/repasse-marketplace";
 import { rotuloMes, type FechamentoMes } from "@/lib/fechamento-mensal";
 import type { ContaCalendarioFonte } from "@/lib/calendario-contas";
 
@@ -228,7 +226,6 @@ export function FinanceiroClient({
   const [filtroReceber, setFiltroReceber] = useState<(typeof FILTROS_RECEBER)[number]>("Todos");
   const [modalMovimentacao, setModalMovimentacao] = useState(false);
   const [analiseAberta, setAnaliseAberta] = useState(false);
-  const [saque, setSaque] = useState<{ loja: string | null } | null>(null);
   const [pagandoFatura, setPagandoFatura] = useState<string | null>(null);
   const [contaAbertaDe, setContaAbertaDe] = useState<{ id: string; nome: string } | null>(null);
   const [modalDespesa, setModalDespesa] = useState(false);
@@ -293,13 +290,7 @@ export function FinanceiroClient({
 
   const totalAPagar = contasPagarReceber.filter((c) => c.tipo === "pagar" && c.status === "pendente").reduce((a, c) => a + restanteParcela(c), 0);
   // O que falta (valor - valor_pago): recebido em parte (0065) não conta de novo.
-  // Repasse só aparece quando o pedido já concluiu (aguardando é invisível) e em resumo por loja,
-  // não uma linha por pedido. Fora do total "pendente": o dinheiro ainda está com a plataforma.
-  const repassesAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente" && c.repasse_marketplace && !c.aguardando_liberacao);
-  const gruposRepasses = agruparRepassesPorLoja(
-    repassesAReceber.map((c) => ({ loja: c.repasse_loja ?? "Marketplace", pedido: c.repasse_pedido ?? "—", valor: restanteParcela(c), previsto: c.repasse_previsto ?? c.data_vencimento })),
-  );
-  const totalRepasses = gruposRepasses.reduce((a, g) => a + g.total, 0);
+  // Repasse de marketplace fica fora: o dinheiro ainda está com a plataforma.
   const totalAReceber = contasPagarReceber.filter((c) => c.tipo === "receber" && c.status === "pendente" && !c.aguardando_liberacao && !c.repasse_marketplace).reduce((a, c) => a + restanteParcela(c), 0);
 
   const hoje = new Date();
@@ -323,7 +314,7 @@ export function FinanceiroClient({
   });
 
   const receberFiltrado = contasReceber.filter((c) => {
-    // Repasse nunca é linha da lista: os a liberar viram resumo por loja e os baixados já estão no saque lançado.
+    // Repasse de marketplace não entra em Contas a Receber: o dinheiro da plataforma só conta quando cai na conta.
     if (c.aguardando_liberacao || c.repasse_marketplace) return false;
     if (filtroReceber === "Vencidos") return c.status === "pendente" && !c.repasse_marketplace && !c.aguardando_liberacao && c.data_vencimento < hojeIso;
     if (filtroReceber === "Crediário") return c.venda_id !== null || c.cliente_id !== null;
@@ -752,15 +743,9 @@ export function FinanceiroClient({
             <h2 className="text-base font-semibold text-text-primary">Contas a Receber</h2>
             <p className="text-sm text-positive">
               {formatBRL(totalAReceber)} pendente
-              {totalRepasses > 0 && <span className="text-text-secondary"> · {formatBRL(totalRepasses)} de repasses a liberar</span>}
             </p>
           </div>
           <div className="flex gap-2">
-            {gruposRepasses.length > 0 && (
-              <Button variant="secondary" size="sm" onClick={() => setSaque({ loja: null })}>
-                Registrei um saque
-              </Button>
-            )}
             <Button variant="ghost" size="sm" onClick={() => setDividaAntiga({ tipo: "receber" })}>
               Crediário antigo
             </Button>
@@ -776,35 +761,7 @@ export function FinanceiroClient({
             </Chip>
           ))}
         </div>
-        {filtroReceber === "Todos" && gruposRepasses.length > 0 && (
-          <div className="px-5 pb-4 space-y-2">
-            {gruposRepasses.map((g) => (
-              <details key={g.loja} className="rounded-md border border-border group">
-                <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-text-primary">Repasses a liberar · {g.loja}</div>
-                    <div className="text-xs text-text-secondary mt-0.5">
-                      {g.pedidos} {g.pedidos === 1 ? "pedido concluído" : "pedidos concluídos"} · previsto até {formatarDataIso(g.ate)}
-                    </div>
-                  </div>
-                  <span className="font-mono text-sm text-positive shrink-0">{formatBRL(g.total)}</span>
-                </summary>
-                <ul className="border-t border-border px-3 py-2 space-y-1 max-h-64 overflow-y-auto">
-                  {g.linhas.map((l) => (
-                    <li key={l.pedido} className="flex items-center justify-between gap-2 text-xs">
-                      <span className="truncate text-text-secondary">
-                        Pedido {l.pedido} · previsto {formatarDataIso(l.previsto)}
-                      </span>
-                      <span className="font-mono text-text-primary shrink-0">{formatBRL(l.valor)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ))}
-            <p className="text-xs text-text-tertiary">Pedidos que ainda não concluíram não aparecem. A data é uma previsão da plataforma; quando você sacar o dinheiro, registre o saque para dar baixa.</p>
-          </div>
-        )}
-        {receberFiltrado.length === 0 && (filtroReceber !== "Todos" || gruposRepasses.length === 0) ? (
+        {receberFiltrado.length === 0 ? (
           <EmptyState icon={Wallet} title="Nada por aqui" description="Nenhuma conta a receber encontrada para esse filtro." />
         ) : receberFiltrado.length === 0 ? null : (
           <Table>
@@ -1091,15 +1048,6 @@ export function FinanceiroClient({
         servidor aceitou: quando falhava, o modal continuava aberto e vazio e o usuário
         perdia tudo que tinha digitado.
       */}
-      {saque && (
-        <SaqueMarketplaceModal
-          lojas={lojasMarketplace}
-          contas={contasCaixa.map((c) => ({ id: c.id, nome: c.nome }))}
-          liberadoPorLoja={Object.fromEntries(gruposRepasses.map((g) => [g.loja, g.total]))}
-          lojaInicial={saque.loja}
-          onClose={() => setSaque(null)}
-        />
-      )}
       {contaAbertaDe && <ContaAbertaModal key={`aberta-${contaAbertaDe.id}`} fornecedor={contaAbertaDe} contas={contas.map((c) => ({ id: c.id, nome: c.nome }))} onClose={() => setContaAbertaDe(null)} />}
       {pagandoFatura && (() => {
         const cartao = contas.find((c) => c.id === pagandoFatura);
